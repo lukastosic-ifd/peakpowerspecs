@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PeakPower Trading Platform — Specification</title>
+<style>
+:root {
+  --bg:#f4f6f9; --panel:#ffffff; --panel2:#f8fafc; --border:#e2e8f0; --border2:#cbd5e1;
+  --text:#0f172a; --muted:#5b6b7f; --faint:#94a3b8;
+  --accent:#0d9488; --accent-fg:#ffffff; --accent-bg:#ccfbf1; --accent-dk:#0f766e;
+  --amber:#b45309; --amber-bg:#fef3c7; --danger:#b91c1c; --danger-bg:#fee2e2;
+  --green:#15803d; --green-bg:#dcfce7; --indigo:#4338ca; --indigo-bg:#e0e7ff;
+  --nav:#0f2b33; --nav-fg:#cbd5e1; --nav-active:#14b8a6;
+  --code-bg:#f1f5f9;
+  --shadow:0 1px 2px rgba(15,23,42,.06), 0 4px 16px rgba(15,23,42,.05);
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  --mono:'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+}
+:root[data-theme="dark"] {
+  --bg:#0b1116; --panel:#131c24; --panel2:#0f1720; --border:#22303c; --border2:#33455480;
+  --text:#e6edf3; --muted:#9fb0c0; --faint:#6b7f92;
+  --accent:#2dd4bf; --accent-fg:#04201c; --accent-bg:#123b38; --accent-dk:#5eead4;
+  --amber:#fbbf24; --amber-bg:#3a2c0d; --danger:#f87171; --danger-bg:#3d1618;
+  --green:#4ade80; --green-bg:#0f2e1c; --indigo:#a5b4fc; --indigo-bg:#1e1b4b;
+  --nav:#08131a; --nav-fg:#94a3b8; --nav-active:#2dd4bf;
+  --code-bg:#0d151c;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 22px rgba(0,0,0,.35);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--sans);
+  font-size:15px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent-dk); text-decoration:none}
+a:hover{text-decoration:underline}
+:root[data-theme="dark"] a{color:var(--accent)}
+
+/* ── layout ─────────────────────────────────────────────────────────── */
+.app{display:grid; grid-template-columns:286px 1fr; min-height:100vh}
+
+.sidebar{
+  background:var(--nav); color:var(--nav-fg); position:sticky; top:0; height:100vh;
+  overflow-y:auto; padding:0 0 28px; display:flex; flex-direction:column;
+}
+.brand{display:flex; align-items:center; gap:11px; padding:20px 22px 16px; position:sticky; top:0; background:var(--nav); z-index:2}
+.brand-mark{width:30px;height:30px;border-radius:50%;background:var(--nav-active);display:grid;place-items:center;flex:0 0 auto}
+.brand-mark svg{width:15px;height:15px}
+.brand-t{font-weight:750;color:#fff;font-size:15.5px;line-height:1.15;letter-spacing:-.01em}
+.brand-s{font-size:10.5px;color:var(--nav-active);font-weight:650;letter-spacing:.04em;text-transform:uppercase}
+
+.navsearch{padding:0 16px 12px}
+.navsearch input{
+  width:100%; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+  color:#e2e8f0; border-radius:8px; padding:8px 11px; font:inherit; font-size:13px;
+}
+.navsearch input::placeholder{color:#64748b}
+.navsearch input:focus{outline:none; border-color:var(--nav-active); background:rgba(255,255,255,.09)}
+
+nav{padding:0 12px}
+.navgroup{margin-bottom:6px}
+.navgroup-h{
+  display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:750;letter-spacing:.07em;
+  text-transform:uppercase;color:#5b7280;padding:12px 10px 6px;
+}
+.navlink{
+  display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;
+  color:var(--nav-fg);font-size:13px;line-height:1.35;cursor:pointer;text-decoration:none;
+  border-left:3px solid transparent;
+}
+.navlink:hover{background:rgba(255,255,255,.055);color:#fff;text-decoration:none}
+.navlink.active{background:rgba(45,212,191,.15);color:#fff;font-weight:600;border-left-color:var(--nav-active)}
+.navlink .n{color:#5b7280;font-size:11px;font-variant-numeric:tabular-nums;min-width:20px}
+.navlink.active .n{color:var(--nav-active)}
+.navfoot{margin-top:auto;padding:16px 22px 0;font-size:10.5px;color:#516274;line-height:1.6}
+
+main{min-width:0; display:flex; flex-direction:column}
+.topbar{
+  position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--border);
+  padding:11px 34px; display:flex; align-items:center; gap:14px;
+}
+.crumb{font-size:12.5px;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb b{color:var(--text);font-weight:650}
+.tbtn{
+  border:1px solid var(--border2); background:var(--panel); color:var(--text);
+  border-radius:7px; padding:5px 11px; font:inherit; font-size:12.5px; cursor:pointer;
+}
+.tbtn:hover{border-color:var(--accent); color:var(--accent-dk)}
+.content{padding:30px 34px 90px; max-width:1080px; width:100%}
+.content.wide{max-width:1500px}
+
+/* ── typography ─────────────────────────────────────────────────────── */
+.doc h1{font-size:31px;line-height:1.2;letter-spacing:-.02em;margin:0 0 18px;font-weight:760}
+.doc h2{font-size:21px;margin:44px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border);font-weight:700;letter-spacing:-.01em}
+.doc h3{font-size:16.5px;margin:30px 0 10px;font-weight:700}
+.doc h4{font-size:14px;margin:22px 0 8px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.doc p{margin:0 0 14px}
+.doc ul,.doc ol{margin:0 0 14px;padding-left:22px}
+.doc li{margin:4px 0}
+.doc li>p{margin:0 0 6px}
+.doc hr{border:none;border-top:1px solid var(--border);margin:34px 0}
+.doc strong{font-weight:670;color:var(--text)}
+.doc code{
+  font-family:var(--mono); font-size:.855em; background:var(--code-bg);
+  padding:.13em .38em; border-radius:4px; border:1px solid var(--border);
+}
+.doc pre{
+  background:var(--code-bg); border:1px solid var(--border); border-radius:10px;
+  padding:15px 17px; overflow-x:auto; margin:0 0 18px; font-size:12.5px; line-height:1.55;
+}
+.doc pre code{background:none;border:none;padding:0;font-size:inherit}
+.doc blockquote{
+  margin:0 0 18px; padding:13px 18px; border-left:3px solid var(--accent);
+  background:var(--accent-bg); border-radius:0 9px 9px 0; color:var(--text);
+}
+.doc blockquote p:last-child{margin-bottom:0}
+.doc blockquote strong{color:var(--accent-dk)}
+:root[data-theme="dark"] .doc blockquote strong{color:var(--accent)}
+
+.tablewrap{overflow-x:auto; margin:0 0 20px; border:1px solid var(--border); border-radius:10px; background:var(--panel)}
+.doc table{border-collapse:collapse; width:100%; font-size:13px}
+.doc th{
+  text-align:left; padding:9px 13px; background:var(--panel2); font-weight:700;
+  font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+  border-bottom:1px solid var(--border); white-space:nowrap;
+}
+.doc td{padding:9px 13px; border-bottom:1px solid var(--border); vertical-align:top}
+.doc tr:last-child td{border-bottom:none}
+.doc tbody tr:hover{background:var(--panel2)}
+
+.mermaid{
+  background:var(--panel); border:1px solid var(--border); border-radius:11px;
+  padding:20px; margin:0 0 20px; overflow-x:auto; text-align:center;
+}
+.mermaid svg{max-width:100%;height:auto}
+
+/* ── reference chips ────────────────────────────────────────────────── */
+.chip{
+  display:inline-block; font-family:var(--mono); font-size:11.5px; font-weight:650;
+  padding:1px 6px; border-radius:5px; border:1px solid; white-space:nowrap; text-decoration:none;
+  line-height:1.5; vertical-align:baseline;
+}
+.chip:hover{text-decoration:none; filter:brightness(.96)}
+.chip-oq{background:var(--amber-bg); color:var(--amber); border-color:color-mix(in srgb,var(--amber) 35%,transparent)}
+.chip-dec{background:var(--green-bg); color:var(--green); border-color:color-mix(in srgb,var(--green) 32%,transparent)}
+.chip-as{background:var(--indigo-bg); color:var(--indigo); border-color:color-mix(in srgb,var(--indigo) 32%,transparent)}
+.chip-f{background:var(--accent-bg); color:var(--accent-dk); border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+:root[data-theme="dark"] .chip-f{color:var(--accent)}
+.chip-nfr{background:var(--panel2); color:var(--muted); border-color:var(--border2)}
+
+/* ── cards & dashboards ─────────────────────────────────────────────── */
+.grid{display:grid; gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
+.card{
+  background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  padding:17px 19px; box-shadow:var(--shadow);
+}
+.card.link{cursor:pointer; transition:border-color .12s, transform .12s}
+.card.link:hover{border-color:var(--accent); transform:translateY(-1px)}
+.card h3{margin:0 0 5px; font-size:15px; font-weight:700}
+.card p{margin:0; font-size:12.8px; color:var(--muted); line-height:1.55}
+.stat{text-align:left}
+.stat .v{font-size:29px; font-weight:760; letter-spacing:-.025em; line-height:1.1}
+.stat .l{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:6px}
+.stat .s{font-size:11.5px; color:var(--faint); margin-top:3px}
+
+.hero{
+  background:linear-gradient(135deg, #0f2b33 0%, #164e52 55%, #0d9488 190%);
+  color:#fff; border-radius:16px; padding:34px 36px; margin-bottom:22px;
+}
+.hero h1{margin:0 0 10px; font-size:33px; letter-spacing:-.025em; font-weight:760; color:#fff}
+.hero p{margin:0; max-width:74ch; color:#c3dedd; font-size:15px; line-height:1.65}
+.hero .tags{margin-top:18px; display:flex; gap:8px; flex-wrap:wrap}
+.hero .tag{background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.16); padding:4px 11px; border-radius:20px; font-size:11.5px; font-weight:600}
+
+.badge{
+  display:inline-block; padding:2px 8px; border-radius:20px; font-size:10.5px;
+  font-weight:700; letter-spacing:.02em; white-space:nowrap; border:1px solid;
+}
+.b-must{background:var(--danger-bg);color:var(--danger);border-color:transparent}
+.b-should{background:var(--amber-bg);color:var(--amber);border-color:transparent}
+.b-could{background:var(--panel2);color:var(--muted);border-color:var(--border2)}
+.b-p1{background:var(--danger-bg);color:var(--danger);border-color:transparent}
+.b-p2{background:var(--amber-bg);color:var(--amber);border-color:transparent}
+.b-p3{background:var(--panel2);color:var(--muted);border-color:var(--border2)}
+.b-ok{background:var(--green-bg);color:var(--green);border-color:transparent}
+.b-in{background:var(--indigo-bg);color:var(--indigo);border-color:transparent}
+
+.filters{display:flex; gap:8px; flex-wrap:wrap; margin:0 0 18px; align-items:center}
+.fbtn{
+  border:1px solid var(--border2); background:var(--panel); color:var(--muted);
+  border-radius:20px; padding:5px 13px; font:inherit; font-size:12.5px; cursor:pointer; font-weight:600;
+}
+.fbtn:hover{border-color:var(--accent)}
+.fbtn.on{background:var(--accent); border-color:var(--accent); color:var(--accent-fg)}
+
+/* ── mockups ────────────────────────────────────────────────────────── */
+.mockgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(430px,1fr)); gap:18px}
+.mock{background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:var(--shadow); cursor:zoom-in}
+.mock:hover{border-color:var(--accent)}
+.mock svg{width:100%; height:auto; display:block; border-bottom:1px solid var(--border)}
+.mock .cap{padding:11px 15px}
+.mock .cap b{font-size:13.5px; display:block}
+.mock .cap span{font-size:11.5px; color:var(--faint); font-family:var(--mono)}
+.lightbox{position:fixed; inset:0; background:rgba(4,10,14,.9); z-index:100; display:none; padding:26px; overflow:auto}
+.lightbox.on{display:block}
+.lightbox .inner{max-width:1600px; margin:0 auto}
+.lightbox svg{width:100%; height:auto; border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.lightbox .lb-h{color:#e2e8f0; display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:15px; font-weight:650}
+.lightbox .lb-x{cursor:pointer; background:rgba(255,255,255,.1); border:none; color:#fff; border-radius:8px; padding:7px 15px; font:inherit; font-size:13px}
+
+/* ── search ─────────────────────────────────────────────────────────── */
+.searchres{margin-top:6px}
+.sres{display:block; padding:13px 16px; border:1px solid var(--border); border-radius:10px; background:var(--panel); margin-bottom:9px; cursor:pointer}
+.sres:hover{border-color:var(--accent); text-decoration:none}
+.sres .st{font-weight:660; font-size:14px; color:var(--text)}
+.sres .sc{font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.05em; font-weight:700; margin-bottom:3px}
+.sres .sn{font-size:12.8px; color:var(--muted); margin-top:5px; line-height:1.55}
+.sres mark{background:var(--amber-bg); color:var(--amber); padding:0 2px; border-radius:3px; font-weight:650}
+
+/* ── toc ────────────────────────────────────────────────────────────── */
+.docwrap{display:grid; grid-template-columns:1fr 214px; gap:38px; align-items:start}
+.toc{position:sticky; top:74px; font-size:12.5px; max-height:calc(100vh - 110px); overflow-y:auto}
+.toc-h{font-size:10.5px; font-weight:750; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); margin-bottom:9px}
+.toc a{display:block; padding:3px 0 3px 11px; color:var(--muted); border-left:2px solid var(--border); line-height:1.4}
+.toc a:hover{color:var(--accent-dk); text-decoration:none; border-left-color:var(--accent)}
+.toc a.h3{padding-left:22px; font-size:12px; color:var(--faint)}
+.pager{display:flex; justify-content:space-between; gap:14px; margin-top:46px; padding-top:22px; border-top:1px solid var(--border)}
+.pager a{
+  flex:1; padding:13px 16px; border:1px solid var(--border); border-radius:10px;
+  background:var(--panel); font-size:13.5px; font-weight:640;
+}
+.pager a:hover{border-color:var(--accent); text-decoration:none}
+.pager a.next{text-align:right}
+.pager span{display:block; font-size:10.5px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; font-weight:700; margin-bottom:2px}
+
+@media (max-width:1180px){ .docwrap{grid-template-columns:1fr} .toc{display:none} }
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:static;height:auto;max-height:none}
+  .content{padding:20px 18px 60px}
+  .topbar{padding:10px 18px}
+  .mockgrid{grid-template-columns:1fr}
+}
+@media print{
+  .sidebar,.topbar,.toc,.pager{display:none}
+  .app{grid-template-columns:1fr}
+  .content{max-width:none;padding:0}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="#0f2b33"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>
+      </div>
+      <div>
+        <div class="brand-t">PeakPower</div>
+        <div class="brand-s">Specification</div>
+      </div>
+    </div>
+    <div class="navsearch"><input id="q" type="search" placeholder="Search  ⌘K" autocomplete="off"></div>
+    <nav id="nav"></nav>
+    <div class="navfoot" id="navfoot"></div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div class="crumb" id="crumb"></div>
+      <button class="tbtn" id="printBtn">Print</button>
+      <button class="tbtn" id="themeBtn">Dark</button>
+    </div>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <div class="inner">
+    <div class="lb-h"><span id="lbTitle"></span><button class="lb-x" id="lbClose">Close  ·  Esc</button></div>
+    <div id="lbBody"></div>
+  </div>
+</div>
+
+<script src="content.js"></script>
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/mermaid.min.js"></script>
+<script>
+(function () {
+'use strict';
+const D = window.SPEC_CONTENT;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+/* ── views registered as pseudo-docs ───────────────────────────────── */
+const VIEWS = [
+  { id: '@home',      section:'home', title:'Overview',          nav:'Overview' },
+  { id: '@features',  section:'features', title:'Feature matrix', nav:'Feature matrix' },
+  { id: '@questions', section:'delivery', title:'Open questions',  nav:'Open questions' },
+  { id: '@risks',     section:'delivery', title:'Risk register',   nav:'Risk register' },
+  { id: '@decisions', section:'overview', title:'Decisions & assumptions', nav:'Decision log' },
+  { id: '@mockups',   section:'mockups', title:'Mockup gallery',   nav:'Gallery' },
+];
+
+const docById = Object.fromEntries(D.docs.map((d) => [d.id, d]));
+
+/** READMEs lead their section; everything else sorts by filename. */
+function docSort(a, b) {
+  const rank = (d) => (/README\.md$/.test(d.path) ? 0 : 1);
+  return rank(a) - rank(b) || a.path.localeCompare(b.path);
+}
+
+/* ── markdown ──────────────────────────────────────────────────────── */
+const slug = (s) => s.toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-');
+const renderer = new marked.Renderer();
+renderer.code = ({ text, lang }) => (lang === 'mermaid'
+  ? '<pre class="mermaid">' + esc(text) + '</pre>'
+  : '<pre><code>' + esc(text) + '</code></pre>');
+renderer.table = (t) => {
+  const head = '<thead><tr>' + t.header.map((c) => '<th>' + inline(c.text) + '</th>').join('') + '</tr></thead>';
+  const body = '<tbody>' + t.rows.map((r) => '<tr>' + r.map((c) => '<td>' + inline(c.text) + '</td>').join('') + '</tr>').join('') + '</tbody>';
+  return '<div class="tablewrap"><table>' + head + body + '</table></div>';
+};
+renderer.heading = ({ text, depth }) => {
+  const t = inline(text);
+  const id = slug(text);
+  return '<h' + depth + ' id="' + id + '">' + t + '</h' + depth + '>';
+};
+function inline(md) { return marked.parseInline(md, { renderer }); }
+marked.use({ renderer, gfm: true, breaks: false });
+
+/** Rewrite relative .md links to hash routes, resolved against the doc's folder. */
+function resolveLinks(root, dir) {
+  root.querySelectorAll('a[href]').forEach((a) => {
+    const href = a.getAttribute('href');
+    if (!href || /^(https?:|mailto:|#)/.test(href)) return;
+    const [p, frag] = href.split('#');
+    const parts = (dir === '.' ? [] : dir.split('/')).concat(p.split('/'));
+    const out = [];
+    for (const seg of parts) {
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') out.pop(); else out.push(seg);
+    }
+    let target = out.join('/');
+    if (/\.md$/.test(target)) {
+      const id = target.replace(/\.md$/, '');
+      if (docById[id]) { a.setAttribute('href', '#/' + id + (frag ? '#' + frag : '')); return; }
+    }
+    if (/\.svg$/.test(target)) {
+      const name = target.split('/').pop().replace(/\.svg$/, '');
+      if (D.mockups.some((m) => m.name === name)) { a.setAttribute('href', '#/@mockups?m=' + name); return; }
+    }
+    if (docById[target]) { a.setAttribute('href', '#/' + target); return; }
+    a.setAttribute('href', '#/' + (target || ''));
+    a.classList.add('unresolved');
+  });
+}
+
+/** Turn bare [OQ-nn] / [DEC-nn] / [AS-nn] / [F05] / [NFR-nn] text into chips. */
+const CHIP_RE = /\[(OQ-\d{2}|DEC-\d{2}|AS-\d{2}|NFR-\d{2}|F\d{2}(?:-R\d{2})?)\]/g;
+function chipify(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      if (!CHIP_RE.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+      CHIP_RE.lastIndex = 0;
+      let p = n.parentElement;
+      while (p && p !== root) {
+        const t = p.tagName;
+        if (t === 'A' || t === 'CODE' || t === 'PRE' || t === 'TH') return NodeFilter.FILTER_REJECT;
+        p = p.parentElement;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const nodes = [];
+  let n; while ((n = walker.nextNode())) nodes.push(n);
+  for (const node of nodes) {
+    const frag = document.createDocumentFragment();
+    let last = 0; const s = node.nodeValue;
+    s.replace(CHIP_RE, (m, ref, idx) => {
+      if (idx > last) frag.appendChild(document.createTextNode(s.slice(last, idx)));
+      const a = document.createElement('a');
+      a.className = 'chip ' + (ref.startsWith('OQ') ? 'chip-oq' : ref.startsWith('DEC') ? 'chip-dec'
+        : ref.startsWith('AS') ? 'chip-as' : ref.startsWith('NFR') ? 'chip-nfr' : 'chip-f');
+      a.textContent = ref;
+      a.href = ref.startsWith('OQ') ? '#/@questions?q=' + ref
+        : (ref.startsWith('DEC') || ref.startsWith('AS')) ? '#/@decisions?r=' + ref
+        : ref.startsWith('NFR') ? '#/20-architecture/08-non-functional-requirements'
+        : featureHref(ref);
+      frag.appendChild(a);
+      last = idx + m.length;
+      return m;
+    });
+    if (last < s.length) frag.appendChild(document.createTextNode(s.slice(last)));
+    node.parentNode.replaceChild(frag, node);
+  }
+}
+function featureHref(ref) {
+  const code = ref.slice(0, 3);
+  const f = D.features.find((x) => x.code === code);
+  return f ? '#/' + f.id : '#/@features';
+}
+
+/* ── mermaid ───────────────────────────────────────────────────────── */
+let mermaidReady = false;
+function initMermaid() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: 'base',
+    fontFamily: "Inter,-apple-system,'Segoe UI',sans-serif",
+    themeVariables: dark ? {
+      background:'#131c24', primaryColor:'#1a2a35', primaryTextColor:'#e6edf3', primaryBorderColor:'#2dd4bf',
+      lineColor:'#64809a', secondaryColor:'#1e2b38', tertiaryColor:'#16212b',
+      mainBkg:'#1a2a35', nodeBorder:'#3c5468', clusterBkg:'#101922', clusterBorder:'#2a3b49',
+      titleColor:'#e6edf3', edgeLabelBackground:'#131c24', textColor:'#cbd5e1',
+      actorBkg:'#1a2a35', actorBorder:'#2dd4bf', actorTextColor:'#e6edf3',
+      signalColor:'#9fb0c0', signalTextColor:'#cbd5e1', labelBoxBkgColor:'#1a2a35',
+      noteBkgColor:'#3a2c0d', noteTextColor:'#fbbf24', noteBorderColor:'#78591a',
+      sectionBkgColor:'#16212b', altSectionBkgColor:'#101922', gridColor:'#2a3b49',
+      taskBkgColor:'#1e3a44', taskTextColor:'#e6edf3', taskTextOutsideColor:'#cbd5e1',
+      activeTaskBkgColor:'#0d9488', activeTaskBorderColor:'#2dd4bf',
+      doneTaskBkgColor:'#1f3b2a', critBkgColor:'#4c1d1d', critBorderColor:'#f87171',
+      todayLineColor:'#f87171',
+    } : {
+      background:'#ffffff', primaryColor:'#e8f5f3', primaryTextColor:'#0f172a', primaryBorderColor:'#0d9488',
+      lineColor:'#7c8fa3', secondaryColor:'#eef2ff', tertiaryColor:'#f8fafc',
+      mainBkg:'#e8f5f3', nodeBorder:'#7fbfb7', clusterBkg:'#f6f9fb', clusterBorder:'#dbe3ec',
+      titleColor:'#0f172a', edgeLabelBackground:'#ffffff', textColor:'#334155',
+      actorBkg:'#e8f5f3', actorBorder:'#0d9488', actorTextColor:'#0f172a',
+      signalColor:'#5b6b7f', signalTextColor:'#334155', labelBoxBkgColor:'#e8f5f3',
+      noteBkgColor:'#fef3c7', noteTextColor:'#92400e', noteBorderColor:'#fcd34d',
+      sectionBkgColor:'#f8fafc', altSectionBkgColor:'#eef2f6', gridColor:'#dbe3ec',
+      taskBkgColor:'#cbe9e5', taskTextColor:'#0f172a', taskTextOutsideColor:'#334155',
+      activeTaskBkgColor:'#0d9488', activeTaskBorderColor:'#0f766e',
+      doneTaskBkgColor:'#dcfce7', critBkgColor:'#fee2e2', critBorderColor:'#dc2626',
+      todayLineColor:'#dc2626',
+    },
+  });
+  mermaidReady = true;
+}
+async function runMermaid(root) {
+  const nodes = [...root.querySelectorAll('pre.mermaid')];
+  if (!nodes.length) return;
+  if (!mermaidReady) initMermaid();
+  for (const el of nodes) {
+    const src = el.textContent;
+    el.dataset.src = src;
+    try {
+      const id = 'mmd' + Math.random().toString(36).slice(2, 9);
+      const { svg } = await mermaid.render(id, src);
+      el.innerHTML = svg;
+      el.removeAttribute('data-processed');
+    } catch (e) {
+      el.innerHTML = '<pre style="text-align:left;margin:0;background:none;border:none;font-size:12px">'
+        + esc(src) + '</pre>';
+    }
+  }
+}
+
+/* ── nav ───────────────────────────────────────────────────────────── */
+function buildNav() {
+  const nav = $('#nav');
+  let html = '';
+  for (const sec of D.sections) {
+    const views = VIEWS.filter((v) => v.section === sec.key);
+    const docs = D.docs.filter((d) => d.section === sec.key).sort(docSort);
+    if (!views.length && !docs.length) continue;
+    html += '<div class="navgroup"><div class="navgroup-h"><span>' + sec.icon + '</span>' + esc(sec.label) + '</div>';
+    for (const v of views) {
+      html += '<a class="navlink" data-id="' + v.id + '" href="#/' + v.id + '">' + esc(v.nav) + '</a>';
+    }
+    for (const d of docs) {
+      const base = d.path.split('/').pop();
+      const n = base.match(/^(F\d\d|\d\d)[-.]/);
+      const label = d.title.replace(/^(F\d\d|[\d.]+)\s*—\s*/, '');
+      html += '<a class="navlink" data-id="' + esc(d.id) + '" href="#/' + esc(d.id) + '">'
+        + '<span class="n">' + (n ? n[1] : '') + '</span>'
+        + '<span>' + esc(label) + '</span></a>';
+    }
+    html += '</div>';
+  }
+  nav.innerHTML = html;
+  const s = D.stats;
+  $('#navfoot').innerHTML = s.documents + ' documents · ' + s.words.toLocaleString('en-GB') + ' words<br>'
+    + s.features + ' features · ' + s.requirements + ' requirements<br>'
+    + s.diagrams + ' diagrams · ' + s.mockups + ' mockups<br>'
+    + '<span style="color:#fbbf24">' + s.p1 + ' blocking questions</span> of ' + s.questions;
+}
+function markActive(id) {
+  document.querySelectorAll('.navlink').forEach((a) => a.classList.toggle('active', a.dataset.id === id));
+}
+
+/* ── flat order for prev/next ──────────────────────────────────────── */
+function flatOrder() {
+  const out = [];
+  for (const sec of D.sections) {
+    VIEWS.filter((v) => v.section === sec.key).forEach((v) => out.push({ id: v.id, title: v.title }));
+    D.docs.filter((d) => d.section === sec.key).sort(docSort)
+      .forEach((d) => out.push({ id: d.id, title: d.title }));
+  }
+  return out;
+}
+
+/* ── renderers ─────────────────────────────────────────────────────── */
+function renderDoc(doc) {
+  const c = $('#content');
+  c.className = 'content';
+  c.innerHTML = '<div class="docwrap"><article class="doc" id="art"></article><aside class="toc" id="toc"></aside></div>';
+  const art = $('#art');
+  art.innerHTML = marked.parse(doc.md);
+  resolveLinks(art, doc.dir);
+  chipify(art);
+
+  // TOC
+  const hs = [...art.querySelectorAll('h2, h3')];
+  $('#toc').innerHTML = hs.length
+    ? '<div class="toc-h">On this page</div>' + hs.map((h) =>
+      '<a class="' + h.tagName.toLowerCase() + '" href="#/' + doc.id + '#' + h.id + '">' + esc(h.textContent) + '</a>').join('')
+    : '';
+
+  // prev / next
+  const order = flatOrder();
+  const i = order.findIndex((o) => o.id === doc.id);
+  const prev = i > 0 ? order[i - 1] : null;
+  const next = i >= 0 && i < order.length - 1 ? order[i + 1] : null;
+  const pager = document.createElement('div');
+  pager.className = 'pager';
+  pager.innerHTML = (prev ? '<a href="#/' + prev.id + '"><span>Previous</span>' + esc(prev.title) + '</a>' : '<span></span>')
+    + (next ? '<a class="next" href="#/' + next.id + '"><span>Next</span>' + esc(next.title) + '</a>' : '<span></span>');
+  art.appendChild(pager);
+
+  $('#crumb').innerHTML = esc(doc.sectionLabel) + ' &nbsp;›&nbsp; <b>' + esc(doc.title) + '</b>';
+  runMermaid(art);
+}
+
+function stat(label, value, sub, color) {
+  return '<div class="card stat"><div class="l">' + esc(label) + '</div>'
+    + '<div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>' + esc(value) + '</div>'
+    + (sub ? '<div class="s">' + esc(sub) + '</div>' : '') + '</div>';
+}
+
+function viewHome() {
+  const c = $('#content'); c.className = 'content'; const s = D.stats;
+  const p1 = D.questions.filter((q) => q.priority === 'P1');
+  const topRisks = D.risks.slice().sort((a, b) => b.score - a.score).slice(0, 5);
+  c.innerHTML = `
+  <div class="hero">
+    <h1>PeakPower Trading Platform</h1>
+    <p>A self-service portal that lets Dutch <b>grootverbruik</b> customers see their energy position and
+    buy or sell wholesale energy blocks against it, with PeakPower brokering every trade. This is the
+    specification and scope set: features, architecture, integrations, calculations, mockups and the
+    decisions still to be made.</p>
+    <div class="tags">
+      <span class="tag">Draft for review</span><span class="tag">Version 0.1</span>
+      <span class="tag">2026-07-30</span><span class="tag">Electricity first · gas later</span>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:22px">
+    ${stat('Documents', s.documents, s.words.toLocaleString('en-GB') + ' words')}
+    ${stat('Features', s.features, s.requirements + ' numbered requirements')}
+    ${stat('Diagrams', s.diagrams, s.mockups + ' UI mockups')}
+    ${stat('Open questions', s.questions, s.p1 + ' blocking', 'var(--amber)')}
+  </div>
+
+  <h2 style="font-size:19px;margin:26px 0 12px">The ten blocking questions</h2>
+  <p style="color:var(--muted);margin:0 0 14px;font-size:14px">Work cannot responsibly start on the affected areas until these are answered. Six of them are conversations rather than analyses.</p>
+  <div class="grid g2" style="margin-bottom:26px">
+    ${p1.map((q) => `<div class="card link" onclick="location.hash='#/@questions?q=${q.ref}'">
+      <div style="display:flex;gap:9px;align-items:baseline;margin-bottom:5px">
+        <span class="chip chip-oq">${q.ref}</span><span class="badge b-p1">P1</span>
+        <span style="font-size:11px;color:var(--faint);margin-left:auto">${esc(q.owner)}</span>
+      </div>
+      <p style="color:var(--text);font-size:13.4px">${stripMd(q.question)}</p></div>`).join('')}
+  </div>
+
+  <h2 style="font-size:19px;margin:26px 0 12px">Where to start</h2>
+  <div class="grid g3" style="margin-bottom:26px">
+    ${[
+      ['Vision &amp; scope', '00-overview/01-vision-and-scope', 'What the platform is, who it serves, what is in and out'],
+      ['Feature matrix', '@features', '15 features with priority, phase and size'],
+      ['Architecture overview', '20-architecture/01-architecture-overview', 'Context, containers, the decisions behind them'],
+      ['Trade lifecycle', '40-processes/01-trade-lifecycle', 'Request → offer → accept → confirm, end to end'],
+      ['Mockups', '@mockups', '19 wireframes across both portals'],
+      ['Roadmap', '70-delivery/01-roadmap-and-phasing', 'Four phases, sequenced by risk'],
+    ].map(([t, id, d]) => `<div class="card link" onclick="location.hash='#/${id}'">
+      <h3>${t}</h3><p>${d}</p></div>`).join('')}
+  </div>
+
+  <h2 style="font-size:19px;margin:26px 0 12px">Highest risks</h2>
+  <div class="tablewrap"><table class="doc"><thead><tr>
+    <th>Ref</th><th>Risk</th><th>Score</th><th>Mitigation</th><th>Owner</th></tr></thead><tbody>
+    ${topRisks.map((r) => `<tr><td><b>${r.ref}</b></td><td>${stripMd(r.title)}</td>
+      <td><span class="badge ${r.score >= 20 ? 'b-p1' : 'b-p2'}">${r.score}</span></td>
+      <td style="font-size:12.5px;color:var(--muted)">${stripMd(r.mitigation)}</td><td>${esc(r.owner)}</td></tr>`).join('')}
+  </tbody></table></div>
+  <p style="margin-top:10px"><a href="#/@risks">Full risk register →</a></p>
+
+  <h2 style="font-size:19px;margin:32px 0 12px">Delivery phases</h2>
+  <div class="grid g4">
+    ${[
+      ['Phase 0', 'Discovery', 'Close blocking questions; three spikes', '6%'],
+      ['Phase 1', 'See your data', 'Auth, EANs, PVNed ingestion, charts', '30%'],
+      ['Phase 2', 'Trade', 'Wallet, payments, prices, block trading', '34%'],
+      ['Phase 3', 'Settle', 'Day-ahead, surcharges, invoicing, Odoo', '24%'],
+    ].map(([p, t, d, e]) => `<div class="card"><div class="l" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${p}</div>
+      <div style="font-size:17px;font-weight:700;margin:3px 0 5px">${t}</div>
+      <p style="font-size:12.5px">${d}</p>
+      <div style="margin-top:9px;font-size:11.5px;color:var(--accent-dk);font-weight:700">${e} of build effort</div></div>`).join('')}
+  </div>`;
+  $('#crumb').innerHTML = '<b>Overview</b>';
+}
+
+function stripMd(s) {
+  return esc(String(s)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/\[(OQ-\d\d|DEC-\d\d|AS-\d\d|F\d\d(?:-R\d\d)?|NFR-\d\d)\]/g,
+      (m, r) => '<span class="chip ' + (r.startsWith('OQ') ? 'chip-oq' : r.startsWith('DEC') ? 'chip-dec'
+        : r.startsWith('AS') ? 'chip-as' : r.startsWith('NFR') ? 'chip-nfr' : 'chip-f') + '">' + r + '</span>')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+}
+
+let featureFilter = 'all';
+function viewFeatures() {
+  const c = $('#content'); c.className = 'content wide';
+  const phases = ['all', '1', '2', '3', '4'];
+  const rows = D.features.filter((f) => featureFilter === 'all' || f.phase.includes(featureFilter));
+  c.innerHTML = `<h1 class="doc" style="font-size:29px;margin:0 0 8px">Feature matrix</h1>
+  <p style="color:var(--muted);margin:0 0 18px;max-width:74ch">${D.features.length} features, ${D.stats.requirements} numbered requirements.
+  Every requirement ID is stable — <code>F05-R12</code> is requirement 12 of feature F05 — so a backlog item, a test or a change request can point at exactly one line.</p>
+  <div class="filters">
+    <span style="font-size:12px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Phase</span>
+    ${phases.map((p) => `<button class="fbtn ${featureFilter === p ? 'on' : ''}" data-ph="${p}">${p === 'all' ? 'All' : 'Phase ' + p}</button>`).join('')}
+  </div>
+  <div class="tablewrap"><table class="doc"><thead><tr>
+    <th>Code</th><th>Feature</th><th>Portal</th><th>Priority</th><th>Phase</th><th>Size</th>
+    <th style="text-align:right">Reqs</th><th>Open questions</th></tr></thead><tbody>
+    ${rows.map((f) => `<tr style="cursor:pointer" onclick="location.hash='#/${f.id}'">
+      <td><span class="chip chip-f">${f.code}</span></td>
+      <td><b>${esc(f.title)}</b></td>
+      <td style="color:var(--muted)">${esc(f.portal)}</td>
+      <td><span class="badge b-${f.priority.toLowerCase()}">${esc(f.priority)}</span></td>
+      <td>${esc(f.phase)}</td><td>${esc(f.size)}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums">${f.requirements}</td>
+      <td>${f.openQuestions.map((q) => '<span class="chip chip-oq" style="margin:1px 2px 1px 0">' + q + '</span>').join('')}</td>
+    </tr>`).join('')}
+  </tbody></table></div>
+  <div class="grid g4" style="margin-top:20px">
+    ${['Must', 'Should', 'Could'].map((p) => stat(p, D.features.filter((f) => f.priority === p).length + ' features',
+      D.features.filter((f) => f.priority === p).reduce((a, f) => a + f.requirements, 0) + ' requirements')).join('')}
+    ${stat('Critical path', 'F05 · F10', 'trading and invoicing', 'var(--danger)')}
+  </div>`;
+  c.querySelectorAll('[data-ph]').forEach((b) => b.onclick = () => { featureFilter = b.dataset.ph; viewFeatures(); });
+  $('#crumb').innerHTML = 'Features &nbsp;›&nbsp; <b>Feature matrix</b>';
+}
+
+let qFilter = { p: 'all', owner: 'all', find: '' };
+function viewQuestions(params) {
+  const c = $('#content'); c.className = 'content wide';
+  const highlight = params.get('q');
+  const owners = [...new Set(D.questions.map((q) => q.owner))].sort();
+  let rows = D.questions.filter((q) =>
+    (qFilter.p === 'all' || q.priority === qFilter.p)
+    && (qFilter.owner === 'all' || q.owner === qFilter.owner)
+    && (!qFilter.find || (q.question + q.impact + q.ref).toLowerCase().includes(qFilter.find.toLowerCase())));
+  const n = (p) => D.questions.filter((q) => q.priority === p).length;
+  c.innerHTML = `<h1 class="doc" style="font-size:29px;margin:0 0 8px">Open questions</h1>
+  <p style="color:var(--muted);margin:0 0 18px;max-width:76ch">${D.questions.length} decisions still to be made. <b>P1</b> blocks a phase; <b>P2</b> shapes the design of a feature; <b>P3</b> affects detail. Every <code>[OQ-nn]</code> reference anywhere in the specification resolves to a row here.</p>
+  <div class="grid g4" style="margin-bottom:18px">
+    ${stat('Blocking (P1)', n('P1'), 'answer these first', 'var(--danger)')}
+    ${stat('Shaping (P2)', n('P2'), 'before the feature is built', 'var(--amber)')}
+    ${stat('Detail (P3)', n('P3'), 'during build')}
+    ${stat('Owners', owners.length, 'finance holds the most')}
+  </div>
+  <div class="filters">
+    ${['all', 'P1', 'P2', 'P3'].map((p) => `<button class="fbtn ${qFilter.p === p ? 'on' : ''}" data-p="${p}">${p === 'all' ? 'All priorities' : p}</button>`).join('')}
+    <span style="width:10px"></span>
+    <select class="fbtn" id="ownerSel"><option value="all">All owners</option>
+      ${owners.map((o) => `<option ${qFilter.owner === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
+    <input class="fbtn" id="qFind" placeholder="Filter…" value="${esc(qFilter.find)}" style="min-width:180px">
+    <span style="margin-left:auto;font-size:12.5px;color:var(--faint)">${rows.length} shown</span>
+  </div>
+  <div class="tablewrap"><table class="doc"><thead><tr>
+    <th>Ref</th><th></th><th>Question</th><th>Impact if the assumption is wrong</th><th>Owner</th><th>Area</th></tr></thead><tbody>
+    ${rows.map((q) => `<tr id="row-${q.ref}"${q.ref === highlight ? ' style="background:var(--amber-bg)"' : ''}>
+      <td><span class="chip chip-oq">${q.ref}</span></td>
+      <td><span class="badge b-${q.priority.toLowerCase()}">${q.priority}</span></td>
+      <td style="min-width:280px">${stripMd(q.question)}</td>
+      <td style="font-size:12.5px;color:var(--muted);min-width:300px">${stripMd(q.impact)}</td>
+      <td style="white-space:nowrap">${esc(q.owner)}</td>
+      <td style="font-size:12px;color:var(--faint);white-space:nowrap">${esc(q.group)}</td>
+    </tr>`).join('')}
+  </tbody></table></div>
+  <p style="margin-top:14px"><a href="#/80-open-questions">Full register with sequencing and owner breakdown →</a></p>`;
+  c.querySelectorAll('[data-p]').forEach((b) => b.onclick = () => { qFilter.p = b.dataset.p; viewQuestions(new URLSearchParams()); });
+  $('#ownerSel').onchange = (e) => { qFilter.owner = e.target.value; viewQuestions(new URLSearchParams()); };
+  const fi = $('#qFind');
+  fi.oninput = (e) => { qFilter.find = e.target.value; const p = e.target.selectionStart; viewQuestions(new URLSearchParams()); const n2 = $('#qFind'); n2.focus(); n2.setSelectionRange(p, p); };
+  if (highlight) { const el = document.getElementById('row-' + highlight); if (el) el.scrollIntoView({ block: 'center' }); }
+  $('#crumb').innerHTML = 'Delivery &nbsp;›&nbsp; <b>Open questions</b>';
+}
+
+function viewRisks() {
+  const c = $('#content'); c.className = 'content wide';
+  const rows = D.risks.slice().sort((a, b) => b.score - a.score);
+  c.innerHTML = `<h1 class="doc" style="font-size:29px;margin:0 0 8px">Risk register</h1>
+  <p style="color:var(--muted);margin:0 0 18px;max-width:76ch">Scored likelihood × impact, each 1–5. Anything at 12 or above needs an owner and a mitigation in the plan, not just a row in a table.</p>
+  <div class="grid g4" style="margin-bottom:18px">
+    ${stat('Critical', rows.filter((r) => r.score >= 20).length, 'score 20+', 'var(--danger)')}
+    ${stat('High', rows.filter((r) => r.score >= 12 && r.score < 20).length, 'score 12–16', 'var(--amber)')}
+    ${stat('Medium', rows.filter((r) => r.score >= 6 && r.score < 12).length, 'score 6–10')}
+    ${stat('Low', rows.filter((r) => r.score < 6).length, 'score 1–5')}
+  </div>
+  <div class="tablewrap"><table class="doc"><thead><tr>
+    <th>Ref</th><th>Risk</th><th style="text-align:center">L</th><th style="text-align:center">I</th>
+    <th style="text-align:center">Score</th><th>Mitigation</th><th>Owner</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td><b>${r.ref}</b></td><td><b>${stripMd(r.title)}</b></td>
+      <td style="text-align:center">${r.likelihood}</td><td style="text-align:center">${r.impact}</td>
+      <td style="text-align:center"><span class="badge ${r.score >= 20 ? 'b-p1' : r.score >= 12 ? 'b-p2' : 'b-p3'}">${r.score}</span></td>
+      <td style="font-size:12.5px;color:var(--muted)">${stripMd(r.mitigation)}</td>
+      <td style="white-space:nowrap">${esc(r.owner)}</td></tr>`).join('')}
+  </tbody></table></div>
+  <p style="margin-top:14px"><a href="#/70-delivery/02-risks">Full register with mitigations in detail →</a></p>`;
+  $('#crumb').innerHTML = 'Delivery &nbsp;›&nbsp; <b>Risk register</b>';
+}
+
+function viewDecisions(params) {
+  const c = $('#content'); c.className = 'content wide';
+  const hi = params.get('r');
+  c.innerHTML = `<h1 class="doc" style="font-size:29px;margin:0 0 8px">Decisions &amp; assumptions</h1>
+  <p style="color:var(--muted);margin:0 0 22px;max-width:76ch"><b>Decisions</b> are choices already made, with the reasoning kept so they can be revisited honestly. <b>Assumptions</b> are things this specification takes as true in the absence of a decision — if one is wrong, the linked work changes.</p>
+  <h2 class="doc" style="font-size:19px">Decisions</h2>
+  <div class="tablewrap"><table class="doc"><thead><tr><th>Ref</th><th>Decision</th><th>Alternatives considered</th><th>Rationale</th></tr></thead><tbody>
+    ${D.decisions.map((d) => `<tr id="row-${d.ref}"${d.ref === hi ? ' style="background:var(--green-bg)"' : ''}>
+      <td><span class="chip chip-dec">${d.ref}</span></td><td><b>${stripMd(d.text)}</b></td>
+      <td style="color:var(--muted);font-size:12.5px">${stripMd(d.alternatives)}</td>
+      <td style="color:var(--muted);font-size:12.5px">${stripMd(d.rationale)}</td></tr>`).join('')}
+  </tbody></table></div>
+  <h2 class="doc" style="font-size:19px;margin-top:34px">Assumptions</h2>
+  <div class="tablewrap"><table class="doc"><thead><tr><th>Ref</th><th>Assumption</th><th>Because</th><th>If wrong</th></tr></thead><tbody>
+    ${D.assumptions.map((a) => `<tr id="row-${a.ref}"${a.ref === hi ? ' style="background:var(--indigo-bg)"' : ''}>
+      <td><span class="chip chip-as">${a.ref}</span></td><td><b>${stripMd(a.text)}</b></td>
+      <td style="color:var(--muted);font-size:12.5px">${stripMd(a.because)}</td>
+      <td style="color:var(--muted);font-size:12.5px">${stripMd(a.ifWrong)}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  if (hi) { const el = document.getElementById('row-' + hi); if (el) el.scrollIntoView({ block: 'center' }); }
+  $('#crumb').innerHTML = 'Overview &nbsp;›&nbsp; <b>Decisions &amp; assumptions</b>';
+}
+
+function viewMockups(params) {
+  const c = $('#content'); c.className = 'content wide';
+  const groups = ['Customer portal', 'Employee portal'];
+  c.innerHTML = `<h1 class="doc" style="font-size:29px;margin:0 0 8px">Mockups</h1>
+  <p style="color:var(--muted);margin:0 0 22px;max-width:76ch">${D.mockups.length} wireframes. Structural, not visual design — information architecture, hierarchy and the data actually on each screen. Labels are in English to match the specification; production copy is Dutch-first. Click any screen to enlarge.</p>
+  ${groups.map((g) => `<h2 class="doc" style="font-size:19px">${g}</h2>
+    <div class="mockgrid" style="margin-bottom:30px">
+      ${D.mockups.filter((m) => m.portal === g).map((m) => `<figure class="mock" data-m="${m.name}" style="margin:0">
+        ${m.svg}<div class="cap"><b>${esc(m.title.replace(/^.*— /, ''))}</b><span>${m.name}.svg</span></div></figure>`).join('')}
+    </div>`).join('')}
+  <p><a href="#/60-mockups/README">Mockup index, design decisions and what is not yet covered →</a></p>`;
+  c.querySelectorAll('.mock').forEach((el) => el.onclick = () => openLightbox(el.dataset.m));
+  const m = params.get('m'); if (m) openLightbox(m);
+  $('#crumb').innerHTML = 'Mockups &nbsp;›&nbsp; <b>Gallery</b>';
+}
+
+function openLightbox(name) {
+  const m = D.mockups.find((x) => x.name === name); if (!m) return;
+  $('#lbTitle').textContent = m.title;
+  $('#lbBody').innerHTML = m.svg;
+  $('#lightbox').classList.add('on');
+}
+$('#lbClose').onclick = () => $('#lightbox').classList.remove('on');
+$('#lightbox').onclick = (e) => { if (e.target.id === 'lightbox') $('#lightbox').classList.remove('on'); };
+
+/* ── search ────────────────────────────────────────────────────────── */
+function runSearch(term) {
+  const c = $('#content'); c.className = 'content';
+  const t = term.toLowerCase();
+  const hits = [];
+  for (const d of D.docs) {
+    const low = d.md.toLowerCase();
+    let score = 0;
+    if (d.title.toLowerCase().includes(t)) score += 50;
+    const idx = low.indexOf(t);
+    if (idx === -1 && score === 0) continue;
+    const count = low.split(t).length - 1;
+    score += count;
+    const at = idx === -1 ? 0 : idx;
+    let snip = d.md.slice(Math.max(0, at - 90), at + 190).replace(/\s+/g, ' ').trim();
+    snip = esc(snip).replace(new RegExp(esc(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), (x) => '<mark>' + x + '</mark>');
+    hits.push({ d, score, snip, count });
+  }
+  hits.sort((a, b) => b.score - a.score);
+  c.innerHTML = `<h1 class="doc" style="font-size:26px;margin:0 0 6px">Search</h1>
+  <p style="color:var(--muted);margin:0 0 20px">${hits.length} document${hits.length === 1 ? '' : 's'} matching “${esc(term)}”</p>
+  <div class="searchres">${hits.map((h) => `<a class="sres" href="#/${h.d.id}">
+    <div class="sc">${esc(h.d.sectionLabel)} · ${h.count} match${h.count === 1 ? '' : 'es'}</div>
+    <div class="st">${esc(h.d.title)}</div><div class="sn">…${h.snip}…</div></a>`).join('')
+    || '<p style="color:var(--muted)">Nothing found.</p>'}</div>`;
+  $('#crumb').innerHTML = '<b>Search</b>';
+}
+
+/* ── routing ───────────────────────────────────────────────────────── */
+function route() {
+  const raw = location.hash.replace(/^#\/?/, '');
+  const [pathAndQuery, anchor] = raw.split('#');
+  const [path, query] = pathAndQuery.split('?');
+  const params = new URLSearchParams(query || '');
+  const id = decodeURIComponent(path || '@home');
+
+  $('#lightbox').classList.remove('on');
+  markActive(id);
+
+  if (id === '@home' || id === '') viewHome();
+  else if (id === '@features') viewFeatures();
+  else if (id === '@questions') viewQuestions(params);
+  else if (id === '@risks') viewRisks();
+  else if (id === '@decisions') viewDecisions(params);
+  else if (id === '@mockups') viewMockups(params);
+  else if (docById[id]) renderDoc(docById[id]);
+  else {
+    $('#content').className = 'content';
+    $('#content').innerHTML = '<h1 class="doc">Not found</h1><p style="color:var(--muted)">No document with the id <code>'
+      + esc(id) + '</code>.</p><p><a href="#/@home">Back to the overview</a></p>';
+    $('#crumb').innerHTML = '<b>Not found</b>';
+  }
+
+  if (anchor) {
+    setTimeout(() => { const el = document.getElementById(anchor); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+  } else {
+    window.scrollTo(0, 0);
+  }
+}
+
+/* ── theme ─────────────────────────────────────────────────────────── */
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('pp-theme', t); } catch (e) { /* private mode */ }
+  $('#themeBtn').textContent = t === 'dark' ? 'Light' : 'Dark';
+  mermaidReady = false;
+  runMermaid(document);
+}
+$('#themeBtn').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+$('#printBtn').onclick = () => window.print();
+
+let stored = null;
+try { stored = localStorage.getItem('pp-theme'); } catch (e) { /* private mode */ }
+setTheme(stored || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+/* ── search box ────────────────────────────────────────────────────── */
+let searchTimer;
+$('#q').addEventListener('input', (e) => {
+  clearTimeout(searchTimer);
+  const v = e.target.value.trim();
+  searchTimer = setTimeout(() => { if (v.length >= 2) runSearch(v); else if (!v) route(); }, 180);
+});
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { $('#lightbox').classList.remove('on'); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); $('#q').focus(); $('#q').select(); }
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+    e.preventDefault(); $('#q').focus();
+  }
+});
+
+/* ── go ────────────────────────────────────────────────────────────── */
+buildNav();
+addEventListener('hashchange', route);
+route();
+})();
+</script>
+</body>
+</html>

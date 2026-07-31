@@ -1,0 +1,85 @@
+name: Publish specification site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'specs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# Allow the workflow to publish to GitHub Pages via OIDC.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; let a newer push finish rather than cancelling it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Both generators are deterministic and dependency-free, so this is
+      # a plain `node` run with no install step.
+      - name: Generate mockups
+        run: node specs/60-mockups/generate.mjs
+
+      - name: Build site content bundle
+        run: node specs/site/build.mjs
+
+      # Fail loudly rather than deploying a half-built site.
+      - name: Verify the bundle
+        run: |
+          test -f specs/site/content.js            || { echo "content.js missing"; exit 1; }
+          test -f specs/site/vendor/marked.min.js  || { echo "marked.min.js missing"; exit 1; }
+          test -f specs/site/vendor/mermaid.min.js || { echo "mermaid.min.js missing"; exit 1; }
+          node -e "
+            global.window = {};
+            require('./specs/site/content.js');
+            const c = window.SPEC_CONTENT;
+            const s = c.stats;
+            if (!s.documents || !s.mockups || !s.questions) {
+              console.error('bundle looks empty', s); process.exit(1);
+            }
+            console.log(\`\${s.documents} docs · \${s.features} features · \${s.requirements} requirements\`);
+            console.log(\`\${s.diagrams} diagrams · \${s.mockups} mockups · \${s.questions} open questions\`);
+          "
+
+      # Report whether the committed generated files match their sources.
+      # Informational only — the deploy always uses freshly generated output.
+      - name: Check committed artefacts are current
+        run: |
+          if git diff --quiet -- specs/60-mockups specs/site/content.js; then
+            echo "Committed mockups and content bundle are up to date."
+          else
+            echo "::warning::Committed generated files are stale. Run the two generators and commit:"
+            echo "::warning::  node specs/60-mockups/generate.mjs && node specs/site/build.mjs"
+            git diff --stat -- specs/60-mockups specs/site/content.js
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      # specs/site becomes the site root, so index.html is served at /
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: specs/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

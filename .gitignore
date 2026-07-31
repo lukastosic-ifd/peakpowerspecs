@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Node
+node_modules/
+npm-debug.log*
+*.tgz
+
+# Editors & local tooling
+.idea/
+.vscode/
+*.swp
+.claude/settings.local.json
+
+# Build scratch
+dist/
+tmp/
+
+# Third-party source material — PVNed's copyright, not ours to redistribute.
+# Keep these locally; the integration spec restates everything the platform needs.
+specs/pvned_docs/

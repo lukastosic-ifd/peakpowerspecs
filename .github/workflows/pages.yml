@@ -67,7 +67,11 @@ jobs:
             git diff --stat -- specs/60-mockups specs/site/content.js
           fi
 
+      # enablement:true turns Pages on if it is not already, so a fresh clone or
+      # a re-created repository does not need a manual step in Settings first.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       # specs/site becomes the site root, so index.html is served at /
       - uses: actions/upload-pages-artifact@v3

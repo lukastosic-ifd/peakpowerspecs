@@ -173,6 +173,35 @@ const mockups = readdirSync(mockDir)
     };
   });
 
+/* ────────────────────────────────────────────────────────── diagram lint */
+
+// Cheap syntax checks for mermaid footguns. mermaid itself needs a DOM, so a
+// full parse is not possible here — these catch the mistakes actually made.
+const diagramWarnings = [];
+for (const d of docs) {
+  const blocks = [...d.md.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
+  blocks.forEach((src, i) => {
+    const kind = src.trim().split('\n')[0].trim();
+    const lines = src.split('\n');
+    if (/^sequenceDiagram/.test(kind)) {
+      lines.forEach((ln, n) => {
+        // ';' separates statements in a sequence diagram, so one inside a
+        // message silently truncates it and the whole diagram fails to parse.
+        const msg = ln.match(/^\s*\w+\s*-[->x)]*>>?\s*\+?\w+\s*:\s*(.*)$/);
+        if (msg && msg[1].includes(';')) {
+          diagramWarnings.push(`${d.path} diagram ${i + 1} line ${n + 1}: ';' in a sequence message truncates it — use a comma`);
+        }
+      });
+    }
+    lines.forEach((ln, n) => {
+      const quotes = (ln.match(/"/g) || []).length;
+      if (quotes % 2 === 1) {
+        diagramWarnings.push(`${d.path} diagram ${i + 1} line ${n + 1}: odd number of double quotes`);
+      }
+    });
+  });
+}
+
 /* ─────────────────────────────────────────────────────────────── write */
 
 const bundle = {
@@ -212,3 +241,10 @@ console.log(`content.js written
   ${s.features} features · ${s.requirements} numbered requirements
   ${s.diagrams} diagrams · ${s.mockups} mockups
   ${s.questions} open questions (${s.p1} blocking) · ${s.decisions} decisions · ${s.assumptions} assumptions · ${s.risks} risks`);
+
+if (diagramWarnings.length) {
+  console.warn(`\n${diagramWarnings.length} diagram warning(s):`);
+  diagramWarnings.forEach((w) => console.warn('  ! ' + w));
+} else {
+  console.log('  diagram lint clean');
+}

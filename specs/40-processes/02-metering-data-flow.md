@@ -78,7 +78,7 @@ sequenceDiagram
     P->>PL: 4 Sep 08:30 — late correction
     PL->>PL: version 3 → current · state back to PROVISIONAL
     PL->>PL: August invoice flagged AFFECTED_BY_CORRECTION
-    PL->>C: chart updates; invoice notes a pending correction
+    PL->>C: chart updates, invoice notes a pending correction
 ```
 
 The last step is the one that matters commercially: a correction after invoicing does **not** change

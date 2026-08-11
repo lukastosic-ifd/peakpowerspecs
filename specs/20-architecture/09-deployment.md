@@ -5,6 +5,25 @@ friction **[OQ-50]**. The design keeps that reversible: everything is a containe
 standard PostgreSQL, and no Azure-specific service is on the critical path except managed identity
 and Key Vault, both of which have direct equivalents elsewhere.
 
+**The Azure estate is greenfield [DEC-56]; the directory above it is not [DEC-66].** Read those two
+together, because they are one sentence apart and mean different things.
+
+- **No Azure subscription, no landing zone, no naming standard** to inherit or align with, which
+  closes [OQ-64] — in the direction that creates work rather than removes it. The conventions are this
+  project's to set, and they are cheapest to set **before the first `deploy/infra` commit**: a naming
+  standard adopted after fifty resources exist is a rename exercise, and a subscription layout adopted
+  late is a migration. §1.1.
+- **But the subscriptions are created *under PeakPower's existing corporate Entra tenant* [DEC-66].**
+  "No existing Azure tenancy" was never a statement about the directory, and [OQ-88] closed on exactly
+  that distinction. Azure subscriptions have to live in **some** Entra tenant; this one lives in the
+  corporate one, which is also where employees already sign in **[DEC-20]**.
+
+⚠ **That is a constraint on this document, not a footnote to it.** It fixes what §1.1.1 can decide, it
+decides which directory holds every managed identity in §1.1.4, and it means the Azure control plane
+and the employee portal share a single point of failure — see §1.1.5 and §5. What is **not** settled
+is *access* to that tenant, which is a dated Phase 0 dependency with a named owner
+([Roadmap §2.1](../70-delivery/01-roadmap-and-phasing.md)) rather than an open question.
+
 ---
 
 ## 1. Target topology
@@ -46,8 +65,8 @@ flowchart TB
     subgraph ext["External"]
         MONTEL(["Montel"])
         ODOO(["Odoo"])
-        IDP(["Identity provider"])
-        MAIL(["Email provider"])
+        IDP(["Microsoft Entra ID<br/>corporate tenant"])
+        MAIL(["SendGrid"])
     end
 
     USERS --> FD
@@ -86,11 +105,95 @@ flowchart TB
     WORKER -.-> MON
 ```
 
+### 1.1 Greenfield conventions — [DEC-56], inside the corporate tenant [DEC-66]
+
+No Azure estate exists to align with, so these are decided here rather than discovered later. All of
+it is cheap now and expensive after the estate has grown. **One thing above them is already fixed**:
+the directory. Everything below is designed *inside* PeakPower's corporate Entra tenant, not beside
+it.
+
+#### 1.1.1 Directory, subscriptions and resource groups
+
+| Level | Convention |
+| --- | --- |
+| **Entra tenant (directory)** | **PeakPower's existing corporate tenant — inherited, not created [DEC-66].** Every subscription below is created under it. ⚠ **No project-owned Entra tenant, at any point, for any reason** — a second directory holding employee accounts splits employee identity, and **[DEC-51]** (MFA as tenant policy) and **[DEC-53]** (break-glass covering the outage of *the* provider) are both written against a single one. The customer-facing **External ID tenant** **[F13-R03]** is a separate tenant *for customers* and is not an exception to this: it holds no employee account |
+| Subscriptions | **Two: `peakpower-prod` and `peakpower-nonprod`**, both under the corporate tenant. Production isolated at the billing and policy boundary, which is the only boundary Azure enforces without effort. Dev and Test share the non-prod subscription. ⚠ The subscription boundary is **not** an identity boundary — it isolates billing, policy and blast radius, and both subscriptions still trust the one directory |
+| **Management group** | One, `mg-peakpower`, holding both subscriptions, so the Azure Policy assignments in §1.1.4 attach **once** rather than twice and a third subscription inherits them by existing. ⚠ Creating it needs a permission at the **tenant root**, which is the corporate tenant's to grant — the first place the access dependency bites |
+| Resource groups | One per environment per lifecycle: `rg-peakpower-app-{env}-weu`, `rg-peakpower-data-{env}-weu`, `rg-peakpower-shared-{env}-weu`. Data is separated from application because it outlives it — a redeploy must never be able to take the database with it |
+| Region | **West Europe** primary, per §1. A second region is [OQ-62] |
+
+#### 1.1.2 Naming standard
+
+`{org}-{type}-{workload}-{env}-{region}-{instance}`, lowercase, hyphen-separated, with the
+abbreviation-only forms where Azure forbids hyphens or caps the length:
+
+| Resource | Pattern | Example |
+| --- | --- | --- |
+| Container App | `ca-{component}-{env}-{region}` | `ca-customerapi-prod-weu` |
+| Container Apps environment | `cae-peakpower-{env}-{region}` | `cae-peakpower-prod-weu` |
+| PostgreSQL Flexible Server | `psql-peakpower-{env}-{region}` | `psql-peakpower-prod-weu` |
+| Redis | `redis-peakpower-{env}-{region}` | `redis-peakpower-prod-weu` |
+| Key Vault | `kv-pp-{env}-{region}` — ≤ 24 chars, globally unique | `kv-pp-prod-weu` |
+| Storage account | `stpp{env}{region}{nn}` — lowercase alphanumeric only, ≤ 24 | `stppprodweu01` |
+| Static Web App | `swa-{app}-{env}-{region}` | `swa-customerportal-prod-weu` |
+| Front Door | `afd-peakpower-{env}` | `afd-peakpower-prod` |
+| Managed identity | `id-{component}-{env}-{region}` | `id-worker-prod-weu` |
+
+Environments are `dev`, `tst`, `prod` — three letters, always, so no name is a prefix of another.
+
+#### 1.1.3 Tags, mandatory on every resource
+
+`workload=peakpower`, `env`, `owner`, `cost-centre`, `data-classification`
+(`personal` / `financial` / `operational`, matching [Security](07-security.md) §7), `managed-by=iac`.
+Enforced by Azure Policy at the subscription, so an untagged resource cannot be created rather than
+being found later in a cost review.
+
+#### 1.1.4 The landing zone is ours to build — inside a directory that is not
+
+No inherited guardrails means no inherited protection. Minimum baseline before production carries
+real data:
+
+- **Azure Policy**: deny public blob access, deny resources outside the approved regions, require
+  TLS 1.2 minimum, require the mandatory tags. Assigned at `mg-peakpower` (§1.1.1) so the two
+  subscriptions cannot drift apart.
+- **Diagnostic settings** to one Log Analytics workspace per environment, set by policy rather than
+  by hand.
+- **Network**: private endpoints for PostgreSQL, Key Vault and Storage; the Container Apps
+  environment on a delegated subnet. Greenfield means this is designed once, correctly, instead of
+  retrofitted around a running system.
+- **RBAC**: no standing owner assignments, PIM-style just-in-time elevation for the two humans who
+  need it, and every production data path through managed identity ([Security](07-security.md) §8).
+  ⚠ **Every one of those principals is an object in the corporate Entra tenant [DEC-66]** — see
+  below, because this is where an inherited directory stops being a detail.
+
+#### 1.1.5 What an inherited directory constrains — [DEC-66]
+
+**[DEC-66]** is not only an identity decision. Three consequences land squarely on this design:
+
+| Constraint | What it means here |
+| --- | --- |
+| **Managed identities live in the corporate directory, not in the subscription** | A user-assigned managed identity (`id-{component}-{env}-{region}`, §1.1.2) is an Azure resource *and* a **service principal in the corporate Entra tenant**. So the naming standard in §1.1.2 is not only ours to keep tidy — those names appear in a directory shared with the rest of PeakPower, which is an argument for the `id-…-peakpower-…` prefixes rather than bare component names. Their **lifecycle** is shared too: a directory-wide cleanup, conditional-access policy or app-registration restriction applies to them |
+| **Some steps need permissions only a tenant administrator holds** | Creating `mg-peakpower`, assigning policy at the management group, granting **admin consent** for the two portal app registrations **[F13-R03]**, and creating the customer-facing External ID tenant. None is the delivery team's to do. All of them are why tenant access is a **dated Phase 0 dependency** ([Roadmap §2.1](../70-delivery/01-roadmap-and-phasing.md)) rather than a setup task |
+| **The Azure control plane and the employee portal share one directory, and therefore one outage** | An Entra outage does not merely stop employees signing in to the portal — it stops anyone signing in to the **Azure portal, CLI and pipelines** as well. That is the concrete reason break-glass enablement is a **database row** and not App Configuration or a portal action (§5, **[DEC-53]**), and the reason break-glass alerting must not route through anything federated to Entra **[F13-R37]**. Before **[DEC-66]** this was a plausible-sounding precaution; it is now a stated property of the deployment |
+
+> ✅ **The question this section used to carry is answered.** It asked whether a Microsoft 365 / Entra
+> tenant already existed for the new Azure subscriptions to sit under, since **[DEC-20]** assumed one
+> and **[DEC-56]** said there was no Azure tenancy. **[DEC-66]** answers it: the corporate tenant
+> **exists**, the subscriptions sit under it, and **[DEC-56]** is clarified rather than reversed —
+> everything in §1.1 stands unchanged. [OQ-88] is closed.
+>
+> ⚠ **What replaces it is a dependency, not a question.** *Access* to that tenant is granted by
+> whoever administers it, outside the delivery team, and is tracked with a named owner and a date in
+> [Roadmap §2.1](../70-delivery/01-roadmap-and-phasing.md). Do not look for it in §10 or in
+> [80-open-questions.md](../80-open-questions.md) — it is in neither, on purpose. **[DEC-67]** puts it
+> on the critical path by choice: the `customer_id` claim-mapping spike **[F13-R32]** runs against
+> this tenant. See **[R-24]**.
+
 ## 2. Environments
 
 | Environment | Purpose | Data | Scale | Access |
 | --- | --- | --- | --- | --- |
-| **Local** | Development | Seeded, synthetic | Aspire on one machine | Developer |
+| **Local** | Development | Seeded, synthetic | Aspire on one machine, plus the sibling web checkout **[DEC-55]** | Developer |
 | **Dev** | Integration, shared | Synthetic + third-party stubs | Minimal | Team |
 | **Test / Acceptance** | UAT, third-party integration testing | Anonymised production-shaped | Production-like | Team + stakeholders |
 | **Production** | Live | Real | Full | Restricted, no standing DB access |
@@ -98,6 +201,10 @@ flowchart TB
 **Test must be production-shaped in data volume**, not only in configuration. An invoice run over 10
 customers proves nothing about an invoice run over 500 metering points, and the interval-data query
 plans only diverge at volume.
+
+**Every environment is now deployed by two pipelines [DEC-55]**, so "what is in Dev" is two commit
+SHAs rather than one. Each environment surfaces both, on the health endpoint and in the portal
+footer — a bug report against a front-end version is unactionable without the API version behind it.
 
 ## 3. Sizing
 
@@ -120,7 +227,13 @@ Scaling rules:
 
 Minimum 2 replicas everywhere so a rolling deployment never drops to zero capacity.
 
-## 4. Pipeline
+## 4. Pipelines — two of them [DEC-55]
+
+**[DEC-55] splits one pipeline into two, plus a publishing step between them.** The two are
+independent — either can ship without the other — which is the point of the decision and also the
+thing that has to be managed, because a contract change now lands in two releases instead of one.
+
+### 4.1 Platform pipeline — `peakpower-platform`
 
 ```mermaid
 flowchart LR
@@ -128,10 +241,12 @@ flowchart LR
     B --> UT["Unit + architecture tests"]
     UT --> IT["Integration tests<br/>Testcontainers"]
     IT --> SEC["Security scan<br/>deps · secrets · SAST"]
-    SEC --> IMG["Container images<br/>tagged with commit SHA"]
+    SEC --> OAS["Emit OpenAPI<br/>customer + employee<br/><i>snapshot test gates it</i>"]
+    OAS --> CLI["Generate + publish<br/>npm client packages<br/><i>on merge to main</i>"]
+    CLI --> IMG["Container images<br/>tagged with commit SHA"]
     IMG --> DEV["Deploy → Dev<br/><i>automatic</i>"]
-    DEV --> E2E["E2E smoke<br/>Playwright"]
-    E2E --> TST["Deploy → Test<br/><i>automatic on main</i>"]
+    DEV --> API["API smoke<br/>health · contract"]
+    API --> TST["Deploy → Test<br/><i>automatic on main</i>"]
     TST --> UAT["UAT sign-off<br/><i>manual gate</i>"]
     UAT --> PROD["Deploy → Production<br/><i>manual approval</i>"]
     PROD --> SMOKE["Production smoke test"]
@@ -143,7 +258,59 @@ flowchart LR
     class UAT,PROD gate
 ```
 
-### 4.1 Deployment mechanics
+### 4.2 Web pipeline — `peakpower-web`
+
+```mermaid
+flowchart LR
+    WPR["Pull request"] --> WB["Build<br/>npm ci · lint · tsc"]
+    WB --> WUT["Unit tests<br/>Vitest"]
+    WUT --> WSEC["Security scan<br/>npm audit · secrets"]
+    WSEC --> WBUILD["Bundles<br/>three Angular 22 apps"]
+    WBUILD --> WDEV["Deploy → Dev<br/><i>automatic</i>"]
+    WDEV --> E2E["E2E smoke<br/>Playwright<br/><i>against Dev, both sides</i>"]
+    E2E --> WTST["Deploy → Test<br/><i>automatic on main</i>"]
+    WTST --> WUAT["UAT sign-off<br/><i>manual gate</i>"]
+    WUAT --> WPROD["Deploy → Production<br/><i>manual approval</i>"]
+    WPROD --> WSMOKE["Production smoke test"]
+
+    classDef gate fill:#78350f,stroke:#f59e0b,color:#fff
+    class WUAT,WPROD gate
+```
+
+**The E2E suite lives with the web pipeline** ([Solution structure](02-solution-structure.md) §1.2)
+and is the only stage that exercises both sides together. It is therefore the backstop for the
+property **[DEC-55]** removes — a breaking contract change no longer fails a single build — and a
+nightly run against both `main` branches is what stops the gap between them growing unobserved.
+
+### 4.3 The client-publishing step, and its versioning story
+
+| Question | Answer |
+| --- | --- |
+| What is published | `@peakpower/api-client-customer` and `@peakpower/api-client-employee`, generated from the two OpenAPI documents |
+| Where | A private feed — Azure Artifacts or GitHub Packages, still to choose ([Solution structure](02-solution-structure.md) §8). The fallback, an automated pull request committing the generated client into `peakpower-web`, needs no feed |
+| When | On merge to `main` in the platform repository. **Not on every pull request** — a pull-request build generates and compiles the client to prove it can, and publishes nothing |
+| Version | `MAJOR.MINOR.PATCH` derived from the OpenAPI diff, not from the platform's build number: a **removed or narrowed** field or endpoint is a **major**; an added optional field is a minor; anything else is a patch. The build number goes in the pre-release suffix |
+| Who consumes it | `peakpower-web`, from its lockfile. A bump is an ordinary reviewable pull request |
+| What gates it | The existing OpenAPI snapshot test ([Solution structure](02-solution-structure.md) §6). An unreviewed contract change fails the platform build before anything is published |
+
+⚠ **The version number is the whole control.** If the diff-to-semver rule is advisory, a consuming
+build picks up a breaking change silently and the failure surfaces at runtime in a browser — which is
+precisely the outcome the generated client existed to prevent. Automate the classification; do not
+leave it to whoever writes the release note.
+
+### 4.4 Deployment order, and why expand/contract now applies twice
+
+The two pipelines deploy independently, so the HTTP contract has become a compatibility boundary in
+the same way the database schema already was:
+
+| Rule | Reason |
+| --- | --- |
+| **API deploys before web**, always | The new bundle may use new fields; the old bundle must keep working against the new API. Same ordering argument as migrations, one layer up |
+| **API changes are additive within a release** | A field removed in the same release that stops using it leaves no window in which either version of the front-end works with either version of the API |
+| **Rolling back the API can strand a deployed bundle** | Roll back both, or forward-fix. This is stated so it is decided in advance rather than at 2am |
+| **Contract-breaking changes are expand/contract**: add the new shape, ship both pipelines, remove the old shape a release later | Exactly the [Database design](04-database-design.md) §7 rule, applied to JSON instead of DDL |
+
+### 4.5 Deployment mechanics
 
 - **Rolling with health gates.** Container Apps revisions; traffic shifts only after readiness
   probes pass.
@@ -161,12 +328,31 @@ flowchart LR
 | Kind | Where |
 | --- | --- |
 | Non-secret configuration | Container App environment variables from IaC |
-| Secrets | Key Vault, read via managed identity at startup and on rotation |
-| Reference data (calendars, tariffs, surcharges, tickers) | **Database, editable in the employee portal** — never configuration **[NFR-54]** |
+| Secrets | Key Vault, read via managed identity at startup and on rotation — including the **SendGrid API key [DEC-48]**, scoped to send only |
+| Reference data (calendars, tariffs, surcharges, **feed-in tariffs [DEC-44]**, **four-eyes thresholds [DEC-33]**, tickers) | **Database, editable in the employee portal** — never configuration **[NFR-54]** |
 | Feature flags | Azure App Configuration or a database table |
+| Break-glass enablement **[DEC-53]** | **A database row, deliberately not App Configuration and not a portal action** — the switch must be reachable when Entra, and therefore the Azure control plane, is not. ⚠ **[DEC-66] turns that from a precaution into a fact**: the Azure control plane authenticates against the **same corporate tenant** as the employee portal (§1.1.5), so one outage takes both. A switch that needs the Azure portal to flip is a switch that is unavailable exactly when break-glass is needed. [Security](07-security.md) §3.2.5 |
 
 No secret ever exists in source control, a container image, or a pipeline log. Verified in CI
 **[NFR-34]**.
+
+### 5.1 SendGrid — a lead-time dependency, not a configuration line [DEC-48]
+
+**[DEC-48]** names the provider; the work it implies is DNS, and DNS is usually owned by somebody who
+is not on this project. **[DEC-47]** raises the stakes: invoices now travel on the same channel as
+offer notifications, so a mail path that lands in spam is a billing problem as well as a trading one.
+
+| Item | Detail | Lead time |
+| --- | --- | --- |
+| Dedicated sending domain | e.g. `mail.peakpower.nl`, separate from the corporate mail domain so a marketing sender cannot damage transactional reputation | Days — needs a decision and a DNS owner |
+| SPF | Include SendGrid's mechanism in the sending domain's record | DNS change |
+| DKIM | CNAMEs for SendGrid's signing keys, published on the sending domain | DNS change |
+| DMARC | Published at `p=reject` for the sending domain, with a reporting address that someone reads | ⚠ Longest item — start at `p=none`, read the reports, then tighten. Rushing to `p=reject` before the reports are clean silently drops real mail |
+| Reputation warm-up | Transactional volume is low, so this is minor — but the first invoice run is the first burst, and it should not be the first send | Schedule before the first invoice run |
+| Processor agreement | SendGrid touches personal data — name, email, invoice PDFs. Required under [Security](07-security.md) §7.1 **[OQ-58]** | Legal, parallel |
+
+**Start this in phase 0.** It costs nothing to begin and it blocks go-live if left; nothing else in
+this document has a dependency on a third party's DNS.
 
 ## 6. Backup & recovery
 
@@ -197,7 +383,10 @@ a cross-region restore from geo-redundant backup — hours, not minutes. Whether
 | Hangfire critical queue depth | > 20 for 5 min | **P1** |
 | Wallet ledger mismatch | any | **P1** |
 | Unconfirmed accepted trade | > 4 h | P2 |
+| **Break-glass enabled or used [DEC-53]** | any — success or failure | **P1**, over this path and never over the notification outbox. [Security](07-security.md) §3.2.3 |
+| **Day-ahead curve incomplete** at the completeness check | any, 22:00 **[DEC-36]** | **P1** — a missing price blocks invoicing for the day **[F08-R07]**, and the manual-entry window closes at midnight |
 | Montel feed stale | > 30 min in market hours | P2 |
+| **SendGrid delivery failures [DEC-48]** | > 5% of a run, or any bounce on an invoice | P2, **P1 if offer notifications are affected** — a 30-minute window is not survivable by a retry |
 | Odoo push failing | > 3 consecutive | P2 |
 | Database CPU | > 80% for 15 min | P2 |
 | Database storage | > 85% | P2 |
@@ -232,13 +421,18 @@ Ranked, so the conversation starts in the right place:
    tiers matter more than they look.
 4. **Front Door / WAF** — fixed.
 5. **Monitoring** — log volume, easily the biggest surprise if sampling is not configured.
-6. Redis, Key Vault, Static Web Apps — minor.
+6. Redis, Key Vault, Static Web Apps, SendGrid, the private package feed — minor. Transactional
+   volume is one invoice per customer per month plus offer notifications; SendGrid's cost here is a
+   rounding error next to the DNS work behind it **[DEC-48]**, §5.1.
 
 ## 10. Open questions
 
 | Ref | Question |
 | --- | --- |
-| [OQ-50] | Is Azure confirmed? |
+| [OQ-50] | Is Azure confirmed? **Sharper under [DEC-56]**: with nothing to align with, the cost of choosing Azure is now the cost of building a landing zone, which is also the cost of not choosing it later. **[DEC-66]** tilts it without settling it — subscriptions under the corporate Entra tenant make managed identity and RBAC nearly free (§1.1.5); a non-Azure target keeps Entra as the identity provider **[DEC-20]** and gives up that convenience, nothing more |
 | [OQ-62] | Is single-region with zone redundancy acceptable, or is a warm secondary region required? |
 | [OQ-63] | Who operates the platform after go-live, and what is the support rota? |
-| [OQ-64] | Is there an existing Azure tenancy, landing zone or naming standard to align with? |
+| ~~[OQ-64]~~ | ~~Is there an existing Azure tenancy, landing zone or naming standard to align with?~~ **Closed by [DEC-56]** — none of the three exists. ⚠ **Read narrowly, per [DEC-66]**: no Azure **subscription, landing zone or naming standard** — *not* no Entra directory. The conventions are set in §1.1 and should land before the first `deploy/infra` commit |
+| ~~*(from **[DEC-56]** × **[DEC-20]**)*~~ | ~~Does a Microsoft 365 / **Entra tenant** already exist that the new Azure subscriptions should sit under?~~ **Closed by [DEC-66]** — **yes, the corporate one**, and the subscriptions sit under it. No second Entra tenant is created. §1.1.5. ⚠ **Its residue is not a question and is not listed here**: *access* to that tenant is a Phase 0 dependency with a named owner and a date ([Roadmap §2.1](../70-delivery/01-roadmap-and-phasing.md)) |
+| *(new, from **[DEC-55]**)* | Which private package feed hosts the generated API clients, and who administers it — §4.3 |
+| *(new, from **[DEC-48]**)* | Who owns DNS for the sending domain, and what is the lead time on an SPF/DKIM/DMARC change — §5.1 |

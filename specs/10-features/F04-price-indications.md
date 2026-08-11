@@ -14,6 +14,13 @@ The word "indication" carries legal weight here. These prices are not quotes, no
 tradeable. Only PeakPower's response to a trade request is binding. The UI has to make that
 distinction unmissable without making the numbers useless.
 
+> **Where they may appear — [DEC-27].** Indications may be shown **inside the authenticated portal**.
+> They must **not** be displayed publicly, which withdraws the public teaser in
+> [F14-R09](F14-public-website.md). ⚠ **Customer export is not covered by that answer.** Export is
+> redistribution, so it is treated as **not permitted** until the Montel licence says otherwise
+> **[OQ-24]**. Risk [R-07](../70-delivery/02-risks.md) is reduced, not closed: the labelling and
+> stale-data rules below apply regardless of what the licence turns out to permit.
+
 ## 2. User stories
 
 | As a… | I want to… | So that… |
@@ -71,6 +78,8 @@ Cal+1 and Cal+2) is the recommended default; more than that is noise for this au
 | F04-R12 | Feed health (last successful poll, error count, stale products) is visible on the employee integration dashboard. | Must |
 | F04-R13 | Prices can be shown on the consumption chart as a secondary axis. | Could |
 | F04-R14 | A customer can set a price alert threshold per product. | Could |
+| F04-R15 | Indications are rendered on **authenticated portal surfaces only**. No unauthenticated page, feed or share link carries a Montel-derived indication **[DEC-27]**. | Must |
+| F04-R16 | Customer **export** of Montel-derived indications is not offered. Export is redistribution and the licence has not been confirmed to permit it **[DEC-27]**, **[OQ-24]**; the chart export in **[F03-R23]** therefore excludes any indication series. Reopen when the licence is read. | Must |
 
 ## 5. Business rules
 
@@ -82,9 +91,9 @@ Cal+1 and Cal+2) is the recommended default; more than that is noise for this au
 4. **The indication at request time is captured.** When PeakPower later offers a price, both the
    customer and the trader can see what the market looked like when the request was made. This
    removes an entire category of dispute.
-5. **Redistribution limits apply.** Market data is licensed. Whether indications may be shown to
-   customers at all, in what granularity, and whether they may be exported, depends on the Montel
-   licence — **[OQ-24]**. This is a contractual question with a real chance of constraining the UI.
+5. **Redistribution limits apply.** Market data is licensed. **[DEC-27]** settles the display
+   question — authenticated portal yes, public no — and leaves granularity and **export**
+   unanswered. Anything not explicitly permitted is treated as not permitted **[OQ-24]**.
 
 ## 6. Screens
 
@@ -114,6 +123,8 @@ Cal+1 and Cal+2) is the recommended default; more than that is noise for this au
 
 ## 9. Out of scope
 
+- **Public display of indications** — withdrawn by **[DEC-27]**; see [F14-R09](F14-public-website.md).
+- **Customer export of indications** — not permitted until the licence says otherwise **[F04-R16]**.
 - Order-book depth, bid/ask, volumes.
 - Own price curve construction or forward-curve modelling.
 - Gas price indications ([OQ-01]).
@@ -131,5 +142,5 @@ Cal+1 and Cal+2) is the recommended default; more than that is noise for this au
 | Ref | Question |
 | --- | --- |
 | [OQ-23] | Which exact Montel tickers map to the six product cells? |
-| [OQ-24] | What does the Montel licence permit regarding onward display and export to customers? |
+| [OQ-24] | **Partly closed by [DEC-27]**: authenticated display is permitted, public display is not. Still open — does the licence permit customer **export**, and at what granularity? Until answered, export stays off **[F04-R16]** |
 | [OQ-25] | Should indications include a PeakPower spread, or be shown as raw market prices? |

@@ -5,8 +5,14 @@
 ## 1. Shape of the system
 
 A **modular monolith** in the domain layer **[DEC-01]**, deployed as three .NET hosts (two APIs and a
-worker) behind three Angular applications, on one PostgreSQL database, orchestrated locally by .NET
-Aspire and in production by Azure Container Apps.
+worker) behind three **Angular 22** applications **[DEC-54]**, on one PostgreSQL database,
+orchestrated locally by .NET Aspire and in production by Azure Container Apps.
+
+**One system, two repositories [DEC-55].** The .NET and Angular code live apart, with separate
+pipelines and a published OpenAPI client between them. That is a delivery boundary, not an
+architectural one — the container diagram below is unchanged by it — but it does change what "one
+command brings up the system" costs to keep true. See
+[Solution structure](02-solution-structure.md) §1.2, §4.3 and §5.1.
 
 The reasoning: the hard problems here are transactional, not scale-related. A wallet reservation and
 a trade state change must commit together; an invoice must read a consistent snapshot of intervals,
@@ -32,8 +38,8 @@ flowchart TB
     MONTEL["<b>Montel</b><br/>Forward price indications<br/>and day-ahead prices"]
     PSP["<b>Payment provider</b><br/>iDEAL top-ups"]
     ODOO["<b>Odoo</b><br/>Accounting"]
-    IDP["<b>Identity provider</b><br/>OIDC"]
-    MAIL["<b>Email provider</b><br/>Transactional email"]
+    IDP["<b>Identity provider</b><br/>Microsoft Entra ID · OIDC"]
+    MAIL["<b>SendGrid</b><br/>Transactional email<br/>notifications and invoices"]
 
     CU --> PP
     EMP --> PP
@@ -51,10 +57,10 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph client["Browser"]
-        WEB["<b>Public website</b><br/>Angular · SSR"]
-        CPORTAL["<b>Customer portal</b><br/>Angular SPA"]
-        EPORTAL["<b>Employee portal</b><br/>Angular SPA"]
+    subgraph client["Browser · separate repository DEC-55"]
+        WEB["<b>Public website</b><br/>Angular 22 · SSR"]
+        CPORTAL["<b>Customer portal</b><br/>Angular 22 SPA"]
+        EPORTAL["<b>Employee portal</b><br/>Angular 22 SPA"]
     end
 
     subgraph edge["Edge"]
@@ -100,7 +106,7 @@ flowchart TB
 
     WORKER -->|"poll"| MONTEL["Montel"]
     WORKER -->|"push"| ODOO["Odoo"]
-    WORKER -->|"send"| MAIL["Email"]
+    WORKER -->|"send"| MAIL["SendGrid"]
     PVNED["PVNed"] -->|"SOAP"| GW
     PSP["Payment provider"] <-->|"webhook"| GW
 ```
@@ -121,9 +127,9 @@ queued.
 | **Customer API** | Customer-facing use cases, strict `customer_id` scoping | 2+ instances | Yes, hardened |
 | **Employee API** | Back-office use cases, cross-customer reads | 2 instances | Restricted (IP allow-list or private ingress) |
 | **Worker** | Ingestion webhooks, Hangfire jobs, outbound integrations | 2+ instances, scales on queue depth | Only `/webhooks/*` |
-| **Customer portal** | Angular SPA | Static hosting / CDN | Yes |
-| **Employee portal** | Angular SPA | Static hosting | Restricted |
-| **Public website** | Angular SSR | Static / CDN | Yes |
+| **Customer portal** | Angular 22 SPA **[DEC-54]** | Static hosting / CDN | Yes |
+| **Employee portal** | Angular 22 SPA **[DEC-54]** | Static hosting | Restricted |
+| **Public website** | Angular 22 SSR **[DEC-54]** | Static / CDN | Yes |
 
 ## 4. Module map
 
@@ -178,6 +184,8 @@ modules but in the same database and the same transaction scope — which is exa
 | [DEC-08] | UTC storage, Amsterdam business calendar | DST correctness in one place. |
 | [DEC-09] | PostgreSQL only, partitioned interval tables | No second datastore to operate at this volume. |
 | [DEC-10] | Hangfire on PostgreSQL | Scheduling, retries and a dashboard without extra infrastructure. |
+| [DEC-33] | Four-eyes approval above a value threshold | A thirteenth state and a fourteenth transition; the reservation is held *across* approval, not taken at it. |
+| [DEC-55] | Separate .NET and Angular repositories | Two pipelines, a published OpenAPI client between them, and "one command starts everything" as a maintained property rather than a free one. |
 
 ## 6. Cross-cutting concerns
 
@@ -201,10 +209,12 @@ modules but in the same database and the same transaction scope — which is exa
 | ORM | EF Core 10 + Dapper for reporting queries | EF for writes, Dapper where a hand-tuned interval query is clearer |
 | Database | PostgreSQL 17 | **[DEC-09]** |
 | Jobs | Hangfire + PostgreSQL storage | **[DEC-10]** |
-| Orchestration (local) | .NET Aspire | Stated preference |
-| Frontend | Angular 20, standalone components, signals | Stated preference |
-| UI components | To decide — **[OQ-49]** | |
-| Charts | To decide — **[OQ-22]** | The chart is the product; this deserves a spike |
+| Orchestration (local) | .NET Aspire | Stated preference. Starts front-ends it does not contain **[DEC-55]** — [Solution structure](02-solution-structure.md) §4.3 |
+| Frontend | **Angular 22**, standalone components, signals | **[DEC-54]** — all three applications on one version |
+| Repositories | Two: `peakpower-platform` (.NET) and `peakpower-web` (Angular) | **[DEC-55]**, closing [OQ-51] |
+| UI components | To decide — **[OQ-49]**, component-library half only | **[DEC-54]** settles the framework version. Expect **[DEC-39]**'s free-or-in-house constraint to apply here too |
+| Charts | **Open-source and free, or written in-house [DEC-39]** — the specific library still to decide | Commercial licences are excluded. "The chart is the product", so the phase-0 spike stays; **[DEC-39]** narrows it to the free field and to the cost of building custom |
+| Email | **SendGrid** | **[DEC-48]**. Carries offer notifications *and* invoices **[DEC-47]**, so deliverability is a requirement rather than a convenience — a dedicated sending domain with SPF, DKIM and DMARC is a lead-time item |
 | Real-time | SignalR | First-class in ASP.NET Core |
 | SOAP | `System.ServiceModel` / hand-rolled `XmlReader` | The inbound document is simple enough that a hand-written reader with XSD validation is more predictable than generated clients |
 | Observability | OpenTelemetry | Backend per **[OQ-47]** |
@@ -234,12 +244,14 @@ carrying it at 3am.
 | A separate time-series database | Volume does not warrant it **[DEC-09]** |
 | GraphQL | Two known clients, both ours |
 | Kubernetes | Container Apps gives the useful parts without the operational surface |
+| A monorepo | Reversed by **[DEC-55]**. The cost moves to a client-publishing step and a maintained dev-up path, both specified in [Solution structure](02-solution-structure.md) |
+| A commercial charting library | Excluded by **[DEC-39]** — free, open-source, or built here |
 
 ## 10. Open questions
 
 | Ref | Question |
 | --- | --- |
-| [OQ-22] | Charting library |
+| [OQ-22] | Charting library. **Half-closed by [DEC-39]:** the licence question is settled — open-source and free, or in-house, no commercial licences. **Which** library, or whether to build, still needs the phase-0 spike |
 | [OQ-47] | Observability backend |
-| [OQ-49] | Angular component library |
+| [OQ-49] | Angular component library. **[DEC-54]** answers the framework version (Angular 22); the library is still open |
 | [OQ-50] | Is Azure confirmed, or must the design stay portable to another cloud? |

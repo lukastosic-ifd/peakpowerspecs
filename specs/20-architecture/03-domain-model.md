@@ -14,6 +14,7 @@ erDiagram
     CUSTOMER ||--o{ TRADE : places
     CUSTOMER ||--o{ INVOICE : receives
     CUSTOMER ||--o{ SURCHARGE : "priced by"
+    CUSTOMER ||--o{ FOUR_EYES_THRESHOLD : "governed by"
 
     CUSTOMER_ACCOUNT ||--o{ TRADE : "requested by"
     CUSTOMER_ACCOUNT ||--o{ TRADE_EVENT : "acted on"
@@ -53,6 +54,7 @@ erDiagram
 | **IntervalDataVersion** | readings | A document applies whole or not at all **[F02-R13]** |
 | **Invoice** | sections, lines | Totals must be consistent with lines |
 | **PeakCalendar** | excluded dates | Referenced by version, never mutated in place |
+| **FourEyesThreshold** | — | Reference data **[DEC-33]**. Referenced by version, never mutated in place, so a threshold change cannot restate a past trade |
 
 **Trade and Wallet are separate aggregates that commit together.** Accepting an offer changes both.
 This is the one place where the "one aggregate per transaction" guideline is deliberately broken,
@@ -95,6 +97,15 @@ public readonly record struct Actor
 
     public static Actor System(string job) =>
         new() { Type = ActorType.System, Id = $"SYSTEM:{job}", DisplayName = job };
+}
+
+/// The four-eyes rule as resolved reference data, most specific scope wins  [DEC-33].
+/// A null Threshold is an explicit "this scope never needs a second approver" —
+/// it is not the same as no row, which is a configuration error.
+public readonly record struct FourEyesPolicy(FourEyesThresholdVersionId Version, Money? Threshold)
+{
+    public bool RequiresApproval(Money tradeValue) =>
+        Threshold is { } t && tradeValue.Amount > t.Amount;    // strictly greater than
 }
 
 public readonly record struct Iban
@@ -216,6 +227,12 @@ public sealed class Trade : AggregateRoot
     public TradeState State { get; private set; }
     public CustomerAccountId RequestedByAccountId { get; }  // denormalised for listing  [F05-R42]
 
+    // ── four-eyes  [DEC-33] ─────────────────────────────────────────
+    public CustomerAccountId? AcceptedByAccountId { get; private set; }   // set by Accept
+    public CustomerAccountId? ApprovedByAccountId { get; private set; }   // set by Approve
+    public FourEyesThresholdVersionId? ThresholdVersion { get; private set; } // pinned at acceptance
+    public Money? ThresholdApplied { get; private set; }                  // the amount compared against
+
     private readonly List<TradeLine> _lines = [];
     public IReadOnlyList<TradeLine> Lines => _lines;
 
@@ -231,9 +248,14 @@ public sealed class Trade : AggregateRoot
     public Result MakeOffer(Actor by, PricePerMwh price, TimeSpan window, IClock clock);
     public Result Decline(Actor by, string reason);
     public Result WithdrawOffer(Actor by, string reason);
-    public Result Accept(Actor by, IClock clock);          // guard: now < ExpiresAt
+    public Result Accept(Actor by, IClock clock, FourEyesPolicy policy);
+                                                           // guard: now < ExpiresAt
+                                                           // → Accepted, or AwaitingApproval  [DEC-33]
     public Result Reject(Actor by, string? reason);
-    public Result Expire(IClock clock);
+    public Result Expire(IClock clock);                    // from Offered *or* AwaitingApproval
+    public Result Approve(Actor by, IClock clock);         // guard: now < ExpiresAt
+                                                           //  and  by.Id != AcceptedByAccountId
+    public Result RefuseApproval(Actor by, string? reason); // terminal — ApprovalRefused
     public Result Confirm(Actor by, string? externalRef, PricePerMwh? actualMarketPrice);
     public Result Fail(Actor by, string reason);           // reason mandatory
 }
@@ -253,26 +275,55 @@ public sealed class Trade : AggregateRoot
 | T7 | Every transition appends exactly one `TradeEvent` | Single private `Transition()` helper |
 | T8 | Terminal states admit no further transitions | State machine table |
 | T9 | `CalendarVersion` is set at creation and never changes | `init`-only |
+| T10 | `Approve` is rejected when the acting account equals `AcceptedByAccountId`. **Four eyes is two account ids, not a permission** — there is no role to check **[DEC-16]**, **[DEC-33]** | Guard in `Approve`; the acting account comes from the token, never the body |
+| T11 | A trade in `AwaitingApproval` holds an **active reservation for the full trade value**, created by `Accept` and never re-created by `Approve` | Reservation is taken in the accept transaction, exactly as for `Accepted` |
+| T12 | Leaving `AwaitingApproval` other than by `Approve` releases that reservation in the **same** transaction | `Expire` and `RefuseApproval` both call `ReleaseReservation` |
+| T13 | `Approve` is only valid while `now < Offer.ExpiresAt`. **One clock governs the whole customer response** — there is no separate approval window **[DEC-13]**, **[DEC-33]** | Same guard and same job as `Accept` |
+| T14 | `ThresholdVersion` and `ThresholdApplied` are set by `Accept` and never change | Pinned like `CalendarVersion`, for the same reason |
 
 ### 4.2 State transition table
 
-Encoded as data so it is testable exhaustively, not as a `switch` statement:
+Encoded as data so it is testable exhaustively, not as a `switch` statement. **[DEC-33]** takes the
+set from ten tuples to **fourteen** and from eleven states to thirteen; the full set is restated
+rather than appended to, because the exhaustive test asserts the whole of it:
 
 ```csharp
 private static readonly FrozenSet<(TradeState From, TradeAction Action, TradeState To)> Allowed =
 [
-    (Draft,     Submit,        Requested),
-    (Requested, Cancel,        Cancelled),
-    (Requested, MakeOffer,     Offered),
-    (Requested, Decline,       Declined),
-    (Offered,   Accept,        Accepted),
-    (Offered,   Reject,        Rejected),
-    (Offered,   Expire,        Expired),
-    (Offered,   Withdraw,      Withdrawn),
-    (Accepted,  Confirm,       Confirmed),
-    (Accepted,  Fail,          Failed),
+    (Draft,            Submit,         Requested),
+    (Requested,        Cancel,         Cancelled),
+    (Requested,        MakeOffer,      Offered),
+    (Requested,        Decline,        Declined),
+    (Offered,          Accept,         Accepted),          // value ≤ threshold
+    (Offered,          Accept,         AwaitingApproval),  // value > threshold   [DEC-33]
+    (Offered,          Reject,         Rejected),
+    (Offered,          Expire,         Expired),
+    (Offered,          Withdraw,       Withdrawn),
+    (AwaitingApproval, Approve,        Accepted),          // [DEC-33]
+    (AwaitingApproval, RefuseApproval, ApprovalRefused),   // [DEC-33]  terminal
+    (AwaitingApproval, Expire,         Expired),           // [DEC-33]  reservation released
+    (Accepted,         Confirm,        Confirmed),
+    (Accepted,         Fail,           Failed),
 ];
 ```
+
+13 states × 12 actions × 13 states = 2 028 combinations, of which exactly these 14 are permitted.
+The test enumerates the whole cross-product and asserts membership, so a new state or action cannot
+be added without the test being updated deliberately.
+
+**Two tuples share `(Offered, Accept)`.** The set is a *containment* check, not a function, so this
+does not make it ambiguous: the domain method computes its destination first and then asks whether
+that destination is reachable. The destination is decided by one pure guard, evaluated inside the
+accept transaction against the offer's total value:
+
+```csharp
+var destination = policy.RequiresApproval(offer.TotalValue)
+    ? TradeState.AwaitingApproval
+    : TradeState.Accepted;
+```
+
+`policy` is the effective **[DEC-33]** threshold resolved at that instant and then pinned on the
+trade, so the branch is deterministic and reconstructable years later.
 
 ## 5. The Wallet aggregate
 
@@ -391,7 +442,7 @@ public sealed class Block : AggregateRoot
 | `IBlockVolumeCalculator` | Block → total MWh, per-metering-point split, largest-remainder rounding |
 | `IPositionCalculator` | Per-interval consumption, block volume, net position, coverage |
 | `IInvoiceCalculator` | Full invoice from positions, prices, tariffs and surcharges |
-| `IEnergyTaxCalculator` | Cumulative tiered tax with the YTD-delta method |
+| `IEnergyTaxCalculator` | Cumulative tiered tax with the YTD-delta method. ⚠ **Interface retained, not implemented — [DEC-24]** defers energiebelasting. Keep the seam so the calculation drops in rather than being retrofitted through the invoice engine; energiebelasting is a legal obligation and must return before a real customer is invoiced |
 
 ## 9. Domain events
 
@@ -400,6 +451,9 @@ In-process, published after a successful commit, handled asynchronously.
 | Event | Handled by |
 | --- | --- |
 | `TradeOffered` | Notifications, SignalR push |
+| `TradeAwaitingApproval` | Notifications to **every active account except the acceptor**, SignalR push to the desk **[DEC-33]** |
+| `TradeApproved` | SignalR push to the trade desk — the trade has entered "to confirm" |
+| `TradeApprovalRefused` | Notifications, SignalR push |
 | `TradeAccepted` | SignalR push to the trade desk |
 | `TradeConfirmed` | Block creation, notifications, chart cache invalidation |
 | `TradeFailed` | Notifications |
@@ -414,9 +468,27 @@ that caused it, and a failed notification must never undo a confirmed trade.
 ## 10. Notes on modelling choices
 
 **Why `Trade` and `Block` are separate.** A trade is a negotiation with a history; a block is a
-position with a volume. Most trades never become blocks. Merging them would mean carrying nine
+position with a volume. Most trades never become blocks. Merging them would mean carrying eleven
 negotiation states on an entity whose main job is to answer "how much power do I have at 14:15 on 12
 August".
+
+**Why the approval state sits *after* acceptance, not before.** **[DEC-33]** requires a second pair
+of eyes above a value threshold; it does not say where. The obvious alternative — a first account
+"endorses" the offer and a second then accepts it — was rejected for three reasons. First, **the
+money**: nothing is reserved until acceptance, so an endorsement pending for twenty minutes has no
+claim on the balance, and an invoice debit or a second trade could empty it underneath. The control
+would then fail at the last step for reasons that have nothing to do with governance. Second, **the
+clock**: it would make answering an offer a two-step act, so **[DEC-13]**'s single guard would have
+to be evaluated twice with two different meanings. Third, **what acceptance means**: today accepting
+is the one atomic instant at which the customer commits and the money moves. Splitting it would
+create a state in which the company has effectively said yes and nothing is held.
+
+Placing the state after acceptance keeps all three properties. `Accept` still reserves, still in one
+transaction, still under one clock; `AwaitingApproval` is simply an accepted trade that PeakPower may
+not act on yet. And because `Approve` lands in `Accepted`, **`Accepted` keeps its meaning — fully
+committed by the customer — and the trader's side of the machine is unchanged**: an unapproved trade
+never reaches the "to confirm" queue, so there is no path by which PeakPower executes against an
+un-approved commitment.
 
 **Why `TradeEvent` rather than an audit table.** The brief requires the history to be a visible
 product surface for both audiences. Making it the model's source of state — and projecting the
@@ -426,6 +498,7 @@ current state from it — means the audit cannot drift from reality **[DEC-06]**
 are the *result*. They usually match, but the trader may confirm a different total, and keeping them
 separate makes that visible rather than destructive.
 
-**Why the calendar version is pinned.** Peak-hour definition is unresolved **[OQ-02]** and holiday
-lists change yearly. Pinning means a calendar correction in 2027 cannot silently restate a 2026
-trade's volume.
+**Why the calendar version is pinned.** **[DEC-19]** settles the peak-hour definition — Mon–Fri,
+`08:00 ≤ t < 20:00` Europe/Amsterdam, holidays included, so the exclusion list is empty — but the
+definition remains reference data **[DEC-14]** and could still change. Pinning means a calendar
+correction in 2027 cannot silently restate a 2026 trade's volume.

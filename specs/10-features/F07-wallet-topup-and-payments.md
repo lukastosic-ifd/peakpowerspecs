@@ -6,7 +6,7 @@
 
 ## 1. Summary
 
-Two ways to put money in the wallet:
+Two ways to put money in the wallet, and **only** two **[DEC-58]**:
 
 1. **iDEAL via a payment provider** (CM.com is the candidate) — funds land in the wallet within
    seconds of the bank confirming. This is the preferred route and the one the UI should push.
@@ -18,6 +18,22 @@ The important asymmetry: with iDEAL the customer can go from "I can't afford thi
 without leaving the tab. With a bank transfer they cannot. That difference decides how many trades
 get lost at the funding step, and it is the reason iDEAL is a Must rather than a Should.
 
+> **One payment method — [DEC-58].** No SEPA-via-provider, no Bancontact, no card. The payment surface
+> is iDEAL plus manual bank transfer, which closes [OQ-68]. The provider port stays method-agnostic
+> **[F07-R20]**, so adding one later is configuration plus testing rather than a redesign — but nothing
+> is built for a second method now.
+
+> **Money is one-way — [DEC-43].** There is **no refund payout path**: surplus balance stays in the
+> wallet. This document therefore describes money coming **in** only. See
+> [F06](F06-wallet-and-ledger.md) §1 for the offboarding gap that follows from it, which is a known
+> gap rather than an open question.
+
+> **Two matching keys, not one — [DEC-61].** The company bank account on the customer record is used
+> **both** as a refund destination — vestigial now, under **[DEC-43]** — **and to match incoming
+> transfers**. Matching on a known IBAN attributes a transfer even when the customer omits the
+> reference, which removes the largest single source of unmatched payments **[F07-R21]**. Closes
+> [OQ-79].
+
 ## 2. User stories
 
 | As a… | I want to… | So that… |
@@ -27,6 +43,7 @@ get lost at the funding step, and it is the reason iDEAL is a Must rather than a
 | Customer user | see pending top-ups and their status | I know whether to wait or chase |
 | Customer user | be taken back to what I was doing after paying | the interruption is minimal |
 | Finance | see incoming transfers and match them to wallets | crediting is quick and correct |
+| Finance | have a transfer that arrived without a reference matched on the sender's IBAN | the commonest customer mistake stops creating manual work **[DEC-61]** |
 | Finance | see failed and abandoned payments | I can help a customer who thinks they paid |
 
 ## 3. iDEAL flow
@@ -98,20 +115,35 @@ must still be credited, and a customer who is redirected back before the webhook
 | F07-R16 | The screen states plainly that funds appear only after PeakPower processes the transfer, typically within one business day. | Must |
 | F07-R17 | Finance can register a received transfer against a wallet with amount, value date, bank reference and note, creating a `DEPOSIT_BANK` entry. | Must |
 | F07-R18 | Registering a duplicate (same amount and reference within 7 days) warns before proceeding. | Should |
-| F07-R19 | Finance can import a bank statement (CAMT.053 or CSV) and match lines to wallets by reference, with manual resolution for the rest. | Could |
+| F07-R19 | Finance can import a bank statement (CAMT.053 or CSV) and match lines to wallets by reference **and by IBAN [F07-R21]**, with manual resolution for the rest. | Could |
+
+### Payment methods and transfer matching
+
+**[DEC-58]** fixes the method set and **[DEC-61]** adds the second matching key.
+
+| ID | Requirement | MoSCoW |
+| --- | --- | :--: |
+| F07-R20 | The platform offers **iDEAL and manual bank transfer, and no other payment method** **[DEC-58]**. No SEPA-via-provider, no Bancontact, no card. The provider port stays method-agnostic so a method is data rather than a redesign, but no second method is configured, tested or shown in the UI. | Must |
+| F07-R21 | An incoming transfer is matched to a wallet in this order **[DEC-61]**: **(1)** the wallet reference **[F07-R14]**, when present and check-character valid; **(2)** failing that, the **customer's registered IBAN [F01-R01]**, when it resolves to exactly one active customer. A match by IBAN alone is presented to finance as a **proposed** match naming the customer, and is confirmed before crediting — the platform never credits on an IBAN match unattended. | Must |
+| F07-R22 | An IBAN that resolves to **no** customer, or to **more than one**, produces no proposal: the transfer goes to the unmatched queue for manual resolution **[F07-R17]**. The stored match basis — `REFERENCE`, `IBAN` or `MANUAL` — is recorded on the deposit, so the value of each key is measurable rather than assumed. | Must |
 
 ## 5. Business rules
 
 1. **The webhook credits the wallet; the browser never does.** No wallet mutation on a return URL.
 2. **Idempotency everywhere.** Provider id is the key.
 3. **Credit only on confirmed settlement.** No optimistic crediting on redirect.
-4. **The wallet reference is the matching key** for manual transfers, and it must be easy for a human
-   to copy correctly.
+4. **The wallet reference is the first matching key** for manual transfers, and it must be easy for a
+   human to copy correctly. **The registered IBAN is the second [DEC-61]** — it catches the transfer
+   that arrived without a usable reference, which is the common failure. Neither key credits without
+   the reference being valid or a human confirming the IBAN match **[F07-R21]**.
 5. **A failed payment leaves no trace on the balance** — only in payment history.
 6. **PeakPower never stores card or account credentials.** Redirect flow only; the platform sees a
    payment id and a status **(and this remains true regardless of provider choice)**.
-7. **Refunds are a separate, employee-initiated flow** **[OQ-30]** — never automatic, never
-   customer-initiated.
+7. **There is no refund flow at all** **[DEC-43]**. Not automatic, not customer-initiated, not
+   employee-initiated. Money moves into a wallet and is spent from it; it does not move back out
+   **[F06-R29]**.
+8. **One method in, and it is iDEAL** **[DEC-58]**. Manual bank transfer is the fallback, not a second
+   product.
 
 ## 6. Screens
 
@@ -126,7 +158,7 @@ must still be credited, and a customer who is redirected back before the webhook
 | --- | --- |
 | `payment` | id, customer_id, amount, method, provider, provider_payment_id, state, timestamps, return context |
 | `payment_event` | Append-only state history including raw webhook payloads |
-| `bank_deposit` | Manually registered transfers with reference and value date |
+| `bank_deposit` | Manually registered transfers with reference, value date, sender IBAN and **`matched_by`** (`REFERENCE` \| `IBAN` \| `MANUAL`) **[DEC-61]** |
 | `customer_wallet_reference` | The stable transfer reference per customer |
 
 ## 8. Edge cases
@@ -138,16 +170,21 @@ must still be credited, and a customer who is redirected back before the webhook
 | Webhook never arrives | Reconciliation job resolves it against the provider; alert if unresolved after N attempts |
 | Duplicate webhook | Idempotent — one credit |
 | Payment succeeds after being marked expired | Late success wins; wallet credited and the state corrected, with an audit note |
-| Customer transfers without the reference | Lands in an unmatched queue for finance to resolve manually |
+| **Customer transfers without the reference** | Matched on the sending IBAN when it resolves to exactly one active customer, and proposed to finance for confirmation **[F07-R21]**, **[DEC-61]**. Only an unknown or ambiguous IBAN reaches the unmatched queue **[F07-R22]** |
+| **Customer transfers from a different account of their own** | Not matched — the IBAN is unknown to the platform. Unmatched queue, and the fix is for finance to record the additional IBAN on the customer **[F01-R06]** rather than to credit on a name match |
+| **One IBAN registered on two customers** | No proposal; unmatched queue **[F07-R22]**. Guessing between two companies is worse than a day's delay |
 | Customer transfers the wrong amount | Credited as received; the trade they wanted may still be unaffordable |
+| **Customer asks for their money back** | There is nothing to invoke — **no refund path exists [DEC-43]**, **[F06-R29]**. The balance stays in the wallet and the request is a commercial conversation, not a platform action |
 | Provider outage | iDEAL disabled in the UI with an explanation; bank transfer remains available |
 | Amount below minimum | Blocked with the minimum stated |
 | Chargeback / reversal | Handled as a manual `ADJUSTMENT` with a mandatory reason **[OQ-33]** |
 
 ## 9. Out of scope
 
-- Credit card, PayPal, Bancontact and other methods (the model is provider-agnostic, so adding one is
-  configuration plus testing).
+- Credit card, PayPal, Bancontact, SEPA-via-provider and every other method — **decided, not merely
+  unbuilt** **[DEC-58]**. The model stays provider-agnostic, so adding one is configuration plus
+  testing.
+- **Refunds and any other outbound payment** **[DEC-43]**, **[F06-R29]**.
 - Recurring or scheduled automatic top-ups.
 - Direct debit (SEPA incasso).
 - Automatic bank feed via PSD2 account information.
@@ -164,8 +201,10 @@ must still be credited, and a customer who is redirected back before the webhook
 
 | Ref | Question |
 | --- | --- |
-| [OQ-07] | Is a bank statement import in scope, or is manual registration acceptable indefinitely? |
-| [OQ-30] | Refunds: in scope, and who approves? |
+| [OQ-07] | Is a bank statement import in scope, or is manual registration acceptable indefinitely? **[DEC-61]** reduces its value but does not remove it: IBAN matching helps most where the reference is missing, and an import is still what makes matching timely rather than daily |
+| ~~[OQ-30]~~ | ~~Refunds: in scope, and who approves?~~ **Closed by [DEC-43]** — not in scope, and nobody, because no payout path exists **[F06-R29]**. ⚠ The offboarding gap it leaves is recorded in [F06](F06-wallet-and-ledger.md) §1 |
 | [OQ-32] | Minimum and maximum top-up amounts |
-| [OQ-33] | How are chargebacks and reversals handled operationally? |
+| [OQ-33] | How are chargebacks and reversals handled operationally? ⚠ Sharper under **[DEC-43]**: a reversal takes money out of the wallet through the provider, and the platform has no outbound path of its own to mirror it. Still a manual `ADJUSTMENT` **[F06-R26]** |
 | [OQ-34] | Is CM.com confirmed, and does the contract cover iDEAL plus the volumes expected? |
+| ~~[OQ-68]~~ | ~~Are non-iDEAL payment methods needed — SEPA via provider, Bancontact?~~ **Closed by [DEC-58]** — none. iDEAL plus manual bank transfer is the whole surface **[F07-R20]** |
+| ~~[OQ-79]~~ | ~~What is the company bank account used for?~~ **Closed by [DEC-61]** — refund destination *and* matching key for incoming transfers **[F07-R21]**. The refund half is vestigial under **[DEC-43]** |

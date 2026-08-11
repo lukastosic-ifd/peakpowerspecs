@@ -7,6 +7,19 @@ Specification and scope definition for the **PeakPower** energy trading platform
 
 > **Status:** Draft for stakeholder review · **Version:** 0.1
 > Nothing here is contractually binding. Items marked `[OQ-nn]` are decisions still to be made.
+> **2026-08-11:** three review rounds. The eleven blocking (P1) questions were decided as `[DEC-19]`…
+> `[DEC-29]`, thirty-six more as `[DEC-30]`…`[DEC-65]`, and two final ones as `[DEC-66]`…`[DEC-67]`.
+> Several were closed **by deferral, for the proof of concept only, or in part**, and say so where
+> they are registered. Thirty-five further questions were reviewed and **deliberately parked** —
+> still open, marked ⏳ — see [open questions](specs/80-open-questions.md).
+> ✅ **Nothing is blocking.** `[OQ-88]` reopened the P1 set for one round and closed with `[DEC-66]`:
+> Entra ID uses PeakPower's **existing corporate Microsoft tenancy**, and `[DEC-56]` is clarified
+> rather than reversed — no Azure **subscription, landing zone or naming standard**, but the
+> subscriptions sit **under** that tenant, so employee identity stays single.
+> ⚠ **What it left behind is a dependency, not a question.** *Access* to that tenancy is granted
+> outside the delivery team, and `[DEC-67]` puts it on the critical path by choice by running the
+> `customer_id` claim-mapping spike against it. It is tracked with a named owner and a date in
+> [roadmap §2.1](specs/70-delivery/01-roadmap-and-phasing.md) — **not** in the open-question register.
 
 ---
 
@@ -16,12 +29,12 @@ Specification and scope definition for the **PeakPower** energy trading platform
 | --- | --: |
 | Specification documents | **47** |
 | Features, fully specified | **15** |
-| Numbered, testable requirements | **373** |
-| Diagrams | **61** |
+| Numbered, testable requirements (9 deferred) | **447** |
+| Diagrams | **64** |
 | UI mockups | **19** |
-| Open questions (11 blocking) | **80** |
-| Decisions recorded | **18** |
-| Risks registered | **22** |
+| Open questions (**0 blocking**, 49 closed, 35 parked) | **42** |
+| Decisions recorded | **67** |
+| Risks — 23 active, 1 retired | **24** |
 
 Everything lives in [`specs/`](specs/). Start with the
 [specification index](specs/README.md) or the
@@ -32,9 +45,12 @@ Everything lives in [`specs/`](specs/). Start with the
 A self-service portal that lets grootverbruik customers see their energy position per metering point
 and buy or sell wholesale energy blocks against it, with PeakPower brokering every trade. The
 customer requests; PeakPower responds with a firm, time-limited price; the customer accepts or
-rejects; PeakPower executes on the market and confirms. A prepaid wallet backs every trade, and
-monthly invoicing settles measured consumption against purchased blocks, day-ahead prices, imbalance
-and energiebelasting.
+rejects — and above a value threshold a second person from the same company must approve it; then
+PeakPower executes on the market and confirms. A prepaid wallet backs every trade, and monthly
+invoicing settles measured **net usage** — consumption minus production — against purchased blocks
+and day-ahead prices, with a per-kWh surcharge and a per-kWh feed-in tariff on whatever the customer
+exported. Imbalance is out of scope and energiebelasting is deferred, both of which have to change
+before a real customer is invoiced.
 
 ## Layout
 
@@ -107,7 +123,9 @@ that touches `specs/`. It can also be run manually from the Actions tab.
 
 - **MUST / SHOULD / MAY** follow RFC 2119.
 - Times are **Europe/Amsterdam** unless a document says UTC.
-- Money is **EUR**; energy is **kWh** in storage and **MWh** in trading.
+- Money is **EUR**; energy is **kWh** in storage and **MWh** in trading. Market prices are **€/MWh**;
+  the two per-customer rates — surcharge `[DEC-35]` and feed-in tariff `[DEC-44]` — are **€/kWh**.
+  A €/kWh figure read as €/MWh is wrong by exactly 1000 and still looks plausible.
 - `[OQ-nn]` open question · `[AS-nn]` assumption · `[DEC-nn]` decision · `[F-nn]` feature ·
   `[NFR-nn]` non-functional requirement. Every reference resolves to a definition, and the
   specification site turns them into links.

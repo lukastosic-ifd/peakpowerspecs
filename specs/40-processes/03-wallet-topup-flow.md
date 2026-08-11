@@ -3,6 +3,18 @@
 Two routes, very different latency. Feature spec:
 [F07](../10-features/F07-wallet-topup-and-payments.md).
 
+> **Two routes, and only two [DEC-58].** iDEAL and manual bank transfer. No SEPA-via-provider, no
+> Bancontact, no card **[F07-R20]**.
+>
+> **Money is one-way [DEC-43].** There is **no refund payout path**, so this process has no reverse.
+> Surplus balance stays in the wallet and is spent on trades and invoices **[F06-R29]**. ⚠ The
+> offboarding case that follows — a customer closing with a positive balance — is a **known gap**, not
+> an open question: see [F06](../10-features/F06-wallet-and-ledger.md) §1.
+>
+> **Two matching keys, not one [DEC-61].** A transfer is matched on the wallet reference, and failing
+> that on the customer's **registered IBAN** — which is what makes the commonest customer mistake
+> stop producing manual work **[F07-R21]**.
+
 ---
 
 ## 1. Route comparison
@@ -94,17 +106,39 @@ flowchart TB
     C --> D["Funds arrive on the<br/>PeakPower account"]
     D --> E{"Reference<br/>present and valid?"}
     E -->|yes| F["Finance registers against<br/>the matched wallet"]
-    E -->|no| G["Unmatched queue"]
+    E -->|no| K{"Sending IBAN known,<br/>and to exactly<br/>one customer?"}
+    K -->|yes| L["<b>Proposed match by IBAN</b><br/>customer named · DEC-61"]
+    L --> M["Finance confirms"]
+    M --> F
+    K -->|"no, or ambiguous"| G["Unmatched queue"]
     G --> H["Finance investigates<br/>and matches manually"]
     H --> F
-    F --> I["DEPOSIT_BANK entry<br/>wallet credited"]
+    F --> I["DEPOSIT_BANK entry<br/>wallet credited<br/>matched_by recorded"]
     I --> J["Customer notified"]
 
     classDef warn fill:#78350f,stroke:#f59e0b,color:#fff
+    classDef good fill:#14532d,stroke:#22c55e,color:#fff
     class G,H warn
+    class L,M good
 ```
 
-### 3.1 The reference
+### 3.1 Two matching keys **[DEC-61]**
+
+**The reference is the first key; the registered IBAN is the second.** The order matters: a reference
+identifies the wallet directly and needs no judgement, while an IBAN identifies the *company* and is
+therefore proposed rather than applied **[F07-R21]**.
+
+| Key | Applies when | Credited |
+| --- | --- | --- |
+| **Wallet reference** | Present and the check character validates | Automatically, on registration by finance |
+| **Registered IBAN** | No usable reference, and the sending IBAN resolves to **exactly one** active customer | **Proposed** to finance with the customer named, and confirmed before crediting |
+| **Neither** | IBAN unknown or matching more than one customer | Unmatched queue, manual resolution **[F07-R22]** |
+
+The match basis is recorded on the deposit (`matched_by`), so the value of the second key is
+**measurable** — if IBAN matching turns out to resolve most of the queue, that is an argument for the
+statement import **[OQ-07]**; if it resolves little, that is worth knowing too.
+
+### 3.2 The reference
 
 `PP-4821-QK` — designed to be retyped correctly by a human into a banking app:
 
@@ -114,8 +148,9 @@ flowchart TB
 - Final character is a check character, so an obvious typo can be rejected before it becomes an
   unmatched payment.
 
-Unmatched payments are the main operational cost of this route, and the reference design is the
-cheapest place to reduce it.
+Unmatched payments are the main operational cost of this route. The reference design is the cheapest
+place to reduce it, and **[DEC-61]** removes the largest remaining source — the customer who transfers
+the right amount from the right account and simply forgets the reference.
 
 ## 4. Triggered from a blocked trade
 
@@ -142,9 +177,11 @@ several sites, which is exactly the moment a customer gives up and phones instea
 | Duplicate webhook | Idempotent; one credit |
 | Amount differs from the initiated payment | Quarantined, alerted, **not credited** |
 | Payment succeeds after expiry | Credited, state corrected, audit note |
-| Provider outage | iDEAL disabled in the UI with an explanation; bank transfer remains |
-| Transfer without a reference | Unmatched queue; finance resolves |
-| Transfer from a third party | Flagged for finance review before crediting |
+| Provider outage | iDEAL disabled in the UI with an explanation; bank transfer remains. There is no third method to fall back to **[DEC-58]** |
+| **Transfer without a reference** | Matched on the sending IBAN when it resolves to exactly one active customer, and **proposed** to finance for confirmation **[DEC-61]**, **[F07-R21]**. Only an unknown or ambiguous IBAN reaches the unmatched queue |
+| **Transfer from a customer's second bank account** | Not matched — the IBAN is unknown to the platform. Unmatched queue. The fix is to record the additional IBAN on the customer, not to match on the account-holder name |
+| Transfer from a third party | Flagged for finance review before crediting. An IBAN match cannot arise here, which is the intended behaviour rather than a gap |
+| **Customer asks for the balance back** | Nothing to invoke — **no refund path exists [DEC-43]**, **[F06-R29]**. A commercial conversation, not a platform action |
 
 ## 6. Notifications
 
@@ -153,5 +190,10 @@ several sites, which is exactly the moment a customer gives up and phones instea
 | iDEAL succeeded | Customer | In-app + email |
 | iDEAL failed / cancelled | Customer | In-app + email |
 | Bank deposit registered | Customer | In-app + email |
+| **Transfer proposed by IBAN, awaiting confirmation [DEC-61]** | Finance | In-app |
 | Unmatched transfer received | Finance | In-app |
 | Payment stuck > 1 h | Finance | In-app |
+
+Customer-facing notifications go to the initiating account for an iDEAL top-up and to **all active
+accounts** for a bank deposit, since nobody initiated it in the portal
+([F11](../10-features/F11-notifications.md) §2).

@@ -140,9 +140,15 @@ Note `intervalCount` in the envelope: the client must never assume 96.
 | `POST` | `/trades/quote` | Compute volume and estimated value — **no side effects** |
 | `POST` | `/trades` | Submit a request |
 | `POST` | `/trades/{id}/cancel` | Cancel while `REQUESTED` |
-| `POST` | `/trades/{id}/accept` | Accept the offer |
+| `POST` | `/trades/{id}/accept` | Accept the offer. **May return state `AWAITING_APPROVAL`** — see below |
 | `POST` | `/trades/{id}/reject` | Reject the offer |
+| `POST` | `/trades/{id}/approve` | **[DEC-33]** Approve a colleague's acceptance. Refused for the accepting account |
+| `POST` | `/trades/{id}/refuse-approval` | **[DEC-33]** Refuse it, optionally with a reason. Terminal |
 | `GET` | `/blocks` | Confirmed positions |
+
+Approval is two endpoints rather than one with a `decision` field, matching the house style — every
+other transition on this API is its own verb (`/cancel`, `/accept`, `/reject`), and the two outcomes
+have different eligibility rules, which a single endpoint would hide in a branch.
 
 ```jsonc
 // POST /api/v1/trades        Idempotency-Key: 01J9…
@@ -174,6 +180,13 @@ Note `intervalCount` in the envelope: the client must never assume 96.
     "name": "J. de Vries",
     "jobTitle": "Energy Manager"
   },
+  "fourEyes": {
+    "thresholdApplies": true,
+    "threshold": { "amount": "100000.00", "currency": "EUR" },
+    "estimateAboveThreshold": false,
+    "activeAccountCount": 3,
+    "canBeApproved": true
+  },
   "createdAt": "2026-07-30T14:25:02+02:00"
 }
 ```
@@ -182,7 +195,11 @@ Note `intervalCount` in the envelope: the client must never assume 96.
 a colleague.
 
 `POST /trades/quote` exists so the wizard can show live figures without creating anything. It takes
-the same body and returns the volume, estimate and wallet impact.
+the same body and returns the volume, estimate and wallet impact — **and the same `fourEyes` block**,
+so the wizard can warn before submission **[F05-R56]** rather than at acceptance. `canBeApproved` is
+`false` when the company has fewer than two active accounts, which is the case where the trade could
+never clear the control at all. The estimate is advisory: the binding comparison is made at
+acceptance against the offer's total value **[F05-R52]**, not against this number.
 
 ```jsonc
 // GET /api/v1/trades/{id}   — the offer and the shared timeline
@@ -223,6 +240,70 @@ rewrite the record **[F05-R47]**.
 
 `secondsRemaining` is server-computed at response time. The client counts down from it and
 re-fetches on expiry — it never computes expiry from its own clock **[DEC-13]**.
+
+#### Acceptance above the four-eyes threshold **[DEC-33]**
+
+`POST /trades/{id}/accept` **no longer always yields `ACCEPTED`**. A client that branches on the
+response must handle both destinations; this is the one place **[DEC-33]** changes an existing
+contract rather than adding to it.
+
+```jsonc
+// POST /api/v1/trades/{id}/accept    → 200 OK
+{
+  "id": "9f3c…",
+  "reference": "TRD-1051",
+  "state": "AWAITING_APPROVAL",
+  "reservedAmount": { "amount": "172768.00", "currency": "EUR" },
+  "approval": {
+    "requiredBecause": {
+      "tradeValue": { "amount": "172768.00", "currency": "EUR" },
+      "threshold":  { "amount": "100000.00", "currency": "EUR" },
+      "thresholdVersion": "fet-0007"
+    },
+    "acceptedBy": { "accountId": "acc-0044", "name": "M. Vandersteen", "jobTitle": "Finance Director" },
+    "eligibleApproverCount": 2,
+    "canCurrentAccountApprove": false,
+    "expiresAt": "2026-07-30T15:01:00+02:00",
+    "secondsRemaining": 887
+  }
+}
+```
+
+Three things this shape is asserting.
+
+- `reservedAmount` is present, because the money was reserved by **this** call. An
+  `AWAITING_APPROVAL` trade always holds a reservation **[F05-R55]**, so approval never has to
+  re-check the balance and cannot fail on funds.
+- `expiresAt` is the **offer's** `expires_at`, unchanged. There is no separate approval window
+  **[F05-R61]**; the same value that guarded the acceptance now guards the approval, and the same
+  countdown component renders it.
+- `canCurrentAccountApprove` is `false` for the account that just accepted, and the UI hides the
+  button accordingly — but the server refuses the call regardless. Four eyes is enforced in the
+  domain, not in the client **[F05-R59]**.
+
+```jsonc
+// POST /api/v1/trades/{id}/approve            (no body)
+// POST /api/v1/trades/{id}/refuse-approval    { "reason": "Volume is above what we agreed internally" }
+```
+
+`/approve` returns the trade with `state: "ACCEPTED"` and `approvedBy` populated;
+`/refuse-approval` returns `state: "APPROVAL_REFUSED"` with the reservation released. The reason is
+optional on refusal, symmetric with `/reject` **[F05-R63]**. Both are `Idempotency-Key` POSTs like
+every other transition, and both take the same wallet-then-trade lock order as `/accept`.
+
+The `GET /trades/{id}` response carries the same `approval` object while the trade is
+`AWAITING_APPROVAL`, and the timeline gains `APPROVED` / `APPROVAL_REFUSED` event types. Note that
+the acceptance event is still typed `ACCEPTED` even when the resulting state is `AWAITING_APPROVAL`:
+the event names what the person did, the state names what the trade is waiting for.
+
+New error `type` URIs, all `409`:
+
+| `type` | When |
+| --- | --- |
+| `…/errors/self-approval-not-permitted` | The acting account is the accepting account **[F05-R59]** |
+| `…/errors/approval-window-elapsed` | `now ≥ expires_at` on an approve attempt **[F05-R62]** |
+| `…/errors/four-eyes-threshold-not-configured` | No threshold row is in force for the customer **[F05-R53]** |
+| `…/errors/approval-required` | A confirm attempt against a trade still `AWAITING_APPROVAL` **[F05-R66]** |
 
 ### 2.5 Wallet
 
@@ -284,6 +365,7 @@ no write endpoint here at all.
 | --- | --- |
 | `offerReceived` | trade id, reference, expiry |
 | `offerExpiring` | trade id, seconds remaining |
+| `approvalRequired` | trade id, reference, value, accepting account, expiry — pushed to **every active account except the acceptor** **[DEC-33]** |
 | `tradeStateChanged` | trade id, new state, reason |
 | `walletBalanceChanged` | new balances |
 | `notificationCreated` | notification summary |
@@ -296,9 +378,9 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/trade-desk/queues` | The three queues with counts |
+| `GET` | `/trade-desk/queues` | The **four** queues with counts **[F12-R06]** |
 | `GET` | `/trades?state=&customerId=&…` | Search |
-| `GET` | `/trades/{id}` | Full detail: position, wallet, indication, internal notes |
+| `GET` | `/trades/{id}` | Full detail: position, wallet, indication, internal notes, four-eyes status |
 | `POST` | `/trades/{id}/offer` | Publish price + window |
 | `POST` | `/trades/{id}/decline` | Decline (reason required) |
 | `POST` | `/trades/{id}/withdraw-offer` | Withdraw (reason required) |
@@ -314,6 +396,29 @@ Explicitly cross-customer; `customerId` is a real parameter here.
   "internalNote": "Bought 1MW at 93.10, 1.65 margin"
 }
 ```
+
+The trade detail carries a `fourEyes` block so the trader can size the window before publishing
+**[F12-R35]**, and so the desk can flag a customer that cannot clear the control **[F12-R36]**:
+
+```jsonc
+// GET /api/v1/trades/{id}   — employee view, excerpt
+{
+  "fourEyes": {
+    "threshold": { "amount": "100000.00", "currency": "EUR" },
+    "thresholdVersion": "fet-0007",
+    "thresholdScope": "CUSTOMER",
+    "estimateAboveThreshold": true,
+    "activeAccountCount": 1,
+    "canBeApproved": false,
+    "warning": "This customer has one active account and cannot approve a trade above the threshold."
+  }
+}
+```
+
+There is **no employee endpoint that approves on the customer's behalf**, deliberately. An override
+would be one pair of eyes wearing PeakPower's badge, which is the control it is meant to be.
+`POST /trades/{id}/confirm` refuses with `409 approval-required` while a trade is
+`AWAITING_APPROVAL` **[F05-R66]**.
 
 ### 3.2 Customers, wallets, invoicing, data, reference data
 
@@ -334,14 +439,15 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 | `POST` | `/invoice-runs` | Start a run |
 | `GET` | `/invoice-runs/{id}` | Progress and report |
 | `POST` | `/invoices/{id}/recalculate` \| `/finalise` \| `/credit` | Invoice actions |
-| `POST` | `/true-up-runs` | Annual true-up |
+| `POST` | `/true-up-runs` | Annual true-up. ⚠ Deferred with energiebelasting — **[DEC-24]** |
 | `GET` | `/data-health/metering-points` | Ingestion health |
 | `GET` | `/data-health/messages` | Inbound message log |
 | `POST` | `/data-health/messages/{id}/replay` | Replay |
 | `GET` | `/data-health/quarantine` | Unattached series |
 | `GET`/`PUT` | `/reference/peak-calendars` | Calendars |
-| `GET`/`PUT` | `/reference/tax-tariffs` | Energiebelasting |
+| `GET`/`PUT` | `/reference/tax-tariffs` | Energiebelasting. ⚠ Endpoint retained, tariffs unpopulated — **[DEC-24]** |
 | `GET`/`PUT` | `/reference/surcharges` | Surcharges |
+| `GET`/`PUT` | `/reference/four-eyes-thresholds` | Four-eyes thresholds **[DEC-33]**, scoped `GLOBAL_DEFAULT` or per customer, with `valid_from`/`valid_to`. ⚠ **Ships with no rows — the value is not decided.** Until one is in force, acceptance returns `409 four-eyes-threshold-not-configured` **[F05-R53]** |
 | `GET`/`PUT` | `/reference/price-products` | Montel mapping |
 | `GET`/`PUT` | `/reference/wallet-thresholds` | Alert rules |
 | `GET` | `/audit?…` | Audit search |
@@ -385,9 +491,19 @@ Exceeding returns `429` with `Retry-After`.
 
 ## 7. OpenAPI
 
-Both APIs publish OpenAPI 3.1 documents. Angular clients are generated from them at build time, so a
-contract change breaks CI rather than production. A snapshot test flags breaking changes against the
-previous release.
+Both APIs publish OpenAPI 3.1 documents, and the Angular clients are generated from them. A snapshot
+test flags breaking changes against the previous release.
+
+⚠ **[DEC-55] weakened the guarantee this section used to make.** With a single repository, generation
+happened at build time and a contract change broke CI rather than production. With separate .NET and
+Angular repositories the client crosses a repository boundary, so **nothing fails automatically** —
+the web build keeps compiling against the last published client until someone republishes it.
+
+What replaces it, per [Solution structure](02-solution-structure.md) §5.1: the client is published as
+a versioned package, the API repository fails its own build when the OpenAPI document changes without
+a version bump, and **expand/contract now applies to the HTTP contract as well as to the schema** —
+the API ships the additive change first, the web repository consumes it, and only then is the old
+shape removed. The safety property is preserved deliberately rather than for free.
 
 ## 8. Open questions
 

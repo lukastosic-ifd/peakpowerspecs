@@ -43,21 +43,23 @@ An interval is a peak interval when **all** of the following hold, evaluated in 
 
 1. Its local start time is at or after `08:00` and strictly before `20:00`.
 2. Its local day-of-week is Monday–Friday.
-3. Its local date is **not** excluded by the active peak calendar.
+3. Its local date is **not** in the `excluded_dates[]` of the active peak calendar.
 
-Condition 3 is the unresolved part. See **[OQ-02]**.
+**[DEC-19] settles condition 3: public holidays are *not* excluded.** A holiday falling on a
+Monday–Friday is a peak day. `excluded_dates[]` is empty for the NL electricity peak calendar, so
+condition 3 currently rejects nothing. Closes **[OQ-02]**.
 
-> **Why this matters more than it looks.** Exchange-traded Dutch power peak-load products are
-> conventionally defined as Monday–Friday 08:00–20:00 **including public holidays**. The brief
-> states peak blocks apply "only on working days". If the platform bills the customer on a
-> holiday-excluding profile while PeakPower buys a holiday-including product, PeakPower carries the
-> difference — roughly 8–9 days a year of peak volume, which is about 3.5% of annual peak volume.
-> That is a real P&L exposure, not a rounding detail.
+> **Why this mattered.** Exchange-traded Dutch power peak-load products are conventionally defined as
+> Monday–Friday 08:00–20:00 **including public holidays**, while the brief stated peak blocks apply
+> "only on working days". Billing the customer on a holiday-excluding profile while PeakPower buys a
+> holiday-including product would have left PeakPower carrying the difference — roughly 8–9 days a
+> year of peak volume, about 3.5% of annual peak volume. **[DEC-19]** takes the exchange convention,
+> so the platform's peak volume agrees with the market PeakPower hedges in, and risk R-03 is retired.
 >
-> **[DEC-14]** makes this a data-driven choice: the peak calendar is reference data, so the answer
-> can change per year and per commodity without a code change. But the answer must be made
-> explicitly, and the same calendar must be used for pricing, for invoicing and for the chart
-> overlay.
+> **[DEC-14] still stands.** The peak calendar remains reference data — a weekday rule plus an
+> exclusion list, per commodity and per year. The list is *empty*, not absent: the answer can still
+> change without a code change, and the same calendar must be used for pricing, for invoicing and for
+> the chart overlay.
 
 ### 2.2 Peak calendar as reference data
 
@@ -70,6 +72,11 @@ peak_calendar
   ├─ weekdays             [MON, TUE, WED, THU, FRI]
   └─ excluded_dates[]     per year — empty for the exchange convention
 ```
+
+**[DEC-19]** makes `NL-POWER-PEAK-EXCHANGE` the active electricity calendar: window `08:00`–`20:00`,
+weekdays `[MON…FRI]`, `excluded_dates[] = []` for every year. `NL-POWER-PEAK-WORKDAYS` remains a
+valid row shape and is unused — it is what a holiday-excluding contract would need. Keeping the
+exclusion list as an empty column rather than deleting the mechanism is what keeps **[DEC-14]** real.
 
 Each block records **which calendar version it was priced under**, so a later calendar change never
 retroactively alters a settled trade.
@@ -108,6 +115,9 @@ At 15-minute resolution the same days have **92** and **100** intervals respecti
 peakMWh(b) = power_MW(b) × peakDays(period) × 12
 ```
 
+`peakDays(period)` is the count of Monday–Friday days in the period, **holidays included [DEC-19]**,
+computed from the active calendar — never from a stored count.
+
 Peak volume is not affected by DST: both transitions occur on a Sunday during the night, outside the
 08:00–20:00 window. Every peak day contributes exactly 48 intervals.
 
@@ -142,8 +152,9 @@ xychart-beta
 
 ### 3.5 Reference: peak days per month
 
-Peak-day counts under the **Mon–Fri, holidays included** convention. If [OQ-02] resolves to exclude
-holidays, subtract the holidays falling on a weekday.
+Peak-day counts under the **Mon–Fri, holidays included** convention — which **[DEC-19]** makes the
+platform's convention, so these are the counts the platform computes. [OQ-02] is closed; no holiday
+subtraction applies.
 
 | 2026 | Mon–Fri days | Peak MWh per MW | | 2027 | Mon–Fri days | Peak MWh per MW |
 | --- | --: | --: | --- | --- | --: | --: |
@@ -173,6 +184,13 @@ tradeValue = totalMWh × price_EUR_per_MWh
 - `price` is the offer price from PeakPower, in €/MWh, VAT exclusive **[AS-09]**.
 - `tradeValue` is the amount reserved on acceptance and settled on confirmation **[AS-10]**.
 - For a **SELL** trade the value is credited to the wallet on confirmation instead of debited.
+
+**[DEC-26]** confirms the VAT treatment for the whole platform: prices, wallet balances and
+reservations are **VAT-exclusive**, and VAT is added at invoice level. The reservation is therefore
+the trade value ex-VAT, exactly as **[AS-10]** states. One residual exposure is still open —
+whether the eventual invoice debit is VAT-inclusive, [OQ-83]. If it is, a reservation sized
+ex-VAT under-covers the debit by the VAT rate. See
+[Invoice calculation](03-invoice-calculation.md) §8.
 
 ### 4.1 Rounding
 
@@ -266,8 +284,8 @@ Invoicing then attributes the portion of the block falling inside each invoice m
 
 ## 8. Open questions raised here
 
-| Ref | Question |
-| --- | --- |
-| [OQ-02] | Do peak blocks exclude public holidays, and who owns the holiday list? |
-| [OQ-08] | What is the minimum and the increment for a requested volume? |
-| [OQ-10] | Can a customer sell a block they do not hold (short), and if so, who authorises it? |
+| Ref | Question | Status |
+| --- | --- | --- |
+| [OQ-02] | Do peak blocks exclude public holidays, and who owns the holiday list? | **Closed by [DEC-19]** — they are not excluded; a weekday holiday is a peak day, and `excluded_dates[]` is empty |
+| [OQ-08] | What is the minimum and the increment for a requested volume? | Open |
+| [OQ-10] | Can a customer sell a block they do not hold (short), and if so, who authorises it? | Open |

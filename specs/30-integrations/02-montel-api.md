@@ -21,9 +21,9 @@ current documentation. **[OQ-52]**, **[OQ-23]**.
 | Need | Frequency | Consumer | Failure impact |
 | --- | --- | --- | --- |
 | Forward prices for 6–12 configured products | Every 5 min in market hours | Price board, trade wizard estimate | Customers see stale indications; trading continues |
-| NL day-ahead curve for D+1 | Daily after auction publication | Invoicing, chart tooltips, exposure KPI | **Invoicing blocked for affected days** |
+| NL day-ahead curve for D+1 | **Once daily, from 18:00 Europe/Amsterdam [DEC-36]** | Invoicing, chart tooltips, exposure KPI | **Invoicing blocked for affected days** |
 | Historical forward prices | On demand | Trend charts | Trend view degrades |
-| Historical day-ahead | Backfill, once | Historical positions | Past periods cannot be settled |
+| Historical day-ahead | Backfill, once | Historical positions | Past periods cannot be settled — **and how far back is unknown, [OQ-16]** |
 
 The asymmetry is important: a stale indication is a cosmetic problem, a missing day-ahead price is a
 blocked invoice run. They deserve different alerting and different retry aggression.
@@ -77,11 +77,24 @@ unrelated instruments into one line.
 | Job | Schedule | Notes |
 | --- | --- | --- |
 | `PollMontelIndicationsJob` | 5 min in market hours, hourly otherwise | Market hours from reference data, not hard-coded |
-| `FetchDayAheadPricesJob` | 13:00, 14:00, 15:00, 18:00 CET | Repeats until the curve for D+1 is complete |
-| `CheckDayAheadCompletenessJob` | 20:00 CET | Alerts on gaps for the next day |
+| `FetchDayAheadPricesJob` | **18:00 Europe/Amsterdam, once [DEC-36]**, then retry with backoff until complete or cut-off | The NL day-ahead curve **arrives at 18:00 Amsterdam**. Both the time and the retry policy are configuration **[F08-R01]** |
+| `CheckDayAheadCompletenessJob` | 20:00 Europe/Amsterdam | Alerts on gaps for the next day |
 
-Day-ahead is fetched several times rather than once because auction publication times move and a
-single missed window would block a whole day's invoicing.
+**[DEC-36] replaces the four-attempt schedule.** The previous 13:00 / 14:00 / 15:00 / 18:00 sequence
+existed only because the publication time was unknown; three of those four attempts were speculative
+polls against an unpublished curve. With the time known, the design is **one scheduled fetch plus
+retry**, and a curve that is not there at 18:00 becomes an **alert** rather than another poll — which
+is the point, because a delayed auction is something operations should hear about.
+
+> **Times are `Europe/Amsterdam`, not `CET`.** The schedule above previously said CET, which is wrong
+> for half the year: between the last Sunday in March and the last Sunday in October the local clock is
+> CEST, and a job pinned to CET would fetch at 19:00 local. Schedules follow the same rule as every
+> other business time in this set — local calendar, never a fixed offset **[DEC-08]**.
+
+⚠ **[DEC-36] answers *when*, not *what*.** The **resolution** Montel delivers (hourly or 15-minute) and
+whether **history is available for backfill** are both still unanswered — see §8, [OQ-16]. The storage
+model handles either resolution by design (§5), but backfill depth is a hard limit on how far back a
+position can be settled, and no amount of design absorbs a history that does not exist.
 
 ## 5. Storage
 
@@ -101,6 +114,21 @@ Day-ahead prices are stored with a validity range and versioned
 ([Database design](../20-architecture/04-database-design.md) §3.3), so an hourly and a 15-minute
 source are handled identically **[OQ-16]**.
 
+### 5.1 The stored price is the settled price **[DEC-44]**
+
+**Day-ahead settlement uses the raw price, with no spread**, which closes [OQ-35]. Nothing is added on
+ingestion and nothing is added on use: no spread column, no configured adder, no per-customer variant.
+Whatever this adapter stores is what
+[Invoice calculation §4](../50-calculations/03-invoice-calculation.md) charges and credits.
+
+The same decision **narrows what day-ahead prices at all**. Physically exported volume no longer
+settles here: it settles at a per-customer **feed-in tariff** as invoice line 6
+([Invoice calculation §7A](../50-calculations/03-invoice-calculation.md)), which is **customer
+reference data and not a Montel input**. This integration is unaffected in what it fetches — the curve
+is still needed in full, for the uncovered purchase leg and the unused-block-cover sale leg — and it
+matters here only so that nobody adds a feed-in lookup to the market-data port. Read §7A rather than
+inferring the split from this document.
+
 ## 6. Resilience
 
 | Concern | Handling |
@@ -117,23 +145,36 @@ source are handled identically **[OQ-16]**.
 
 Market data is licensed, and the licence — not the API — decides what the UI may do.
 
-Three questions need answers before the price board is built **[OQ-24]**:
+**[DEC-27] decides the display question.** Montel price indications **must not be displayed
+publicly**; display inside the **authenticated portal is permitted**. That closes **[OQ-24]** for
+display and retires the public-price element of
+[F14](../10-features/F14-public-website.md).
 
-1. May indications be displayed to PeakPower's customers at all, or only used internally?
-2. May customers export or download them?
-3. May any price appear on the public website?
+| Use | Permitted | Basis |
+| --- | --- | --- |
+| Shown to a signed-in customer in the portal | **Yes** | [DEC-27] |
+| Used internally by employees | **Yes** | Never in question — it was the fallback had display been refused |
+| Shown on the public website or any unauthenticated page | **No** | [DEC-27] |
+| Exported or downloaded by a customer (CSV) | **No, until the licence says otherwise** | **Not covered by [DEC-27].** Export is redistribution, so the conservative reading holds until it is answered |
 
-If onward display is restricted, [F04](../10-features/F04-price-indications.md) changes shape
-substantially — possibly to a PeakPower-derived indication rather than a market price. That is a
-commercial and contractual dependency on the critical path of phase 2, not a technical detail.
+The contingency that mattered most is retired: **[F04](../10-features/F04-price-indications.md) does
+not have to become a PeakPower-derived indication**, because showing the market price to a signed-in
+customer is permitted. What it keeps regardless of the licence is its *"Indication — not an offer"*
+labelling and its stale-data flagging — those answer a different question. **R-07 is reduced, not
+closed** ([Risks](../70-delivery/02-risks.md)).
+
+The **export** half of [OQ-24] stays open and stays a commercial and contractual dependency rather
+than a technical detail: if a customer-facing CSV export of indications is wanted, it is a licence
+negotiation, not a feature ticket. Until then the portal shows indications and offers no download of
+them.
 
 ## 8. Open questions
 
 | Ref | Question |
 | --- | --- |
-| [OQ-16] | Day-ahead resolution (hourly or 15-minute), history depth available for backfill |
+| [OQ-16] | **Partly closed by [DEC-36]** — the curve arrives at **18:00 Amsterdam**, which settles the schedule (§4). ⚠ **Still open:** **(a)** the **resolution** delivered, hourly or 15-minute — handled by design (§5) but unconfirmed; **(b)** whether **history is available for backfill**, and how deep. Backfill depth limits how far back positions can be settled, so it is a scope question, not a detail |
 | [OQ-23] | Exact ticker symbols for the six products |
-| [OQ-24] | Licence terms for onward display and export |
-| [OQ-25] | Are indications shown raw, or with a PeakPower spread? |
-| [OQ-35] | Is the raw day-ahead price used for settlement, or a price plus a spread? |
+| [OQ-24] | Licence terms for onward display and export — **display closed by [DEC-27]** (portal yes, public no); **export still open**, treated as not permitted (§7) |
+| [OQ-25] | Are indications shown raw, or with a PeakPower spread? ⚠ **Not answered by [DEC-44]**, which is about day-ahead *settlement*. Indications are a display question and stay open |
+| ~~[OQ-35]~~ | ~~Is the raw day-ahead price used for settlement, or a price plus a spread?~~ **Closed by [DEC-44]** — the **raw** price, no spread, on both legs (§5.1) |
 | [OQ-52] | Where does the existing Montel implementation live, and in what shape is it? |

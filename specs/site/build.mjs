@@ -132,10 +132,24 @@ const assumptions = [];
 const decisions = [];
 if (adDoc) {
   for (const line of adDoc.md.split('\n')) {
-    const a = line.match(/^\|\s*\*\*(AS-\d\d)\*\*\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/);
-    if (a) assumptions.push({ ref: a[1], text: a[2], because: a[3], ifWrong: a[4] });
-    const d = line.match(/^\|\s*\*\*(DEC-\d\d)\*\*\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/);
-    if (d) decisions.push({ ref: d[1], text: d[2], alternatives: d[3], rationale: d[4] });
+    // Rows are `| **ID** | text | ... |`. The decision register has two table shapes:
+    // four columns (ID / decision / alternatives / rationale) for the original entries, and
+    // three (ID / decision / consequences) for later rounds where no alternative was weighed.
+    // Split on cells rather than pinning the column count, so a new shape does not silently
+    // drop rows from the board — which is exactly what happened when DEC-30..65 were added.
+    if (!/^\|\s*\*\*(?:AS|DEC)-\d+\*\*\s*\|/.test(line)) continue;
+    const cells = line.replace(/^\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
+    const ref = cells[0].replace(/\*\*/g, '');
+    if (ref.startsWith('AS-')) {
+      assumptions.push({ ref, text: cells[1] ?? '', because: cells[2] ?? '', ifWrong: cells[3] ?? '' });
+    } else {
+      decisions.push({
+        ref,
+        text: cells[1] ?? '',
+        alternatives: cells.length >= 4 ? cells[2] : '',
+        rationale: cells.length >= 4 ? cells[3] : (cells[2] ?? ''),
+      });
+    }
   }
 }
 

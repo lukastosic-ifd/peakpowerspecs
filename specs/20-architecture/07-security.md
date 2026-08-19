@@ -13,41 +13,79 @@ What is actually worth protecting here, and from whom.
 | **Attribution integrity** | An action recorded against the wrong person, or against nobody | A trade cannot be traced to who authorised it; disputes become unresolvable | `account_id` from the token only; snapshot of name and job title on every event; accounts deactivated, never deleted |
 | **Trade offers** | Manipulation of price or expiry | Financial loss, dispute | Server-side clock, state guards, immutable audit |
 | **PVNed webhook** | Forged or replayed metering data | Wrong invoices across the whole customer base | Endpoint authentication, payload retention, versioning, anomaly detection |
+| ⚠ **Amended 2026-08-19 by [DEC-69]** — read the row above as **BRP webhooks**, plural | A credential for BRP A used to post documents attributed to BRP B | Same impact, reached without stealing the right credential | The BRP is identified **by the credential that authenticated**, never by a field in the payload; one credential set per BRP, rotated per BRP — §4.1 |
 | **Payment webhook** | Forged credit | Free money | Signature verification, idempotency, provider-side reconciliation |
+| **Incoming-payment feed [DEC-106]** | A forged, replayed or altered credit line matching an open deposit intent | **A forged match credits real money.** The wallet is spendable on a trade the same second, no invoice is raised for a deposit **[F07-R27]** so there is no second document the fraud has to survive, and the withdrawal path **[DEC-83]** is a route back out to a bank account | Feed authentication (transport-dependent — **[OQ-93]**), idempotency on the **bank transaction id [F07-R25]**, amount taken from the feed and never from the intent, debit lines never actioned, unmatched queue rather than best-effort crediting — §4.3 |
+| **Customer usage API [DEC-97]** | An unattended credential used to read another company's usage | Same impact as any tenancy break, reached by a caller with no human at the keyboard to notice | Same `customer_id` scope and same global query filter as the portal **[F13-R46]**; no priced data on the surface at all **[F13-R47]**; per-company rate limiting — §6.1 |
+| **The bookkeeping push and its response [DEC-88]**, **[DEC-89]** | A tampered or spoofed response that returns an invoice number bound to the wrong draft | The platform displays a number it did not mint against amounts it did **[DEC-88]**; reconciliation between the two systems silently diverges | Mutual authentication, response bound to the pushed draft by external reference, a returned number never overwritten silently, every push and response audited — §5 |
+| **The four-eyes approval path [DEC-71]** | Self-approval, or the admin flag set from a request | The one control over adding a bank account, executing a trade and withdrawing funds is bypassed by the person it exists to check | The approving `account_id` comes from the token and must differ from the requesting one; the admin flag is platform data set by a PeakPower employee **[DEC-16]**, never client-supplied — §3.3 |
 | **Invoices** | Tampering post-finalisation | Fiscal and legal exposure | Immutability, gapless numbering, audit |
+| ⚠ **Amended 2026-08-19 by [DEC-88]**, **[DEC-89]** | The platform no longer finalises, numbers or renders an invoice, so *this* row's threat largely moves with the document | The asset the platform still holds is the **calculated** invoice data and the number returned to it | Immutability and audit stay. **Gapless numbering leaves** — it is the bookkeeping program's property now, and the platform cannot assert it. §5, §9 |
 | **Personal data** | Exfiltration | GDPR, reputation | Minimisation, encryption, access control, audit |
 | **Employee accounts** | Credential compromise | Insider-level access to everything | MFA, least privilege, session limits, audit |
+| **Customer accounts** | Credential compromise | Trading and withdrawal on someone else's money | ⚠ **Strengthened 2026-08-19 by [DEC-92]** — MFA is **mandatory** for customer users and the platform verifies the authentication-method claim rather than trusting the tenant **[F13-R45]**. Previously this row had no platform-side control at all — §3.1 |
 | **Break-glass credentials [DEC-53]** | Theft of the hash, or misuse of the account by its holder | Authenticated employee access that bypasses the identity provider entirely | Named accounts only, disabled by default, Argon2id + peppered hashes, an independent second factor, alert on **every** use — §3.2 |
 
 The two that keep the design honest are **wallet integrity** and **tenancy isolation**. Almost every
 architectural rule in this set traces back to one of them.
 
+⚠ **What the 2026-08-19 round did to the shape of this table.** The platform gave up invoicing
+mechanics — numbering **[DEC-88]**, the PDF and its email **[DEC-89]**, VAT **[DEC-76]**, surcharges
+**[DEC-73]**, chargebacks **[DEC-85]** and invoice payment matching **[DEC-109]** — and every one of
+those was an asset with a control in it. It gained, in the same round, a path that **credits real
+money on a match the platform makes itself [DEC-106]**, a path that **pays real money out by hand
+[DEC-83]**, a second unattended read surface **[DEC-97]**, a second inbound credential population
+**[DEC-69]**, and an intra-company approval control **[DEC-71]**. The net is not a smaller attack
+surface. It is a differently-shaped one, weighted further towards **money movement** and away from
+**document integrity**, and the controls above have moved with it.
+
+⚠ **One exposure in this table has no control and is not the platform's to fix.** **[DEC-72]** permits
+short selling. A short is a promise to deliver rather than a spend, so the prepaid rule **[AS-11]**
+and the pre-trade balance check **[DEC-41]** — the two things that bound every other way a customer
+can lose PeakPower money — do not bound it. No collateral or exposure limit is decided; it is
+**[OQ-94]**, and it blocks the sell path rather than being mitigated here.
+
 ## 2. Tenancy isolation
 
-Four layers. Any one of them failing should not expose data.
+Four layers. Any one of them failing should not expose data. **The layers themselves are unchanged by
+the 2026-08-19 round** — what changed is that two caller populations now enter at the top instead of
+one **[DEC-97]**, and that layer 2 has something to decide **[DEC-71]**.
 
 ```mermaid
 flowchart TB
-    T["JWT with <b>customer_id</b> + <b>account_id</b> claims<br/><i>set at provisioning, never client-supplied</i>"]
-    L1["<b>1 · Authentication</b><br/>audience + issuer + signature validated"]
-    L2["<b>2 · Authorisation</b><br/>endpoint role requirement, deny by default"]
+    P["<b>Portal session</b><br/><i>OIDC + PKCE · MFA mandatory and verified</i><br/><i>[DEC-92], [F13-R45]</i>"]
+    U["<b>Customer usage API caller</b><br/><i>unattended company credential</i><br/><i>[DEC-97] · transport [OQ-95]</i>"]
+    T["JWT with <b>customer_id</b> + <b>account_id</b> claims<br/><i>set at provisioning, never client-supplied</i><br/><b>admin</b> flag projected alongside them [DEC-71]"]
+    L1["<b>1 · Authentication</b><br/>audience + issuer + signature validated<br/>+ authentication-method claim checked [DEC-92]"]
+    L2["<b>2 · Authorisation</b><br/>endpoint role requirement, deny by default<br/>+ admin flag, for four-eyes approval only [DEC-71]"]
     L3["<b>3 · Data access</b><br/>EF Core global query filter on customer_id"]
     L4["<b>4 · Database</b><br/>row-level security policy on app.customer_id"]
     D[("Data")]
 
+    P --> T
+    U --> T
     T --> L1 --> L2 --> L3 --> L4 --> D
 ```
 
 ```csharp
-// Layer 3 — applied to every customer-owned entity, not opted into per query
+// Layer 3 — applied to every customer-owned entity, not opted into per query.
+// The usage API [DEC-97] runs behind this same filter. It is a second caller
+// population, never a second data path — no separate DbContext, no bypass.
 protected override void OnModelCreating(ModelBuilder b)
 {
-    b.Entity<MeteringPoint>().HasQueryFilter(x => x.CustomerId == _context.CustomerId);
-    b.Entity<Trade>()        .HasQueryFilter(x => x.CustomerId == _context.CustomerId);
-    b.Entity<Invoice>()      .HasQueryFilter(x => x.CustomerId == _context.CustomerId);
-    b.Entity<Wallet>()       .HasQueryFilter(x => x.CustomerId == _context.CustomerId);
+    b.Entity<MeteringPoint>() .HasQueryFilter(x => x.CustomerId == _context.CustomerId);
+    b.Entity<Trade>()         .HasQueryFilter(x => x.CustomerId == _context.CustomerId);
+    b.Entity<Invoice>()       .HasQueryFilter(x => x.CustomerId == _context.CustomerId);
+    b.Entity<Wallet>()        .HasQueryFilter(x => x.CustomerId == _context.CustomerId);
+    b.Entity<DepositIntent>() .HasQueryFilter(x => x.CustomerId == _context.CustomerId); // [DEC-106]
+    b.Entity<IntervalUsage>() .HasQueryFilter(x => x.CustomerId == _context.CustomerId); // [DEC-97]
 }
 ```
+
+⚠ **`Invoice` stays in that list under [DEC-88] and [DEC-89].** The platform no longer numbers,
+renders or sends the document, but it keeps the **calculated** invoice data and the number returned to
+it, shows both in the portal, and that data is as customer-scoped as it ever was. Losing the numbering
+does not loosen the filter.
 
 ```sql
 -- Layer 4 — the customer API connects as app_customer_role
@@ -61,6 +99,12 @@ SET LOCAL app.customer_id = '…';   -- set from the validated token, per reques
 3. `account_id` is likewise read only from the token, and is used **for attribution, never for
    authorisation** — every account of a company has the same rights **[DEC-16]**. A client cannot
    name a colleague as the actor of its own request.
+   ⚠ **Amended 2026-08-19 by [DEC-71].** The first and last clauses stand exactly as written:
+   `account_id` still comes only from the token, and a client still cannot name a colleague. The
+   middle clause — *never for authorisation* — is no longer literally true. Exactly one authorisation
+   decision now reads the account: **may this account approve or refuse a four-eyes action?**, decided
+   by an **admin** flag **[F13-R41]**. That is one bit, it is used for nothing else, and §3.3 says
+   what it costs.
 4. On every request, `account_id` is verified to belong to `customer_id` and to be `ACTIVE`. A
    mismatch is rejected and alerted — it means either a misconfigured claim mapping or an attack.
 5. `IgnoreQueryFilters()` is banned in the customer API — enforced by an architecture test.
@@ -68,12 +112,30 @@ SET LOCAL app.customer_id = '…';   -- set from the validated token, per reques
    **[F13-R19]** — a `403` confirms the object exists.
 7. The employee API connects as a different database role with no RLS policy, and every
    cross-customer read is audited.
+8. **The customer usage API is inside these rules, not beside them [DEC-97].** It is a second caller
+   population — unattended, with its own credential — reaching the same data through the same
+   `customer_id` scope, the same global query filter **[F13-R46]** and the same RLS policy. It gets no
+   endpoint that accepts a customer identifier (rule 2 applies verbatim), no `IgnoreQueryFilters()`
+   (rule 5), and `404` rather than `403` (rule 6). ⚠ The tenancy test of §2.1 must enumerate its
+   routes too, or the surface **[DEC-102]** now says nobody external will probe goes untested by
+   anyone at all.
+9. **The admin flag is platform data, never client input [DEC-71].** It is set and cleared by a
+   PeakPower employee **[DEC-16]**, projected into the token **[F13-R43]**, and re-validated against
+   the platform record on every request that reads it. A token claiming `admin` for an account the
+   platform does not record as one is rejected and alerted, on the same footing as rule 4 — the flag
+   is worth forging precisely because it is the whole of the four-eyes control.
 
 ### 2.1 The test that must exist
 
 An integration test that, for every customer-API endpoint, authenticates as customer A and attempts
 to reach an object owned by customer B, asserting `404`. It runs over a route table so a new endpoint
 is covered automatically rather than by someone remembering.
+
+⚠ **The route table must cover the usage API's routes as well [DEC-97].** They are a different host or
+a different route prefix — possibly, if **[OQ-95]** resolves to file delivery, not HTTP routes at all
+— so "it runs over a route table" stops being automatic the moment the second surface exists. Whatever
+enumerates the portal's endpoints has to enumerate the usage API's, and the file-delivery variant needs
+its own equivalent: a test that customer A's credential cannot read customer B's file.
 
 ## 3. Authentication & session
 
@@ -85,7 +147,8 @@ See [F13](../10-features/F13-identity-and-access.md). Summary:
 | Access token lifetime | ≤ 15 min |
 | Refresh token | Rotating, reuse detection revokes the family |
 | Employee MFA | **Mandatory** — and mandatory again, by an independent factor, on the break-glass path §3.2 |
-| Customer MFA | **Governed by Entra tenant policy, not by the platform [DEC-51]** — §3.1 |
+| Customer MFA | ~~**Governed by Entra tenant policy, not by the platform [DEC-51]**~~ ⚠ **Amended 2026-08-19 by [DEC-92]** — **mandatory**. Enforced by Conditional Access on the corporate tenancy **[DEC-66]**, and **verified by the platform on the token's authentication-method claim** **[F13-R45]** rather than trusted silently. A token whose `amr` carries no accepted second-factor method establishes no session. §3.1 |
+| Accepted `amr` values | **Configuration, not a constant [F13-R45]** — Entra's method identifiers change over time. Absent, empty or unrecognised **fails closed**, and every rejection is logged with its reason |
 | Idle timeout | 30 min |
 | Absolute session | 12 h |
 | Token storage in SPA | In memory; refresh token in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie |
@@ -94,7 +157,46 @@ See [F13](../10-features/F13-identity-and-access.md). Summary:
 Tokens are never placed in `localStorage`. The refresh cookie is scoped to the token endpoint path
 only.
 
-### 3.1 Customer MFA sits outside the platform's control surface — [DEC-51]
+### 3.1 Customer MFA — [DEC-51], ⚠ **amended 2026-08-19 by [DEC-92]**
+
+**Read §3.1.1 first; the original text below it is kept because the distinction it draws — between
+*enforcing* MFA and *implementing* it — is the distinction [DEC-92] preserves.**
+
+#### 3.1.1 MFA is mandatory, and the platform stops taking the tenant's word for it — [DEC-92]
+
+**[DEC-92]** amends **[DEC-51]** and reopens-then-closes [OQ-43] with the opposite answer to the one
+recorded below: **MFA is mandatory for every customer user.** Two things about *how* are worth being
+exact about, because only one of them changed.
+
+| | Before **[DEC-51]** | After **[DEC-92]** |
+| --- | --- | --- |
+| Is MFA required of customer users? | Whatever the tenant policy says, including "no" | **Yes. Mandatory, with no per-customer exemption** |
+| Who enforces it at sign-in? | The Entra tenant, or nobody | **Still the Entra tenant** — Conditional Access on PeakPower's corporate tenancy **[DEC-66]** |
+| Does the platform implement MFA? | No — no setting, no enrolment, no step-up | **Still no.** No MFA screen, no enrolment flow, no step-up path, no per-customer override |
+| What does the platform do with `amr`? | Records it as evidence, and acts on nothing | **Gates on it [F13-R45].** A token with no accepted second-factor method is rejected and no session is established. Recording continues unchanged |
+| What happens if the tenant policy is weakened? | Invisible from inside the platform; weak sessions succeed | **Weak sessions fail closed at the platform**, and every rejection is logged with its reason **[F15](../10-features/F15-audit-and-observability.md)** |
+
+**The control has come back inside the control surface — partly, and it is worth being precise about
+which part.** The platform still cannot *cause* a second factor to be collected: if Conditional Access
+does not ask for one, nobody is prompted and the user simply cannot sign in. What it can now do is
+refuse to proceed on a first-factor-only token, which converts a silent weakening of the tenant policy
+from an invisible risk into a visible outage. That is a deliberate trade, and it is the right way
+round: a lockout is diagnosable in minutes, a fleet of single-factor sessions is not diagnosable at
+all.
+
+**What it costs, stated rather than glossed:**
+
+| Cost | Detail |
+| --- | --- |
+| Onboarding friction | Every customer user enrols a second factor before they can do anything. **[DEC-92]** accepts this explicitly. It lands on **[DEC-16]**'s account-creation flow, which is PeakPower employees creating accounts for people they then have to walk through enrolment |
+| A coupling to somebody else's configuration | A Conditional Access change, or Entra renaming an `amr` value, locks customers out of a financial platform. This is why the accepted method set is **configuration [F13-R45]** and not a constant, and why §10 makes verifying it a go-live item rather than an assumption |
+| A support path that must not become an exemption | The only correct fix for "I cannot sign in" is fixing the factor or the policy. There is **no platform switch** to let a user past, deliberately — building one would reverse **[DEC-92]** in code while leaving it standing in prose |
+
+⚠ **What did *not* change:** everything in the table below about the platform not prompting, not
+enrolling, not stepping up and not exempting. **[DEC-92]** adds a gate on evidence; it does not make
+the platform an MFA implementation.
+
+#### 3.1.2 The original position — [DEC-51], superseded on the mandatory/optional question only
 
 **[DEC-51]** closes [OQ-43] by moving the question rather than answering it in the platform: customer
 MFA is whatever the Entra tenant policy says it is. **The platform neither enforces it nor exempts
@@ -114,6 +216,12 @@ a guarantee of what is required. Two consequences follow. The tenant policy belo
 pre-go-live checklist (§10) as a thing to *verify with the tenant owner*, not to configure. And if
 the answer ever needs to be platform-enforced — a customer contract requiring MFA, say — that is a
 new decision reversing **[DEC-51]**, not a setting.
+
+⚠ **That new decision arrived: it is [DEC-92], on 2026-08-19.** The last sentence above was written as
+a hypothetical and is now a description of what happened. The checklist item survives in a changed
+form — the tenant policy is still verified with the tenant owner (§10), because Conditional Access is
+still where enforcement lives — but it is no longer the *only* thing standing between a weak tenant
+policy and a single-factor session. §3.1.1.
 
 Employee MFA is unaffected and stays **mandatory**. It is inside the control surface because the
 employee realm is PeakPower's own.
@@ -179,6 +287,12 @@ alike, and enablement as well as use. Four properties matter:
    that travels over the machinery that may be broken is not an alert.
 2. **It goes to a group, never only to the person using the account.** The point of the alert is that
    somebody other than the actor knows.
+   ⚠ **[DEC-104] makes this harder than it reads.** A single named operator runs the platform after
+   go-live, with no rota. If that operator is also a break-glass holder, "a group" is one person and
+   the alert reaches only the actor — which is exactly the property this point exists to prevent. The
+   recipient group therefore has to include somebody who is **not** an operator, and that person has
+   to be named before the first drill. This is a routing requirement, not a staffing one, and it is
+   the cheapest half of the single-point-of-failure risk **[DEC-104]** records.
 3. **It fires on enablement too**, so the window between "enabled" and "used" is visible. An account
    enabled and never used is as interesting as one used.
 4. **It is audited like every other security event** (§9), with the account name, source IP, the

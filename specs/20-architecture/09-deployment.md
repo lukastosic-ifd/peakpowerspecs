@@ -24,6 +24,18 @@ and the employee portal share a single point of failure — see §1.1.5 and §5.
 is *access* to that tenant, which is a dated Phase 0 dependency with a named owner
 ([Roadmap §2.1](../70-delivery/01-roadmap-and-phasing.md)) rather than an open question.
 
+> **Revised 2026-08-19** on the decision round **[DEC-68]**…**[DEC-112]**. §1.1 is untouched:
+> **[DEC-56]**, **[DEC-66]** and **[DEC-67]** stand, and the greenfield-inside-a-corporate-tenant
+> story is unchanged. What changed is everything around it. Invoicing mechanics leave the platform
+> for the bookkeeping program — numbering **[DEC-88]**, PDF and invoice email **[DEC-89]**, VAT
+> **[DEC-76]**, surcharges **[DEC-73]**, invoice payment matching **[DEC-105]** — which takes a
+> rendering dependency out of the container images (§3) and a class of traffic off SendGrid
+> (§5.1, §9). What arrives is an **incoming-payment ingress** for wallet deposits **[DEC-106]**,
+> **per-BRP** endpoint and credential configuration **[DEC-69]**, and an **energiebelasting bracket
+> table edited in production** **[DEC-74]** — the first data in this system that a restore cannot
+> recover (§6.2). Operationally: **no contractual SLA** **[DEC-103]**, **one named operator**
+> **[DEC-104]**, and **no external penetration test** before go-live **[DEC-102]**.
+
 ---
 
 ## 1. Target topology
@@ -33,8 +45,9 @@ flowchart TB
     subgraph internet["Internet"]
         USERS(["Customer users"])
         EMPUSERS(["Employees"])
-        PVNED(["PVNed"])
-        PSP(["Payment provider"])
+        BRP(["BRPs<br/><i>PVNed first, configurable [DEC-69]</i>"])
+        PSP(["Payment provider<br/><i>iDEAL · none chosen [DEC-86]</i>"])
+        BANK(["Bank payment feed<br/><i>deposits by transfer [DEC-106] · [OQ-93]</i>"])
     end
 
     subgraph azure["Azure — West Europe"]
@@ -55,7 +68,7 @@ flowchart TB
         subgraph data["Data"]
             PG[("PostgreSQL<br/>Flexible Server<br/>zone-redundant HA")]
             REDIS[("Azure Cache<br/>for Redis")]
-            BLOB[("Blob Storage<br/>raw messages · PDFs")]
+            BLOB[("Blob Storage<br/>raw BRP payloads<br/><i>no PDFs [DEC-89]</i>")]
             KV["Key Vault"]
         end
 
@@ -63,23 +76,25 @@ flowchart TB
     end
 
     subgraph ext["External"]
-        MONTEL(["Montel"])
-        ODOO(["Odoo"])
+        MONTEL(["Montel<br/><i>via the existing service [DEC-96]</i>"])
+        BOOK(["Bookkeeping program<br/><i>numbering · PDF · email · VAT<br/>[DEC-88] [DEC-89] [DEC-76]</i>"])
         IDP(["Microsoft Entra ID<br/>corporate tenant"])
-        MAIL(["SendGrid"])
+        MAIL(["SendGrid<br/><i>platform notifications only [DEC-89]</i>"])
     end
 
     USERS --> FD
     EMPUSERS --> FD
-    PVNED --> FD
+    BRP --> FD
     PSP --> FD
+    BANK --> FD
 
     FD --> CSPA
     FD --> ESPA
     FD --> PSITE
     FD --> CAPI
     FD -->|"IP restricted"| EAPI
-    FD -->|"/webhooks/*"| WORKER
+    FD -->|"/webhooks/brp/* [DEC-69]"| WORKER
+    FD -->|"/webhooks/payments [DEC-106]"| WORKER
 
     CAPI --> PG
     EAPI --> PG
@@ -95,7 +110,7 @@ flowchart TB
     WORKER -.-> KV
 
     WORKER --> MONTEL
-    WORKER --> ODOO
+    WORKER --> BOOK
     WORKER --> MAIL
     CAPI --> IDP
     EAPI --> IDP
@@ -104,6 +119,27 @@ flowchart TB
     EAPI -.-> MON
     WORKER -.-> MON
 ```
+
+**Three inbound feeds now, not one.** The webhook surface used to be PVNed's alone. **[DEC-69]**
+makes it *one adapter per BRP* behind a single route prefix — a BRP is reference data with its own
+endpoint, format and credentials (§5), so a second one is a row and a secret rather than a release.
+**[DEC-106]** adds an unrelated second ingress: incoming bank payments, matched on a payment
+reference the platform issued, crediting the wallet without a human touching it. Both terminate on
+the worker, both are authenticated at the edge, and neither is configured in code. ⚠ **[OQ-93]**
+decides which payment feed — until it is answered the topology reserves the path and nothing more.
+
+**What left the topology.** Nothing renders a PDF **[DEC-89]**, nothing mints an invoice number
+**[DEC-88]**, nothing computes VAT **[DEC-76]**. The node that was `Odoo` is now *the bookkeeping
+program* — Odoo, Moneybird or another, **[OQ-69]** — and the arrow into it carries **draft invoices
+and ledger entries only**: deposits and withdrawals reach that system through its own bank feed
+**[DEC-109]**, not through this one. Smaller platform, larger dependency. Under **[DEC-88]** a failed
+push means the customer has no numbered invoice at all, which is why §7 raises that alert to P1.
+
+**There is no contractual SLA [DEC-103].** Every availability number in §6 and §7 is an internal
+engineering goal with no remedy attached to it. That changes nothing in the diagram — zone-redundant
+HA and a floor of two replicas stay, because both are cheap and both cover ordinary events rather
+than rare ones — but it removes the argument that used to settle **[OQ-62]** on its own. A warm
+secondary region is now a cost judgement PeakPower makes for its own reasons. §6.1, §9.
 
 ### 1.1 Greenfield conventions — [DEC-56], inside the corporate tenant [DEC-66]
 
@@ -206,6 +242,24 @@ plans only diverge at volume.
 SHAs rather than one. Each environment surfaces both, on the health endpoint and in the portal
 footer — a bug report against a front-end version is unactionable without the API version behind it.
 
+### 2.1 Production now holds data no other environment can derive — [DEC-74]
+
+**[DEC-74]** brings energiebelasting back into scope as a **versioned, editable bracket table** —
+tier boundaries and €/kWh rates per year, plus the per-customer reduction or exemption for the
+minority who do not pay the standard rate (growers are the example the source names). An employee edits it **in production**,
+in the employee portal, and there is no upstream feed to re-ingest it from. That breaks an assumption
+this table quietly made, namely that every environment differs only in configuration and data volume.
+
+| Consequence | What it forces |
+| --- | --- |
+| **Parity is a copy, not a deployment** | Dev and Test cannot be levelled by redeploying; the bracket table has to be exported from production and loaded, which no migration does for you. A calculation tested against last year's brackets is a wrong test and the error is **silent** — the run completes and produces a number, just not the right one |
+| **A restore can undo an edit** | Point-in-time recovery rolls the table back with everything else and nothing re-applies what the employee typed. §6.2 |
+| **Anonymisation must not touch it** | Test data is anonymised production-shaped data; the brackets are *not* personal data and must survive that pass intact, or the environment that is meant to prove the calculation is the one that cannot |
+
+The same holds, with a smaller blast radius, for the price-indication markup **[DEC-80]** and the BRP
+registry **[DEC-69]**: both are production-edited reference data whose only source of truth is the
+database row.
+
 ## 3. Sizing
 
 | Component | Dev | Test | Production (year 1) |
@@ -226,6 +280,24 @@ Scaling rules:
 | Both | Scale in only after 10 minutes below the threshold, to avoid flapping |
 
 Minimum 2 replicas everywhere so a rolling deployment never drops to zero capacity.
+
+**No PDF-rendering capacity is sized, and none is installed [DEC-89].** The bookkeeping program
+renders the invoice document and emails it, so the container images carry **no headless browser, no
+rendering engine and no font packages**, and the worker's allocation covers ingestion, calculation
+and queue processing only. The saving is not the vCPU — it is a class of dependency. A headless
+Chromium is typically the largest single contributor to an image's size, the most frequent source of
+base-image CVEs to patch, and the reason PDF workloads need memory headroom unrelated to the business
+logic. The worker row above is unchanged because it was never sized for rendering; what changed is
+that it can no longer be asked to render, and neither can a future revision without reopening
+**[DEC-89]**.
+
+What this round *adds* to sizing is bounded and moves nothing in the table: one ingestion adapter per
+BRP **[DEC-69]** on the same worker; incoming-payment matching **[DEC-106]**, which is one indexed
+lookup per payment on a reference the platform issued; the energiebelasting calculation **[DEC-74]**,
+which runs inside the existing monthly and annual jobs over data already in PostgreSQL; and the
+customer usage API **[DEC-97]**, which is read traffic on `customer-api` against the same interval
+data the portal already queries — it scales on the existing HTTP-concurrency rule, and its shape
+firms up when **[OQ-95]** chooses between an API and a file drop.
 
 ## 4. Pipelines — two of them [DEC-55]
 
@@ -257,6 +329,25 @@ flowchart LR
     classDef gate fill:#78350f,stroke:#f59e0b,color:#fff
     class UAT,PROD gate
 ```
+
+**The `SEC` stage is the whole pre-go-live security assurance — [DEC-102].** No external penetration
+test is budgeted, so dependency scanning, secret scanning and SAST on every pull request are not the
+first layer of a defence in depth; they are the layer. **[NFR-36]**
+([Non-functional requirements](08-non-functional-requirements.md)) assumed a test and is amended to
+say so. The residual risk is recorded here rather than dropped, because the pre-go-live gate now
+contains one fewer step than it did and that should be visible:
+
+| Accepted residual risk **[DEC-102]** | Why the automated scans miss it | What partially compensates |
+| --- | --- | --- |
+| **Authorisation flaws** — one customer company reading another's data | SAST cannot see that a query is missing its tenant predicate; it is a logic defect, not a pattern | The tenancy tests in the integration suite, and the fact that customer scoping is enforced in one place ([Security](07-security.md)) rather than per endpoint |
+| **Business-logic abuse** — trading, wallet, withdrawal **[DEC-83]** and four-eyes **[DEC-71]** flows exercised out of order or concurrently | No scanner models a domain. Four-eyes in particular is new this round and is exactly the kind of state machine a tester attacks | Integration tests written against the approval states, and **[DEC-17]** recording the acting account on every action, which makes abuse visible after the fact even when it is not prevented |
+| **Infrastructure exposure** — a misconfigured private endpoint, an over-broad role assignment | Azure Policy (§1.1.4) denies the configurations it knows about; it does not attack the estate | Policy assigned once at `mg-peakpower`, no standing owner assignments, and every production data path through managed identity |
+
+This is a decision with a date, not an oversight. An external test is the ordinary way to find the
+first two rows, it is priced in days of a specialist's time, and declining it means the first
+adversarial read of this system is a real one. If the budget reappears, the highest-value target is
+the **customer-scoping boundary**, not the perimeter — the perimeter is Front Door and a WAF that
+somebody else maintains.
 
 ### 4.2 Web pipeline — `peakpower-web`
 
@@ -321,7 +412,13 @@ the same way the database schema already was:
 - **Rollback is a traffic shift** back to the previous revision — seconds, not a redeploy. This only
   works because migrations are forward-compatible, which is why the expand/contract rule is not
   optional.
-- **Feature flags** for anything that must be dark-launched, particularly invoicing.
+- **Feature flags** for anything that must be dark-launched. ~~particularly invoicing.~~
+  ⚠ **Amended 2026-08-19 by [DEC-88], [DEC-89] and [DEC-74]** — "invoicing" is no longer one thing
+  this platform owns end to end, so the flag has to be named more precisely. What needs one now: the
+  **draft-invoice push** **[DEC-88]**, because it writes into a system of record outside this one and
+  must be dark-launchable per environment; the **energiebelasting calculation** **[DEC-74]**, so the
+  bracket table can be loaded and reconciled before any amount is pushed; and the **bank-transfer
+  deposit route** **[DEC-106]**, which cannot go live before **[OQ-93]** names the feed it consumes.
 
 ## 5. Configuration & secrets
 

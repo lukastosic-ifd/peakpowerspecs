@@ -7,12 +7,22 @@ Specification and scope definition for the **PeakPower** energy trading platform
 
 > **Status:** Draft for stakeholder review · **Version:** 0.1
 > Nothing here is contractually binding. Items marked `[OQ-nn]` are decisions still to be made.
+> **2026-08-19 — the fourth round, and the largest.** Forty-five decisions `[DEC-68]`…`[DEC-112]`
+> were recorded from the stakeholder answer sheet. **Fourteen earlier decisions and one assumption
+> were reversed**, and the platform's boundary moved in both directions: invoice numbering, the PDF,
+> the invoice email, VAT, surcharges, chargebacks and invoice-payment matching left the platform for
+> a **bookkeeping program**, while **energiebelasting**, short selling, configurable BRPs,
+> platform-matched bank-transfer deposits, withdrawals, a customer usage API and four-eyes as a
+> per-company mode came in. The wallet now funds **trading only** — it no longer settles invoices.
+> ⚠ **One question is blocking again:** `[OQ-69]` — the bookkeeping program's version, hosting and
+> API. Five decisions moved work into that program, so the invoice cannot be issued without it.
 > **2026-08-11:** three review rounds. The eleven blocking (P1) questions were decided as `[DEC-19]`…
 > `[DEC-29]`, thirty-six more as `[DEC-30]`…`[DEC-65]`, and two final ones as `[DEC-66]`…`[DEC-67]`.
 > Several were closed **by deferral, for the proof of concept only, or in part**, and say so where
 > they are registered. Thirty-five further questions were reviewed and **deliberately parked** —
 > still open, marked ⏳ — see [open questions](specs/80-open-questions.md).
-> ✅ **Nothing is blocking.** `[OQ-88]` reopened the P1 set for one round and closed with `[DEC-66]`:
+> ✅ **Nothing was blocking, as at 2026-08-11** — ⚠ that no longer holds; `[OQ-69]` became blocking on
+> 2026-08-19, see the note above. `[OQ-88]` reopened the P1 set for one round and closed with `[DEC-66]`:
 > Entra ID uses PeakPower's **existing corporate Microsoft tenancy**, and `[DEC-56]` is clarified
 > rather than reversed — no Azure **subscription, landing zone or naming standard**, but the
 > subscriptions sit **under** that tenant, so employee identity stays single.
@@ -29,12 +39,13 @@ Specification and scope definition for the **PeakPower** energy trading platform
 | --- | --: |
 | Specification documents | **47** |
 | Features, fully specified | **15** |
-| Numbered, testable requirements (9 deferred) | **447** |
-| Diagrams | **64** |
+| Numbered, testable requirements (50 retired on 2026-08-19) | **506** |
+| Non-functional requirements | **77** |
+| Diagrams | **70** |
 | UI mockups | **19** |
-| Open questions (**0 blocking**, 49 closed, 35 parked) | **42** |
-| Decisions recorded | **67** |
-| Risks — 23 active, 1 retired | **24** |
+| Open questions (**1 blocking**, 80 closed) | **16** |
+| Decisions recorded | **112** |
+| Risks — 33 active, 1 retired | **34** |
 
 Everything lives in [`specs/`](specs/). Start with the
 [specification index](specs/README.md) or the
@@ -45,12 +56,14 @@ Everything lives in [`specs/`](specs/). Start with the
 A self-service portal that lets grootverbruik customers see their energy position per metering point
 and buy or sell wholesale energy blocks against it, with PeakPower brokering every trade. The
 customer requests; PeakPower responds with a firm, time-limited price; the customer accepts or
-rejects — and above a value threshold a second person from the same company must approve it; then
-PeakPower executes on the market and confirms. A prepaid wallet backs every trade, and monthly
-invoicing settles measured **net usage** — consumption minus production — against purchased blocks
-and day-ahead prices, with a per-kWh surcharge and a per-kWh feed-in tariff on whatever the customer
-exported. Imbalance is out of scope and energiebelasting is deferred, both of which have to change
-before a real customer is invoiced.
+rejects — and if that company has **four-eyes** switched on, a second admin of the same company must
+approve it, with no threshold `[DEC-71]`. A prepaid wallet backs every trade and **nothing else**
+`[DEC-77]`. Monthly invoicing settles measured **net usage** — consumption minus production —
+against purchased blocks and the raw day-ahead price, which also credits surplus cover and physical
+export `[DEC-87]`, plus **energiebelasting** on bracketed tiers `[DEC-74]`. The platform computes no
+VAT and mints no invoice number: it pushes a draft to a bookkeeping program, which numbers it,
+renders it and sends it `[DEC-76]`, `[DEC-88]`, `[DEC-89]`. Imbalance stays out of scope and
+PeakPower carries that risk in full `[DEC-25]`.
 
 ## Layout
 
@@ -124,8 +137,12 @@ that touches `specs/`. It can also be run manually from the Actions tab.
 - **MUST / SHOULD / MAY** follow RFC 2119.
 - Times are **Europe/Amsterdam** unless a document says UTC.
 - Money is **EUR**; energy is **kWh** in storage and **MWh** in trading. Market prices are **€/MWh**;
-  the two per-customer rates — surcharge `[DEC-35]` and feed-in tariff `[DEC-44]` — are **€/kWh**.
-  A €/kWh figure read as €/MWh is wrong by exactly 1000 and still looks plausible.
+  **energiebelasting bracket rates** `[DEC-74]` are **€/kWh**. A €/kWh figure read as €/MWh is wrong
+  by exactly 1000 and still looks plausible. The surcharge `[DEC-35]` and feed-in tariff `[DEC-44]`
+  rates that used to sit here were withdrawn on 2026-08-19 by `[DEC-73]` and `[DEC-87]`.
+- Requested volume has a **0,01 MW** minimum and increment `[DEC-70]`.
+- Everything is **VAT-exclusive** `[DEC-26]`, `[DEC-76]` except a **trade reservation and its wallet
+  debit**, which are grossed up `[DEC-78]`.
 - `[OQ-nn]` open question · `[AS-nn]` assumption · `[DEC-nn]` decision · `[F-nn]` feature ·
   `[NFR-nn]` non-functional requirement. Every reference resolves to a definition, and the
   specification site turns them into links.

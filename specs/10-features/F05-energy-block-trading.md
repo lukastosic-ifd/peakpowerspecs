@@ -9,7 +9,18 @@
 The heart of the platform. A customer requests a block; PeakPower responds with a firm, time-limited
 price; the customer accepts or rejects; PeakPower executes on the market and confirms. Money is
 reserved on acceptance and settled on confirmation. Above a value threshold, a **second account at
-the customer must approve the acceptance** before PeakPower executes **[DEC-33]**.
+the customer must approve the acceptance** before PeakPower executes **[DEC-33]**. ⚠ **Reversed
+2026-08-19 by [DEC-71]** — there is **no threshold**, in euros or in megawatts. Four-eyes is a
+**per-customer-company mode**: a flag on the company. When it is on, an action by one **admin
+account** of that company must be approved — or declined — by a **different admin account of the
+same company** before PeakPower executes. When it is off, no approval step exists at any value.
+
+Two money facts belong in the first paragraph because everything downstream depends on them. The
+amount reserved and later debited is **VAT-inclusive** **[DEC-78]** — prices stay quoted and stored
+ex-VAT **[DEC-26]**, and the wallet holds `volume × price × (1 + VAT rate)` at the 21% rate of
+**[DEC-64]**. And the wallet funds **trading and nothing else** **[DEC-77]**: no delivery invoice
+ever debits it, which is what turns the pre-trade balance check from one control among several into
+the only one there is.
 
 It is a **quote-driven** flow, not an order book. A human trader sits in the middle deliberately —
 they are the market access. The platform's job is to make that human fast, to make the customer's
@@ -29,7 +40,7 @@ one person raises the request and another answers the offer **[DEC-18]**:
 flowchart LR
     A["<b>J. de Vries</b><br/><i>Energy Manager</i>"] -->|"14:25 submits<br/>request"| T["TRD-1051<br/><i>Vandersteen Koeling B.V.</i>"]
     T -->|"14:31 offer<br/>published"| B["<b>M. Vandersteen</b><br/><i>Finance Director</i>"]
-    B -->|"14:44 accepts<br/>€ 72.768 reserved"| T
+    B -->|"14:44 accepts<br/>€ 72.768 ex VAT<br/>€ 88.049,28 reserved"| T
     T --> C["Both actions appear in<br/>one shared timeline,<br/>each with its own name"]
 
     classDef acct fill:#1e3a5f,stroke:#3b82f6,color:#fff
@@ -40,8 +51,10 @@ This is not an edge case to be tolerated — it is the normal division of labour
 size, and the reason attribution has to be per account rather than per company.
 
 Above a value threshold it stops being merely the normal shape and becomes a **rule**: the acceptance
-and the approval must come from two different accounts **[DEC-33]**. See §3.2 — the whole design
-rests on the fact that per-account attribution already exists.
+and the approval must come from two different accounts **[DEC-33]**. ⚠ **Amended 2026-08-19 by
+[DEC-71]** — the trigger is the **company's four-eyes flag**, not a value, and both accounts must be
+**admin** accounts of that company. See §3.2 — the whole design rests on the fact that per-account
+attribution already exists **[DEC-17]**.
 
 ## 2. User stories
 
@@ -54,14 +67,15 @@ rests on the fact that per-account attribution already exists.
 | Customer user | see the estimated cost before I submit | I know what I'm asking for |
 | Customer user | know our wallet can cover it before I submit | I don't waste a request |
 | Customer user | cancel a request while it is still unanswered — including one a colleague raised | someone who is out of office does not block us |
-| Customer user | be told immediately when an offer arrives | I don't miss a 30-minute window |
+| Customer user | be told immediately when an offer arrives on a request **I** raised | I don't miss a 30-minute window. ⚠ Under **[DEC-111]** nobody else is told, so the colleague who might have answered it does not know it exists |
 | Customer user | see the offer with a live countdown | I know how long I have |
 | Customer user | accept or reject an offer my colleague requested | the person who approves spend is not always the person who spots the exposure |
-| Customer user | be told, before I accept, that a large trade needs a second colleague to approve it | I don't accept with two minutes left and no one to call |
-| Customer user | approve or refuse a colleague's acceptance of a large trade | one person alone cannot commit a material amount of the company's money |
+| Customer user | be told, before I accept, that our company runs four-eyes and a second **admin** must approve **[DEC-71]** | I don't accept with two minutes left and no one to call |
+| Customer **admin** | approve or decline another admin's acceptance **[DEC-71]** | one person alone cannot commit the company's money |
 | Customer user | see which of my colleagues did what, and when | I can reconstruct what happened without asking around |
 | Customer user | see my colleague's job title next to their name in the history | I can tell whether the right person approved it |
-| Customer user | sell a block back | I can unwind a position |
+| Customer user | sell a block back | I can unwind a position, up to the moment the delivery month starts **[DEC-78]** |
+| Customer user | sell volume I do not yet hold | I can monetise expected solar surplus I can forecast but cannot yet prove **[DEC-72]** |
 
 ### Employee
 
@@ -71,7 +85,7 @@ rests on the fact that per-account attribution already exists.
 | Trader | see everything I need on one screen: volumes per EAN, the customer's position, their wallet, the current indication | I can price without switching context |
 | Trader | enter a price and a reaction window and publish the offer | the customer gets a firm number |
 | Trader | see which offers are counting down and which are about to expire | nothing is dropped |
-| Trader | know at pricing time that a request will need a second approver at the customer | I can quote a reaction window they can actually meet |
+| Trader | know at pricing time that this customer runs four-eyes **[DEC-71]** | I can quote a reaction window two people can actually meet |
 | Trader | see which accepted trades are still waiting on a second approver | I do not execute against a commitment that is not yet binding |
 | Trader | confirm a trade after I've executed it externally | the customer's position becomes real |
 | Trader | mark a trade failed with a mandatory explanation | the reservation is released and the customer knows why |
@@ -92,14 +106,14 @@ stateDiagram-v2
     REQUESTED --> OFFERED: trader publishes price + window
     REQUESTED --> DECLINED: trader declines (reason required)
 
-    OFFERED --> ACCEPTED: customer accepts<br/>value at or below threshold<br/>→ funds reserved
-    OFFERED --> AWAITING_APPROVAL: customer accepts<br/>value above threshold<br/>→ funds reserved
+    OFFERED --> ACCEPTED: customer accepts<br/>four-eyes OFF at the company<br/>→ gross funds reserved
+    OFFERED --> AWAITING_APPROVAL: admin accepts<br/>four-eyes ON at the company<br/>→ gross funds reserved
     OFFERED --> REJECTED: customer rejects
     OFFERED --> EXPIRED: reaction window elapses
     OFFERED --> WITHDRAWN: trader withdraws (reason required)
 
-    AWAITING_APPROVAL --> ACCEPTED: second account approves<br/>→ reservation kept
-    AWAITING_APPROVAL --> APPROVAL_REFUSED: second account refuses<br/>→ reservation released
+    AWAITING_APPROVAL --> ACCEPTED: a different admin approves<br/>→ reservation kept
+    AWAITING_APPROVAL --> APPROVAL_REFUSED: a different admin declines<br/>→ reservation released
     AWAITING_APPROVAL --> EXPIRED: same reaction window elapses<br/>→ reservation released
 
     ACCEPTED --> CONFIRMED: trader confirms execution<br/>→ reservation settled
@@ -118,15 +132,20 @@ stateDiagram-v2
 `ACCEPTED` is the state the brief calls *PENDING*. It is named `ACCEPTED` here because it says what
 happened rather than what is being waited for; the UI may still label it "Pending confirmation".
 
-`AWAITING_APPROVAL` and `APPROVAL_REFUSED` are added by **[DEC-33]**. The machine is now **fourteen
+`AWAITING_APPROVAL` and `APPROVAL_REFUSED` are added by **[DEC-33]**. ⚠ **Amended 2026-08-19 by
+[DEC-71]** — **[DEC-33]** is replaced, but these two states are **kept**: the approval step stays in
+the trade state machine, and only the guard that reaches it changes. The machine is still **fourteen
 transitions over thirteen states**; the authoritative, exhaustively-testable tuple set is in
 [Domain model §4.2](../20-architecture/03-domain-model.md).
 
 Two things the diagram is saying that are easy to miss. `AWAITING_APPROVAL` is entered by the *same*
 `Accept` action as `ACCEPTED` — the destination is decided by one guard on the trade value, not by a
-different button. And `AWAITING_APPROVAL` leads back into `ACCEPTED`, so **the trader's half of the
-machine is unchanged**: `ACCEPTED` still means "fully committed by the customer", and an unapproved
-trade never reaches the "to confirm" queue.
+different button. ⚠ **Amended 2026-08-19 by [DEC-71]**: that guard reads the **owning company's
+four-eyes flag**. It is a boolean on a row the platform already has loaded, so it cannot fail on
+missing reference data, and it returns the same answer for a € 400 trade and a € 400.000 one. And
+`AWAITING_APPROVAL` leads back into `ACCEPTED`, so **the trader's half of the machine is unchanged**:
+`ACCEPTED` still means "fully committed by the customer", and an unapproved trade never reaches the
+"to confirm" queue.
 
 ### 3.1 State reference
 
@@ -135,32 +154,67 @@ trade never reaches the "to confirm" queue.
 | `DRAFT` | Being composed | — | The composing account only | Not submitted |
 | `REQUESTED` | Awaiting a price | — | **Any** account of the company (cancel), Trader | Awaiting price |
 | `OFFERED` | Firm price, clock running | — | **Any** account of the company, Trader (withdraw), System (expire) | **Offer — respond within mm:ss** |
-| `AWAITING_APPROVAL` | Accepted above the threshold, waiting on a second account **[DEC-33]** | **Reserved** | Any active account **except the acceptor** (approve), any active account (refuse), System (expire) | **Accepted — awaiting approval, mm:ss left** |
-| `ACCEPTED` | Customer committed | **Reserved** | Trader | Pending confirmation |
-| `CONFIRMED` | Executed and settled | **Debited** (BUY) / **Credited** (SELL) | — | Confirmed |
+| `AWAITING_APPROVAL` | ~~Accepted above the threshold~~, waiting on a second account **[DEC-33]**. ⚠ **Amended 2026-08-19 by [DEC-71]** — entered because the **company has four-eyes on**, at any value | **Reserved, gross** **[DEC-78]** | Any active **admin** account of the company **except the acceptor** (approve or decline) **[DEC-71]**, System (expire) | **Accepted — awaiting approval, mm:ss left** |
+| `ACCEPTED` | Customer committed | **Reserved, gross** **[DEC-78]** | Trader | Pending confirmation |
+| `CONFIRMED` | Executed and settled | **Debited gross** (BUY) / **Credited gross** (SELL) **[DEC-78]** | — | Confirmed |
 | `DECLINED` | PeakPower will not price it | — | — | Declined + reason |
 | `REJECTED` | Customer said no | — | — | Rejected |
 | `EXPIRED` | Window elapsed | — **or Released**, if it elapsed while awaiting approval | — | Expired |
 | `WITHDRAWN` | Offer pulled before response | — | — | Withdrawn + reason |
 | `FAILED` | Execution failed after acceptance | **Released** | — | Failed + reason |
-| `APPROVAL_REFUSED` | A second account would not approve the acceptance **[DEC-33]** | **Released** | — | Not approved + who refused |
+| `APPROVAL_REFUSED` | A second ~~account~~ **admin account [DEC-71]** would not approve the acceptance **[DEC-33]** | **Released** | — | Not approved + who declined |
 | `CANCELLED` | Withdrawn before pricing | — | — | Cancelled |
 
 Terminal states are immutable. A mistake is corrected by a new trade, never by editing an old one.
 
 Three negative verbs, three different actors, deliberately not interchangeable: PeakPower
 **declines** a request, the customer **rejects** an offer, and a second customer account **refuses**
-an acceptance that has already been made. Only the third has money to release.
+an acceptance that has already been made. Only the third has money to release. ⚠ **Amended
+2026-08-19 by [DEC-71]** — the third actor is now specifically a **different admin account** of the
+same company, and the verb covers both outcomes: [DEC-71] gives that account the approve *and* the
+decline.
 
 Note also that `EXPIRED` is the one state whose money column is now conditional. Before **[DEC-33]**
 no expiry could touch the wallet, because nothing was reserved before acceptance. An offer that is
-accepted above the threshold and then expires unapproved *does* release a reservation.
+accepted above the threshold and then expires unapproved *does* release a reservation. ⚠ **Amended
+2026-08-19 by [DEC-71]** — read "accepted at a company with four-eyes on" for "accepted above the
+threshold". The conditional money column survives untouched; only what puts a trade into that column
+changed. Under **[DEC-78]** the amount released is the **gross** reservation.
 
 ### 3.2 Four-eyes approval — the design and why
 
 **[DEC-33]** requires a second pair of eyes above a value threshold. It does not say where in the
 flow, who counts as a second pair, what happens to the money or what happens to the clock. Those are
 design choices; each is stated here with its reasoning so it can be argued with later.
+
+⚠ **Replaced 2026-08-19 by [DEC-71].** There is **no threshold**, in euros or in megawatts. Four-eyes
+is a **per-customer-company mode**: a flag on the customer company. When it is on, an action by one
+**admin account** of that company must be approved — or declined — by a **different admin account of
+the same company**. When it is off, nothing in the trade flow changes at any value. **[OQ-85]**, which
+asked what the threshold should be, closes with the threshold itself.
+
+What that buys and what it costs, stated plainly rather than presented as a simplification. It buys
+the removal of an entire class of reference data: a threshold table, a most-specific-scope resolution
+order, a version pinned on every trade, an admin screen to maintain it, and the deployment failure
+mode in which a platform holding no threshold row cannot accept a trade at all. It costs granularity
+— a company with four-eyes on needs two admins for a € 400 trade exactly as much as for a € 400.000
+one, and there is no way to exempt the small ones. That cost lands on a customer who chose the mode,
+which is the right place for it; the threshold's cost landed on PeakPower, in the form of a number
+nobody was willing to name.
+
+**What four-eyes covers.** **[DEC-71]** puts five actions in scope. Exactly one of them belongs to
+this document — **execute a trade**, which in this state machine means *accept an offer*. The others
+are specified where they live and are deliberately **not** restated here:
+
+| Action in scope **[DEC-71]** | Specified in |
+| --- | --- |
+| **Execute a trade** — accept an offer | **This document**: §3.2, **[F05-R59]**…**[F05-R67]**, **[F05-R71]** |
+| Add a bank account · deactivate a bank account | [F01 Customer & metering points](F01-customer-and-metering-points.md). ⚠ **[DEC-71]** also settles that a bank account **cannot be edited once added** — it can only be deactivated |
+| Add a user | [F01 Customer & metering points](F01-customer-and-metering-points.md), [F13 Identity & access](F13-identity-and-access.md) |
+| Withdraw funds | [F06 Wallet & ledger](F06-wallet-and-ledger.md), [F07 Wallet top-up & payments](F07-wallet-topup-and-payments.md) — the payout path itself is **[DEC-83]** |
+
+**Deposits are explicitly out of scope** for four-eyes: a customer can transfer money or use iDEAL
+alone, so gating a deposit gates nothing that is not already ungated.
 
 **Where it sits — after acceptance.** The approval is a gate between the customer's commitment and
 PeakPower's execution, not between the offer and the answer. The alternative considered was an
@@ -179,7 +233,12 @@ without it the available balance could be spent underneath a pending approval, a
 then be a race against the customer's own invoices rather than a governance step. It also means
 approval needs **no second balance check** — the money was already put beyond reach at acceptance.
 Leaving `AWAITING_APPROVAL` by any route other than approval releases the reservation in full, in the
-same transaction.
+same transaction. ⚠ **Amended 2026-08-19 by [DEC-78]** — the amount held is the **gross** amount,
+`volume × price × (1 + VAT rate)`; §5.1 works the figures. ⚠ **Amended 2026-08-19 by [DEC-77]** — the
+"customer's own invoices" this paragraph feared can no longer reach the wallet at all, so the only
+thing that can now spend an available balance underneath a pending approval is *another trade*. The
+argument for reserving at acceptance is unchanged; the list of threats it defends against is one
+shorter.
 
 **The clock — the offer window keeps running, and it is the only window.** If approval has not been
 recorded by `expires_at`, the trade expires and the reservation is released. This is the sharpest
@@ -187,7 +246,10 @@ edge in the design, so it is worth being explicit about the alternatives.
 
 - *Stop the clock at acceptance.* Rejected. The trader quoted a firm price for a bounded window; a
   trade that binds PeakPower indefinitely while a customer hunts for a second signatory transfers
-  market risk to PeakPower for free, and does so precisely on the largest trades.
+  market risk to PeakPower for free, and does so precisely on the largest trades. ⚠ **Amended
+  2026-08-19 by [DEC-71]** — "precisely on the largest trades" no longer holds, because the mode is
+  not size-dependent; the risk transfer itself is unchanged, so the rejection stands on its first
+  two clauses alone.
 - *Start a second, separate approval window at acceptance.* Rejected. It invents a second clock, and
   it lets a customer accept at `expires_at − 1s` and still bind PeakPower for another half hour —
   the same risk transfer, wearing a timer.
@@ -196,7 +258,9 @@ edge in the design, so it is worth being explicit about the alternatives.
   `expires_at`, one server-side guard, one expiry job, now guarding two transitions instead of one.
 
 The consequence is real and must not be papered over: accepting a large trade with four minutes left
-will usually expire unapproved. That is a *safe* failure — nothing is bound, the money comes back —
+will usually expire unapproved (⚠ **[DEC-71]**: read *any* trade at a four-eyes company, not just a
+large one — the exposure to this failure is now uniform across that customer's trades, and
+**[DEC-111]** narrows the people who even know the offer arrived). That is a *safe* failure — nothing is bound, the money comes back —
 but it is a bad experience, so it is mitigated in three places rather than by bending the rule. The
 wizard warns before submission **[F05-R56]**, the offer screen warns before acceptance
 **[F05-R57]**, and the trader is told at pricing time so they can quote a longer window
@@ -211,16 +275,33 @@ is what makes the rule enforceable at all. So four eyes reduces to exactly one c
 approving account is an active account of the owning company and is not the account that accepted.**
 That sentence is the whole of it.
 
+⚠ **Amended 2026-08-19 by [DEC-71].** **[DEC-16]** is now *qualified*: customer accounts carry an
+**admin** flag. This is the smallest role model that can express four-eyes at all — exactly two
+levels, existing for no other purpose, and everything [DEC-16] said about *who creates accounts*
+(PeakPower employees) is untouched. The condition therefore grows by one clause: **the approving
+account is an active *admin* account of the owning company and is not the account that accepted.**
+The **accepting** account must be an admin too, otherwise a non-admin could commit the company and
+only the counter-signature would be governed — which would make the control decorative in the one
+direction that matters. Cost of the flag: a company that enables four-eyes and then flags only one
+admin cannot trade, so the flag needs a screen, an owner and the guard in **[F05-R71]**.
+
 Two consequences follow. First, the interaction with **[DEC-18]**: a trade may be raised by one
 account and accepted by another, and **the requesting account is an eligible approver** provided it
 is not also the accepting account. Requesting commits nothing — it asks for a price — so the person
-who raised the request has not yet been one of the two pairs of eyes on the *commitment*. Requiring
+who raised the request has not yet been one of the two pairs of eyes on the *commitment*. ⚠ **Amended
+2026-08-19 by [DEC-71]** — and provided that account is an **admin**. A non-admin may still raise the
+request; requesting is not an action four-eyes governs, so the wizard stays open to everyone. Requiring
 three distinct accounts was considered and rejected: it would be unmeetable at a company with two
 accounts, and **[DEC-16]** gives no basis for calling one account more senior than another.
 
 Second, **a company with one active account can never clear the threshold.** This is a genuine
 operational dead end and must be surfaced early — at submission, not at acceptance — and it sharpens
-the existing reason for prompting a second account at onboarding.
+the existing reason for prompting a second account at onboarding. ⚠ **Amended 2026-08-19 by
+[DEC-71]** — read: **a company with four-eyes on and fewer than two active admin accounts can never
+execute a trade at all, at any value.** The dead end is wider than it was, because it no longer waits
+for a large trade to appear, and narrower, because it only exists at companies that switched the mode
+on. It is therefore caught in two places: at the moment the mode is enabled **[F05-R71]** and at
+submission **[F05-R56]**.
 
 **Refusal is a new terminal state, not a return.** Two alternatives were considered. *Back to
 `OFFERED`* would make acceptance reversible, re-open a binding offer, put a cycle into an otherwise
@@ -236,7 +317,17 @@ rule exists to stop one person committing the company's money alone; refusing on
 money and cannot bind anyone, so the rule has nothing to bite on. This also gives an acceptor who
 realises their mistake a way out that does not involve waiting for the clock.
 
-**⚠ The threshold value does not exist yet.** **[DEC-33]** states that a threshold is required and
+⚠ **Reversed 2026-08-19 by [DEC-71].** [DEC-71] gives the *decision* — "approved **or declined**" —
+to a **different admin account of the same company**, in both directions. The refusal is no longer a
+free action open to anyone; it is the negative half of the same counter-signature. ⚠ **Cost,
+recorded because the paragraph above is the argument that is being overruled:** an acceptor who
+realises immediately that they were wrong can no longer release their own reservation. They must
+reach the other admin or wait for `expires_at`. No money is trapped — expiry releases the reservation
+in full **[F05-R62]** — but the fast escape hatch is gone, and on a 1440-minute window the wait is a
+day. If that turns out to hurt in practice, the cheapest fix is a *cancel-my-own-acceptance* action
+distinct from *decline*, which is not decided here.
+
+~~**⚠ The threshold value does not exist yet.** **[DEC-33]** states that a threshold is required and
 deliberately does not say what it is. It is modelled as reference data with the same shape as a
 surcharge **[F09-R01]** — scope, amount, `valid_from`, `valid_to` — and **no default is shipped**. A
 guessed default is worse than an absent one: too low and every trade needs two people inside a
@@ -244,7 +335,16 @@ guessed default is worse than an absent one: too low and every trade needs two p
 control is decorative. **This value must be set, per customer or globally, before the state is
 built.** Whether it is one global figure or a per-customer figure is part of the same unanswered
 question — the data model supports both, and answering it is a business decision, not a technical
-one. Treat this paragraph as an open question in everything but the numbering.
+one. Treat this paragraph as an open question in everything but the numbering.~~
+
+⚠ **Reversed 2026-08-19 by [DEC-71].** The question this paragraph refused to guess at was asked as
+**[OQ-85]** and answered by removing it: there is no threshold, so there is no value to set, no
+reference table to build and nothing blocking the state from being implemented. Concretely, what goes
+away: **[F05-R50]**, **[F05-R51]**, **[F05-R52]**, **[F05-R53]** and **[F05-R54]** are retired below
+(struck, not renumbered); the `four_eyes_threshold` table in §8 is not created; and **[F12-R38]**'s
+admin screen becomes a per-company flag and an account flag instead of a versioned amount. What
+arrives in its place is smaller than what leaves: one boolean on the customer company and one on the
+customer account **[F05-R71]**.
 
 ## 4. Functional requirements
 
@@ -255,13 +355,15 @@ one. Treat this paragraph as an open question in everything but the numbering.
 | F05-R01 | A customer can create a trade request with: direction (`BUY` / `SELL`), shape (`BASE` / `PEAK`), delivery period (month, quarter or calendar year), and one or more metering points each with a volume in MW. | Must |
 | F05-R02 | Selectable delivery periods are **periods that have not yet started** **[DEC-42]**, bounded by a configurable horizon (default: up to 3 calendar years ahead). Mid-period entry does not exist: there is no partial-period volume and no mid-period coverage start. | Must |
 | F05-R03 | Only `ACTIVE` electricity metering points belonging to the requesting customer, valid for the **entire** delivery period, may be selected **[DEC-40]**. A point whose validity covers only part of the period is **rejected, not pro-rated** — pro-rated allocation does not exist in the model. | Must |
-| F05-R04 | Per-metering-point volume is entered in MW in steps of **0,1 MW**, minimum 0,1 MW per line **[DEC-32]**. The total is computed and displayed live. | Must |
-| F05-R05 | The wizard shows live: total MW, total MWh (from the calendar), estimated value at the current indication, and the resulting wallet impact. | Must |
-| F05-R06 | The estimated value is labelled as an estimate based on an indication, not a price. | Must |
-| F05-R07 | If the total is not a whole MW, an informational notice explains that PeakPower will round on the market side; the request is **not** blocked. ⚠ Under **[DEC-32]** this notice is the **common case, not the exception** — 0,1 MW steps rarely sum to a whole clip, so the wording must read as routine information rather than as a warning, or customers will learn to ignore it. | Must |
-| F05-R08 | Minimum requested volume **0,1 MW** and increment **0,1 MW**, both held as reference data with those values as the decided defaults **[DEC-32]**. A total or line volume that is not a whole multiple of the increment is rejected. | Must |
-| F05-R09 | For a `BUY`, submission is blocked when the estimated value exceeds the wallet's available balance, with a top-up call to action. The check uses **100% of the estimate with no buffer** **[DEC-41]**. ⚠ This confirms the default, and it is only safe while the wallet debit is VAT-exclusive: if [OQ-83] resolves the other way and the invoice debit turns out to be VAT-inclusive, the absence of a buffer is exactly what makes the shortfall bite **[DEC-26]**. | Must |
-| F05-R10 | For a `SELL`, the platform checks the customer holds sufficient **confirmed** block volume for that shape and period. **Short selling is not permitted at all** **[DEC-34]** — there is no per-customer authorisation flag and no credit view. A sell beyond confirmed holdings is rejected at submission. | Must |
+| F05-R04 | Per-metering-point volume is entered in MW in steps of ~~**0,1 MW**, minimum 0,1 MW per line **[DEC-32]**~~ **0,01 MW, minimum 0,01 MW per line** **[DEC-70]**. ⚠ **Amended 2026-08-19 by [DEC-70]** — ten times finer than [DEC-32]. Every input mask, validation message and unit test carrying 0,1 changes with it. The total is computed and displayed live. | Must |
+| F05-R05 | The wizard shows live: total MW, total MWh (from the calendar), estimated value at the current indication, and the resulting wallet impact. ⚠ **Amended 2026-08-19 by [DEC-80]** and **[DEC-78]** — the indication used is the **marked-up** one the customer is shown (quote plus a configurable percentage, default 2%, held as reference data) **[DEC-80]**, **[F04](F04-price-indications.md)**, never the raw quote; and the wallet impact displayed is the **gross** amount **[DEC-78]**, because that is what will actually be held. An ex-VAT impact shown next to a gross reservation understates it by 21% and would make the wizard lie about the only number the customer checks. | Must |
+| F05-R06 | The estimated value is labelled as an estimate based on an indication, not a price. ⚠ **Amended 2026-08-19 by [DEC-80]** — an indication is **never firm unless PeakPower says so**, and it already carries the markup, so the label must not suggest either a firm number or a raw market number. | Must |
+| F05-R07 | If the total is not a whole MW, an informational notice explains that PeakPower will round on the market side; the request is **not** blocked. ⚠ Under **[DEC-32]** this notice is the **common case, not the exception** — 0,1 MW steps rarely sum to a whole clip, so the wording must read as routine information rather than as a warning, or customers will learn to ignore it. ⚠ **Amended 2026-08-19 by [DEC-70]** — at 0,01 MW steps it is the case in *almost every* request. The notice is now effectively permanent chrome, which is an argument for stating it once, quietly, next to the total rather than as a dismissible alert. | Must |
+| F05-R08 | Minimum requested volume ~~**0,1 MW**~~ **0,01 MW** and increment ~~**0,1 MW**~~ **0,01 MW**, both held as reference data with those values as the decided defaults ~~**[DEC-32]**~~ **[DEC-70]**. A total or line volume that is not a whole multiple of the increment is rejected. ⚠ **Amended 2026-08-19 by [DEC-70]**. The reference-data shape is unchanged — only the shipped values move — but every consequence [DEC-32] had for **per-EAN allocation rounding returns at 0,01 MW**: allocations are multiples of 0,01 MW and the non-whole-MW tail is back, distributed by the largest-remainder rule in [Energy block maths](../50-calculations/01-energy-block-maths.md) §5.2. Validation copy quoting "0,1 MW" must change with the rule or it will contradict the field it sits under. | Must |
+| F05-R09 | For a `BUY`, submission is blocked when the estimated value exceeds the wallet's available balance, with a top-up call to action. The check uses **100% of the estimate with no buffer** **[DEC-41]**. ~~⚠ This confirms the default, and it is only safe while the wallet debit is VAT-exclusive: if [OQ-83] resolves the other way and the invoice debit turns out to be VAT-inclusive, the absence of a buffer is exactly what makes the shortfall bite **[DEC-26]**.~~ ⚠ **Amended 2026-08-19 by [DEC-78]**, which resolves **[OQ-83]** in exactly the direction that warning feared. **[DEC-41]**'s "100%, no buffer" survives, but the estimate it is 100% *of* is now the **gross** one — `volume × price × (1 + VAT rate)` at 21% **[DEC-64]**, computed on the marked-up indication **[DEC-80]** — see **[F05-R70]** and §5.1. An ex-VAT check would clear a request whose own reservation it under-covers by 21%, and the missing buffer is precisely what cannot absorb that. | Must |
+| ~~F05-R10~~ | ~~For a `SELL`, the platform checks the customer holds sufficient **confirmed** block volume for that shape and period. **Short selling is not permitted at all** **[DEC-34]** — there is no per-customer authorisation flag and no credit view. A sell beyond confirmed holdings is rejected at submission.~~ ⚠ **Retired 2026-08-19 — [DEC-34] is reversed by [DEC-72]**, which permits short selling. Replaced by **[F05-R69]**. | ~~Must~~ |
+| F05-R69 | For a `SELL`, the platform does **not** check holdings. **Short selling is permitted** **[DEC-72]**: a customer may sell a block they do not hold, and the case that motivates it is a customer with solar production selling **expected surplus** — volume they can forecast but cannot yet prove. There is no confirmed-holdings validation, no per-customer authorisation flag and no credit view; the sell wizard is the buy wizard with the direction flipped. ⚠ **What this exposes, recorded rather than assumed away:** a short is a **promise to deliver**, not a spend. The prepaid wallet **[AS-11]** does not bound it and the pre-trade balance check **[DEC-41]**, **[F05-R09]** does not either, because that check sizes a *debit* and a short creates none — a `SELL` **credits** the wallet on confirmation **[F05-R35]**. No collateral or exposure rule is decided: **[OQ-94]**. Until it is answered the sell path is specified but not safe to open to volumes beyond confirmed holdings. | Must |
+| F05-R73 | The wallet funds **trading and nothing else** **[DEC-77]**. Delivery amounts — day-ahead, export, energiebelasting — are pushed to the bookkeeping program as a draft invoice **[DEC-88]** and paid to the bank; they never debit the wallet, and the `INVOICE_DEBIT` entry type is removed from it **[F06](F06-wallet-and-ledger.md)**. ⚠ This is what makes **[F05-R09]** the wallet's entire reason to exist: with invoices gone, the only thing that can consume an available balance is another trade of the same customer, so the pre-trade check is not one guard among several — it is the only one, and **[AS-11]** (no negative balance) holds or fails on it alone. It must therefore be strict, server-side and inside the same transaction as the reservation **[F05-R28]**, never an advisory check in the wizard. ⚠ Reverses **[AS-12]**. | Must |
 | F05-R11 | The customer can add a comment to the request, visible to the trader and preserved in history. | Should |
 | F05-R12 | On submission the platform captures the current price indication for the matching product **[F04-R10]**. | Must |
 | F05-R13 | The customer receives an on-screen confirmation with a trade reference. | Must |
@@ -274,7 +376,7 @@ one. Treat this paragraph as an open question in everything but the numbering.
 | F05-R15 | New requests appear on the employee trade desk in real time, sorted oldest-first, with an age indicator. | Must |
 | F05-R16 | The trade detail screen shows: customer, all metering points with volumes, computed MWh, delivery period, the captured indication, current indication, the customer's existing position for that period, wallet balance and available balance, and the request comment. | Must |
 | F05-R17 | The trader enters a price in €/MWh (4 decimals) and a reaction window in minutes (default 30, configurable range 5–1440). | Must |
-| F05-R18 | Before publishing, the trader sees the resulting total value and the amount that will be reserved. | Must |
+| F05-R18 | Before publishing, the trader sees the resulting total value and the amount that will be reserved. ⚠ **Amended 2026-08-19 by [DEC-78]** — these are now **two different numbers** and both are shown, labelled: the total value is ex-VAT **[DEC-26]**, the amount reserved is that value grossed up by 21% **[DEC-64]**, **[F05-R70]**. Neither may stand in for the other on the pricing screen; the trader is the last person who can spot a wallet that covers the value but not the hold. | Must |
 | F05-R19 | Publishing sets state `OFFERED`, stamps `offered_at` and computes `expires_at = offered_at + window`. | Must |
 | F05-R20 | The trader can decline a request with a mandatory reason, which the customer sees. | Must |
 | F05-R21 | The trader can withdraw a published offer before the customer responds, with a mandatory reason. | Should |
@@ -285,12 +387,13 @@ one. Treat this paragraph as an open question in everything but the numbering.
 
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
-| F05-R24 | The customer is notified of a new offer immediately: in-app, and by email **[F11](F11-notifications.md)**. | Must |
+| F05-R24 | ~~The customer is notified of a new offer immediately: in-app, and by email **[F11](F11-notifications.md)**.~~ ⚠ **Amended 2026-08-19 by [DEC-111]**, which reverses **[DEC-63]**. The offer notification goes **only to the account that raised the request**, plus — when the company has four-eyes on **[DEC-71]** — the **admin accounts that would have to approve it**. No other account of the company is told, in-app or by email **[F11](F11-notifications.md)**. ⚠ **Cost, recorded because [DEC-63]'s rationale named exactly this:** a 30-minute offer can now die because one person is in a meeting. **[DEC-18]** still lets *any* account accept, so the platform deliberately narrows who **knows** while leaving open who **may act** — the two are no longer the same set, and that gap is an accepted risk, not an oversight. The mitigation is the requester's own escalation, not a platform broadcast. | Must |
 | F05-R25 | The offer screen shows price, total value, full per-EAN breakdown, and a live countdown to `expires_at`. | Must |
 | F05-R26 | The countdown is rendered client-side but **expiry is decided server-side [DEC-13]**. A client whose timer has run out still gets the server's answer. | Must |
-| F05-R27 | Accepting requires a confirmation step that restates price, volume and the amount to be reserved. | Must |
-| F05-R28 | On acceptance the platform, in a single transaction: re-checks `now < expires_at`, re-checks available balance, resolves the four-eyes threshold **[F05-R50]**, creates the reservation, and moves the trade to `ACCEPTED` **or** `AWAITING_APPROVAL` **[F05-R51]**. Any check failing aborts the whole thing. | Must |
-| F05-R29 | If the wallet no longer covers the amount at acceptance time, acceptance is refused with a specific message and a top-up route. The offer stays open until it expires. | Must |
+| F05-R27 | Accepting requires a confirmation step that restates price, volume and the amount to be reserved. ⚠ **Amended 2026-08-19 by [DEC-78]** — the amount restated is the **gross** amount actually reserved, with the ex-VAT value and the 21% shown as separate lines so the customer can see where the difference comes from rather than discovering it in the ledger. | Must |
+| F05-R28 | On acceptance the platform, in a single transaction: re-checks `now < expires_at`, re-checks available balance, ~~resolves the four-eyes threshold **[F05-R50]**~~ **reads the owning company's four-eyes flag** **[F05-R71]**, creates the reservation, and moves the trade to `ACCEPTED` **or** `AWAITING_APPROVAL` ~~**[F05-R51]**~~ **[F05-R71]**. Any check failing aborts the whole thing. ⚠ **Amended 2026-08-19 by [DEC-71]** and **[DEC-78]** — the branch is a boolean read on a row that is always present, not a reference-data resolution that can fail (see the retired **[F05-R53]**); and both the balance re-check and the reservation are **gross** **[F05-R70]**. | Must |
+| F05-R29 | If the wallet no longer covers the amount at acceptance time, acceptance is refused with a specific message and a top-up route. The offer stays open until it expires. ⚠ **Amended 2026-08-19 by [DEC-77]** — after [DEC-77] the *only* thing that can have moved the balance since submission is another trade by the same company, so the message can say so specifically instead of guessing. | Must |
+| F05-R70 | The amount **reserved** at acceptance and the amount **debited** at confirmation are **VAT-inclusive**: `reservation = round(totalMWh * price * (1 + vatRate), 2)` at the **[DEC-64]** rate of **21%** **[DEC-78]**. Prices are still quoted, offered and stored **ex-VAT** **[DEC-26]**, and the platform still computes no VAT for accounting purposes **[DEC-76]** — this is a **sizing rule for a wallet hold**, not a tax calculation, and it produces no VAT line anywhere. ⚠ The whole point: an ex-VAT reservation under-covers its own debit by 21%, and **[DEC-41]** deliberately leaves no buffer to absorb the difference. Reservation and debit are the **same stored number**, never two calculations, so settlement cannot fall short and a VAT-rate change between acceptance and confirmation cannot open a gap. Worked figures in §5.1. | Must |
 | F05-R30 | The customer can reject an offer, optionally with a reason. | Must |
 | F05-R31 | A background job expires trades past `expires_at` in **both** `OFFERED` and `AWAITING_APPROVAL`; additionally every accept **and every approve** attempt is guarded, so a job delay cannot let a stale offer through. | Must |
 | F05-R32 | Expiry, rejection and withdrawal notify both sides. | Must |

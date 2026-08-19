@@ -13,6 +13,15 @@ Nineteen wireframes covering the customer portal and the employee back office.
 > typed — the day chart's KPIs are computed from the series it plots, and the wallet ledger's running
 > balances are computed from its own movements. So the arithmetic on the screens actually holds.
 
+**Revised 2026-08-19.** The set was regenerated for that day's decision round
+([decisions register](../00-overview/04-assumptions-and-decisions.md)). The invoice lost its surcharge
+and feed-in lines and gained energiebelasting; the wallet stopped settling invoices and started
+carrying withdrawals and reference-matched bank transfers; the employee side lost its wallet
+thresholds, its manual adjustment and its control of invoice numbering. The tables below describe the
+screens as they now stand, naming the decision behind each change. One thing is deliberately not done
+yet: **[DEC-94]** points the visual identity at the brand guidelines on peakpower.nl, so "no brand"
+above describes this round of wireframes rather than a standing position.
+
 ---
 
 ## Customer portal
@@ -24,13 +33,13 @@ Nineteen wireframes covering the customer portal and the employee back office.
 | [ean-detail.svg](ean-detail.svg) | [F01](../10-features/F01-customer-and-metering-points.md) · [F02](../10-features/F02-metering-data-ingestion.md) | Label editor, master data, 14-day data-quality strip, block positions |
 | [chart-day-view.svg](chart-day-view.svg) | [F03](../10-features/F03-consumption-visualisation.md) | **The core screen.** 96 intervals, block step line, covered/uncovered bands, peak-window shading, interval tooltip |
 | [chart-month-view.svg](chart-month-view.svg) | [F03](../10-features/F03-consumption-visualisation.md) | Daily totals, weekend shading, missing days marked, comparison mode |
-| [price-indications.svg](price-indications.svg) | [F04](../10-features/F04-price-indications.md) | Six product tiles with staleness marking, disclaimer, 90-day trend |
+| [price-indications.svg](price-indications.svg) | [F04](../10-features/F04-price-indications.md) | Six product tiles, each a market quote plus the configurable markup **[DEC-80]**, with staleness marking and the "indicative, and never firm unless PeakPower says so" disclaimer. No 90-day trend and no export **[DEC-81]** |
 | [trade-wizard.svg](trade-wizard.svg) | [F05](../10-features/F05-energy-block-trading.md) | Per-connection volume split, live totals, wallet check |
 | [trade-offer-countdown.svg](trade-offer-countdown.svg) | [F05](../10-features/F05-energy-block-trading.md) | Firm offer, countdown ring, per-EAN breakdown, wallet impact before/after |
 | [trade-history.svg](trade-history.svg) | [F05](../10-features/F05-energy-block-trading.md) · [F15](../10-features/F15-audit-and-observability.md) | The shared audit timeline — **requested by one colleague, accepted by another** — and linked records |
-| [wallet-ledger.svg](wallet-ledger.svg) | [F06](../10-features/F06-wallet-and-ledger.md) | Three balances, ledger with reservations visible, **the colleague behind each movement**, reference links |
-| [wallet-topup.svg](wallet-topup.svg) | [F07](../10-features/F07-wallet-topup-and-payments.md) | iDEAL vs. bank transfer side by side, payment reference |
-| [invoice-detail.svg](invoice-detail.svg) | [F10](../10-features/F10-invoicing-and-settlement.md) | Per-EAN section, all five line categories, the volume reconciliation check |
+| [wallet-ledger.svg](wallet-ledger.svg) | [F06](../10-features/F06-wallet-and-ledger.md) | Three balances, ledger with reservations visible, **the colleague behind each movement**, reference links. Trading movements only **[DEC-77]** — no invoice debit — plus withdrawals **[DEC-83]** and reference-matched bank-transfer deposits **[DEC-106]** |
+| [wallet-topup.svg](wallet-topup.svg) | [F07](../10-features/F07-wallet-topup-and-payments.md) | iDEAL and bank transfer side by side as equal routes **[DEC-106]**, the platform-issued payment reference the transfer is matched on, no minimum and no maximum amount **[DEC-84]** |
+| [invoice-detail.svg](invoice-detail.svg) | [F10](../10-features/F10-invoicing-and-settlement.md) | Per-EAN section, the three live line categories — block energy, spot settlement with surplus *and* export on its sale leg **[DEC-87]**, energiebelasting **[DEC-74]** — and the volume reconciliation check. No surcharge line **[DEC-73]** |
 
 ## Employee portal
 
@@ -39,9 +48,9 @@ Nineteen wireframes covering the customer portal and the employee back office.
 | [employee-home.svg](employee-home.svg) | [F12](../10-features/F12-employee-back-office.md) | Operational counters, "needs attention now" ranked by urgency, exposure, integration health |
 | [employee-trade-desk.svg](employee-trade-desk.svg) | [F05](../10-features/F05-energy-block-trading.md) | Three queues — to price, awaiting customer (counting down), to confirm |
 | [employee-trade-detail.svg](employee-trade-detail.svg) | [F05](../10-features/F05-energy-block-trading.md) | Everything needed to price without switching context: request, customer position, market reference, wallet, pricing panel |
-| [employee-customer-admin.svg](employee-customer-admin.svg) | [F01](../10-features/F01-customer-and-metering-points.md) | Company master data incl. **KvK and bank account**, **the company's accounts**, metering points with validity, commercial settings |
-| [employee-wallet-admin.svg](employee-wallet-admin.svg) | [F06](../10-features/F06-wallet-and-ledger.md) | Wallets sorted by lowest available, deposit registration, adjustment with mandatory reason |
-| [employee-invoice-run.svg](employee-invoice-run.svg) | [F10](../10-features/F10-invoicing-and-settlement.md) | Run outcome, a hard failure, skipped customers with named causes, drafts for review |
+| [employee-customer-admin.svg](employee-customer-admin.svg) | [F01](../10-features/F01-customer-and-metering-points.md) | Company master data incl. **KvK and bank accounts** — added and deactivated, never edited — **the company's accounts with the admin flag**, four-eyes mode **[DEC-71]**, metering points with validity, commercial settings |
+| [employee-wallet-admin.svg](employee-wallet-admin.svg) | [F06](../10-features/F06-wallet-and-ledger.md) | Wallets sorted by lowest available, with no minimum column and no low-balance alert **[DEC-90]** and no manual adjustment **[DEC-85]** — the two manual worklists instead: withdrawals awaiting payout **[DEC-83]**, incoming payments that arrived without their reference **[DEC-106]** |
+| [employee-invoice-run.svg](employee-invoice-run.svg) | [F10](../10-features/F10-invoicing-and-settlement.md) | Run outcome, a hard failure, skipped customers with named causes, and drafts pushed to the bookkeeping program — which assigns the number **[DEC-88]** and renders and sends the document **[DEC-89]** |
 | [employee-ingestion-health.svg](employee-ingestion-health.svg) | [F02](../10-features/F02-metering-data-ingestion.md) | Data-state heat map, inbound message log, quarantine with a resolve action |
 
 ---
@@ -100,11 +109,28 @@ generator rather than silently producing a clipped mockup.
 
 ## Not yet covered
 
-Screens deliberately left out of this round, listed so the gap is visible rather than forgotten:
+Screens this set does not have — some deliberately left out, some created by the 2026-08-19 round and
+not yet drawn — listed so the gap is visible rather than forgotten:
 
+- **Energiebelasting bracket administration** ([F12](../10-features/F12-employee-back-office.md)) —
+  the largest gap on this list. **[DEC-74]** turned a line category that was never implemented into a
+  versioned per-year, per-tier rate table with a per-customer reduction or exemption on top, on the
+  invoice path and needing the same retroactive-change guard as the peak calendar. It is the biggest
+  employee surface the 2026-08-19 round created and it has no mockup at all
+- Withdrawal payout and unmatched-payment worklists as screens of their own
+  ([F12](../10-features/F12-employee-back-office.md)) — **[DEC-83]** and **[DEC-106]** created two
+  queues where an employee does what a machine cannot. The wallet-admin screen shows that the queues
+  exist; the payout itself and the match of a payment to a wallet are not drawn
+- BRP reference data — endpoint, credentials, document format, and which metering points are assigned
+  to which BRP ([F12](../10-features/F12-employee-back-office.md), **[DEC-69]**)
+- The four-eyes approval screen the second admin sees, and the decline with its reason
+  ([F13](../10-features/F13-identity-and-access.md), **[DEC-71]**)
 - Notification centre and preferences ([F11](../10-features/F11-notifications.md))
-- Reference-data administration: peak calendars, tax tariffs, ticker mapping ([F12](../10-features/F12-employee-back-office.md))
-- Annual true-up statement ([F10](../10-features/F10-invoicing-and-settlement.md))
+- The rest of reference-data administration: peak calendars, ticker mapping, the price-indication
+  markup ([F12](../10-features/F12-employee-back-office.md))
+- Correction invoice for a metering correction that lands after the month closed
+  ([F10](../10-features/F10-invoicing-and-settlement.md), **[DEC-99]**) — this replaces the annual
+  true-up statement, which **[DEC-99]** made continuous rather than annual
 - Login and invitation-acceptance flows ([F13](../10-features/F13-identity-and-access.md))
 - Public website ([F14](../10-features/F14-public-website.md))
 - Mobile and tablet breakpoints

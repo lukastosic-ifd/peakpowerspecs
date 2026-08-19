@@ -25,7 +25,7 @@ export function customerDashboard() {
   const { cx, cy, cw } = s;
 
   const kw = (cw - 3 * 16) / 4;
-  b += kpi(cx, cy, kw, 'AVAILABLE BALANCE', eur(19722), 'settled € 29.122 · reserved € 9.400', { accent: C.text });
+  b += kpi(cx, cy, kw, 'AVAILABLE BALANCE', eur(75576.72), 'settled € 86.951 · reserved € 11.374', { accent: C.text });
   b += kpi(cx + (kw + 16), cy, kw, 'COVERAGE — AUGUST', '78,4 %', 'of measured consumption', { accent: C.accent });
   b += kpi(cx + 2 * (kw + 16), cy, kw, 'UNCOVERED VOLUME', '214,4 MWh', '≈ € 18.953 at day-ahead', { accent: C.sUncov });
   b += kpi(cx + 3 * (kw + 16), cy, kw, 'OPEN TRADES', '2', '1 awaiting your response', { accent: C.amber });
@@ -35,14 +35,14 @@ export function customerDashboard() {
   b += rect(cx, by, cw, 60, { fill: C.amberBg, stroke: '#fcd34d', r: 10 });
   b += circle(cx + 30, by + 30, 11, { fill: C.amber });
   b += text(cx + 30, by + 34, '!', { size: 15, fill: '#fff', weight: 700, anchor: 'middle' });
-  b += text(cx + 52, by + 26, 'Offer received — Base Nov-2026 · 0,2 MW · € 102,4000/MWh · € 14.745,60', { size: 13.5, weight: 700, fill: '#78350f' });
-  b += text(cx + 52, by + 45, 'Respond before 15:01 — the price is firm until then.', { size: 11.5, fill: '#92400e' });
+  b += text(cx + 52, by + 26, 'Offer received — Base Nov-2026 · 0,2 MW · € 102,4000/MWh · € 14.745,60 ex VAT', { size: 13.5, weight: 700, fill: '#78350f' });
+  b += text(cx + 52, by + 45, 'Respond before 15:01 — the price is firm until then. Accepting reserves € 17.842,18, incl. VAT.', { size: 11.5, fill: '#92400e' });
   b += text(cx + cw - 200, by + 38, '24:47', { size: 24, weight: 700, fill: C.amber, anchor: 'end', mono: true });
   b += button(cx + cw - 176, by + 13, 158, 'View offer', 'amber');
 
   // price strip
   const py = by + 76;
-  b += panel(cx, py, cw, 132, 'Price indications', { subtitle: 'Indicative only — not an offer', right: 'updated 14:22' });
+  b += panel(cx, py, cw, 132, 'Price indications', { subtitle: 'Indicative only — market quote plus 2,0 % markup, never an offer', right: 'updated 14:22' });
   const tiles = [
     ['Base — Sep 26', '€ 78,45', '+1,25', true], ['Peak — Sep 26', '€ 96,15', '+2,10', true],
     ['Base — Q4 26', '€ 84,20', '−0,45', false], ['Peak — Q4 26', '€ 103,70', '−1,05', false],
@@ -81,12 +81,12 @@ export function customerDashboard() {
   const ax0 = cx + chartW + 16;
   b += panel(ax0, ry, aw, 320, 'Recent activity');
   const acts = [
-    ['13 Aug 10:15', 'Funds reserved', '€ 9.400,00 · TRD-1072 · Base Oct-26', 'indigo'],
+    ['13 Aug 10:15', 'Funds reserved', '€ 11.374,00 incl. VAT · TRD-1072 · Base Oct-26', 'indigo'],
     ['12 Aug 09:14', 'Wallet top-up', '€ 25.000,00 via iDEAL', 'green'],
+    ['10 Aug 07:41', 'Deposit matched', '€ 60.000,00 · transfer ref PP-5107-TD', 'green'],
+    ['06 Aug 09:20', 'Withdrawal paid out', '€ 5.000,00 to your bank account', 'muted'],
     ['05 Aug 16:03', 'Trade failed', 'TRD-1048 · counterparty withdrew', 'danger'],
-    ['01 Aug 00:04', 'Invoice issued', 'INV-2026-07-0042 · € 18.110,00', 'muted'],
-    ['01 Aug 08:00', 'Data corrected', '31 Jul · Venlo cold store', 'amber'],
-    ['30 Jul 14:52', 'Trade confirmed', 'TRD-1051 · Peak Q1-27 · 1,0 MW', 'green'],
+    ['01 Aug 00:04', 'Invoice issued', 'INV-2026-07-0042 · € 18.110,00 ex VAT', 'muted'],
   ];
   acts.forEach((a, i) => {
     const y = ry + 58 + i * 43;
@@ -155,16 +155,18 @@ export function eanDetail() {
   b += button(cx + 18, cy + 226, 96, 'Save', 'primary');
   b += button(cx + 122, cy + 226, 80, 'Cancel', 'secondary');
 
-  b += panel(cx, cy + 284, leftW, 250, 'Connection details');
+  b += panel(cx, cy + 284, leftW, 296, 'Connection details');
   const details = [
     ['EAN', '8716 8710 0000 0000 27'], ['Commodity', 'Electricity'],
-    ['Grid operator', 'Enexis'], ['Connection capacity', '2.500 kW'],
+    ['Grid operator', 'Enexis'], ['Balance responsible party', 'PVNed'],
+    ['Connection capacity', '2.500 kW'], ['Production expectation', 'Yes — solar, declared by you'],
     ['Address', 'Ceresstraat 14, Venlo'], ['Active since', '1 January 2024'],
     ['Contract until', 'open-ended'],
   ];
   details.forEach((d, i) => {
     b += statLine(cx + 18, cy + 330 + i * 27, leftW - 36, d[0], d[1], { mono: i === 0 });
   });
+  b += text(cx + 18, cy + 568, 'PeakPower can assign a different BRP to this connection.', { size: 10.5, fill: C.faint });
 
   const rx = cx + leftW + 16;
   const rw = cw - leftW - 16;
@@ -383,11 +385,11 @@ export function chartMonthView() {
 
 /* ──────────────────────────────────────────────────── price indications */
 export function priceIndications() {
-  const s = shell({ portal: 'customer', title: 'Price indications', crumb: 'Dutch power · indicative only', nav: NAV, active: 3, user: USER });
+  const s = shell({ portal: 'customer', title: 'Price indications', crumb: 'Dutch power · indicative only · no history, no export', nav: NAV, active: 3, user: USER });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
-  b += note(cx, cy, cw, 'These are indicative market prices, not offers. A firm, time-limited price is issued only in response to a trade request.', 'accent');
+  b += note(cx, cy, cw, 'Indicative only, never firm unless PeakPower says so. Every price is the market quote plus PeakPower’s markup — currently 2,0 %. A firm price is issued only when you request a trade.', 'accent');
 
   const cardW = (cw - 2 * 16) / 3;
   const cards = [
@@ -416,17 +418,22 @@ export function priceIndications() {
     b += text(x + cardW - 18, y + 168, 'Request a price →', { size: 11, fill: C.accent, weight: 600, anchor: 'end' });
   });
 
+  // No trend chart and no export: the board shows the current curve only.
   const ty = cy + 56 + 2 * 190;
-  b += panel(cx, ty, cw, 240, 'Base — next month · 90-day trend', { right: 'Montel · NL power' });
-  const gx = cx + 62; const gy = ty + 78; const gw = cw - 100; const gh = 116;
-  const pts = [];
-  let v = 71;
-  for (let i = 0; i < 90; i++) { v += Math.sin(i / 6.5) * 1.15 + (i % 11 === 0 ? 1.4 : -0.12); pts.push(v); }
-  b += axis(gx, gy, gw, gh, ['1 May', '20 May', '8 Jun', '27 Jun', '16 Jul', '30 Jul'], { yLabels: ['86', '82', '78', '74', '70'], gridLines: 4 });
-  b += areaFill(pts.map((p) => p - 68), gx, gy, gw, gh, 20, { fill: C.accent, opacity: 0.12 });
-  b += polyline(pts.map((p) => p - 68), gx, gy, gw, gh, 20, { stroke: C.accent, sw: 2 });
-  b += circle(gx + gw, gy + gh - ((pts[89] - 68) / 20) * gh, 4, { fill: C.accent, stroke: '#fff', sw: 2 });
-  b += text(gx - 46, gy - 8, '€/MWh', { size: 10, fill: C.faint });
+  b += panel(cx, ty, cw, 210, 'About these prices', { right: 'Montel · NL power · markup 2,0 % (configurable)' });
+  const facts = [
+    ['Indicative, never firm', 'A price becomes firm only when PeakPower issues an offer against your trade request, and it is then time-limited.'],
+    ['Quote plus markup', 'Every indication is the market quote plus PeakPower’s markup — reference data, currently 2,0 %. The raw market price is never shown.'],
+    ['Current curve only', 'No price history is kept in the portal: no trend chart, no comparison with earlier days.'],
+    ['No export', 'Prices cannot be downloaded, exported or read over the API. Your own usage data can be.'],
+  ];
+  facts.forEach((f, i) => {
+    const fy = ty + 66 + i * 38;
+    if (i > 0) b += line(cx + 18, fy - 24, cx + cw - 18, fy - 24, { stroke: C.border });
+    b += circle(cx + 26, fy - 4, 3, { fill: C.accent });
+    b += text(cx + 40, fy, f[0], { size: 12.5, weight: 700 });
+    b += text(cx + 240, fy, f[1], { size: 11.5, fill: C.muted });
+  });
 
   return svgDoc(b, { label: 'Customer portal — price indications' });
 }
@@ -456,8 +463,8 @@ export function tradeWizard() {
     { label: 'CONNECTION', w: 270 }, { label: 'AUG CONSUMPTION', w: 150, align: 'end' },
     { label: 'CURRENT COVER', w: 130, align: 'end' }, { label: 'VOLUME (MW)', w: 137, align: 'end' },
   ], [
-    [{ t: 'Rotterdam DC', weight: 600, sub: '…0011' }, { t: '385,4 MWh', align: 'end' }, { t: '0,40 MW', align: 'end' }, { t: '0,200', align: 'end', weight: 700, mono: true }],
-    [{ t: 'Venlo cold store', weight: 600, sub: '…0027' }, { t: '291,7 MWh', align: 'end' }, { t: '0,30 MW', align: 'end' }, { t: '0,300', align: 'end', weight: 700, mono: true }],
+    [{ t: 'Rotterdam DC', weight: 600, sub: '…0011' }, { t: '385,4 MWh', align: 'end' }, { t: '0,40 MW', align: 'end' }, { t: '0,190', align: 'end', weight: 700, mono: true }],
+    [{ t: 'Venlo cold store', weight: 600, sub: '…0027' }, { t: '291,7 MWh', align: 'end' }, { t: '0,30 MW', align: 'end' }, { t: '0,310', align: 'end', weight: 700, mono: true }],
     [{ t: 'Tilburg plant', weight: 600, sub: '…0043' }, { t: '612,0 MWh', align: 'end' }, { t: '0,50 MW', align: 'end' }, { t: '0,400', align: 'end', weight: 700, mono: true }],
     [{ t: 'Almere office', weight: 600, sub: '…0059' }, { t: '18,2 MWh', align: 'end' }, { t: '—', align: 'end', fill: C.faint }, { t: '0,100', align: 'end', weight: 700, mono: true }],
     [{ t: 'Breda warehouse', fill: C.faint, sub: '…0078 · ends 31 Dec 2026' }, { t: '102,3 MWh', align: 'end', fill: C.faint }, { t: '0,10 MW', align: 'end', fill: C.faint }, { t: 'not eligible', align: 'end', fill: C.faint, size: 11 }],
@@ -466,9 +473,9 @@ export function tradeWizard() {
   b += line(cx + 18, cy + 420, cx + leftW - 18, cy + 420, { stroke: C.border2 });
   b += text(cx + 18, cy + 444, 'Requested total', { size: 13, weight: 700 });
   b += text(cx + leftW - 18, cy + 444, '1,000 MW', { size: 18, weight: 700, anchor: 'end', fill: C.accent, mono: true });
-  b += badge(cx + leftW - 240, cy + 430, 'WHOLE MW — CLEAN CLIP', 'green', { w: 178, h: 20 });
+  b += badge(cx + leftW - 240, cy + 430, 'MIN 0,01 MW · STEP 0,01 MW', 'accent', { w: 178, h: 20 });
 
-  b += note(cx + 18, cy + 462, leftW - 36, 'A non-round total is allowed. PeakPower rounds to a whole MW on the market side.', 'muted');
+  b += note(cx + 18, cy + 462, leftW - 36, 'Minimum 0,01 MW per connection, in steps of 0,01 MW. A non-round total is fine.', 'muted');
 
   b += text(cx + 18, cy + 528, 'Note for the trader (optional)', { size: 10.5, fill: C.muted, weight: 600 });
 
@@ -484,16 +491,17 @@ export function tradeWizard() {
   rows.forEach((r, i) => { b += statLine(rx + 18, cy + 138 + i * 26, rw - 36, r[0], r[1]); });
 
   b += line(rx + 18, cy + 322, rx + rw - 18, cy + 322, { stroke: C.border });
-  b += text(rx + 18, cy + 344, 'Indicative price', { size: 12, fill: C.muted });
+  b += text(rx + 18, cy + 344, 'Indicative price — ex VAT', { size: 12, fill: C.muted });
   b += text(rx + rw - 18, cy + 344, '€ 96,1500 / MWh', { size: 12, weight: 600, anchor: 'end' });
-  b += text(rx + 18, cy + 366, 'Estimated value', { size: 13, weight: 700 });
+  b += text(rx + 18, cy + 366, 'Estimated value — ex VAT', { size: 13, weight: 700 });
   b += text(rx + rw - 18, cy + 368, '€ 73.843,20', { size: 19, weight: 700, anchor: 'end' });
-  b += text(rx + 18, cy + 386, 'based on the indication of 14:22 — the actual price will differ', { size: 10, fill: C.faint });
+  b += text(rx + 18, cy + 384, 'based on the indication of 14:22 — the actual price will differ', { size: 10, fill: C.faint });
 
-  b += rect(rx + 18, cy + 400, rw - 36, 74, { fill: C.panel2, stroke: C.border, r: 8 });
-  b += statLine(rx + 32, cy + 424, rw - 64, 'Available balance', '€ 95.000,00');
-  b += statLine(rx + 32, cy + 446, rw - 64, 'After reservation', '€ 21.156,80', { fill: C.green });
-  b += badge(rx + 32, cy + 456, 'SUFFICIENT FUNDS', 'green', { w: 140, h: 18 });
+  b += rect(rx + 18, cy + 392, rw - 36, 96, { fill: C.panel2, stroke: C.border, r: 8 });
+  b += statLine(rx + 32, cy + 414, rw - 64, 'To reserve — incl. 21% VAT', '€ 89.350,27', { fill: C.amber });
+  b += statLine(rx + 32, cy + 436, rw - 64, 'Available balance', '€ 95.000,00');
+  b += statLine(rx + 32, cy + 458, rw - 64, 'After reservation', '€ 5.649,73', { fill: C.green });
+  b += badge(rx + 32, cy + 466, 'SUFFICIENT FUNDS', 'green', { w: 140, h: 18 });
 
   b += button(rx + 18, cy + 494, rw - 36, 'Continue to review', 'primary', { h: 40 });
   b += button(rx + 18, cy + 542, rw - 36, 'Back', 'secondary', { h: 36 });
@@ -512,7 +520,7 @@ export function tradeOfferCountdown() {
   b += text(cx + 36, cy + 40, 'FIRM OFFER — RESPOND BEFORE 15:01', { size: 11.5, fill: '#5eead4', weight: 700 });
   b += text(cx + 36, cy + 90, '€ 94,7500', { size: 44, fill: '#ffffff', weight: 700 });
   b += text(cx + 250, cy + 90, '/ MWh', { size: 16, fill: '#94a3b8' });
-  b += text(cx + 36, cy + 118, '768,00 MWh  ·  total € 72.768,00  ·  VAT excluded', { size: 13, fill: '#cbd5e1' });
+  b += text(cx + 36, cy + 118, '768,00 MWh  ·  € 72.768,00 ex VAT  ·  € 88.049,28 reserved incl. VAT', { size: 13, fill: '#cbd5e1' });
 
   const ring = cx + cw - 130;
   b += circle(ring, cy + 75, 52, { fill: 'none', stroke: '#1e3a44', sw: 8 });
@@ -526,15 +534,15 @@ export function tradeOfferCountdown() {
     { label: 'CONNECTION', w: 254 }, { label: 'ALLOCATED', w: 120, align: 'end' },
     { label: 'VOLUME', w: 140, align: 'end' }, { label: 'VALUE', w: 150, align: 'end' },
   ], [
-    [{ t: 'Rotterdam DC', weight: 600 }, { t: '0,200 MW', align: 'end' }, { t: '153,60 MWh', align: 'end' }, { t: '€ 14.553,60', align: 'end' }],
-    [{ t: 'Venlo cold store', weight: 600 }, { t: '0,300 MW', align: 'end' }, { t: '230,40 MWh', align: 'end' }, { t: '€ 21.830,40', align: 'end' }],
+    [{ t: 'Rotterdam DC', weight: 600 }, { t: '0,190 MW', align: 'end' }, { t: '145,92 MWh', align: 'end' }, { t: '€ 13.825,92', align: 'end' }],
+    [{ t: 'Venlo cold store', weight: 600 }, { t: '0,310 MW', align: 'end' }, { t: '238,08 MWh', align: 'end' }, { t: '€ 22.558,08', align: 'end' }],
     [{ t: 'Tilburg plant', weight: 600 }, { t: '0,400 MW', align: 'end' }, { t: '307,20 MWh', align: 'end' }, { t: '€ 29.107,20', align: 'end' }],
     [{ t: 'Almere office', weight: 600 }, { t: '0,100 MW', align: 'end' }, { t: '76,80 MWh', align: 'end' }, { t: '€ 7.276,80', align: 'end' }],
   ], { rowH: 38 });
   b += line(cx + 18, cy + 400, cx + leftW - 18, cy + 400, { stroke: C.border2 });
-  b += text(cx + 18, cy + 424, 'Total', { size: 13, weight: 700 });
+  b += text(cx + 18, cy + 424, 'Total — ex VAT', { size: 13, weight: 700 });
   b += text(cx + leftW - 18, cy + 424, '€ 72.768,00', { size: 17, weight: 700, anchor: 'end' });
-  b += text(cx + 18, cy + 448, 'Peak Q1 2027 · Mon–Fri 08:00–20:00 · 64 peak days · calendar NL-POWER-PEAK v2027.1', { size: 10.5, fill: C.faint });
+  b += text(cx + 18, cy + 448, 'Peak Q1 2027 · Mon–Fri 08:00–20:00 · 64 peak days · steps of 0,01 MW · calendar NL-POWER-PEAK v2027.1', { size: 10.5, fill: C.faint });
 
   const rx = cx + leftW + 16;
   const rw = cw - leftW - 16;
@@ -543,15 +551,15 @@ export function tradeOfferCountdown() {
   b += statLine(rx + 18, cy + 250, rw - 36, 'Currently reserved', '€ 0,00');
   b += statLine(rx + 18, cy + 276, rw - 36, 'Available now', '€ 95.000,00', { weight: 700 });
   b += line(rx + 18, cy + 292, rx + rw - 18, cy + 292, { stroke: C.border });
-  b += statLine(rx + 18, cy + 318, rw - 36, 'To be reserved', '− € 72.768,00', { fill: C.amber, weight: 700 });
-  b += statLine(rx + 18, cy + 344, rw - 36, 'Available after', '€ 22.232,00', { fill: C.green, weight: 700 });
-  b += note(rx + 18, cy + 362, rw - 36, 'Reserved, not charged. Settled on confirmation.', 'muted');
+  b += statLine(rx + 18, cy + 318, rw - 36, 'To be reserved — incl. 21% VAT', '− € 88.049,28', { fill: C.amber, weight: 700 });
+  b += statLine(rx + 18, cy + 344, rw - 36, 'Available after', '€ 6.950,72', { fill: C.green, weight: 700 });
+  b += note(rx + 18, cy + 362, rw - 36, 'Reserved incl. VAT, not charged. Settled on confirmation.', 'muted');
 
   b += button(rx + 18, cy + 416, rw - 36, 'Accept this offer', 'primary', { h: 42 });
   b += button(rx + 18, cy + 466, (rw - 46) / 2, 'Reject', 'secondary', { h: 36 });
   b += button(rx + 28 + (rw - 46) / 2, cy + 466, (rw - 46) / 2, 'Ask a question', 'secondary', { h: 36 });
 
-  b += note(cx, cy + 520, cw, 'If you accept, € 72.768,00 is reserved immediately. PeakPower then executes on the market and confirms — usually within 30 minutes. If execution fails, the full amount is released and you are told why.', 'accent');
+  b += note(cx, cy + 520, cw, 'If you accept, € 88.049,28 — the price plus 21% VAT — is reserved immediately. PeakPower then executes and confirms, usually within 30 minutes. If it fails, the full amount is released and you are told why.', 'accent');
 
   return svgDoc(b, { label: 'Customer portal — offer with countdown' });
 }
@@ -567,9 +575,9 @@ export function tradeHistory() {
 
   const events = [
     ['30 Jul 2026, 14:25:02', 'Request submitted', 'J. de Vries · Energy Manager (you)', 'Peak Q1-2027 · 1,000 MW across 4 connections. Comment: “Hedging Q1 baseload growth.” Indication at submission: € 96,1500/MWh.', 'accent'],
-    ['30 Jul 2026, 14:31:00', 'Offer published', 'PeakPower Trading', 'Price € 94,7500/MWh · total € 72.768,00 · reaction window 30 minutes, expiring 15:01:00. All 3 active accounts notified.', 'indigo'],
-    ['30 Jul 2026, 14:44:18', 'Offer accepted', 'M. Vandersteen · Finance Director', '€ 72.768,00 reserved on the company wallet. Reservation RES-0912. Accepted by a different colleague than the requester.', 'amber'],
-    ['30 Jul 2026, 14:52:41', 'Trade confirmed', 'PeakPower Trading', 'Executed on the market, reference ICE-88213-A. Reservation settled — wallet debited € 72.768,00. Block BLK-0431 created with 4 allocations.', 'green'],
+    ['30 Jul 2026, 14:31:00', 'Offer published', 'PeakPower Trading', 'Price € 94,7500/MWh · total € 72.768,00 ex VAT · reaction window 30 minutes, expiring 15:01:00. The requester was notified; under four-eyes the second admin too.', 'indigo'],
+    ['30 Jul 2026, 14:44:18', 'Offer accepted', 'M. Vandersteen · Finance Director', '€ 88.049,28 reserved on the company wallet — the ex-VAT price plus 21% VAT. Reservation RES-0912. Accepted by a different colleague than the requester.', 'amber'],
+    ['30 Jul 2026, 14:52:41', 'Trade confirmed', 'PeakPower Trading', 'Executed on the market, reference ICE-88213-A. Reservation settled — wallet debited € 88.049,28. Block BLK-0431 created with 4 allocations.', 'green'],
   ];
   events.forEach((e, i) => {
     const y = cy + 74 + i * 130;
@@ -598,15 +606,15 @@ export function tradeHistory() {
   ];
   facts.forEach((f, i) => { b += statLine(rx + 18, cy + 62 + i * 26, rw - 36, f[0], f[1], { mono: i === 0 }); });
   b += line(rx + 18, cy + 300 - 44, rx + rw - 18, cy + 300 - 44, { stroke: C.border });
-  b += text(rx + 18, cy + 282, 'Total value', { size: 12.5, weight: 700 });
+  b += text(rx + 18, cy + 282, 'Total value — ex VAT', { size: 12.5, weight: 700 });
   b += text(rx + rw - 18, cy + 282, '€ 72.768,00', { size: 15, weight: 700, anchor: 'end' });
 
   b += panel(rx, cy + 316, rw, 304, 'Linked records');
   const links = [
     ['Block', 'BLK-0431', 'now visible on your charts'],
     ['Reservation', 'RES-0912', 'settled 30 Jul 14:52'],
-    ['Ledger entry #4471', 'Funds reserved', '− € 72.768,00 available'],
-    ['Ledger entry #4472', 'Trade settled', '− € 72.768,00 settled'],
+    ['Ledger entry #4471', 'Funds reserved', '− € 88.049,28 available'],
+    ['Ledger entry #4472', 'Trade settled', '− € 88.049,28 settled'],
     ['Invoice', 'from Jan 2027', 'block energy lines'],
   ];
   links.forEach((l, i) => {
@@ -627,13 +635,13 @@ export function walletLedger() {
   const { cx, cy, cw } = s;
 
   const kw = (cw - 2 * 16) / 3;
-  b += kpi(cx, cy, kw, 'AVAILABLE BALANCE', eur(19722), 'what you can commit right now', { accent: C.accent, h: 100 });
-  b += kpi(cx + kw + 16, cy, kw, 'SETTLED BALANCE', eur(29122), 'money in the wallet', { h: 100 });
-  b += kpi(cx + 2 * (kw + 16), cy, kw, 'RESERVED', eur(9400), '1 accepted trade awaiting confirmation', { accent: C.amber, h: 100 });
+  b += kpi(cx, cy, kw, 'AVAILABLE BALANCE', eur(75576.72), 'what you can commit right now', { accent: C.accent, h: 100 });
+  b += kpi(cx + kw + 16, cy, kw, 'SETTLED BALANCE', eur(86950.72), 'money in the wallet', { h: 100 });
+  b += kpi(cx + 2 * (kw + 16), cy, kw, 'RESERVED', eur(11374), '1 accepted trade · incl. VAT', { accent: C.amber, h: 100 });
 
-  b += note(cx, cy + 116, cw, 'Your minimum balance alert is set at € 25.000 — you are currently below it. Top up to keep trading.', 'amber');
+  b += note(cx, cy + 116, cw, 'The wallet funds trading only. Delivery invoices are paid to the bank and never debited here. No balance threshold is monitored.', 'muted');
 
-  b += panel(cx, cy + 172, cw, 480, 'Ledger', { subtitle: 'Every movement, newest first', right: 'Aug 2026 ▾   ·   All types ▾' });
+  b += panel(cx, cy + 172, cw, 520, 'Ledger', { subtitle: 'Every movement, newest first', right: 'Aug 2026 ▾   ·   All types ▾' });
 
   const cols = [
     { label: 'DATE & TIME', w: 112 }, { label: 'TYPE', w: 146 }, { label: 'DESCRIPTION', w: 236 },
@@ -643,14 +651,15 @@ export function walletLedger() {
   // Chronological, then displayed newest-first. Balances are computed, so they reconcile.
   const hist = [
     ['24-07 16:11', 'Adjustment', 'indigo', 'Correction — duplicate deposit reversed', 'S. Willems ⬥', 'ADJ-0031', -1500, 0],
-    ['28-07 08:30', 'Deposit (bank)', 'green', 'Transfer · ref PP-4821-QK', 'S. Willems ⬥', 'DEP-0118', 76500, 0],
-    ['30-07 14:44', 'Funds reserved', 'amber', 'Peak Q1-27 · 1,0 MW', 'M. Vandersteen', 'TRD-1051', 0, 72768],
-    ['30-07 14:52', 'Trade confirmed', 'green', 'Peak Q1-27 · reservation settled', 'M. Bakker ⬥', 'TRD-1051', -72768, -72768],
-    ['01-08 00:04', 'Invoice', 'muted', 'July 2026 · 6 connections', 'System', 'INV-2026-07-0042', -18110, 0],
-    ['05-08 15:22', 'Funds reserved', 'amber', 'Base Sep-26 · 0,05 MW', 'J. de Vries', 'TRD-1048', 0, 3900],
-    ['05-08 16:03', 'Reservation released', 'indigo', 'TRD-1048 failed — counterparty withdrew', 'M. Bakker ⬥', 'TRD-1048', 0, -3900],
+    ['28-07 08:30', 'Deposit (transfer)', 'green', 'Transfer matched on ref PP-4821-QK', 'System', 'DEP-0118', 76500, 0],
+    ['30-07 14:44', 'Funds reserved', 'amber', 'Peak Q1-27 · 1,0 MW · incl. VAT', 'M. Vandersteen', 'TRD-1051', 0, 88049.28],
+    ['30-07 14:52', 'Trade confirmed', 'green', 'Peak Q1-27 · reservation settled', 'M. Bakker ⬥', 'TRD-1051', -88049.28, -88049.28],
+    ['05-08 15:22', 'Funds reserved', 'amber', 'Base Sep-26 · 0,05 MW · incl. VAT', 'J. de Vries', 'TRD-1048', 0, 4719],
+    ['05-08 16:03', 'Reservation released', 'indigo', 'TRD-1048 failed — counterparty withdrew', 'M. Bakker ⬥', 'TRD-1048', 0, -4719],
+    ['06-08 09:20', 'Withdrawal', 'muted', 'Paid out to NL18 INGB 0007 2519 44', 'M. Vandersteen', 'WDR-0014', -5000, 0],
+    ['10-08 07:41', 'Deposit (transfer)', 'green', 'Transfer matched on ref PP-5107-TD', 'System', 'DEP-0126', 60000, 0],
     ['12-08 09:14', 'Deposit (iDEAL)', 'green', 'Top-up via iDEAL', 'J. de Vries', 'PAY-2291', 25000, 0],
-    ['13-08 10:15', 'Funds reserved', 'amber', 'Base Oct-26 · 0,12 MW', 'P. Aksoy', 'TRD-1072', 0, 9400],
+    ['13-08 10:15', 'Funds reserved', 'amber', 'Base Oct-26 · 0,12 MW · incl. VAT', 'P. Aksoy', 'TRD-1072', 0, 11374],
   ];
   let settled = 20000; let reserved = 0;
   const built = hist.map(([d, type, variant, desc, by, ref, dSet, dRes]) => {
@@ -676,8 +685,8 @@ export function walletLedger() {
   });
   b += table(cx + 18, cy + 232, cw - 36, cols, rows, { rowH: 40 });
 
-  b += text(cx + 18, cy + 638, 'Every movement names the colleague who caused it. Reference links open the trade, invoice or payment.', { size: 11, fill: C.faint });
-  b += text(cx + cw - 18, cy + 638, `Showing ${rows.length} of 143 entries`, { size: 11, fill: C.faint, anchor: 'end' });
+  b += text(cx + 18, cy + 678, 'Every movement names the colleague who caused it. Reservations and trade debits are VAT-inclusive; the price itself is quoted ex VAT.', { size: 11, fill: C.faint });
+  b += text(cx + cw - 18, cy + 678, `Showing ${rows.length} of 143 entries`, { size: 11, fill: C.faint, anchor: 'end' });
 
   return svgDoc(b, { label: 'Customer portal — wallet and ledger' });
 }
@@ -688,30 +697,32 @@ export function walletTopup() {
   let b = s.svg;
   const { cx, cy, cw } = s;
 
-  b += note(cx, cy, cw, 'You are € 12.400,00 short for the trade you were composing (Peak Q1-2027 · 1,0 MW). Top up and you will be returned to it.', 'amber');
+  b += note(cx, cy, cw, 'Available € 75.576,72 — the trade you were composing (Peak Q1-2027 · 1,0 MW) needs € 88.049,28 including VAT, so you are € 12.472,56 short.', 'amber');
 
   const colW = (cw - 24) / 2;
 
-  // iDEAL
-  b += rect(cx, cy + 56, colW, 430, { fill: C.panel, stroke: C.accent, r: 10, sw: 2 });
-  b += badge(cx + 18, cy + 74, 'RECOMMENDED', 'accent', { w: 106 });
+  // iDEAL — instant, but capped by the customer's own bank
+  b += rect(cx, cy + 56, colW, 430, { fill: C.panel, stroke: C.border2, r: 10 });
+  b += badge(cx + 18, cy + 74, 'INSTANT', 'accent', { w: 74 });
+  b += badge(cx + 100, cy + 74, 'BANK LIMIT APPLIES', 'amber', { w: 138 });
   b += text(cx + 18, cy + 126, 'iDEAL', { size: 22, weight: 700 });
-  b += text(cx + 18, cy + 148, 'Funds available within seconds', { size: 12.5, fill: C.muted });
-  b += field(cx + 18, cy + 186, colW - 36, 'AMOUNT', '€ 12.400,00', { focus: true, weight: 600 });
-  b += text(cx + 18, cy + 240, 'Suggested — the shortfall, rounded up. You can change it.', { size: 10.5, fill: C.faint });
+  b += text(cx + 18, cy + 148, 'Funds available within seconds — your own bank caps the amount', { size: 12.5, fill: C.muted });
+  b += field(cx + 18, cy + 186, colW - 36, 'AMOUNT', '€ 12.472,56', { focus: true, weight: 600 });
+  b += text(cx + 18, cy + 240, 'Suggested — the exact shortfall. No minimum and no maximum applies.', { size: 10.5, fill: C.faint });
   const quick = ['€ 10.000', '€ 25.000', '€ 50.000', '€ 100.000'];
   quick.forEach((q, i) => { b += badge(cx + 18 + i * 100, cy + 254, q, 'muted', { w: 90, h: 26, size: 12 }); });
   b += field(cx + 18, cy + 316, colW - 36, 'YOUR BANK', 'ING', { });
-  b += button(cx + 18, cy + 384, colW - 36, 'Pay € 12.400,00 with iDEAL', 'primary', { h: 44 });
+  b += button(cx + 18, cy + 384, colW - 36, 'Pay € 12.472,56 with iDEAL', 'primary', { h: 44 });
   b += text(cx + colW / 2, cy + 448, 'You will be redirected to your bank and returned here.', { size: 11, fill: C.faint, anchor: 'middle' });
   b += text(cx + colW / 2, cy + 466, 'PeakPower never sees your bank credentials.', { size: 11, fill: C.faint, anchor: 'middle' });
 
-  // Bank transfer
+  // Bank transfer — equal footing, and the only route without a bank-side ceiling
   const bx = cx + colW + 24;
-  b += rect(bx, cy + 56, colW, 430, { fill: C.panel, stroke: C.border, r: 10 });
-  b += badge(bx + 18, cy + 74, '1–2 BUSINESS DAYS', 'muted', { w: 138 });
+  b += rect(bx, cy + 56, colW, 430, { fill: C.panel, stroke: C.border2, r: 10 });
+  b += badge(bx + 18, cy + 74, 'NO LIMIT', 'accent', { w: 78 });
+  b += badge(bx + 104, cy + 74, '1–2 BUSINESS DAYS', 'muted', { w: 132 });
   b += text(bx + 18, cy + 126, 'Bank transfer', { size: 22, weight: 700 });
-  b += text(bx + 18, cy + 148, 'Transfer from your own bank using the reference below', { size: 12.5, fill: C.muted });
+  b += text(bx + 18, cy + 148, 'Any amount — PeakPower matches your transfer on the reference below', { size: 12.5, fill: C.muted });
 
   const bank = [
     ['Account holder', 'PeakPower Trading B.V.'],
@@ -728,11 +739,12 @@ export function walletTopup() {
 
   const ry = cy + 344;
   b += rect(bx + 18, ry, colW - 36, 62, { fill: C.accentBg, stroke: '#5eead4', r: 8 });
-  b += text(bx + 32, ry + 20, 'PAYMENT REFERENCE — ALWAYS INCLUDE THIS', { size: 9.5, fill: '#0f766e', weight: 700 });
-  b += text(bx + 32, ry + 46, 'PP-4821-QK', { size: 22, weight: 700, fill: '#0f766e', mono: true });
+  b += text(bx + 32, ry + 20, 'PAYMENT REFERENCE — ISSUED FOR THIS DEPOSIT, ALWAYS INCLUDE IT', { size: 9.5, fill: '#0f766e', weight: 700 });
+  b += text(bx + 32, ry + 46, 'PP-5233-BW', { size: 22, weight: 700, fill: '#0f766e', mono: true });
   b += text(bx + colW - 32, ry + 44, 'copy', { size: 11, fill: '#0f766e', weight: 600, anchor: 'end' });
 
-  b += note(bx + 18, cy + 420, colW - 36, 'Without the reference we cannot match your transfer automatically.', 'muted');
+  b += note(bx + 18, cy + 412, colW - 36, 'We match the incoming payment on this reference and email you when it lands.', 'muted');
+  b += text(bx + 32, cy + 474, 'No reference given? We fall back to your registered IBAN.', { size: 10.5, fill: C.faint });
   b += text(bx + colW / 2, cy + 500, 'Download instructions as PDF', { size: 11.5, fill: C.accent, weight: 600, anchor: 'middle' });
 
   b += panel(cx, cy + 512, cw, 140, 'Recent top-ups');
@@ -741,7 +753,7 @@ export function walletTopup() {
     { label: 'STATUS', w: 160 }, { label: 'AMOUNT', w: 220, align: 'end' },
   ], [
     [{ t: '12 Aug 2026, 09:14' }, { t: 'iDEAL · ING' }, { t: 'PAY-2291', mono: true }, { t: 'Succeeded', badge: 'green' }, { t: '€ 25.000,00', align: 'end', weight: 600 }],
-    [{ t: '28 Jul 2026, 08:30' }, { t: 'Bank transfer' }, { t: 'DEP-0118', mono: true }, { t: 'Credited', badge: 'green' }, { t: '€ 40.000,00', align: 'end', weight: 600 }],
+    [{ t: '10 Aug 2026, 07:41' }, { t: 'Bank transfer' }, { t: 'PP-5107-TD', mono: true }, { t: 'Matched', badge: 'green' }, { t: '€ 60.000,00', align: 'end', weight: 600 }],
   ], { rowH: 34 });
 
   return svgDoc(b, { label: 'Customer portal — wallet top-up' });
@@ -750,21 +762,21 @@ export function walletTopup() {
 /* ───────────────────────────────────────────────────────── invoice detail */
 export function invoiceDetail() {
   const s = shell({
-    portal: 'customer', title: 'Invoice INV-2026-08-0042', crumb: 'August 2026 · settled from wallet on 7 September',
-    nav: NAV, active: 6, user: USER, actions: [{ label: 'Download PDF' }, { label: 'Export CSV', variant: 'secondary', w: 106 }],
+    portal: 'customer', title: 'Invoice INV-2026-08-0042', crumb: 'August 2026 · numbered by the bookkeeping program · PDF sent from there',
+    nav: NAV, active: 6, user: USER, actions: [{ label: 'Export CSV', variant: 'secondary', w: 106 }],
   });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
   const kw = (cw - 3 * 14) / 4;
-  b += kpi(cx, cy, kw, 'INVOICE TOTAL', '€ 41.620,95', 'including VAT', { h: 80 });
+  b += kpi(cx, cy, kw, 'INVOICE SUBTOTAL', '€ 159.806,54', 'ex VAT — no VAT computed here', { h: 80 });
   b += kpi(cx + kw + 14, cy, kw, 'BILLED VOLUME', '1.291,4 MWh', 'across 6 connections', { h: 80 });
   b += kpi(cx + 2 * (kw + 14), cy, kw, 'BLOCK COVERAGE', '78,4 %', 'rest settled at day-ahead', { accent: C.accent, h: 80 });
-  b += kpi(cx + 3 * (kw + 14), cy, kw, 'SETTLED', '7 Sep 2026', 'wallet debit · ledger #4488', { accent: C.green, h: 80 });
+  b += kpi(cx + 3 * (kw + 14), cy, kw, 'PAYMENT', 'Due 30 Sep 2026', 'to the bank — never from the wallet', { h: 80 });
 
-  b += note(cx, cy + 96, cw, '4 of 31 delivery dates were still provisional when this invoice was calculated. Any correction is settled in the January annual true-up.', 'amber');
+  b += note(cx, cy + 96, cw, '4 of 31 delivery dates were still provisional when this invoice was calculated. A later correction produces its own correction invoice for the difference, whenever it arrives.', 'amber');
 
-  b += panel(cx, cy + 152, cw, 470, 'Rotterdam DC — EAN 8716 8710 0000 0000 11', { subtitle: 'Section 1 of 6 · measured consumption 385,42 MWh', right: 'expand all sections' });
+  b += panel(cx, cy + 152, cw, 426, 'Rotterdam DC — EAN 8716 8710 0000 0000 11', { subtitle: 'Section 1 of 6 · measured consumption 385,42 MWh', right: 'expand all sections' });
 
   const cols = [
     { label: '#', w: 44 }, { label: 'DESCRIPTION', w: 466 }, { label: 'REFERENCE', w: 140 },
@@ -775,20 +787,21 @@ export function invoiceDetail() {
     [{ t: '1' }, { t: 'Base block Aug-26', weight: 600, sub: 'block energy at the agreed price' }, { t: 'TRD-1042', mono: true, fill: C.accent }, { t: '297,60 MWh', align: 'end' }, { t: '€ 72,4000', align: 'end' }, { t: '€ 21.546,24', align: 'end', weight: 600 }],
     [{ t: '2' }, { t: 'Peak block Q3-26 — August portion', weight: 600, sub: 'block energy at the agreed price' }, { t: 'TRD-1051', mono: true, fill: C.accent }, { t: '50,40 MWh', align: 'end' }, { t: '€ 96,1500', align: 'end' }, { t: '€ 4.845,96', align: 'end', weight: 600 }],
     [{ t: '3' }, { t: 'Day-ahead purchase — uncovered volume', weight: 600, sub: 'volume-weighted average price' }, { t: 'intervals', fill: C.faint }, { t: '84,12 MWh', align: 'end' }, { t: '€ 91,2400', align: 'end' }, { t: '€ 7.675,11', align: 'end', weight: 600 }],
-    [{ t: '4' }, { t: 'Day-ahead sale — surplus volume', weight: 600, sub: 'block volume above consumption' }, { t: 'intervals', fill: C.faint }, { t: '−46,70 MWh', align: 'end', fill: C.green }, { t: '€ 38,9100', align: 'end' }, { t: '− € 1.817,10', align: 'end', weight: 600, fill: C.green }],
+    [{ t: '4' }, { t: 'Day-ahead sale — surplus and exported volume', weight: 600, sub: 'block volume above consumption, plus physical export — raw day-ahead price' }, { t: 'intervals', fill: C.faint }, { t: '−46,70 MWh', align: 'end', fill: C.green }, { t: '€ 38,9100', align: 'end' }, { t: '− € 1.817,10', align: 'end', weight: 600, fill: C.green }],
     [{ t: '5' }, { t: 'Imbalance — pro-rata allocation', weight: 600, sub: 'portfolio imbalance allocated on consumption' }, { t: 'PVNed', fill: C.faint }, { t: '—', align: 'end', fill: C.faint }, { t: '—', align: 'end', fill: C.faint }, { t: '€ 412,88', align: 'end', weight: 600 }],
-    [{ t: '6' }, { t: 'Surcharge', weight: 600, sub: 'contractual adder, valid from 1 Jan 2026' }, { t: 'SUR-0007', mono: true, fill: C.accent }, { t: '385,42 MWh', align: 'end' }, { t: '€ 4,5000', align: 'end' }, { t: '€ 1.734,39', align: 'end', weight: 600 }],
-    [{ t: '7' }, { t: 'Energiebelasting — tier 3', weight: 600, sub: 'cumulative year-to-date basis · tariff 2026 v1' }, { t: 'tariff 2026', fill: C.faint }, { t: '385.420 kWh', align: 'end' }, { t: 'tier rate', align: 'end', fill: C.faint }, { t: '€ 0,00', align: 'end', weight: 600, fill: C.faint }],
+    [{ t: '6' }, { t: 'Energiebelasting — bracket 3', weight: 600, sub: 'brackets 2026 v2 · 3,08 GWh year-to-date · no reduction on this EAN' }, { t: 'EB-2026-v2', mono: true, fill: C.accent }, { t: '385.420 kWh', align: 'end' }, { t: '€ 0,0390', align: 'end' }, { t: '€ 15.031,38', align: 'end', weight: 600 }],
   ];
   b += table(cx + 18, cy + 212, cw - 36, cols, rows, { rowH: 44 });
 
-  const ty = cy + 546;
+  const ty = cy + 502;
   b += line(cx + 18, ty, cx + cw - 18, ty, { stroke: C.border2 });
   b += text(cx + 18, ty + 22, 'Volume check', { size: 11.5, fill: C.muted, weight: 600 });
-  b += text(cx + 130, ty + 22, '297,60 + 50,40 + 84,12 − 46,70 = 385,42 MWh — reconciles to measured consumption', { size: 11.5, fill: C.green });
+  b += text(cx + 130, ty + 22, '297,60 + 50,40 + 84,12 − 46,70 = 385,42 MWh — reconciles to measured consumption, and is the energiebelasting basis', { size: 11.5, fill: C.green });
   b += badge(cx + 18, ty + 34, '✓ RECONCILED', 'green', { w: 108, h: 20 });
   b += text(cx + cw - 18, ty + 26, 'Section subtotal', { size: 12, fill: C.muted, anchor: 'end' });
-  b += text(cx + cw - 18, ty + 52, '€ 34.397,48', { size: 19, weight: 700, anchor: 'end' });
+  b += text(cx + cw - 18, ty + 52, '€ 47.694,47', { size: 19, weight: 700, anchor: 'end' });
+
+  b += note(cx, cy + 594, cw, 'The bookkeeping program assigns the invoice number, generates the PDF and emails it. This portal shows the calculated data behind that document — ex VAT throughout.', 'muted');
 
   return svgDoc(b, { label: 'Customer portal — invoice detail' });
 }

@@ -11,52 +11,69 @@ time).
 | Queue | Purpose | Workers | Why separate |
 | --- | --- | --- | --- |
 | `critical` | Offer expiry, wallet operations | 4 | Must never wait behind a bulk job |
-| `ingestion` | PVNed document processing | 8 | Bursty; the bulk of the throughput |
+| `ingestion` | ~~PVNed~~ **BRP** document processing ⚠ **Amended 2026-08-19 by [DEC-69]** | 8 | Bursty; the bulk of the throughput. The queue is BRP-agnostic — PVNed is the first adapter behind the port **[F02-R39..R44]**, not the queue's definition |
 | `default` | Rollups, cache invalidation | 4 | |
-| `integration` | Odoo push, Montel polls, payment reconciliation | 4 | Slow, external, retry-heavy |
-| `notification` | Email dispatch via **SendGrid [DEC-48]** — offer and approval notifications, **and invoices [DEC-47]** | 4 | Isolated so a mail-provider outage stalls nothing else |
-| `reporting` | Invoice runs, exports | 2 | Long-running; must not starve the rest |
+| `integration` | ~~Odoo push~~ **bookkeeping-program push [DEC-88]**, Montel polls **[DEC-96]**, ~~payment reconciliation~~ **incoming-payment matching for wallet deposits [DEC-106]** | 4 | Slow, external, retry-heavy |
+| `notification` | Email dispatch via **SendGrid [DEC-48]** — offer, approval, wallet and deposit notifications, ~~**and invoices [DEC-47]**~~ ⚠ **Amended 2026-08-19 by [DEC-89]** | 4 | Isolated so a mail-provider outage stalls nothing else |
+| `reporting` | Invoice runs, exports, **day-ahead backfill [DEC-75]**, the **annual energiebelasting close [DEC-74]** | 2 | Long-running; must not starve the rest |
 
 A single shared queue would mean a 40-minute invoice run delaying an offer expiry by 40 minutes.
 Separating them is the whole point.
 
-⚠ **[DEC-47] puts two very different urgencies on one queue.** The monthly run enqueues one invoice
+⚠ ~~**[DEC-47] puts two very different urgencies on one queue.** The monthly run enqueues one invoice
 email per customer at 02:00 on the 5th; an offer notification has a 30-minute window to be useful and
 **[DEC-63]** sends one to every active account. The outbox is therefore drained in priority order —
 offer, approval and expiry notifications ahead of invoices — rather than in insertion order. If
 invoice volume ever makes that insufficient, the answer is a second `notification-bulk` queue, not a
-larger worker count on this one.
+larger worker count on this one.~~
+
+⚠ **Amended 2026-08-19 by [DEC-89] and [DEC-111].** Both halves of that paragraph lost their premise.
+The invoice email leaves the platform entirely — the bookkeeping program renders and sends it
+**[DEC-89]** — so the monthly run no longer enqueues one mail per customer at 02:00 on the 5th, and
+the `notification-bulk` escape hatch is dropped from the plan rather than kept in reserve. And
+**[DEC-111]** reverses **[DEC-63]**: an offer notification goes to the account that raised the
+request, plus the second admin when the company has four-eyes on **[DEC-71]** — one or two
+recipients, not the whole company.
+
+The priority drain **stays**, and its justification inverts: the fan-out per offer shrinks, but the
+cost of losing a single message rises. Under **[DEC-63]** any of five accounts could still have
+accepted a delayed offer; under **[DEC-111]** there may be exactly one person who can, so a
+notification delayed past `expires_at` kills the offer outright. The queue still mixes a 30-minute
+offer clock with wallet alerts and "funds received" mail **[DEC-106]**, which is reason enough to
+order it — and the retry ladder in §6 matters more than it did, not less.
 
 ## 2. Recurring jobs
 
 | Job | Schedule (Europe/Amsterdam) | Queue | Purpose |
 | --- | --- | --- | --- |
-| `ExpireOffersJob` | every minute | `critical` | Moves **`OFFERED` *and* `AWAITING_APPROVAL`** past `expires_at` to `EXPIRED`, **releasing the reservation in the same transaction** where one is held, and notifies **[DEC-33]**, **[F05-R31]**, **[F05-R62]** |
-| `EvaluateWalletThresholdsJob` | daily 08:00 | `critical` | Rule evaluation and alerts **[F11](../10-features/F11-notifications.md)** |
-| `ReconcileWalletBalancesJob` | daily 03:00 | `critical` | Recomputes balances from entries; alerts on mismatch **[F06-R09]** |
-| `PollMontelIndicationsJob` | every 5 min (market hours), hourly otherwise | `integration` | Price indications |
-| `FetchDayAheadPricesJob` | daily **18:05** | `integration` | Day-ahead curve for D+1. **One scheduled fetch plus retry [DEC-36]** — the NL curve arrives at 18:00 Europe/Amsterdam. Retried on failure *or* on an incomplete curve **[F08-R06]** |
-| `CheckDayAheadCompletenessJob` | daily **22:00** | `integration` | Verifies coverage for the next day; alerts on gaps **[F08-R07]** |
-| `DetectMissingMeteringDataJob` | daily 10:00 | `default` | Metering points silent beyond the threshold **[F02-R26]** |
-| `FinaliseDeliveryDatesJob` | daily 04:00 | `default` | Marks dates `FINAL` after 10 working days **[F02-R23]** |
+| `ExpireOffersJob` | every minute | `critical` | Moves **`OFFERED` *and* `AWAITING_APPROVAL`** past `expires_at` to `EXPIRED`, **releasing the reservation in the same transaction** where one is held, and notifies ~~**[DEC-33]**~~ **[DEC-71]**, **[F05-R31]**, **[F05-R62]**. ⚠ **Amended 2026-08-19 by [DEC-71]**: `AWAITING_APPROVAL` now arises from the company's four-eyes **mode**, not from a value threshold, so it applies to **every** trade of a four-eyes company. The job's load tracks that flag rather than trade size, and the reservations it releases are no longer only the large ones |
+| ~~`EvaluateWalletThresholdsJob`~~ | ~~daily 08:00~~ | ~~`critical`~~ | ~~Rule evaluation and alerts **[F11](../10-features/F11-notifications.md)**~~ ⚠ **Removed 2026-08-19 by [DEC-90]**, reversing **[DEC-49]**. There is nothing to evaluate: no warning amount, no critical amount. The balance is **visible, not monitored**, and the pre-trade check **[DEC-41]** is the only thing that reads it for a decision. Cost of the removal, recorded: a customer whose balance is too low finds out when a trade is refused, not the evening before |
+| `ReconcileWalletBalancesJob` | daily 03:00 | `critical` | Recomputes balances from entries; alerts on mismatch **[F06-R09]**. **Unchanged** — the wallet survives **[DEC-77]** as the trading purse, so its ledger still has to agree with itself. It has one entry type fewer to reconcile: `INVOICE_DEBIT` is gone **[DEC-77]** |
+| `PollMontelIndicationsJob` | every 5 min (market hours), hourly otherwise | `integration` | Price indications, through the **existing Montel service [DEC-96]**, **[F08-R18]**. The **[DEC-80]** markup — a configurable percentage, default 2% — is applied at the presentation edge, never stored by this job **[F08-R17]** |
+| `FetchDayAheadPricesJob` | daily **18:05** | `integration` | Day-ahead curve for D+1. **One scheduled fetch plus retry [DEC-36]** — the NL curve arrives at 18:00 Europe/Amsterdam. Retried on failure *or* on an incomplete curve **[F08-R06]**. **Confirmed 2026-08-19**: this round does not touch it. **[DEC-75]** adds *history behind* it, not a second live fetch — §2.1 |
+| `CheckDayAheadCompletenessJob` | daily **22:00** | `integration` | Verifies coverage for the next day; alerts on gaps **[F08-R07]**. It covers **tomorrow's** curve only. Historical gaps belong to the backfill **[F08-R15]** and must not raise this alert, or every un-backfilled day in the licence window pages the desk every night |
+| `DetectMissingMeteringDataJob` | daily 10:00 | `default` | Metering points silent beyond the threshold **[F02-R26]**. **BRP-agnostic [DEC-69]**: silence is measured per metering point against the expected cadence of the BRP it is assigned to, so a future BRP that batches changes the expectation, not the job |
+| `FinaliseDeliveryDatesJob` | daily 04:00 | `default` | Marks dates `FINAL` after 10 working days **[F02-R23]**. ⚠ **Amended 2026-08-19 by [DEC-98]**: `FINAL` now means *no newer version **yet***, not *no newer version **ever***. Reconciliation data does arrive after the window, sometimes as a manual process **[DEC-60]**. The job no longer closes anything — it marks a date good enough to invoice — and a later version reopens it through the correction path **[DEC-99]** |
 | `RebuildDailyPositionsJob` | daily 04:30 | `default` | Safety net for rollups missed by event-driven rebuilds |
 | `EscalateUnconfirmedTradesJob` | every 15 min | `critical` | Alerts on `ACCEPTED` trades older than the threshold **[F05-R39]** |
-| `RetryOdooPushJob` | every 10 min | `integration` | Retries invoices in `PUSH_FAILED` |
-| `ReconcilePaymentsJob` | every 15 min | `integration` | Resolves payments stuck `INITIATED`/`PENDING` **[F07-R10]** |
-| `DispatchNotificationsJob` | every minute | `notification` | Drains the outbox in priority order via SendGrid **[DEC-48]** — offer, approval and expiry notifications ahead of invoices **[DEC-47]** |
-| `MonthlyInvoiceRunJob` | 5th of the month, 02:00 | `reporting` | Monthly invoicing **[F10-R02]** |
-| `AnnualTrueUpJob` | 20 January, 02:00 | `reporting` | Previous-year true-up. ⚠ **Deferred with energiebelasting — [DEC-24]**. Tier crossings were its principal reason to exist; only the residual late-metering-correction role remains, and that has no live settlement path meanwhile |
+| ~~`RetryOdooPushJob`~~ **`RetryBookkeepingPushJob`** | every 10 min | `integration` | ⚠ **Renamed and re-scoped 2026-08-19 by [DEC-88]**. ~~Retries invoices in `PUSH_FAILED`~~ — retries **draft invoices** and **energiebelasting ledger entries [DEC-74]** left in `PUSH_FAILED` after the inline ladder is exhausted. The stake changed with the name: a push that never lands means the customer has **no numbered invoice at all**, where before it meant the platform's own number had not yet reached the accounting system — §6 |
+| `ReconcilePaymentsJob` | every 15 min | `integration` | Resolves payments stuck `INITIATED`/`PENDING` **[F07-R10]**. ⚠ **Narrowed 2026-08-19 by [DEC-105]**: **wallet top-ups only**. Invoice payments are matched in the bookkeeping program, which sees them on its own bank feed **[DEC-109]**, and never reach this job |
+| **`MatchIncomingPaymentsJob`** | **every 15 min** | `integration` | **New 2026-08-19 — [DEC-106].** Reads the incoming-credit feed, matches each credit to an open deposit intent on the **platform-issued payment reference**, falls back to the company IBAN **[DEC-61]** when the reference is missing or mangled, credits the wallet and enqueues the "funds received" mail. An unmatched credit goes to an employee review list, never to a best-guess wallet: crediting the wrong wallet is unwindable only by hand, and **[DEC-84]** removes the amount bounds that would otherwise make a wrong match implausible. ⚠ **Which** feed it reads is **[OQ-93]** — the job is specified against a *normalised* credit (amount, value date, counterparty IBAN, description) so the feed stays an adapter choice |
+| `DispatchNotificationsJob` | every minute | `notification` | Drains the outbox in priority order via SendGrid **[DEC-48]** — offer, approval and expiry notifications ~~ahead of invoices **[DEC-47]**~~ ⚠ **Amended 2026-08-19 by [DEC-89]**: there are no invoice mails in the outbox at all. The queue now mixes the offer clock with wallet alerts and deposit-received mail **[DEC-106]** — §1 |
+| `MonthlyInvoiceRunJob` | 5th of the month, 02:00 | `reporting` | Monthly invoicing **[F10-R02]**. ⚠ **Amended 2026-08-19 by [DEC-99]**: it is a **batch, not a gate** — it no longer closes a month against later correction. See §2.2 |
+| ~~`AnnualTrueUpJob`~~ | ~~20 January, 02:00~~ | ~~`reporting`~~ | ~~Previous-year true-up. ⚠ **Deferred with energiebelasting — [DEC-24]**. Tier crossings were its principal reason to exist; only the residual late-metering-correction role remains, and that has no live settlement path meanwhile~~ ⚠ **Split 2026-08-19**, not simply revived. Its two roles separate cleanly: tier crossings come back annually as **`AnnualEnergyTaxCloseJob`** **[DEC-74]**, and the late-metering-correction role becomes **continuous** as `CalculateCorrectionInvoiceJob` **[DEC-99]**, §3. The name retires because nothing is left that is both annual and a true-up; **[F10-R27..R33]** keep their IDs |
+| **`AnnualEnergyTaxCloseJob`** | **20 January, 02:00** | `reporting` | **New 2026-08-19 — [DEC-74]**, reversing **[DEC-24]**. Computes energiebelasting **per EAN per calendar year** on net usage **[DEC-22]** against the versioned bracket table for that year, applies the **per-customer reduction or exemption** where one is configured — the minority who do not pay the standard rate, of whom growers are the named example — and pushes the result as a **ledger entry** to the bookkeeping program **[DEC-88]**. Where an EAN changed customer mid-year each period gets **50% of each bracket** — a straight half-and-half split of the annual tier boundaries, not a pro-rata by days **[DEC-74]**, closing **[OQ-77]**. Gated per customer on the year's dates being `FINAL` **[F10-R28]**; a customer failing the gate is **skipped with a reason**, never estimated. ⚠ Under **[DEC-98]** `FINAL` is not permanent, so this job is **re-runnable per (EAN, year)** and a later correction produces a **delta** ledger entry rather than a rewritten one. Whether the *vermindering* itself applies is **[OQ-96]** |
 | `CreatePartitionsJob` | 1st of the month, 01:00 | `default` | Creates interval partitions three months ahead |
 | `ExtendCalendarIntervalsJob` | 1 December, 01:00 | `default` | Materialises the next year's interval spine and peak membership |
 | `PurgeExpiredIdempotencyKeysJob` | daily 05:00 | `default` | Housekeeping |
 | `ArchiveOldMessagesJob` | weekly, Sunday 02:00 | `default` | Moves raw payloads to cold storage |
 
-### 2.1 Day-ahead timing — [DEC-36]
+### 2.1 Day-ahead timing — [DEC-36], and the backfill behind it — [DEC-75]
 
 The four-attempt 13:00 / 14:00 / 15:00 / 18:00 schedule existed because the publication time was
 unknown; three of those four attempts were guesses that could only fail. **[DEC-36]** removes the
 guessing: the NL curve arrives at **18:00 Europe/Amsterdam**, so there is one fetch and a retry
-ladder behind it.
+ladder behind it. **This round leaves that untouched.**
 
 **18:05, not 18:00.** A fetch scheduled at the publication instant races the publication. Five
 minutes costs nothing and removes a first attempt that is expected to fail — and an expected failure
@@ -76,11 +93,90 @@ after the last attempt and two hours before midnight, which is the window in whi
 still use the manual-entry route **[F08-R10]** before the day it prices begins. Anything later eats
 that window; anything earlier alerts on a job that is still working.
 
+**`BackfillDayAheadPricesJob` is a separate job, not a widened fetch — [DEC-75].** **[DEC-36]**
+settled *when* the curve arrives; **[DEC-75]** settles that Montel's **history** is available, so
+there is no backfill cliff and positions can be settled retrospectively. The two must not be the same
+job, for three reasons that are each sufficient:
+
+| Property | `FetchDayAheadPricesJob` | `BackfillDayAheadPricesJob` |
+| --- | --- | --- |
+| Trigger | Recurring, 18:05 daily **[DEC-36]** | **On demand for a requested date range** **[F08-R15]**, and automatically when a correction needs a day the platform never stored **[DEC-99]** |
+| Queue | `integration` | `reporting` — it is bounded work measured in days, not one call |
+| Retry ladder | 6 attempts ending ~21:48, because the day it prices starts at midnight (§6) | The generic `integration` ladder. Nothing downstream starts at midnight; a backfill that finishes tomorrow is still useful |
+| Failure meaning | Tomorrow cannot be settled | A **past** month cannot be re-settled — visible, not urgent |
+
+Everything else is shared on purpose: same storage, same versioning **[F08-R04]**, same completeness
+check **[F08-R06]** **[F08-R15]**. A second code path for old days would be a second place for the
+completeness rule to drift.
+
+**The backfill is chunked one delivery day per unit of work, and takes the same mutex as the daily
+fetch** (§7). Without the mutex a backfill range that happens to include *yesterday* races the 18:05
+job for the same delivery day and both write a version; with it, one waits. Re-running a backfill is
+safe because a re-fetched day creates a new version **only when the price differs** **[F08-R04]** —
+version churn of identical rows would make the correction trail **[DEC-99]** unreadable.
+
 **`EscalateUnconfirmedTradesJob` covers `ACCEPTED` only — deliberately.** A trade in
 `AWAITING_APPROVAL` is not waiting on PeakPower and never reaches the "to confirm" queue
-**[F05-R66]**; it is waiting on the customer's second account, under its own clock, and
+**[F05-R66]**; it is waiting on the customer's second admin account, under its own clock, and
 `ExpireOffersJob` ends it. Adding `AWAITING_APPROVAL` here would page the desk about a trade it is
-not permitted to act on.
+not permitted to act on. ⚠ **[DEC-71]** makes this louder rather than quieter: four-eyes is now a
+company **mode**, so a four-eyes company puts *every* trade through `AWAITING_APPROVAL` and the
+volume of rows this job must keep ignoring rises with it.
+
+### 2.2 What this round takes off the schedule
+
+The 2026-08-19 round moves invoicing mechanics — numbering, PDF rendering, the email, VAT, surcharges,
+invoice payment matching and chargebacks — out of the platform and into the **bookkeeping program**.
+Several jobs go with them. Some were in this catalogue; some were only ever implied by a feature
+specification and are named here anyway, so that the removal is checkable rather than assumed.
+
+| Job | Status | Driving decision and reason |
+| --- | --- | --- |
+| `EvaluateWalletThresholdsJob` | **Removed from §2** | **[DEC-90]**, reversing **[DEC-49]**. No thresholds exist to evaluate |
+| `EvaluateWalletThresholdJob` (event-triggered twin) | **Removed from §3** | **[DEC-90]**. Same reason; a balance change now triggers nothing |
+| `SettleInvoiceOnWalletJob` | **Removed from §3** | **[DEC-77]**, reversing **[AS-12]**. Delivery invoices are paid to the bank, never deducted from the wallet. The `INVOICE_DEBIT` entry type goes with the job |
+| `EmailInvoiceJob` | **Removed from §3** | **[DEC-89]**. The bookkeeping program sends the invoice mail |
+| Invoice PDF render | **Never built** | **[DEC-89]**, reversing **[DEC-46]**. It had no job row yet; it now never gets one. Branding of the document leaves platform control with it |
+| Any surcharge/topup resolution or rating job | **Never built** | **[DEC-73]**, reversing **[DEC-35]**. The platform pushes **volume**; the bookkeeping program multiplies it by the topup fee. There is no surcharge tariff to resolve, so there is nothing to schedule |
+| Any feed-in tariff resolution job | **Never built** | **[DEC-87]**, reversing the second half of **[DEC-44]**. Export is credited raw at the day-ahead price, so `MISSING_FEED_IN_TARIFF` and the month-skip it caused are gone |
+| Any invoice payment-matching or chargeback job | **Never built** | **[DEC-105]**, **[DEC-85]**, **[DEC-109]**. Invoice payments and chargebacks are matched in the bookkeeping program from its bank feed. `MatchIncomingPaymentsJob` is **not** this job: it matches **wallet deposits only** **[DEC-106]** |
+| `AnnualTrueUpJob` | **Split** | **[DEC-74]** takes the annual half, **[DEC-99]** makes the correction half continuous |
+
+Net effect on the schedule: **two jobs removed, three added** (`MatchIncomingPaymentsJob`,
+`AnnualEnergyTaxCloseJob`, and `BackfillDayAheadPricesJob` on demand), one renamed, and one split. The
+work does not disappear — it moves across an integration boundary, which is why §6 gains a retry class
+and **[OQ-69]** gets heavier.
+
+### 2.3 The monthly run stops being a gate — [DEC-99], [DEC-98]
+
+Before this round the 5th-of-the-month run was the moment a month became billable **and** the moment
+it closed. A correction arriving afterwards flagged the invoice **[F02-R20]**, **[F10-R22]** and
+waited for a January true-up that was itself deferred **[DEC-24]** — so in practice it waited for
+nothing. Two decisions dismantle that:
+
+- **[DEC-98]** removes the premise. PVNed *does* supply reconciliation data after the 10-working-day
+  window, sometimes as a manual process. Any job that treated the window as final was building on a
+  fact that turned out to be wrong — `FinaliseDeliveryDatesJob` is amended in §2 accordingly.
+- **[DEC-99]** removes the gate. A correction is invoiced as a **delta, whenever it lands**, months
+  after the month if that is when it arrives.
+
+Four consequences for job design, none of them optional:
+
+1. **The monthly run must be re-enterable, not merely retryable.** Idempotency per (customer, month)
+   was already rule 1 in §5; it is now load-bearing rather than hygienic, because the same month can
+   legitimately be calculated again a year later.
+2. **The correction path is event-driven, not scheduled** (§3). A monthly sweep would add up to 30
+   days of latency to a delta that is already late by construction. There is no `MonthlyCorrectionRun`.
+3. **No materiality threshold [DEC-100].** Nothing is netted, batched or waived below a floor; the
+   €25 default is removed rather than configured. ⚠ Cost, recorded because it is real: a €0,40
+   correction produces its own draft, and every draft costs a human check in the bookkeeping program
+   **[DEC-88]**. The number of correction drafts is bounded only by how often corrections arrive, and
+   nothing in the platform limits that. If it becomes a problem the answer is a decision to batch,
+   not a quiet threshold in a job.
+4. **The run date stops being interesting.** The 5th **[F10-R02]** was chosen against the
+   10-working-day window, which is what **[OQ-56]** was asking about. Under **[DEC-99]** the date only
+   decides how much of a month is provisional on first issue — never whether the month can be
+   corrected later. **[OQ-56]** closes on that basis, and the 5th stays.
 
 ## 3. Event-triggered jobs
 

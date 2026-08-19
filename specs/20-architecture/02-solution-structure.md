@@ -25,9 +25,11 @@ peakpower-platform/                             # repository 1 — .NET
 │   ├── Hosts/
 │   │   ├── PeakPower.AppHost/                  # .NET Aspire orchestrator
 │   │   ├── PeakPower.ServiceDefaults/          # OTel, health checks, resilience
-│   │   ├── PeakPower.Api.Customer/             # customer-facing API
+│   │   ├── PeakPower.Api.Customer/             # portal BFF + customer usage API  [DEC-97]
 │   │   ├── PeakPower.Api.Employee/             # back-office API
-│   │   └── PeakPower.Worker/                   # Hangfire host + ingestion webhooks
+│   │   ├── PeakPower.Worker/                   # Hangfire host + BRP ingestion webhooks
+│   │   ├── PeakPower.Migrator/                 # runs migrations to completion  [§4]
+│   │   └── PeakPower.DevStubs/                 # development only  [§4.1]
 │   │
 │   ├── Core/
 │   │   ├── PeakPower.Domain/                   # entities, value objects, invariants
@@ -36,11 +38,17 @@ peakpower-platform/                             # repository 1 — .NET
 │   │
 │   └── Infrastructure/
 │       ├── PeakPower.Persistence/              # EF Core, migrations, repositories
-│       ├── PeakPower.Integration.Pvned/
-│       ├── PeakPower.Integration.Montel/
-│       ├── PeakPower.Integration.Payments/
-│       ├── PeakPower.Integration.Odoo/
-│       ├── PeakPower.Integration.Email/        # SendGrid  [DEC-48]
+│       ├── PeakPower.Ingestion/                # BRP-agnostic pipeline: raw persistence,
+│       │                                       # versioning [DEC-07], quarantine  [DEC-69]
+│       ├── PeakPower.Integration.Brp.Pvned/    # first BRP adapter — was
+│       │                                       # Integration.Pvned  [DEC-69]
+│       ├── PeakPower.Integration.Montel/       # wraps PeakPower's own Montel service [DEC-96]
+│       ├── PeakPower.Integration.Payments/     # PSP port (unchosen [DEC-86]) + bank-transfer
+│       │                                       # reference matching  [DEC-106]
+│       ├── PeakPower.Integration.Bookkeeping/  # draft invoices + ledger push; was
+│       │                                       # Integration.Odoo  [DEC-88] [DEC-107] [OQ-69]
+│       ├── PeakPower.Integration.Email/        # SendGrid — platform notifications only,
+│       │                                       # no invoice mail  [DEC-48] [DEC-89]
 │       └── PeakPower.Jobs/                     # Hangfire job definitions
 │
 ├── tests/
@@ -54,6 +62,21 @@ peakpower-platform/                             # repository 1 — .NET
     ├── infra/                                  # Bicep / Terraform — the whole estate
     └── pipelines/
 ```
+
+**What the 2026-08-19 round did to that list.** Four projects change and one never gets written. The
+net effect is that the platform sheds invoicing mechanics and gains an ingestion seam:
+
+| Project | Change | Why |
+| --- | --- | --- |
+| `PeakPower.Ingestion` | **New** | **[DEC-69]** makes the BRP configurable reference data. Raw-payload persistence, versioning **[DEC-07]** and quarantine are BRP-agnostic and belong to the pipeline, not to PVNed. Cost: one interface seam and a `brp` table now, so that a second adapter is additive later |
+| `PeakPower.Integration.Pvned` → `PeakPower.Integration.Brp.Pvned` | **Renamed and narrowed** | **[DEC-69]**. It keeps the PVNed webhook, parser and format-specific validation, and loses everything a second BRP would also need. The `Brp.` segment is what makes an architecture test able to say "the pipeline may not reference any adapter" (§3) |
+| ~~`PeakPower.Integration.Surcharges`~~ | **Never written** | ⚠ **Reversed 2026-08-19 by [DEC-73]** — the surcharge tariff table and its resolution order leave the platform. The platform pushes **volume**; the bookkeeping program multiplies it by the topup fee |
+| ~~PDF rendering package~~ (QuestPDF or equivalent) | **Never taken** | ⚠ **Reversed 2026-08-19 by [DEC-89]** — the bookkeeping program renders and emails the invoice. No PDF library enters `Directory.Packages.props`, and no project exists to hold one. §7 makes that a standing rule rather than an omission |
+| `PeakPower.Integration.Odoo` → `PeakPower.Integration.Bookkeeping` | **Renamed** | **[DEC-88]**, **[DEC-89]**, **[DEC-105]**, **[DEC-108]**, **[DEC-109]** all move work into a program the source names as "Odoo or Moneybird or another program". The concrete adapter is still Odoo-first; the project name stops pretending the choice is made. **[OQ-69]** now gates the first invoice rather than a nice-to-have — see §8 |
+| `PeakPower.Api.Customer` | **Grew** | **[DEC-97]** puts a customer usage API in scope. It is a second surface on the same host, not a fourth host: same Entra tenant, same company scoping, same rate limiting, one deployment. A separate host would double the auth and deploy surface for one read model. If **[OQ-95]** lands on file/FTP instead of HTTP, the export job goes in `PeakPower.Jobs` and the API surface stays as it is |
+
+`PeakPower.Migrator` and `PeakPower.DevStubs` were always in §4 and never in this tree; they are listed
+now so the two agree.
 
 ```
 peakpower-web/                                  # repository 2 — Angular 22  [DEC-54]
@@ -96,7 +119,9 @@ flowchart TB
     APP["Application"]
     DOMAIN["Domain"]
     PERSIST["Persistence"]
-    INTEG["Integration.*"]
+    INGEST["Ingestion<br/>BRP-agnostic pipeline"]
+    BRP["Integration.Brp.*<br/>Pvned first"]
+    INTEG["Integration.*<br/>Montel · Payments ·<br/>Bookkeeping · Email"]
     JOBS["Jobs"]
 
     APPHOST -.->|"references for<br/>orchestration only"| CAPI
@@ -119,6 +144,10 @@ flowchart TB
     PERSIST --> APP
     PERSIST --> DOMAIN
     INTEG --> APP
+    INGEST --> APP
+    BRP -->|"implements<br/>IBrpAdapter"| APP
+
+    INGEST x--x|"forbidden — the pipeline never names an adapter"| BRP
 
     CAPI -.->|"DI wiring only"| PERSIST
     CAPI -.-> INTEG
@@ -126,11 +155,19 @@ flowchart TB
     EAPI -.-> INTEG
     WORKER -.-> PERSIST
     WORKER -.-> INTEG
+    WORKER -.-> INGEST
+    WORKER -.-> BRP
 ```
 
 **The rule that matters:** `Domain` references nothing. `Application` references only `Domain` and
 defines *ports* (interfaces) that infrastructure implements. Hosts reference infrastructure solely to
 register it in DI at composition root. An architecture test enforces this.
+
+**The rule [DEC-69] adds:** `Ingestion` depends on the `IBrpAdapter` port in `Application` and on no
+adapter assembly. Adapters are selected at the composition root from the `brp` reference row on the
+metering point. This is the whole cost of "PVNed is the first BRP, not the only one" — one interface,
+one lookup, and an architecture test that fails the build if the pipeline ever reaches for a PVNed
+type directly (§3). Without the test the seam closes again within two sprints, silently.
 
 ## 3. Module organisation inside Domain and Application
 
@@ -140,17 +177,41 @@ still moving.
 
 ```
 PeakPower.Domain/
-├── Common/                    # Money, MW, MWh, DateRange, EanCode, Result
-├── Identity/
-├── Customers/                 # Customer, MeteringPoint, MeteringPointLabel
-├── Metering/                  # IntervalDataVersion, IntervalReading, DataState
-├── Market/                    # PeakCalendar, PriceIndication, DayAheadPrice
+├── Common/                    # Money, MW, MWh, DateRange, EanCode, Result,
+│                              # VatRate — one reference rate, read by the trade
+│                              # reservation only                             [DEC-78]
+├── Identity/                  # Account, IsAdmin                             [DEC-71]
+├── Customers/                 # Customer (FourEyesEnabled [DEC-71]), MeteringPoint,
+│                              # MeteringPointLabel, ProductionExpectation    [DEC-112]
+├── Metering/                  # Brp [DEC-69], IntervalDataVersion, IntervalReading, DataState
+├── Market/                    # PeakCalendar, PriceIndication (quote + markup [DEC-80]),
+│                              # DayAheadPrice
 ├── Trading/                   # TradeRequest, Offer, Block, BlockAllocation, TradeEvent,
-│                              # FourEyesThreshold, FourEyesPolicy            [DEC-33]
-├── Wallet/                    # Wallet, WalletEntry, Reservation, Payment
-└── Billing/                   # Surcharge, FeedInTariff [DEC-44], Invoice, InvoiceLine,
-                               # TaxTariff, TrueUp
+│                              # FourEyesApproval                             [DEC-71]
+├── Wallet/                    # Wallet, WalletEntry, Reservation, Payment,
+│                              # DepositIntent [DEC-106], WithdrawalRequest   [DEC-83]
+└── Billing/                   # EnergyTaxBracket, EnergyTaxReduction [DEC-74],
+                               # Invoice (draft until numbered [DEC-88]), InvoiceLine,
+                               # LedgerEntry [DEC-107], Correction            [DEC-99]
 ```
+
+**What moved on 2026-08-19, and why.** Six of the nine folders changed. Nothing was renumbered and
+nothing was deleted from the record — the withdrawn types are listed here so the reason survives the
+commit that removes the file:
+
+| Module | Change | Driver |
+| --- | --- | --- |
+| `Identity/`, `Customers/` | `Account` gains an `IsAdmin` flag and `Customer` gains `FourEyesEnabled` | **[DEC-71]**. ⚠ **Qualifies [DEC-16]** (all accounts identical). Exactly two levels, and the role model exists *only* to make four-eyes expressible — anything richer is scope this round did not buy |
+| `Trading/` | ~~`FourEyesThreshold`~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** (was **[DEC-33]**). ~~`FourEyesPolicy`~~ becomes `FourEyesApproval` on the action | **[DEC-71]** closes **[OQ-85]**: there is no threshold, in euros or megawatts, so the threshold reference table is not built and no reference-data screen carries it. Four-eyes is a **per-customer-company mode**; the approving account must be a *different admin of the same company* |
+| `Trading/` | The sell path stops validating against confirmed holdings for the period | **[DEC-72]** ⚠ reverses **[DEC-34]**. A short is a promise to deliver, not a spend, so **[AS-11]**'s prepaid wallet does not bound it and **[DEC-41]**'s balance check does not either. No collateral type is modelled because none is decided — **[OQ-94]** |
+| `Metering/` | `Brp` is new: credentials, endpoint, document format, adapter key. `MeteringPoint` carries the assignment | **[DEC-69]**. It sits in `Metering/` rather than `Customers/` because it is an ingestion concept; the arch test below already forbids `Metering` → `Trading`/`Billing`/`Wallet`, and this adds no new edge |
+| `Customers/` | `ProductionExpectation` gets an owner and a moment: the customer declares it at onboarding | **[DEC-112]**. SJV and profile fractions are a sanity check, not the source. Default stays `UNKNOWN`, still treated as `EXPECTED` for completeness alerting **[F02-R32]** |
+| `Wallet/` | `DepositIntent` (platform-issued payment reference) and `WithdrawalRequest` are new. The `INVOICE_DEBIT` entry type goes | **[DEC-106]** makes bank transfer a first-class deposit route with a reference the platform matches on; **[DEC-83]** ⚠ reverses **[DEC-43]** and gives withdrawals a request → approval → manual payout trail. **[DEC-77]** ⚠ reverses **[AS-12]**: the wallet funds trading only, so nothing invoiced is ever debited from it |
+| `Billing/` | ~~`Surcharge`~~ ⚠ **Reversed 2026-08-19 by [DEC-73]** | The platform's only margin instrument is the spread on the price it quotes **[DEC-80]**. Volume is pushed; the bookkeeping program multiplies by the topup fee. Closes **[OQ-36]** |
+| `Billing/` | ~~`FeedInTariff`~~ ⚠ **Reversed 2026-08-19 by [DEC-87]** (was **[DEC-44]**) | Export is credited raw at the day-ahead price, exactly as surplus is under **[DEC-23]**. `MISSING_FEED_IN_TARIFF` and the month-skip it caused are removed with the type. Closes **[OQ-86]** |
+| `Billing/` | `EnergyTaxBracket` + `EnergyTaxReduction` are new; `IEnergyTaxCalculator` is implemented rather than left as a stub | **[DEC-74]** ⚠ reverses **[DEC-24]**. Versioned, editable tier boundaries and €/kWh rates per year, a per-customer reduction or exemption for the minority, calculation per EAN per calendar year on net usage **[DEC-22]**, and a ledger push. Mid-year transfer splits **50% of each bracket** per period **[OQ-77]** — half-and-half, not pro-rata by days. The *vermindering* is not modelled because it is not decided: **[OQ-96]** |
+| `Billing/` | ~~`TaxTariff`~~ (per-line VAT) is withdrawn; a single `VatRate` moves to `Common/` | **[DEC-76]** — the platform computes **no VAT at all**; it pushes ex-VAT amounts against a ledger account and the bookkeeping program applies that account's rate. ⚠ **[DEC-64]** survives only as the reference rate, because **[DEC-78]** grosses a trade reservation up by it. `Common/` avoids a `Wallet` → `Billing` edge for one scalar |
+| `Billing/` | ~~`TrueUp`~~ becomes `Correction` | **[DEC-99]**: corrections arrive months later and the platform invoices the difference whenever they do, so the annual true-up's mechanism becomes continuous. **[DEC-100]** removes the materiality threshold — every difference is handled individually, so there is no netting or waiver rule to model |
 
 ```csharp
 // PeakPower.Architecture.Tests
@@ -175,6 +236,16 @@ public void Domain_depends_on_nothing_outside_itself()
     Types.InAssembly(typeof(Customer).Assembly)
         .ShouldNot().HaveDependencyOnAny("Microsoft.EntityFrameworkCore", "Hangfire", "System.Net.Http")
         .GetResult().IsSuccessful.Should().BeTrue();
+}
+
+// [DEC-69] — the seam that makes a second BRP additive rather than a rewrite.
+[Fact]
+public void The_ingestion_pipeline_never_names_a_BRP_adapter()
+{
+    Types.InAssembly(typeof(IngestionPipeline).Assembly)
+        .ShouldNot().HaveDependencyOn("PeakPower.Integration.Brp")   // matches Brp.Pvned and any successor
+        .GetResult().IsSuccessful.Should().BeTrue(
+            because: "adapters are resolved from the metering point's brp row at the composition root");
 }
 ```
 
@@ -252,7 +323,7 @@ else
 if (builder.Environment.IsDevelopment())
 {
     builder.AddProject<Projects.PeakPower_DevStubs>("dev-stubs")
-        .WithReference(worker);   // fake PVNed pusher, Montel, PSP, Odoo
+        .WithReference(worker);   // fake BRP pusher [DEC-69], Montel, PSP, bookkeeping
 }
 
 builder.Build().Run();
@@ -264,19 +335,27 @@ dotnet run --project src/Hosts/PeakPower.AppHost
 
 ### 4.1 Why the dev stubs matter
 
-Three of the four integrations are third parties PeakPower does not control, and at least one
-(PVNed) may not offer a usable test environment **[OQ-05]**. A `DevStubs` project that can push a
-realistic `TimeSeriesDocument` on demand — including corrections, DST days and malformed payloads —
-is what makes [F02](../10-features/F02-metering-data-ingestion.md) testable at all. It is not a nice
-to have; it is on the critical path for phase 1.
+Most of the integrations are third parties PeakPower does not control, and at least one (PVNed) may
+not offer a usable test environment — **[OQ-05]** is still open on that, and **[DEC-69]** does not
+close it. A `DevStubs` project that can push a realistic `TimeSeriesDocument` on demand — including
+corrections, DST days and malformed payloads — is what makes
+[F02](../10-features/F02-metering-data-ingestion.md) testable at all. It is not a nice to have; it is
+on the critical path for phase 1.
 
 It should be able to generate:
 
 - a normal 96-interval day for a set of EANs, with a plausible load shape;
 - 92- and 100-interval DST days;
 - a correction that supersedes a previous document;
+- reconciliation data arriving after the 10-working-day window **[DEC-98]**, which is what makes a
+  late correction invoice **[DEC-99]** reproducible locally instead of only in production;
 - an imbalance report matching the supplied sample;
 - deliberately invalid documents for each validation rule.
+
+It pushes **as a configured BRP**, not as "PVNed" **[DEC-69]** — the stub authenticates against a
+`brp` row and its document is routed through the adapter that row names. A stub wired straight into
+the pipeline would test the pipeline and leave the seam unexercised, which is the failure mode where
+the second adapter turns out to be a rewrite.
 
 ### 4.2 ServiceDefaults
 
@@ -319,29 +398,47 @@ versions of the framework is three sets of migration notes for one team.
 
 ```
 peakpower-web/
-├── libs/shared-ui/              # design tokens, layout, table, form controls,
-│                                # money & energy pipes, chart wrappers, auth interceptor
+├── libs/shared-ui/              # design tokens (from peakpower.nl [DEC-94]), layout, table,
+│                                # form controls, money & energy pipes, auth interceptor,
+│                                # chart wrappers — the wrapped library may be commercial [DEC-79]
 ├── apps/customer-portal/
 │   └── src/app/
-│       ├── core/                # auth, http, error handling, signalr
+│       ├── core/                # auth (MFA required [DEC-92]), http, error handling, signalr
 │       ├── features/
 │       │   ├── dashboard/  metering-points/  consumption/
-│       │   ├── prices/     trading/          wallet/        invoices/
+│       │   ├── prices/          # current curve only, no history, no export  [DEC-81]
+│       │   ├── trading/         # buy and sell; sell is not holdings-checked  [DEC-72]
+│       │   ├── wallet/          # iDEAL + bank transfer with the issued reference [DEC-106],
+│       │   │                    # withdrawal requests [DEC-83], four-eyes approvals [DEC-71]
+│       │   └── invoices/        # calculated data + the number the bookkeeping program
+│       │                        # returned; no PDF from the platform  [DEC-88] [DEC-89]
 │       └── shared/
 ├── apps/employee-portal/
 │   └── src/app/features/
-│       ├── home/  trade-desk/  customers/  wallets/
-│       ├── invoicing/  data-health/  reference-data/  admin/
-└── apps/public-site/            # SSR
+│       ├── home/  trade-desk/  customers/  data-health/  admin/
+│       ├── wallets/             # deposits, matched bank transfers, withdrawal payouts
+│       ├── invoicing/           # review and push drafts; the number comes back  [DEC-88]
+│       └── reference-data/      # BRPs [DEC-69], energiebelasting brackets and per-customer
+│                                # reductions [DEC-74], price markup % [DEC-80], ledger
+│                                # accounts and tax codes  [DEC-107]
+└── apps/public-site/            # SSR, content as files in the repository — no CMS  [DEC-93]
 ```
+
+⚠ Two reference-data screens the earlier rounds implied are **not** built: the surcharge tariff table
+(⚠ **Reversed 2026-08-19 by [DEC-73]**) and the four-eyes threshold table (⚠ **Reversed 2026-08-19 by
+[DEC-71]** — four-eyes is a flag on the customer company, edited on the customer screen, not a
+reference table).
 
 Conventions: standalone components throughout, signals for state, lazy-loaded feature routes,
 strictly typed reactive forms, and generated API clients — now consumed as a published package
 rather than generated in place, §5.1.
 
 **[DEC-54] settles the framework version and not the component library.** [OQ-49]'s second half is
-still open, and **[DEC-39]** — open-source and free, or built in-house — is the constraint to expect
-there too.
+still open. ~~**[DEC-39]** — open-source and free, or built in-house — is the constraint to expect
+there too.~~ ⚠ **Reversed 2026-08-19 by [DEC-79]**: a commercial licence is acceptable and the
+library is judged on fit. This widens the shortlist for both the charting spike and the component
+library, and it moves the question from engineering to procurement — a per-seat or per-build licence
+has to be bought, held somewhere a build agent can read it, and renewed. §7 carries the rule.
 
 ### 5.1 The OpenAPI client now crosses a repository boundary — [DEC-55]
 
@@ -388,11 +485,11 @@ discovered in production.
 | **Property-based** | Calendar arithmetic (DST, peak counts, interval counts), allocation rounding, ledger balance identity | FsCheck |
 | **Application** | Use cases against in-memory ports | xUnit + NSubstitute |
 | **Persistence** | Real PostgreSQL, real migrations, constraint behaviour | Testcontainers |
-| **Integration** | Ingestion end-to-end with sample payloads; webhook idempotency | Testcontainers + WireMock |
-| **Architecture** | Module graph, domain purity, no `DateTime.Now` outside the calendar service | NetArchTest |
+| **Integration** | Ingestion end-to-end with sample payloads; webhook idempotency; the same document routed through the BRP adapter its `brp` row names **[DEC-69]**; bank-transfer deposit matched on the issued reference **[DEC-106]** | Testcontainers + WireMock |
+| **Architecture** | Module graph, domain purity, no `DateTime.Now` outside the calendar service, **and the ingestion pipeline naming no BRP adapter [DEC-69]** | NetArchTest |
 | **API contract** | OpenAPI snapshot to catch breaking changes — **and the trigger for the client publish [DEC-55]**, §5.1 | Verify |
 | **Cross-repo client** | Applications compile against the *latest published* client, nightly, not only against the pinned one **[DEC-55]** | npm + tsc |
-| **E2E** | Login, request a trade, accept an offer, **approve it as a second account**, view the ledger. Lives in `peakpower-web` **[DEC-55]**, runs against a deployed environment | Playwright |
+| **E2E** | Login with MFA **[DEC-92]**, request a trade, accept an offer, **approve it as a second admin account of the same company with four-eyes on [DEC-71]**, view the ledger, raise a withdrawal request **[DEC-83]**. Lives in `peakpower-web` **[DEC-55]**, runs against a deployed environment | Playwright |
 | **Frontend unit** | Components, pipes, signal stores | Vitest |
 
 ### 6.1 Tests that must exist before phase 2 ships
@@ -404,31 +501,61 @@ These are the ones where a bug is expensive and silent:
 3. A failed trade releases exactly the reserved amount, no more, no less.
 4. Ledger balance always equals the sum of entry deltas, after any sequence of operations.
 5. Available balance never goes negative through a customer action.
-6. Block allocations sum exactly to the block power for any split and any rounding.
+6. Block allocations sum exactly to the block power for any split and any rounding — **at 0,01 MW
+   granularity** **[DEC-70]**, which is ten times finer than the case originally written and brings
+   the non-whole-MW tail back.
 7. Peak interval counts match the reference table for every month of three years.
 8. A day with 92 or 100 intervals is stored, aggregated and charted correctly.
-9. **The accepting account cannot approve its own acceptance** **[DEC-33]**, **[F05-R59]**. The
-   attempt is refused with a specific error, the trade stays in `AWAITING_APPROVAL`, and **no
-   reservation is settled** — because the failure mode is not an error message, it is a large trade
-   that quietly went through on one person's say-so. Requested by
+9. **The accepting account cannot approve its own acceptance** ~~**[DEC-33]**~~ ⚠ **Amended
+   2026-08-19 by [DEC-71]**, **[F05-R59]**. The test now has three cases, because the rule is a
+   per-company mode rather than a value threshold: with four-eyes **off** the trade executes on one
+   account; with it **on**, the accepting account's own approval is refused, and approval by a
+   **non-admin** account of the same company is refused. In every refusal the trade stays in
+   `AWAITING_APPROVAL` and **no reservation is settled** — because the failure mode is not an error
+   message, it is a large trade that quietly went through on one person's say-so. Requested by
    [F05](../10-features/F05-energy-block-trading.md) §3.2.
 10. **A trade left in `AWAITING_APPROVAL` at `expires_at` expires and releases its reservation in
     full** **[F05-R62]**. The same shape as test 3, on the state that did not exist when test 3 was
     written — and the one that leaks money silently if the expiry job's filter or the partial index
     misses it ([Database design §3.4.1](04-database-design.md)).
-11. **The surcharge is charged per kWh with no `/1000`** **[DEC-35]**. A rate agreed before the unit
+11. ~~**The surcharge is charged per kWh with no `/1000`** **[DEC-35]**. A rate agreed before the unit
     change invoices to the same money after it: €4.50/MWh and €0.0045/kWh produce the identical
     amount on the identical volume. An engine that keeps the divisor bills a thousandth of the
-    correct figure and looks entirely plausible doing it.
-12. **The migration divides, it does not reinterpret** **[F09-R12]**. Run against a dataset seeded
+    correct figure and looks entirely plausible doing it.~~ ⚠ **Reversed 2026-08-19 by [DEC-73]** —
+    there is no surcharge in the platform to test. Replaced by test 14: the same money-by-a-factor-of-
+    a-thousand failure now lives in the energiebelasting calculator, which is the only €/kWh rate
+    left.
+12. ~~**The migration divides, it does not reinterpret** **[F09-R12]**. Run against a dataset seeded
     with pre-**[DEC-35]** €/MWh rates, asserting both the value and the surviving precision:
-    `4.5500` → `0.0045500`, not `0.0046` and not `4.5500000`.
-13. **A month with export and no resolving feed-in tariff is skipped, never valued at zero**
+    `4.5500` → `0.0045500`, not `0.0046` and not `4.5500000`.~~ ⚠ **Retired 2026-08-19 by
+    [DEC-73]** — the surcharge tariff table never ships, so there is no unit migration to run and
+    **[F09-R12]** has nothing to migrate. Nothing replaces it.
+13. ~~**A month with export and no resolving feed-in tariff is skipped, never valued at zero**
     **[DEC-44]**, **[F10-R39]**. The fallback is an open question **[F09]** §11.1; this test is what
-    stops it being answered by accident, in code, by whoever writes the resolver first.
+    stops it being answered by accident, in code, by whoever writes the resolver first.~~ ⚠
+    **Reversed 2026-08-19 by [DEC-87]** — there is no feed-in tariff to fail to resolve. Replaced by
+    test 15: export is credited at the day-ahead price for the interval, raw.
+14. **Energiebelasting is charged per kWh, and a mid-year transfer gets 50% of each bracket**
+    **[DEC-74]**, **[OQ-77]**. Two assertions in one place because they fail the same way. First,
+    the rate is €/kWh with no `/1000` — an engine that keeps a divisor bills a thousandth of the
+    correct figure and looks entirely plausible doing it. Second, an EAN that changes customer on
+    17 August gives **each** period half of every annual tier boundary — a straight half-and-half
+    split, not a pro-rata by days, and not the full brackets twice. The second bug reads as a
+    rounding difference on one invoice and as tens of thousands of euros across a portfolio.
+15. **Export is credited at the day-ahead price for the interval, raw** **[DEC-87]**, **[DEC-23]**.
+    No topup, no feed-in fee, no spread. The test asserts the credited amount equals
+    `volume × day_ahead_price` to the stored precision, and that no tariff lookup happens at all.
+16. **A sell is accepted without a holdings check, and refused for nothing else** **[DEC-72]**. The
+    customer holds nothing for the period and the sell goes through. ⚠ The test also **documents the
+    hole**: no collateral or exposure limit is asserted, because none is decided — **[OQ-94]**. It
+    is written as a failing-by-design assertion the day OQ-94 is answered.
+17. **A bank-transfer deposit credits the wallet exactly once for its reference** **[DEC-106]**. The
+    same payment replayed on the feed, and two payments carrying the same reference, both resolve to
+    one credit. IBAN matching **[DEC-61]** is the fallback when the reference is missing, and a
+    payment matching neither is held, never credited to the nearest customer.
 
-Tests 9–13 are new with the second-round decisions. They earn their place the same way the first
-eight do: each one fails silently in production and shows up as money.
+Tests 9–17 come from the second and third decision rounds. They earn their place the same way the
+first eight do: each one fails silently in production and shows up as money.
 
 ## 7. Coding standards
 
@@ -441,12 +568,19 @@ eight do: each one fails silently in production and shows up as money.
 | `Result<T>` for expected failures; exceptions only for the unexpected | Business rejections are not exceptional |
 | Async everywhere, `CancellationToken` threaded through | |
 | Central package management | One version of everything |
+| **Packages are judged on fit, not on licence cost. A commercial licence is acceptable** | ~~**[DEC-39]** — open-source and free, or in-house~~ ⚠ **Reversed 2026-08-19 by [DEC-79]**. What replaces the old rule is not "anything goes": a paid package needs a licence bought before the spike ends, a key the build agent can read from Key Vault rather than a developer's machine, and a renewal date someone owns. The rule that survives unchanged is that no package may be used under a licence whose terms have not been read |
+| **No PDF rendering package, in any project** | **[DEC-89]** — the bookkeeping program renders and emails the invoice **[DEC-88]**, so nothing on the invoice path needs one. This is written as a standing rule rather than left as an omission because a PDF library is exactly the dependency that arrives quietly for something small and takes invoice branding back into the platform with it. ⚠ One caller survives the round untouched: **[F06-R22]** offers the wallet ledger as CSV **and PDF**. Under this rule that export is CSV-only unless someone re-opens the dependency on purpose, with the licence and the renewal owner from the row above |
 
 ## 8. Open questions
 
 | Ref | Question |
 | --- | --- |
-| [OQ-49] | Angular component library. **Half-closed:** **[DEC-54]** settles the framework at **Angular 22**; the component library is still open, and **[DEC-39]**'s free-or-in-house constraint should be expected to apply here too |
+| [OQ-49] | Angular component library. **Half-closed:** **[DEC-54]** settles the framework at **Angular 22**; the component library is still open. ⚠ **Amended 2026-08-19:** ~~**[DEC-39]**'s free-or-in-house constraint should be expected to apply here too~~ — **[DEC-79]** reverses it, so a commercial library is in scope for both this and the charting spike, and the shortlist is wider than it was |
 | ~~[OQ-51]~~ | ~~Monorepo for both .NET and Angular, or separate repositories?~~ **Closed by [DEC-55]** — separate repositories. The three consequences are designed for in §1.2, §4.3 and §5.1 |
-| [OQ-52] | Does PeakPower have existing .NET conventions or shared libraries to align with — in particular the existing Montel implementation? |
+| ~~[OQ-52]~~ | ~~Does PeakPower have existing .NET conventions or shared libraries to align with — in particular the existing Montel implementation?~~ **Closed by [DEC-96]** — there are conventions, and there is a Montel service Luka built. `PeakPower.Integration.Montel` wraps that service rather than the Montel API. ⚠ The estimate is not firm until its shape and location have been read, which is work, not a question |
+| [OQ-05] | Does PVNed offer a usable test environment? Still open, and **[DEC-69]** does not close it — a configurable BRP changes who the adapter talks to, not whether the first one has a sandbox. `DevStubs` (§4.1) remains the mitigation |
+| [OQ-69] | Which bookkeeping program, which version, which API? ⚠ **Re-prioritised to 🔴 P1 on 2026-08-19.** **[DEC-88]**, **[DEC-89]**, **[DEC-105]**, **[DEC-108]** and **[DEC-109]** move numbering, the PDF, the email, payment matching and customer records into that program, and **[DEC-74]** and **[DEC-107]** add the energiebelasting ledger account to it. `PeakPower.Integration.Bookkeeping` cannot be written against an unnamed target, and without it **no customer invoice can be issued at all** |
+| [OQ-93] | Which incoming-payment feed does the platform consume for wallet deposits — CAMT.053 import, a PSP webhook, or a SEPA-instant push? It decides what `PeakPower.Integration.Payments` contains, and it blocks the bank-transfer deposit route **[DEC-106]** |
+| [OQ-95] | Is customer usage delivered over an API, over file/FTP, or both **[DEC-97]**? HTTP costs a surface on `PeakPower.Api.Customer`; FTP costs a scheduled export in `PeakPower.Jobs` and a place to put the files. Both is both. Nothing else in the layout moves either way |
+| [OQ-94] | What collateral or exposure limit applies to a short position **[DEC-72]**? It decides whether `Domain/Trading` gains an exposure concept or the sell path stays as thin as it is today. Test 16 (§6.1) is written to fail the day this is answered |
 | *(new, from **[DEC-55]**)* | Which private package feed hosts `@peakpower/api-client-*` — Azure Artifacts or GitHub Packages? The fallback (generated-and-committed, §5.1) needs no feed, so this gates the preferred path only |

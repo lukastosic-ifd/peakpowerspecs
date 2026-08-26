@@ -205,6 +205,91 @@ public sealed record ContactPerson(
     string Name, string Email, string? Phone);                  // stored as jsonb
 ```
 
+## 5.1 Aggregate behaviour — NORMATIVE, and owned by plan 1 alone
+
+⚠ **Plan 1 is the only plan that declares an aggregate's members.** Plans 2, 5 and 6 *call* these
+and must never re-declare them — two plans writing the same class is a duplicate-member compile
+error, not a merge.
+
+Every operation that can fail returns `Result<T>`. Only the two book-keeping mutators return
+`void`, because neither can fail.
+
+```csharp
+// ── Customer ────────────────────────────────────────────────────────────────
+static Result<Customer> Create(
+    string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber,
+    Address billingAddress, Address? visitingAddress, ContactPerson primaryContact,
+    string? internalReference, string locale);          // locale: pass "nl-NL"
+
+Result<Customer> ChangeStatus(CustomerStatus status);   // NOT SetStatus
+Result<Customer> UpdateDetails(
+    string legalName, string? tradeName, string? vatNumber,
+    Address billingAddress, Address? visitingAddress, ContactPerson primaryContact,
+    string? internalReference, string locale);
+
+// ── CustomerAccount ─────────────────────────────────────────────────────────
+static Result<CustomerAccount> Create(
+    Guid customerId, string username, string firstName, string lastName,
+    string? jobTitle, string email, string? phone, AccountStatus status, bool isAdmin);
+
+Result<CustomerAccount> UpdateProfile(
+    string firstName, string lastName, string? jobTitle, string email,
+    string? phone, bool isAdmin);
+Result<CustomerAccount> Deactivate();                   // also bumps SecurityStamp
+
+void SetPassword(string passwordHash);                  // bumps SecurityStamp
+void RecordSuccessfulSignIn(DateTimeOffset at);
+void BumpSecurityStamp();
+
+// ── MeteringPoint ───────────────────────────────────────────────────────────
+// The factory is Attach, NOT Create — [F01-R23] is "attach a metering point to a
+// customer". Commodity is not a parameter: [DEC-68] makes ELECTRICITY the only value,
+// so the aggregate sets it. ValidTo is not a parameter either; use EndDate.
+static Result<MeteringPoint> Attach(
+    Guid customerId, EanCode ean, Guid brpId,
+    ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource,
+    string? name, string? description, string? gridOperator, decimal? capacityKw,
+    Address? address, DateOnly validFrom);
+
+Result<MeteringPoint> EndDate(DateOnly validTo);        // NOT EndOn
+Result<MeteringPoint> Rename(string? name, string? description);   // <=80 / <=500
+Result<MeteringPoint> UpdateDetails(
+    Guid brpId, ProductionExpectation productionExpectation,
+    ProductionExpectationSource? expectationSource, string? gridOperator,
+    decimal? capacityKw, Address? address);
+
+// ── Brp (PeakPower.Domain.Metering) ─────────────────────────────────────────
+public sealed class Brp
+{
+    public Guid Id { get; }
+    public string Code { get; }        // "PVNED"
+    public string Name { get; }        // "PVNed B.V."  — this exact string
+    public bool IsActive { get; }      // plan 4's reference-data screen renders it
+}
+static Result<Brp> Create(string code, string name, bool isActive);
+
+// ── Wallet ──────────────────────────────────────────────────────────────────
+static Result<Wallet> CreateEuroWallet(Guid customerId);   // NOT CreateFor
+```
+
+**Host entry-point marker types.** Both API hosts would otherwise declare
+`public partial class Program`, and the integration-test assembly references both — a bare
+`WebApplicationFactory<Program>` is then ambiguous. Each host declares a marker instead:
+
+```csharp
+public sealed class CustomerApiEntryPoint;    // PeakPower.Api.Customer
+public sealed class EmployeeApiEntryPoint;    // PeakPower.Api.Employee
+```
+
+Tests use `WebApplicationFactory<CustomerApiEntryPoint>` / `<EmployeeApiEntryPoint>`. **No host
+declares `public partial class Program`.**
+
+## 5.2 Enum wire format — SCREAMING_SNAKE, everywhere
+
+§4 makes the database spelling normative, and that extends to JSON. `ACTIVE`, not `"Active"`.
+Both APIs register **one shared `JsonStringEnumConverter`** mapping each enum to its database
+spelling; no mapper calls `.ToString()` on an enum, and no client hard-codes PascalCase.
+
 ## 6. Application ports
 
 **Where each port is declared and implemented.** Every interface below is *declared* in
@@ -359,6 +444,79 @@ Component selectors are prefixed `pp-`: `pp-card`, `pp-stat-card`, `pp-badge`, `
 >
 > This is why `package.json` must define `start:customer-portal` and `start:employee-portal` at
 > the **root**, not `start` inside each app.
+
+## 10.1 `@peakpower/shared-ui` public API — NORMATIVE
+
+⚠ **Plan 3 owns these components; plans 4 and 6 only consume them.** Where the two sides
+disagreed, the consumers' shape won, because two plans call it and one defines it.
+
+```ts
+// libs/shared-ui/src/public-api.ts   ← this filename. NOT index.ts.
+// The workspace TypeScript config is tsconfig.json. NOT tsconfig.base.json.
+
+export type PpTone =
+  | 'neutral' | 'brand' | 'info' | 'success' | 'warning' | 'critical';
+// Map the design system's vocabulary onto these. 'positive' is 'success';
+// 'danger' is 'critical'. Those two spellings must not appear anywhere.
+
+@Component({ selector: 'pp-card' })
+class PpCard { heading = input<string>(); subtitle = input<string>(); }   // heading, NOT title
+
+@Component({ selector: 'pp-stat-card' })
+class PpStatCard {
+  label = input.required<string>(); value = input.required<string>();
+  sublabel = input<string>(); tone = input<PpTone>('neutral');
+}
+
+@Component({ selector: 'pp-badge' })
+class PpBadge { tone = input<PpTone>('neutral'); }
+
+@Component({ selector: 'pp-button' })
+class PpButton {
+  variant = input<'primary'|'secondary'|'ghost'|'danger'|'accept'>('secondary');
+  size = input<'md'|'sm'>('md'); disabled = input(false);
+}
+
+@Component({ selector: 'pp-banner' })     // the compact in-page notice
+class PpBanner { tone = input<PpTone>('info'); heading = input<string>(); }
+
+@Component({ selector: 'pp-ds-banner' })  // the larger 22px-dot banner — a DIFFERENT component
+class PpDsBanner { tone = input<PpTone>('info'); heading = input.required<string>(); }
+
+@Component({ selector: 'pp-grid-table' })
+class PpGridTable {
+  columns = input.required<string>();          // the verbatim grid-template-columns string
+  density = input<'default'|'dense'>('default');
+  // Head and rows are CONTENT-PROJECTED. There is no rows input.
+}
+@Directive({ selector: '[ppGridHead]' }) class PpGridHead {}   // ALL-CAPS column heads
+@Directive({ selector: '[ppGridRow]' })  class PpGridRow {}
+
+@Component({ selector: 'pp-search-input' })
+class PpSearchInput { placeholder = input('Search'); value = model<string>(''); }
+
+export interface PpNavItem {
+  routeKey: string;          // the SPECIFICATION's key: 'consumption', 'trading', 'wallet'
+  label: string;             // the DESIGN's label: 'Volume', 'Trades', 'Balance'
+  path: string | null;       // null when the item is disabled
+  dot: string;               // the domain colour, a CSS custom-property reference
+  disabledReason?: string;   // rendered verbatim; a disabled item MUST carry one
+}
+export interface PpNavSection { label: string; items: PpNavItem[]; }
+
+@Component({ selector: 'pp-app-shell' })
+class PpAppShell {
+  sections = input.required<PpNavSection[]>();   // the grouped rail — design §8.4
+  activeRouteKey = input.required<string>();
+  productName = input.required<string>();
+  crumb = input<string>(); subtitle = input<string>();   // a crumb OR a subtitle, never both
+}
+```
+
+Navigation is by `routerLink` on each item's `path`; `PpAppShell` has **no `navigate` output**.
+
+One extra token plans 4 and 6 both use: **`--pp-canvas`**, defined in
+`libs/shared-ui/src/styles/colors.css` as the page ground (`var(--pp-bg-gradient)`).
 
 ## 11. Design tokens — SB-2026
 

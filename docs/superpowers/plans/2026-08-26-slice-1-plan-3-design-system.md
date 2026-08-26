@@ -141,7 +141,7 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + FluentAssertions (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** (pinned — 8.x is not Apache-2.0) + NSubstitute |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
@@ -164,8 +164,10 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 2. `PeakPower.Application` references only `PeakPower.Domain`
 3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter
 4. No type calls `IgnoreQueryFilters()`
-5. No type outside `PeakPower.Infrastructure.Time` uses `DateTime.Now` / `DateTime.UtcNow`
-6. No type outside the context-provider assembly reads a customer identifier from `HttpContext`
+5. No type outside `PeakPower.Infrastructure.Time` calls `DateTime.Now`, `DateTime.UtcNow`,
+   `DateTime.Today`, `DateTimeOffset.Now` or `DateTimeOffset.UtcNow`
+6. No type outside `PeakPower.Infrastructure.Web` uses `IHttpContextAccessor` or reads a claim
+   off `ClaimsPrincipal` / `ClaimsIdentity`
 
 ### Enums, domain types, ports, JWT claims, HTTP and database rules
 
@@ -235,13 +237,12 @@ Every path below is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 | `src/public-api.ts` | The library's only export surface. Every task appends to it. |
 | `src/testing/read-css.ts` | Spec-only helpers: locate the workspace root, read a shipped stylesheet, list its `color:` declarations, and name the bright fill tokens that must never become type. |
 | `src/styles/fonts.css` | Ported verbatim: seven `@font-face` blocks, one per Inter unicode-range subset. |
-| `src/styles/colors.css` | Ported verbatim minus `--certainty-provisional-opacity`. |
+| `src/styles/colors.css` | Ported verbatim minus `--certainty-provisional-opacity`, plus the `--pp-canvas` page ground the two portals paint their canvas with. |
 | `src/styles/typography.css`, `spacing.css`, `radii.css`, `layout.css`, `semantic.css` | Ported verbatim. |
 | `src/styles/tokens.css` | The one entry point — `@import`s the seven above in order. Applications list this file in their `styles` array. |
 | `src/styles/tokens.spec.ts` | Asserts the port rules: no dead certainty token, `--pp-cyan` has no text pair, `--pp-indigo` is violet, the key metrics are present. |
 | `src/assets/fonts/inter-*.woff2` | The seven Inter subsets. |
 | `src/assets/logo-mark.svg`, `logo-mark-sidebar.svg` | The brand mark at page size and at rail size. |
-| `src/assets/assets.spec.ts` | Asserts all nine asset files exist and that `fonts.css` points at each subset with a root-absolute URL. |
 | `src/lib/format/dutch-number.ts` | `PP_MINUS` and `formatDutchDecimal` — the one place a number becomes nl-NL text. |
 | `src/lib/format/dutch-number.spec.ts` | Grouping, decimal comma, U+2212, and the negative-zero rule. |
 | `src/lib/format/pp-money.pipe.ts` | `€ 19.722,00`. |
@@ -249,6 +250,7 @@ Every path below is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 | `src/lib/format/pp-power.pipe.ts` | `0,20 MW` — exactly two decimals. |
 | `src/lib/format/pp-price.pipe.ts` | `€ 102,4000 / MWh` — exactly four decimals. |
 | `src/lib/format/pp-format.pipes.spec.ts` | One suite covering all four pipes. |
+| `src/lib/tone.ts` | `PpTone` — the one tone vocabulary `pp-badge`, `pp-banner`, `pp-ds-banner` and `pp-stat-card` all read. |
 | `src/lib/badge/pp-badge.ts`, `pp-badge.css`, `pp-badge.spec.ts` | The pill status label — the product's single status vocabulary. |
 | `src/lib/button/pp-button.ts`, `pp-button.css`, `pp-button.spec.ts` | The one button primitive; five variants at matching heights. |
 | `src/lib/card/pp-card.ts`, `pp-card.css`, `pp-card.spec.ts` | The default content container. |
@@ -256,8 +258,9 @@ Every path below is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 | `src/lib/banner/pp-banner.ts`, `pp-banner.css`, `pp-banner.spec.ts` | The SB-2026 page-level notice. |
 | `src/lib/ds-banner/pp-ds-banner.ts`, `pp-ds-banner.css`, `pp-ds-banner.spec.ts` | The design-system notice. A different component, not a variant. |
 | `src/lib/search-input/pp-search-input.ts`, `pp-search-input.css`, `pp-search-input.spec.ts` | The filter field carrying the product's only icon. |
-| `src/lib/grid-table/pp-grid-row.ts` | The structural directive supplying one row's cells. |
-| `src/lib/grid-table/pp-grid-table.ts`, `pp-grid-table.css`, `pp-grid-table.spec.ts` | The CSS-grid list table, and the rule that it is never rendered empty. |
+| `src/lib/grid-table/pp-grid-head.ts` | `[ppGridHead]` — the projected row of ALL-CAPS column heads. |
+| `src/lib/grid-table/pp-grid-row.ts` | `[ppGridRow]` — one projected row, laid out on the table's own tracks. |
+| `src/lib/grid-table/pp-grid-table.ts`, `pp-grid-table.css`, `pp-grid-table.spec.ts` | The CSS-grid list table, and the rule that a head is never rendered with nothing under it. |
 | `src/lib/app-shell/pp-app-shell.ts`, `pp-app-shell.css`, `pp-app-shell.spec.ts` | The rail + topbar + scroll-container frame both portals live in. |
 
 ---
@@ -525,10 +528,13 @@ Angular 22 applications are **zoneless** by default: there is no `zone.js` polyf
 **Interfaces:**
 - Consumes: the `angular.json` skeleton and the npm scripts from Task 1.
 - Produces:
-  - Angular projects named `customer-portal` (prefix `cp`) and `employee-portal` (prefix `ep`),
-    each with `build`, `serve` and `test` targets.
+  - Angular projects named `customer-portal` and `employee-portal`, both with `"prefix": "pp"`
+    — shared contract §10 prefixes every selector in this product `pp-` — and both with
+    `build`, `serve` and `test` targets, `tokens.css` first in `styles`, assets and production
+    budgets. Plans 4 and 6 make key-level edits to these projects; they never paste a competing
+    project object over them.
   - `export const appConfig: ApplicationConfig` and `export const routes: Routes` in each app.
-  - `export class App` — the root component, selector `cp-root` / `ep-root`.
+  - `export class App` — the root component, selector `pp-root` in both applications.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -542,6 +548,8 @@ test('angular.json registers both portals with the targets ng serve and ng test 
     assert.ok(project, `angular.json has no project named ${name}`);
     assert.equal(project.projectType, 'application');
     assert.equal(project.root, `apps/${name}`);
+    // Shared contract §10: every selector in this product is prefixed pp-, in both apps.
+    assert.equal(project.prefix, 'pp');
     assert.equal(project.targets.build.builder, '@angular/build:application');
     assert.equal(project.targets.serve.builder, '@angular/build:dev-server');
     assert.equal(project.targets.test.builder, '@angular/build:unit-test');
@@ -587,7 +595,7 @@ Replace `/Users/thinhhuynh/PeakPower/peakpower-web/angular.json` with:
       "root": "apps/customer-portal",
       "sourceRoot": "apps/customer-portal/src",
       "projectType": "application",
-      "prefix": "cp",
+      "prefix": "pp",
       "targets": {
         "build": {
           "builder": "@angular/build:application",
@@ -635,7 +643,7 @@ Replace `/Users/thinhhuynh/PeakPower/peakpower-web/angular.json` with:
       "root": "apps/employee-portal",
       "sourceRoot": "apps/employee-portal/src",
       "projectType": "application",
-      "prefix": "ep",
+      "prefix": "pp",
       "targets": {
         "build": {
           "builder": "@angular/build:application",
@@ -717,7 +725,7 @@ Create `apps/customer-portal/src/index.html`:
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body>
-  <cp-root></cp-root>
+  <pp-root></pp-root>
 </body>
 </html>
 ```
@@ -751,7 +759,8 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   color: var(--pp-text-heading);
-  background: var(--pp-bg-gradient);
+  /* --pp-canvas is the page ground; Plans 4 and 6 paint their own surfaces with it too. */
+  background: var(--pp-canvas);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
@@ -764,7 +773,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
 @Component({
-  selector: 'cp-root',
+  selector: 'pp-root',
   imports: [RouterOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<router-outlet />`,
@@ -800,13 +809,13 @@ mkdir -p apps/customer-portal/public apps/employee-portal/public
 touch apps/customer-portal/public/favicon.ico apps/employee-portal/public/favicon.ico
 ```
 
-Now create the employee portal by copying and rewriting the two selectors:
+Now create the employee portal by copying the customer portal and retitling it. The root
+selector is `pp-root` in both applications, so nothing but the document title changes:
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-web
 cp -R apps/customer-portal/src apps/employee-portal/src
 cp apps/customer-portal/tsconfig.app.json apps/customer-portal/tsconfig.spec.json apps/employee-portal/
-sed -i '' 's/cp-root/ep-root/g' apps/employee-portal/src/index.html apps/employee-portal/src/app/app.ts
 sed -i '' 's/customer portal/employee portal/' apps/employee-portal/src/index.html
 ```
 
@@ -835,7 +844,10 @@ git commit -m "feat(web): add the customer and employee portal application shell
 The token module is the library's foundation: every component reads these custom properties and
 hard-codes almost nothing. The CSS is a **verbatim port** from the Claude Design project
 `PeakPower Trading Design System` (`tokens/*.css`) with exactly one deletion —
-`--certainty-provisional-opacity`, whose feature was removed.
+`--certainty-provisional-opacity`, whose feature was removed — and exactly one addition,
+`--pp-canvas`. Shared contract §10.1 makes that token the page ground, and Plans 4 and 6 both
+paint with it; an undefined custom property resolves to nothing and renders transparent, so it
+is defined here, once, beside the gradient it aliases.
 
 This task also introduces the spec-only helper that later tasks use to assert on shipped CSS.
 Asserting on the stylesheet source rather than on `getComputedStyle` is deliberate: jsdom's
@@ -858,6 +870,7 @@ cascade is partial, so a pixel assertion there would be testing jsdom, not the d
 - Produces:
   - `libs/shared-ui/src/styles/tokens.css` — the one stylesheet applications list in
     `angular.json`. Plans 4 and 6 rely on it already being in their `styles` array.
+  - `--pp-canvas` in `styles/colors.css` — the page ground, required by shared contract §10.1.
   - `export function workspaceRoot(): string`
   - `export function readSharedUiCss(relativePath: string): string`
   - `export function cssText(relativePath: string): string`
@@ -884,6 +897,11 @@ describe('SB-2026 token module', () => {
     expect(colors).not.toContain('--pp-cyan-text');
     // Text that wants cyan falls back to the teal tier instead.
     expect(colors).toContain('--pp-teal-text:#0A7A74');
+  });
+
+  it('defines --pp-canvas as the page ground, because two portals paint with it', () => {
+    // Shared contract §10.1. An undefined custom property renders transparent, silently.
+    expect(cssText('styles/colors.css')).toContain('--pp-canvas:var(--pp-bg-gradient)');
   });
 
   it('keeps --pp-indigo meaning violet, never the hedge line', () => {
@@ -979,7 +997,8 @@ Add the library project to `angular.json`, inside `"projects"` alongside the two
     }
 ```
 
-Create `libs/shared-ui/package.json`:
+Create `libs/shared-ui/package.json` — `@angular/router` is a peer because `pp-app-shell`
+navigates by `routerLink` (Task 14), not by an output the application has to wire up:
 
 ```json
 {
@@ -987,7 +1006,8 @@ Create `libs/shared-ui/package.json`:
   "version": "0.0.1",
   "peerDependencies": {
     "@angular/common": "^22.1.0",
-    "@angular/core": "^22.1.0"
+    "@angular/core": "^22.1.0",
+    "@angular/router": "^22.1.0"
   },
   "dependencies": {
     "tslib": "^2.8.1"
@@ -1146,8 +1166,8 @@ root-absolute so the file resolves identically whether it is bundled or served o
 @font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url("/assets/fonts/inter-vietnamese.woff2") format('woff2');unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
 ```
 
-Create `libs/shared-ui/src/styles/colors.css` — ported verbatim; the only change is that the
-`--certainty-provisional-opacity` line and its comment are gone:
+Create `libs/shared-ui/src/styles/colors.css` — ported verbatim, with the
+`--certainty-provisional-opacity` line and its comment gone and `--pp-canvas` added:
 
 ```css
 /* PeakPower colour tokens — Paleta SB-2026.
@@ -1162,6 +1182,7 @@ Create `libs/shared-ui/src/styles/colors.css` — ported verbatim; the only chan
   --pp-bg:#eef3f9;                 /* app canvas, gradient start */
   --pp-bg-2:#f7f9fc;               /* gradient end */
   --pp-bg-gradient:linear-gradient(180deg,#eef3f9 0%,#f7f9fc 60%);
+  --pp-canvas:var(--pp-bg-gradient);   /* the page ground — shared contract §10.1 */
   --pp-surface:#ffffff; --pp-surface-alt:#f2f5f9; --pp-surface-zebra:#fafcfe;
   --pp-border:#dde4ed; --pp-border-strong:#c3cddb;
 
@@ -1302,7 +1323,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false && npx ng build customer-portal --configuration development
 ```
 
-Expected: PASS — `8 passed` from Vitest, followed by `Application bundle generation complete`.
+Expected: PASS — `9 passed` from Vitest, followed by `Application bundle generation complete`.
 
 - [ ] **Step 5: Commit**
 
@@ -1450,7 +1471,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 14 passing tests (the 8 token tests from Task 3 plus these 6).
+Expected: PASS — Vitest reports 15 passing tests (the 9 token tests from Task 3 plus these 6).
 
 - [ ] **Step 5: Commit**
 
@@ -1668,7 +1689,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 22 passing tests.
+Expected: PASS — Vitest reports 23 passing tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1682,12 +1703,18 @@ git commit -m "feat(shared-ui): add the ppMoney, ppEnergy, ppPower and ppPrice p
 
 ## Task 6: `pp-badge`
 
-The pill status label — the product's single status vocabulary. Ten tones, each one a *meaning*
-rather than a decoration: `success` = confirmed / final / healthy, `warning` = waiting on
-someone / provisional, `critical` = failed / expiring, `info` = an in-flight or partial record,
-`brand` = a product shape (Base / Peak), `system` = a machine-made or corrected record,
-`short` = uncovered volume, `long` = surplus sold, `sell` = the sell direction, `neutral` = not
-tradeable / projected / duplicate.
+The pill status label — the product's single status vocabulary. It reads `PpTone`, the one tone
+type shared contract §10.1 gives the whole library, and this task is where that type is born:
+six tones, each one a *meaning* rather than a decoration. `success` = confirmed / final /
+healthy, `warning` = waiting on someone / provisional, `critical` = failed / expiring,
+`info` = an in-flight or partial record, `brand` = a product shape (Base / Peak),
+`neutral` = not tradeable / projected / duplicate.
+
+One vocabulary, one spelling. The contract is explicit that `'positive'` and `'danger'` are not
+members — a favourable outcome is `success` and a destructive one is `critical` — and the same
+six names serve `pp-banner`, `pp-ds-banner` and `pp-stat-card`, so a tone learnt on one
+component is a tone everywhere. The data roles the palette also carries (short, long, sell,
+system) are chart and figure colours, not status pills; they stay in the token file.
 
 Two rules carry the whole component. **Every tone has a real 1px border** — without it the tones
 with pale tints (`info`, `neutral`) dissolve into a white card. And **the text colour is always
@@ -1700,6 +1727,7 @@ rewritten to `.pp-badge[_ngcontent-xxx]` and would never match the host, which c
 `_nghost-xxx` instead.
 
 **Files:**
+- Create: `libs/shared-ui/src/lib/tone.ts`
 - Create: `libs/shared-ui/src/lib/badge/pp-badge.ts`
 - Create: `libs/shared-ui/src/lib/badge/pp-badge.css`
 - Modify: `libs/shared-ui/src/public-api.ts`
@@ -1710,8 +1738,9 @@ rewritten to `.pp-badge[_ngcontent-xxx]` and would never match the host, which c
   `export const PP_BRIGHT_FILL_TOKENS: readonly string[]` from Task 3's
   `libs/shared-ui/src/testing/read-css.ts`.
 - Produces:
-  - `export type PpBadgeTone = 'success' | 'warning' | 'critical' | 'info' | 'brand' | 'system' | 'short' | 'long' | 'sell' | 'neutral'`
-  - `export class PpBadge` — selector `pp-badge`, input `tone: InputSignal<PpBadgeTone>`
+  - `export type PpTone = 'neutral' | 'brand' | 'info' | 'success' | 'warning' | 'critical'`
+    — shared contract §10.1, and the tone type every later toned component imports.
+  - `export class PpBadge` — selector `pp-badge`, input `tone: InputSignal<PpTone>`
     (default `'neutral'`), content projected as the label.
 
 - [ ] **Step 1: Write the failing test**
@@ -1723,7 +1752,8 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import { PP_BRIGHT_FILL_TOKENS, cssText } from '../../testing/read-css';
-import { PpBadge, type PpBadgeTone } from './pp-badge';
+import type { PpTone } from '../tone';
+import { PpBadge } from './pp-badge';
 
 @Component({
   imports: [PpBadge],
@@ -1731,9 +1761,8 @@ import { PpBadge, type PpBadgeTone } from './pp-badge';
 })
 class BadgeHost {}
 
-const ALL_TONES: readonly PpBadgeTone[] = [
-  'success', 'warning', 'critical', 'info', 'brand',
-  'system', 'short', 'long', 'sell', 'neutral',
+const ALL_TONES: readonly PpTone[] = [
+  'neutral', 'brand', 'info', 'success', 'warning', 'critical',
 ];
 
 /** The whitespace-stripped declaration block for one tone's `:host(...)` rule. */
@@ -1756,6 +1785,17 @@ describe('pp-badge', () => {
     expect(host.classList.contains('pp-badge')).toBe(true);
     expect(host.classList.contains('pp-badge--success')).toBe(true);
     expect(host.classList.contains('pp-badge--neutral')).toBe(false);
+  });
+
+  it('spells the tones the way the whole library spells them', () => {
+    // Shared contract §10.1: 'positive' is 'success', 'danger' is 'critical', and neither of
+    // those two spellings may appear anywhere.
+    const css = cssText('lib/badge/pp-badge.css');
+    expect(css).not.toContain('positive');
+    expect(css).not.toContain('danger');
+    for (const tone of ALL_TONES) {
+      expect(css, `${tone} has no rule`).toContain(`:host(.pp-badge--${tone})`);
+    }
   });
 
   it('gives every tone a real 1px border', () => {
@@ -1805,26 +1845,26 @@ Expected: FAIL — `Failed to resolve import "./pp-badge" from "libs/shared-ui/s
 
 - [ ] **Step 3: Write the minimal implementation**
 
+Create `libs/shared-ui/src/lib/tone.ts`:
+
+```ts
+/**
+ * The one tone vocabulary in this library — shared contract §10.1. A tone is a meaning, not a
+ * colour choice: pick the one that says what the record IS, and the palette decides how it
+ * looks. `pp-badge`, `pp-banner`, `pp-ds-banner` and `pp-stat-card` all read this type, so a
+ * tone learnt on one of them is a tone on all four.
+ *
+ * There is no 'positive' and no 'danger': a favourable outcome is `success`, a destructive or
+ * failed one is `critical`.
+ */
+export type PpTone = 'neutral' | 'brand' | 'info' | 'success' | 'warning' | 'critical';
+```
+
 Create `libs/shared-ui/src/lib/badge/pp-badge.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-
-/**
- * A tone is a meaning, not a colour choice. Pick the one that says what the record IS; the
- * palette then decides how it looks.
- */
-export type PpBadgeTone =
-  | 'success'
-  | 'warning'
-  | 'critical'
-  | 'info'
-  | 'brand'
-  | 'system'
-  | 'short'
-  | 'long'
-  | 'sell'
-  | 'neutral';
+import type { PpTone } from '../tone';
 
 @Component({
   selector: 'pp-badge',
@@ -1834,7 +1874,7 @@ export type PpBadgeTone =
   host: { '[class]': 'hostClass()' },
 })
 export class PpBadge {
-  readonly tone = input<PpBadgeTone>('neutral');
+  readonly tone = input<PpTone>('neutral');
 
   protected readonly hostClass = computed(() => `pp-badge pp-badge--${this.tone()}`);
 }
@@ -1861,7 +1901,23 @@ Create `libs/shared-ui/src/lib/badge/pp-badge.css`:
 }
 
 /* Every --pp-badge-text below is a darker *-text tier. A bright fill used as
-   11px type drops to roughly 2:1 on white. */
+   11px type drops to roughly 2:1 on white. Six tones, no more: the tone list is
+   PpTone, and every toned component in the library reads the same six names. */
+:host(.pp-badge--neutral) {
+  --pp-badge-bg: var(--pp-surface-alt);
+  --pp-badge-border: var(--color-border-strong);
+  --pp-badge-text: var(--color-text-body);
+}
+:host(.pp-badge--brand) {
+  --pp-badge-bg: var(--pp-blue-100);
+  --pp-badge-border: #a9c8e8;
+  --pp-badge-text: var(--pp-blue-700);
+}
+:host(.pp-badge--info) {
+  --pp-badge-bg: var(--pp-blue-050);
+  --pp-badge-border: #a9c8e8;
+  --pp-badge-text: var(--pp-blue-700);
+}
 :host(.pp-badge--success) {
   --pp-badge-bg: var(--pp-green-bg);
   --pp-badge-border: var(--pp-green-border);
@@ -1877,48 +1933,13 @@ Create `libs/shared-ui/src/lib/badge/pp-badge.css`:
   --pp-badge-border: var(--pp-red-border);
   --pp-badge-text: var(--pp-red-text);
 }
-:host(.pp-badge--info) {
-  --pp-badge-bg: var(--pp-blue-050);
-  --pp-badge-border: #a9c8e8;
-  --pp-badge-text: var(--pp-blue-700);
-}
-:host(.pp-badge--brand) {
-  --pp-badge-bg: var(--pp-blue-100);
-  --pp-badge-border: #a9c8e8;
-  --pp-badge-text: var(--pp-blue-700);
-}
-:host(.pp-badge--system) {
-  --pp-badge-bg: var(--pp-violet-bg);
-  --pp-badge-border: var(--pp-violet-border);
-  --pp-badge-text: var(--pp-violet-text);
-}
-:host(.pp-badge--short) {
-  --pp-badge-bg: var(--pp-coral-bg);
-  --pp-badge-border: var(--pp-coral-border);
-  --pp-badge-text: var(--pp-coral-text);
-}
-/* --pp-cyan has no text tier at all, so "long" reads the teal tier instead. */
-:host(.pp-badge--long) {
-  --pp-badge-bg: #e4f7f5;
-  --pp-badge-border: #9fdcd6;
-  --pp-badge-text: var(--pp-teal-text);
-}
-:host(.pp-badge--sell) {
-  --pp-badge-bg: var(--pp-pink-bg);
-  --pp-badge-border: var(--pp-pink-border);
-  --pp-badge-text: var(--pp-pink-text);
-}
-:host(.pp-badge--neutral) {
-  --pp-badge-bg: var(--pp-surface-alt);
-  --pp-badge-border: var(--color-border-strong);
-  --pp-badge-text: var(--color-text-body);
-}
 ```
 
 Append to `libs/shared-ui/src/public-api.ts`:
 
 ```ts
-export { PpBadge, type PpBadgeTone } from './lib/badge/pp-badge';
+export type { PpTone } from './lib/tone';
+export { PpBadge } from './lib/badge/pp-badge';
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -1929,24 +1950,30 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 27 passing tests.
+Expected: PASS — Vitest reports 29 passing tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-web
-git add libs/shared-ui/src/lib/badge libs/shared-ui/src/public-api.ts
-git commit -m "feat(shared-ui): add the pp-badge status pill"
+git add libs/shared-ui/src/lib/tone.ts libs/shared-ui/src/lib/badge libs/shared-ui/src/public-api.ts
+git commit -m "feat(shared-ui): add PpTone and the pp-badge status pill"
 ```
 
 ---
 
 ## Task 7: `pp-button`
 
-One button primitive, five variants, three sizes. The rule that makes it a system rather than a
+One button primitive, five variants, two sizes. The rule that makes it a system rather than a
 pile of styles is that **every variant carries `border: 1px solid`** — including `ghost`, whose
 border is transparent. A borderless ghost button is 2px shorter than the primary button beside
 it, and a filter row of mixed variants goes visibly ragged.
+
+The five variants are `primary`, `secondary`, `ghost`, `danger` and `accept` — shared contract
+§10.1, where `accept` is the mint-filled affirmative a customer presses to take a firm price.
+The default is **`secondary`**: a bare `<pp-button>Cancel</pp-button>` beside an explicit
+primary action is the quieter of the pair, and both portals write their primary action out in
+full.
 
 `danger` fills with `--pp-red-value` (`#C22A2A`), not the bright `--pp-red` (`#F24F4F`): white
 on the bright red is only 3,5:1.
@@ -1964,10 +1991,10 @@ semantics all come from the platform. A `click` on the inner button bubbles out 
 **Interfaces:**
 - Consumes: `export function cssText(relativePath: string): string` from Task 3.
 - Produces:
-  - `export type PpButtonVariant = 'primary' | 'secondary' | 'danger' | 'accent' | 'ghost'`
-  - `export type PpButtonSize = 'sm' | 'md' | 'lg'`
+  - `export type PpButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accept'`
+  - `export type PpButtonSize = 'md' | 'sm'`
   - `export class PpButton` — selector `pp-button`, inputs
-    `variant: InputSignal<PpButtonVariant>` (default `'primary'`),
+    `variant: InputSignal<PpButtonVariant>` (default `'secondary'`),
     `size: InputSignal<PpButtonSize>` (default `'md'`),
     `disabled: InputSignalWithTransform<boolean, unknown>` (default `false`),
     `type: InputSignal<'button' | 'submit'>` (default `'button'`).
@@ -1983,7 +2010,7 @@ import { cssText } from '../../testing/read-css';
 import { PpButton, type PpButtonVariant } from './pp-button';
 
 const ALL_VARIANTS: readonly PpButtonVariant[] = [
-  'primary', 'secondary', 'danger', 'accent', 'ghost',
+  'primary', 'secondary', 'ghost', 'danger', 'accept',
 ];
 
 function variantBlock(variant: string): string {
@@ -2013,11 +2040,16 @@ describe('pp-button', () => {
     expect(variantBlock('ghost')).toContain('--pp-button-border:transparent');
   });
 
-  it('changes only padding and font size between sizes', () => {
+  it('changes only padding and font size between the two sizes', () => {
     const css = cssText('lib/button/pp-button.css');
     expect(css).toContain('padding:10px20px');
     expect(css).toContain('padding:7px14px');
-    expect(css).toContain('padding:13px26px');
+  });
+
+  it('defaults to secondary, so a bare <pp-button> is the quieter action', () => {
+    const fixture = TestBed.createComponent(PpButton);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.classList.contains('pp-button--secondary')).toBe(true);
   });
 
   it('carries the variant and the size on the host', () => {
@@ -2066,8 +2098,8 @@ import {
   input,
 } from '@angular/core';
 
-export type PpButtonVariant = 'primary' | 'secondary' | 'danger' | 'accent' | 'ghost';
-export type PpButtonSize = 'sm' | 'md' | 'lg';
+export type PpButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accept';
+export type PpButtonSize = 'md' | 'sm';
 
 @Component({
   selector: 'pp-button',
@@ -2083,7 +2115,7 @@ export type PpButtonSize = 'sm' | 'md' | 'lg';
   host: { '[class]': 'hostClass()' },
 })
 export class PpButton {
-  readonly variant = input<PpButtonVariant>('primary');
+  readonly variant = input<PpButtonVariant>('secondary');
   readonly size = input<PpButtonSize>('md');
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly type = input<'button' | 'submit'>('button');
@@ -2131,9 +2163,6 @@ Create `libs/shared-ui/src/lib/button/pp-button.css`:
   padding: 7px 14px;
   font-size: 12px;
 }
-:host(.pp-button--lg) .pp-button__control {
-  padding: 13px 26px;
-}
 
 :host(.pp-button--primary) {
   --pp-button-bg: var(--pp-blue-700);
@@ -2165,12 +2194,13 @@ Create `libs/shared-ui/src/lib/button/pp-button.css`:
   --pp-button-border: #a32222;
 }
 
-:host(.pp-button--accent) {
+/* The affirmative: take this price, accept this offer. Mint under heading-tier type. */
+:host(.pp-button--accept) {
   --pp-button-bg: var(--pp-mint);
   --pp-button-border: var(--pp-mint);
   --pp-button-text: var(--pp-text-heading);
 }
-:host(.pp-button--accent) .pp-button__control:hover:not(:disabled) {
+:host(.pp-button--accept) .pp-button__control:hover:not(:disabled) {
   --pp-button-bg: #17a67c;
   --pp-button-border: #17a67c;
 }
@@ -2205,7 +2235,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 32 passing tests.
+Expected: PASS — Vitest reports 35 passing tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2222,11 +2252,14 @@ git commit -m "feat(shared-ui): add the pp-button primitive with matching varian
 The default content container for every screen section: white, 1px hairline border, the low wide
 SB-2026 card shadow, `18px 20px` of padding.
 
+The head line is the `heading` input — shared contract §10.1 names it `heading`, not `title`,
+and both portals bind it that way on every card they render.
+
 The rule worth a test is the spacing one, because it is the thing that gets "tidied" and breaks.
-**The subtitle is a sibling of the head, not a child of it.** The head is a flex row — title on
+**The subtitle is a sibling of the head, not a child of it.** The head is a flex row — heading on
 the left, action on the right — and a subtitle nested inside that row would be laid out beside
-the title instead of beneath it. Because the subtitle sits outside, the head's bottom margin has
-to shrink from 14px to 4px whenever a subtitle follows, and the subtitle then carries the
+the heading instead of beneath it. Because the subtitle sits outside, the head's bottom margin
+has to shrink from 14px to 4px whenever a subtitle follows, and the subtitle then carries the
 remaining 14px down to the body. Get that wrong in either direction and every card on the screen
 is 10px taller or the subtitle collides with the body.
 
@@ -2239,7 +2272,7 @@ is 10px taller or the subtitle collides with the body.
 **Interfaces:**
 - Consumes: `export function cssText(relativePath: string): string` from Task 3.
 - Produces:
-  - `export class PpCard` — selector `pp-card`, inputs `title: InputSignal<string>` (default
+  - `export class PpCard` — selector `pp-card`, inputs `heading: InputSignal<string>` (default
     `''`) and `subtitle: InputSignal<string>` (default `''`); two content slots — anything
     carrying the `ppCardAction` attribute is projected into the head, everything else into the
     body.
@@ -2258,7 +2291,7 @@ import { PpCard } from './pp-card';
 @Component({
   imports: [PpCard],
   template: `
-    <pp-card title="Ledger" subtitle="Every movement, newest first">
+    <pp-card heading="Ledger" subtitle="Every movement, newest first">
       <span ppCardAction>Export CSV</span>
       <p class="body-marker">Nine entries this month.</p>
     </pp-card>
@@ -2268,7 +2301,7 @@ class WithSubtitleHost {}
 
 @Component({
   imports: [PpCard],
-  template: `<pp-card title="Ledger"><p>Nine entries this month.</p></pp-card>`,
+  template: `<pp-card heading="Ledger"><p>Nine entries this month.</p></pp-card>`,
 })
 class WithoutSubtitleHost {}
 
@@ -2289,7 +2322,7 @@ describe('pp-card', () => {
 
     expect(head).not.toBeNull();
     expect(subtitle).not.toBeNull();
-    // Inside the head's flex row the subtitle would sit BESIDE the title.
+    // Inside the head's flex row the subtitle would sit BESIDE the heading.
     expect(head.contains(subtitle)).toBe(false);
     expect(subtitle.parentElement).toBe(head.parentElement);
   });
@@ -2327,7 +2360,7 @@ describe('pp-card', () => {
     expect(headBlock).toContain('margin-top:0');
   });
 
-  it('renders no head at all when there is no title', () => {
+  it('renders no head at all when there is no heading', () => {
     const fixture = TestBed.createComponent(UntitledHost);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.pp-card__head')).toBeNull();
@@ -2354,17 +2387,17 @@ Create `libs/shared-ui/src/lib/card/pp-card.ts`:
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 /**
- * The default content container. A card with a header action but no title is not a shape this
- * system has — the action belongs to the title, so the head is gated on the title alone.
+ * The default content container. A card with a header action but no heading is not a shape this
+ * system has — the action belongs to the heading, so the head is gated on the heading alone.
  */
 @Component({
   selector: 'pp-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './pp-card.css',
   template: `
-    @if (title()) {
+    @if (heading()) {
       <div class="pp-card__head" [class.pp-card__head--tight]="subtitle().length > 0">
-        <div class="pp-card__title">{{ title() }}</div>
+        <div class="pp-card__heading">{{ heading() }}</div>
         <div class="pp-card__action"><ng-content select="[ppCardAction]" /></div>
       </div>
     }
@@ -2376,8 +2409,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   host: { class: 'pp-card' },
 })
 export class PpCard {
-  readonly title = input<string>('');
-  /** One-line explanation under the title. It carries its own 14px bottom margin. */
+  readonly heading = input<string>('');
+  /** One-line explanation under the heading. It carries its own 14px bottom margin. */
   readonly subtitle = input<string>('');
 }
 ```
@@ -2396,7 +2429,7 @@ Create `libs/shared-ui/src/lib/card/pp-card.css`:
 }
 
 /* The head is a flex row, so the subtitle CANNOT live inside it — it would be
-   laid out beside the title. It is a sibling, and the 14px gap to the body is
+   laid out beside the heading. It is a sibling, and the 14px gap to the body is
    split 4 + 10 the moment a subtitle exists. */
 .pp-card__head {
   display: flex;
@@ -2410,7 +2443,7 @@ Create `libs/shared-ui/src/lib/card/pp-card.css`:
   margin-bottom: 4px;
 }
 
-.pp-card__title {
+.pp-card__heading {
   font-size: var(--text-base);
   font-weight: var(--weight-bold);
   color: var(--color-text-heading);
@@ -2446,7 +2479,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 38 passing tests.
+Expected: PASS — Vitest reports 41 passing tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2473,8 +2506,9 @@ Three rules, all of them things that got broken in the prototype:
 - **The 3px accent cap is a `::before` on the host**, not a nested div. There is no element to
   forget and nothing for a consumer's content to displace.
 
-`critical` is coral in this system, not red. A genuinely red figure — a negative balance — is a
-call-site decision, not a tone.
+The tone is `PpTone`, the same six names the badge uses — `neutral` is the plain figure and the
+default. `critical` is coral in this system, not red. A genuinely red figure — a negative
+balance — is a call-site decision, not a tone.
 
 **Files:**
 - Create: `libs/shared-ui/src/lib/stat-card/pp-stat-card.ts`
@@ -2485,11 +2519,10 @@ call-site decision, not a tone.
 **Interfaces:**
 - Consumes: `export function cssText(relativePath: string): string` from Task 3.
 - Produces:
-  - `export type PpStatCardTone = 'default' | 'brand' | 'warning' | 'critical' | 'success'`
   - `export class PpStatCard` — selector `pp-stat-card`, inputs
     `label: InputSignal<string>` (required), `value: InputSignal<string>` (required),
     `sublabel: InputSignal<string>` (default `''`),
-    `tone: InputSignal<PpStatCardTone>` (default `'default'`),
+    `tone: InputSignal<PpTone>` (default `'neutral'`, from Task 6's `lib/tone.ts`),
     `highlight: InputSignalWithTransform<boolean, unknown>` (default `false`).
 
 - [ ] **Step 1: Write the failing test**
@@ -2586,9 +2619,7 @@ import {
   computed,
   input,
 } from '@angular/core';
-
-/** `critical` is CORAL in this system, not red. A red figure is a call-site decision. */
-export type PpStatCardTone = 'default' | 'brand' | 'warning' | 'critical' | 'success';
+import type { PpTone } from '../tone';
 
 @Component({
   selector: 'pp-stat-card',
@@ -2610,7 +2641,8 @@ export class PpStatCard {
   readonly value = input.required<string>();
   /** Faint qualifier under the value: where the number came from. */
   readonly sublabel = input<string>('');
-  readonly tone = input<PpStatCardTone>('default');
+  /** `critical` is CORAL here, not red. A red figure is a call-site decision. */
+  readonly tone = input<PpTone>('neutral');
   /** Amber surface — the column of the queue that needs action now. */
   readonly highlight = input(false, { transform: booleanAttribute });
 
@@ -2649,12 +2681,16 @@ Create `libs/shared-ui/src/lib/stat-card/pp-stat-card.css`:
   background: var(--pp-stat-card-cap);
 }
 
-:host(.pp-stat-card--default) {
+:host(.pp-stat-card--neutral) {
   --pp-stat-card-cap: var(--pp-blue-700);
   --pp-stat-card-value: var(--color-text-heading);
 }
 :host(.pp-stat-card--brand) {
   --pp-stat-card-cap: var(--pp-blue-700);
+  --pp-stat-card-value: var(--pp-blue-700);
+}
+:host(.pp-stat-card--info) {
+  --pp-stat-card-cap: var(--pp-blue-300);
   --pp-stat-card-value: var(--pp-blue-700);
 }
 :host(.pp-stat-card--warning) {
@@ -2680,7 +2716,7 @@ Create `libs/shared-ui/src/lib/stat-card/pp-stat-card.css`:
 Append to `libs/shared-ui/src/public-api.ts`:
 
 ```ts
-export { PpStatCard, type PpStatCardTone } from './lib/stat-card/pp-stat-card';
+export { PpStatCard } from './lib/stat-card/pp-stat-card';
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -2691,7 +2727,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 44 passing tests.
+Expected: PASS — Vitest reports 47 passing tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2706,12 +2742,17 @@ git commit -m "feat(shared-ui): add the pp-stat-card figure with its 3px accent 
 ## Task 10: `pp-banner` — the SB-2026 page-level notice
 
 The notice that sits directly above the content it qualifies, full width, never more than one at
-a time. `warning` = you must act, or this data is provisional. `critical` = something failed or
-halted — say what, and who is on it. `info` = this qualifies the screen and needs no action.
+a time. It reads `PpTone`: `warning` = you must act, or this data is provisional.
+`critical` = something failed or halted — say what, and who is on it. `info` = this qualifies the
+screen and needs no action. `success` = the thing you were waiting for happened.
 
 This is the SB-2026 shape from the adopted design: a **26px rounded-square** mark holding a
-literal `!`, `15px 18px` of padding, title 13/700 and body 11.5 three pixels under it. It always
-has a title — a banner without one is a different component, which is Task 11.
+literal `!`, `15px 18px` of padding, heading 13/700 and the note 11.5 three pixels under it.
+
+Two things follow shared contract §10.1 and are worth naming, because both portals depend on
+them. The head line is **`heading`**, and it is **optional** — `<pp-banner tone="info">One
+line.</pp-banner>` is a legal notice. And the note is **projected content**, not an input: every
+consumer writes its sentence, and sometimes a `<pp-button>` or two, between the tags.
 
 The `!` inside the mark is one of only four glyphs in the entire product. There is no icon set to
 reach for.
@@ -2726,57 +2767,69 @@ reach for.
 - Consumes: `export function cssText(relativePath: string): string` and
   `export const PP_BRIGHT_FILL_TOKENS: readonly string[]` from Task 3.
 - Produces:
-  - `export type PpBannerTone = 'info' | 'warning' | 'critical'`
-  - `export class PpBanner` — selector `pp-banner`, inputs `title: InputSignal<string>`
-    (required), `body: InputSignal<string>` (default `''`),
-    `tone: InputSignal<PpBannerTone>` (default `'info'`); projected content becomes the
-    right-hand action slot.
+  - `export class PpBanner` — selector `pp-banner`, inputs `heading: InputSignal<string>`
+    (default `''`) and `tone: InputSignal<PpTone>` (default `'info'`, from Task 6's
+    `lib/tone.ts`); projected content becomes the note under the heading.
 
 - [ ] **Step 1: Write the failing test**
 
 Create `libs/shared-ui/src/lib/banner/pp-banner.spec.ts`:
 
 ```ts
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import { PP_BRIGHT_FILL_TOKENS, cssText } from '../../testing/read-css';
 import { PpBanner } from './pp-banner';
 
-function createBanner() {
-  const fixture = TestBed.createComponent(PpBanner);
-  fixture.componentRef.setInput('title', 'Offer received — Base Nov-2026 · 0,20 MW');
-  return fixture;
-}
+@Component({
+  imports: [PpBanner],
+  template: `
+    <pp-banner tone="warning" heading="Offer received — Base Nov-2026 · 0,20 MW">
+      Respond within 24:41 — the price is firm until then.
+    </pp-banner>
+  `,
+})
+class BannerHost {}
+
+@Component({
+  imports: [PpBanner],
+  template: `<pp-banner tone="info">These are indicative prices, not offers.</pp-banner>`,
+})
+class HeadinglessHost {}
 
 describe('pp-banner', () => {
-  it('always shows the mark, because a banner always has a title', () => {
-    const fixture = createBanner();
+  it('always shows the mark, and the heading when it has one', () => {
+    const fixture = TestBed.createComponent(BannerHost);
     fixture.detectChanges();
 
     const el: HTMLElement = fixture.nativeElement;
     const mark = el.querySelector('.pp-banner__mark')!;
     expect(mark.textContent?.trim()).toBe('!');
     expect(mark.getAttribute('aria-hidden')).toBe('true');
-    expect(el.querySelector('.pp-banner__title')?.textContent).toContain('Offer received');
+    expect(el.querySelector('.pp-banner__heading')?.textContent).toContain('Offer received');
   });
 
-  it('puts the body under the title, not beside it', () => {
-    const fixture = createBanner();
-    fixture.componentRef.setInput('body', 'Respond within 24:41 — the price is firm until then.');
+  it('puts the projected note under the heading, not beside it', () => {
+    const fixture = TestBed.createComponent(BannerHost);
     fixture.detectChanges();
 
     const el: HTMLElement = fixture.nativeElement;
-    const title = el.querySelector('.pp-banner__title')!;
+    const heading = el.querySelector('.pp-banner__heading')!;
     const body = el.querySelector('.pp-banner__body')!;
-    expect(body.parentElement).toBe(title.parentElement);
-    expect(title.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(body.textContent).toContain('the price is firm until then');
+    expect(body.parentElement).toBe(heading.parentElement);
+    expect(heading.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('carries the tone on the host', () => {
-    const fixture = createBanner();
-    fixture.componentRef.setInput('tone', 'warning');
+  it('carries the tone on the host, and renders a one-line notice with no heading', () => {
+    const fixture = TestBed.createComponent(HeadinglessHost);
     fixture.detectChanges();
-    expect(fixture.nativeElement.classList.contains('pp-banner--warning')).toBe(true);
+
+    const banner = fixture.nativeElement.querySelector('pp-banner') as HTMLElement;
+    expect(banner.classList.contains('pp-banner--info')).toBe(true);
+    expect(banner.querySelector('.pp-banner__heading')).toBeNull();
+    expect(banner.querySelector('.pp-banner__body')?.textContent).toContain('indicative');
   });
 
   it('uses the SB-2026 shape: a 26px rounded square at 15px 18px', () => {
@@ -2790,7 +2843,8 @@ describe('pp-banner', () => {
   it('never sets banner type in a bright fill token', () => {
     const css = cssText('lib/banner/pp-banner.css');
     const textValues = [...css.matchAll(/--pp-banner-text:([^;}]+)/g)].map((match) => match[1]);
-    expect(textValues).toHaveLength(3);
+    // One per PpTone member — a banner can carry any of the six.
+    expect(textValues).toHaveLength(6);
     for (const value of textValues) {
       for (const bright of PP_BRIGHT_FILL_TOKENS) {
         expect(value, `${value} sets banner copy in the bright fill ${bright}`).not.toMatch(
@@ -2818,12 +2872,12 @@ Create `libs/shared-ui/src/lib/banner/pp-banner.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-
-export type PpBannerTone = 'info' | 'warning' | 'critical';
+import type { PpTone } from '../tone';
 
 /**
  * The SB-2026 page-level notice. Sits directly above the content it qualifies, full width,
- * and never stacked more than one at a time.
+ * and never stacked more than one at a time. The note is whatever the caller projects — a
+ * sentence, and sometimes the buttons that answer it.
  */
 @Component({
   selector: 'pp-banner',
@@ -2832,19 +2886,20 @@ export type PpBannerTone = 'info' | 'warning' | 'critical';
   template: `
     <div class="pp-banner__mark" aria-hidden="true">!</div>
     <div class="pp-banner__text">
-      <div class="pp-banner__title">{{ title() }}</div>
-      @if (body()) {
-        <div class="pp-banner__body">{{ body() }}</div>
+      @if (heading()) {
+        <div class="pp-banner__heading">{{ heading() }}</div>
       }
+      <div class="pp-banner__body" [class.pp-banner__body--under-heading]="heading().length > 0">
+        <ng-content />
+      </div>
     </div>
-    <div class="pp-banner__action"><ng-content /></div>
   `,
   host: { '[class]': 'hostClass()', role: 'status' },
 })
 export class PpBanner {
-  readonly title = input.required<string>();
-  readonly body = input<string>('');
-  readonly tone = input<PpBannerTone>('info');
+  /** Optional: a one-line notice with no heading is a legal shape. */
+  readonly heading = input<string>('');
+  readonly tone = input<PpTone>('info');
 
   protected readonly hostClass = computed(() => `pp-banner pp-banner--${this.tone()}`);
 }
@@ -2855,7 +2910,7 @@ Create `libs/shared-ui/src/lib/banner/pp-banner.css`:
 ```css
 :host {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   padding: 15px 18px;
   border-radius: var(--radius-lg);
@@ -2881,16 +2936,38 @@ Create `libs/shared-ui/src/lib/banner/pp-banner.css`:
 }
 
 .pp-banner__text { flex: 1; min-width: 0; }
-.pp-banner__title { font-size: 13px; font-weight: var(--weight-bold); }
-.pp-banner__body { font-size: 11.5px; margin-top: 3px; line-height: 1.45; }
-.pp-banner__action { flex-shrink: 0; }
+.pp-banner__heading { font-size: 13px; font-weight: var(--weight-bold); }
+/* The projected note. It only needs the 3px offset when a heading sits above it. */
+.pp-banner__body { font-size: 11.5px; line-height: 1.45; }
+.pp-banner__body--under-heading { margin-top: 3px; }
+.pp-banner__body p { margin: 0; }
+.pp-banner__body p + * { margin-top: 10px; }
 
-/* --pp-banner-mark is the solid mark fill; --pp-banner-text is always a darker tier. */
+/* --pp-banner-mark is the solid mark fill; --pp-banner-text is always a darker tier.
+   One block per PpTone member, because a consumer may pass any of the six. */
+:host(.pp-banner--neutral) {
+  --pp-banner-bg: var(--pp-surface-alt);
+  --pp-banner-border: var(--color-border-strong);
+  --pp-banner-text: var(--color-text-body);
+  --pp-banner-mark: var(--pp-text-body);
+}
+:host(.pp-banner--brand) {
+  --pp-banner-bg: var(--pp-blue-100);
+  --pp-banner-border: #a9c8e8;
+  --pp-banner-text: var(--pp-blue-700);
+  --pp-banner-mark: var(--pp-blue-700);
+}
 :host(.pp-banner--info) {
   --pp-banner-bg: #eaf2fb;
   --pp-banner-border: #b3cdea;
   --pp-banner-text: var(--pp-blue-700);
   --pp-banner-mark: var(--pp-blue-700);
+}
+:host(.pp-banner--success) {
+  --pp-banner-bg: var(--pp-green-bg);
+  --pp-banner-border: var(--pp-green-border);
+  --pp-banner-text: var(--pp-green-text);
+  --pp-banner-mark: var(--pp-mint);
 }
 :host(.pp-banner--warning) {
   --pp-banner-bg: #fdf7e6;
@@ -2909,7 +2986,7 @@ Create `libs/shared-ui/src/lib/banner/pp-banner.css`:
 Append to `libs/shared-ui/src/public-api.ts`:
 
 ```ts
-export { PpBanner, type PpBannerTone } from './lib/banner/pp-banner';
+export { PpBanner } from './lib/banner/pp-banner';
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -2920,7 +2997,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 49 passing tests.
+Expected: PASS — Vitest reports 52 passing tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2944,9 +3021,11 @@ They differ in shape and in behaviour:
 | | `pp-banner` (SB-2026) | `pp-ds-banner` (design system) |
 | --- | --- | --- |
 | Padding | `15px 18px` | `14px 18px` |
-| Mark | 26px rounded square, always shown | 22px **circle**, shown only when there is a title |
-| Title | required | optional — a plain one-line note is a legal shape |
+| Mark | 26px rounded **square** | 22px **circle** |
+| `heading` | optional — a plain one-line notice is a legal shape | **required** — this shape is always titled |
 | Info tint | `#eaf2fb` / `#b3cdea` | `--pp-blue-050` / `#a9c8e8` |
+
+Both read `PpTone` and both take their note as projected content — shared contract §10.1.
 
 If a future change makes them look the same, that is a design decision someone has to make on
 purpose — deleting one component — not something that happens by adding a boolean.
@@ -2962,22 +3041,31 @@ purpose — deleting one component — not something that happens by adding a bo
   `export class PpBanner` from Task 10 (imported by the spec only, to assert the two are
   distinct).
 - Produces:
-  - `export type PpDsBannerTone = 'info' | 'warning' | 'critical'`
-  - `export class PpDsBanner` — selector `pp-ds-banner`, inputs `title: InputSignal<string>`
-    (default `''`), `body: InputSignal<string>` (default `''`),
-    `tone: InputSignal<PpDsBannerTone>` (default `'info'`); projected content becomes the
-    right-hand action slot.
+  - `export class PpDsBanner` — selector `pp-ds-banner`, inputs `heading: InputSignal<string>`
+    (required) and `tone: InputSignal<PpTone>` (default `'info'`, from Task 6's `lib/tone.ts`);
+    projected content becomes the note under the heading.
 
 - [ ] **Step 1: Write the failing test**
 
 Create `libs/shared-ui/src/lib/ds-banner/pp-ds-banner.spec.ts`:
 
 ```ts
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import { cssText } from '../../testing/read-css';
 import { PpBanner } from '../banner/pp-banner';
 import { PpDsBanner } from './pp-ds-banner';
+
+@Component({
+  imports: [PpDsBanner],
+  template: `
+    <pp-ds-banner heading="Wallet below your alert threshold">
+      These are indicative market prices, not offers.
+    </pp-ds-banner>
+  `,
+})
+class DsBannerHost {}
 
 describe('pp-ds-banner', () => {
   it('is a different component from PpBanner, not a variant of it', () => {
@@ -2987,36 +3075,36 @@ describe('pp-ds-banner', () => {
 
   it('answers to its own selector, so a template cannot swap one for the other', () => {
     const sb = TestBed.createComponent(PpBanner);
-    sb.componentRef.setInput('title', 'Offer received');
+    sb.componentRef.setInput('heading', 'Offer received');
     sb.detectChanges();
 
     const ds = TestBed.createComponent(PpDsBanner);
+    ds.componentRef.setInput('heading', 'Wallet below your alert threshold');
     ds.detectChanges();
 
     expect(sb.nativeElement.tagName.toLowerCase()).toBe('pp-banner');
     expect(ds.nativeElement.tagName.toLowerCase()).toBe('pp-ds-banner');
   });
 
-  it('omits the mark for a plain one-line note — a shape pp-banner does not have', () => {
-    const fixture = TestBed.createComponent(PpDsBanner);
-    fixture.componentRef.setInput(
-      'body',
-      'These are indicative market prices, not offers.',
-    );
+  it('is always titled — the heading is required, and the mark comes with it', () => {
+    const fixture = TestBed.createComponent(DsBannerHost);
     fixture.detectChanges();
 
     const el: HTMLElement = fixture.nativeElement;
-    expect(el.querySelector('.pp-ds-banner__mark')).toBeNull();
-    expect(el.querySelector('.pp-ds-banner__title')).toBeNull();
-    expect(el.querySelector('.pp-ds-banner__body')?.textContent).toContain('indicative');
+    expect(el.querySelector('.pp-ds-banner__mark')?.textContent?.trim()).toBe('!');
+    expect(el.querySelector('.pp-ds-banner__heading')?.textContent)
+      .toContain('Wallet below your alert threshold');
   });
 
-  it('shows a 22px circular mark once it has a title', () => {
-    const fixture = TestBed.createComponent(PpDsBanner);
-    fixture.componentRef.setInput('title', 'Wallet below your alert threshold');
+  it('renders the projected note under the heading', () => {
+    const fixture = TestBed.createComponent(DsBannerHost);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.pp-ds-banner__mark')?.textContent?.trim())
-      .toBe('!');
+
+    const el: HTMLElement = fixture.nativeElement;
+    const heading = el.querySelector('.pp-ds-banner__heading')!;
+    const body = el.querySelector('.pp-ds-banner__body')!;
+    expect(body.textContent).toContain('indicative');
+    expect(body.parentElement).toBe(heading.parentElement);
   });
 
   it('has its own stylesheet — a different padding and a different mark shape', () => {
@@ -3053,44 +3141,29 @@ Create `libs/shared-ui/src/lib/ds-banner/pp-ds-banner.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-
-export type PpDsBannerTone = 'info' | 'warning' | 'critical';
+import type { PpTone } from '../tone';
 
 /**
- * The design system's own notice shape. Deliberately NOT a variant of `pp-banner`: it has a
- * 22px circular mark that appears only alongside a title, a tighter 14px padding, and it
- * permits a plain one-line note with no title at all.
+ * The design system's own notice shape. Deliberately NOT a variant of `pp-banner`: a 22px
+ * circular mark instead of a 26px rounded square, a tighter 14px padding, its own info tint,
+ * and a heading that is always required — this shape is never an untitled one-liner.
  */
 @Component({
   selector: 'pp-ds-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './pp-ds-banner.css',
   template: `
-    @if (title()) {
-      <div class="pp-ds-banner__mark" aria-hidden="true">!</div>
-    }
+    <div class="pp-ds-banner__mark" aria-hidden="true">!</div>
     <div class="pp-ds-banner__text">
-      @if (title()) {
-        <div class="pp-ds-banner__title">{{ title() }}</div>
-      }
-      @if (body()) {
-        <div
-          class="pp-ds-banner__body"
-          [class.pp-ds-banner__body--under-title]="title().length > 0"
-        >
-          {{ body() }}
-        </div>
-      }
+      <div class="pp-ds-banner__heading">{{ heading() }}</div>
+      <div class="pp-ds-banner__body"><ng-content /></div>
     </div>
-    <div class="pp-ds-banner__action"><ng-content /></div>
   `,
   host: { '[class]': 'hostClass()', role: 'status' },
 })
 export class PpDsBanner {
-  /** Present ⇒ the 22px mark renders. Omit for a plain one-line note. */
-  readonly title = input<string>('');
-  readonly body = input<string>('');
-  readonly tone = input<PpDsBannerTone>('info');
+  readonly heading = input.required<string>();
+  readonly tone = input<PpTone>('info');
 
   protected readonly hostClass = computed(() => `pp-ds-banner pp-ds-banner--${this.tone()}`);
 }
@@ -3126,7 +3199,7 @@ Create `libs/shared-ui/src/lib/ds-banner/pp-ds-banner.css`:
 }
 
 .pp-ds-banner__text { flex: 1; min-width: 0; }
-.pp-ds-banner__title {
+.pp-ds-banner__heading {
   font-size: 13px;
   font-weight: var(--weight-bold);
   color: var(--pp-ds-banner-text);
@@ -3135,10 +3208,29 @@ Create `libs/shared-ui/src/lib/ds-banner/pp-ds-banner.css`:
   font-size: 11.5px;
   color: var(--pp-ds-banner-text);
   line-height: 1.45;
+  margin-top: 3px;
 }
-.pp-ds-banner__body--under-title { margin-top: 3px; }
-.pp-ds-banner__action { flex-shrink: 0; }
+.pp-ds-banner__body p { margin: 0; }
 
+/* One block per PpTone member — the same six names the badge and the banner use. */
+:host(.pp-ds-banner--neutral) {
+  --pp-ds-banner-bg: var(--pp-surface-alt);
+  --pp-ds-banner-border: var(--color-border-strong);
+  --pp-ds-banner-text: var(--color-text-body);
+  --pp-ds-banner-mark: var(--pp-text-body);
+}
+:host(.pp-ds-banner--brand) {
+  --pp-ds-banner-bg: var(--pp-blue-100);
+  --pp-ds-banner-border: #a9c8e8;
+  --pp-ds-banner-text: var(--pp-blue-700);
+  --pp-ds-banner-mark: var(--pp-blue-700);
+}
+:host(.pp-ds-banner--success) {
+  --pp-ds-banner-bg: var(--pp-green-bg);
+  --pp-ds-banner-border: var(--pp-green-border);
+  --pp-ds-banner-text: var(--pp-green-text);
+  --pp-ds-banner-mark: var(--pp-mint);
+}
 :host(.pp-ds-banner--info) {
   --pp-ds-banner-bg: var(--pp-blue-050);
   --pp-ds-banner-border: #a9c8e8;
@@ -3162,7 +3254,7 @@ Create `libs/shared-ui/src/lib/ds-banner/pp-ds-banner.css`:
 Append to `libs/shared-ui/src/public-api.ts`:
 
 ```ts
-export { PpDsBanner, type PpDsBannerTone } from './lib/ds-banner/pp-ds-banner';
+export { PpDsBanner } from './lib/ds-banner/pp-ds-banner';
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -3173,7 +3265,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 54 passing tests.
+Expected: PASS — Vitest reports 57 passing tests.
 
 - [ ] **Step 5: Commit**
 
@@ -3185,7 +3277,7 @@ git commit -m "feat(shared-ui): add pp-ds-banner as a component distinct from pp
 
 ---
 
-## Task 12: `pp-grid-table` and the `ppGridRow` template
+## Task 12: `pp-grid-table`, `ppGridHead` and `ppGridRow`
 
 Every list in this product is a **CSS grid of divs**, not a `<table>`. That is not a stylistic
 preference: each screen's column widths are hand-tuned `fr` tracks copied from the design
@@ -3193,17 +3285,26 @@ preference: each screen's column widths are hand-tuned `fr` tracks copied from t
 and two-line sublabels, and `<td>` fights all of it. The track list is passed in as data and is
 never "tidied" into equal columns.
 
-The rule with teeth: **a grid table is never rendered with zero rows.** A head with nothing under
-it looks like a loading failure. When there are no rows the component renders the empty-card
-treatment instead — and because `emptyMessage` is a *required* input, the compiler makes it
-impossible to ship an empty state that does not name the reason.
+The public shape is shared contract §10.1, and it is a projection shape rather than a data shape:
+`columns` is the **raw `grid-template-columns` string**, and the head and the rows are the
+caller's own elements, marked `ppGridHead` and `ppGridRow` and projected in. Both portals need
+that: a row is often an `<a routerLink>` covering the whole width, its first cell is a label over
+a faint EAN, and its status cell holds a `<pp-badge>`. A table that stamped rows from data would
+have to grow an input for each of those.
 
-One row template serves every row. It is supplied as an `<ng-template ppGridRow>` whose cells the
-table stamps out per row. The array is bound back to the directive purely so that TypeScript can
-infer the row type and `let-row` is properly typed under `strictTemplates` — the directive never
-reads it.
+Because the head and the rows belong to the **caller's** template, they carry the caller's
+encapsulation attribute, and a scoped rule inside this component would never match them. So this
+one component ships `ViewEncapsulation.None` and namespaces every selector under
+`.pp-grid-table`. The spec checks that namespacing, because an unnamespaced global rule in a
+design system leaks into every screen that ever imports it.
+
+The rule with teeth survives the change of shape: **a head is never rendered with nothing under
+it.** A head above empty space reads as a loading failure. The table counts the rows projected
+into it and hides the head when there are none; the caller renders the empty card that names the
+reason, which is where the reason actually lives.
 
 **Files:**
+- Create: `libs/shared-ui/src/lib/grid-table/pp-grid-head.ts`
 - Create: `libs/shared-ui/src/lib/grid-table/pp-grid-row.ts`
 - Create: `libs/shared-ui/src/lib/grid-table/pp-grid-table.ts`
 - Create: `libs/shared-ui/src/lib/grid-table/pp-grid-table.css`
@@ -3211,21 +3312,14 @@ reads it.
 - Test: `libs/shared-ui/src/lib/grid-table/pp-grid-table.spec.ts`
 
 **Interfaces:**
-- Consumes: `export function cssText(relativePath: string): string` from Task 3, and
-  `NgTemplateOutlet` from `@angular/common`.
+- Consumes: `export function cssText(relativePath: string): string` and
+  `export function readSharedUiCss(relativePath: string): string` from Task 3.
 - Produces:
-  - `export interface PpGridRowContext<Row> { $implicit: Row; index: number }`
-  - `export class PpGridRow<Row>` — selector `[ppGridRow]`, input
-    `ppGridRow: InputSignal<readonly Row[]>` (required, type anchor only), public
-    `template: TemplateRef<PpGridRowContext<Row>>`.
-  - `export interface PpGridColumn { readonly label: string; readonly align?: 'left' | 'right' }`
+  - `export class PpGridHead` — selector `[ppGridHead]`, the one row of ALL-CAPS column heads.
+  - `export class PpGridRow` — selector `[ppGridRow]`, one row, laid out on the table's tracks.
   - `export class PpGridTable` — selector `pp-grid-table`, inputs
-    `columns: InputSignal<readonly PpGridColumn[]>` (required),
-    `rows: InputSignal<readonly unknown[]>` (required),
-    `tracks: InputSignal<string>` (required — a raw `grid-template-columns` value),
-    `emptyMessage: InputSignal<string>` (required),
-    `dense: InputSignalWithTransform<boolean, unknown>` (default `false`),
-    `zebra: InputSignalWithTransform<boolean, unknown>` (default `false`).
+    `columns: InputSignal<string>` (required — a raw `grid-template-columns` value) and
+    `density: InputSignal<'default' | 'dense'>` (default `'default'`).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3235,9 +3329,10 @@ Create `libs/shared-ui/src/lib/grid-table/pp-grid-table.spec.ts`:
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
-import { cssText } from '../../testing/read-css';
+import { cssText, readSharedUiCss } from '../../testing/read-css';
+import { PpGridHead } from './pp-grid-head';
 import { PpGridRow } from './pp-grid-row';
-import { PpGridTable, type PpGridColumn } from './pp-grid-table';
+import { PpGridTable } from './pp-grid-table';
 
 interface Connection {
   readonly ean: string;
@@ -3245,96 +3340,95 @@ interface Connection {
 }
 
 @Component({
-  imports: [PpGridTable, PpGridRow],
+  imports: [PpGridTable, PpGridHead, PpGridRow],
   template: `
-    <pp-grid-table
-      [columns]="columns"
-      [rows]="rows()"
-      [zebra]="zebra()"
-      [dense]="dense()"
-      tracks="1.4fr 1fr"
-      emptyMessage="No connections are linked to this company yet."
-    >
-      <ng-template [ppGridRow]="rows()" let-row>
-        <div class="cell-ean">{{ row.ean }}</div>
-        <div class="cell-name">{{ row.name }}</div>
-      </ng-template>
+    <pp-grid-table columns="1.4fr 1fr" [density]="density()">
+      <div ppGridHead>
+        <div>EAN</div>
+        <div>CONNECTION</div>
+      </div>
+      @for (row of rows(); track row.ean) {
+        <a ppGridRow href="/connections/{{ row.ean }}">
+          <div class="cell-ean">{{ row.ean }}</div>
+          <div class="cell-name">{{ row.name }}</div>
+        </a>
+      }
     </pp-grid-table>
   `,
 })
 class GridHost {
-  readonly columns: readonly PpGridColumn[] = [
-    { label: 'EAN' },
-    { label: 'Connection' },
-  ];
   readonly rows = signal<readonly Connection[]>([
     { ean: '871687100000000001', name: 'Vriescel 1' },
     { ean: '871687100000000002', name: 'Vriescel 2' },
     { ean: '871687100000000003', name: 'Kantoor' },
   ]);
-  readonly zebra = signal(false);
-  readonly dense = signal(false);
+  readonly density = signal<'default' | 'dense'>('default');
 }
 
 describe('pp-grid-table', () => {
-  it('renders one head and one row per row, stamped from the ppGridRow template', () => {
+  it('lays the head and every row on the same tracks, from one custom property', () => {
+    const css = cssText('lib/grid-table/pp-grid-table.css');
+    // Head and rows read the same property, so they can never drift apart.
+    expect(css).toContain('.pp-grid-table__head,.pp-grid-table__row{');
+    expect(css).toContain('grid-template-columns:var(--pp-grid-columns)');
+  });
+
+  it('puts the caller’s track list on the host, verbatim', () => {
+    const fixture = TestBed.createComponent(GridHost);
+    fixture.detectChanges();
+
+    const table = fixture.nativeElement.querySelector('pp-grid-table') as HTMLElement;
+    expect(table.style.getPropertyValue('--pp-grid-columns')).toBe('1.4fr 1fr');
+  });
+
+  it('projects the caller’s own elements — a row that is a link stays a link', () => {
     const fixture = TestBed.createComponent(GridHost);
     fixture.detectChanges();
 
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelectorAll('.pp-grid-table__head')).toHaveLength(1);
-    expect(el.querySelectorAll('.pp-grid-table__row')).toHaveLength(3);
+    const rows = el.querySelectorAll('.pp-grid-table__row');
+    expect(rows).toHaveLength(3);
+    expect(rows[0].tagName.toLowerCase()).toBe('a');
     expect(el.querySelectorAll('.cell-ean')[2].textContent).toBe('871687100000000003');
-    expect(el.querySelector('.pp-grid-table__head')?.textContent).toContain('EAN');
   });
 
-  it('is never rendered with zero rows — it becomes the empty card instead', () => {
+  it('never renders a head with nothing under it', () => {
     const fixture = TestBed.createComponent(GridHost);
     fixture.componentInstance.rows.set([]);
     fixture.detectChanges();
 
-    const el: HTMLElement = fixture.nativeElement;
-    // A head with nothing under it reads as a loading failure.
-    expect(el.querySelector('.pp-grid-table__head')).toBeNull();
-    expect(el.querySelector('.pp-grid-table__row')).toBeNull();
-    expect(el.querySelector('.pp-grid-table__empty')).not.toBeNull();
+    const table = fixture.nativeElement.querySelector('pp-grid-table') as HTMLElement;
+    // The head is still projected; the table refuses to show it, and the caller renders the
+    // empty card that names the reason.
+    expect(table.classList.contains('pp-grid-table--no-rows')).toBe(true);
+    expect(readSharedUiCss('lib/grid-table/pp-grid-table.css')).toContain(
+      '.pp-grid-table--no-rows .pp-grid-table__head',
+    );
   });
 
-  it('makes the empty state name the reason, because emptyMessage is required', () => {
+  it('carries the density on the host, for a table nested in a card', () => {
     const fixture = TestBed.createComponent(GridHost);
-    fixture.componentInstance.rows.set([]);
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('.pp-grid-table__empty')?.textContent?.trim())
-      .toBe('No connections are linked to this company yet.');
-  });
-
-  it('stripes the odd rows only when zebra is asked for', () => {
-    const fixture = TestBed.createComponent(GridHost);
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('.pp-grid-table__row--zebra')).toHaveLength(0);
-
-    fixture.componentInstance.zebra.set(true);
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('.pp-grid-table__row--zebra')).toHaveLength(1);
-  });
-
-  it('marks the dense density on the host, for a table nested in a card', () => {
-    const fixture = TestBed.createComponent(GridHost);
-    fixture.componentInstance.dense.set(true);
+    fixture.componentInstance.density.set('dense');
     fixture.detectChanges();
 
     const table = fixture.nativeElement.querySelector('pp-grid-table') as HTMLElement;
     expect(table.classList.contains('pp-grid-table--dense')).toBe(true);
-    const css = cssText('lib/grid-table/pp-grid-table.css');
-    expect(css).toContain(':host(.pp-grid-table--dense).pp-grid-table__row{padding:11px12px');
+    expect(cssText('lib/grid-table/pp-grid-table.css')).toContain(
+      '.pp-grid-table--dense.pp-grid-table__row{padding:11px12px',
+    );
   });
 
-  it('feeds the per-screen track list to the head and the rows through one property', () => {
-    const css = cssText('lib/grid-table/pp-grid-table.css');
-    expect(css).toContain('grid-template-columns:var(--pp-grid-tracks)');
-    // Head and rows read the same property, so they can never drift apart.
-    expect(css).toContain('.pp-grid-table__head,.pp-grid-table__row{');
+  it('namespaces every rule, because this stylesheet is not encapsulated', () => {
+    const css = readSharedUiCss('lib/grid-table/pp-grid-table.css');
+    const selectors = [...css.matchAll(/(^|\})([^{}]+)\{/g)]
+      .flatMap((match) => match[2].split(','))
+      .map((selector) => selector.replace(/\/\*[^]*?\*\//g, '').trim())
+      .filter((selector) => selector.length > 0);
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const selector of selectors) {
+      expect(selector.startsWith('.pp-grid-table'), `${selector} is a global rule`).toBe(true);
+    }
   });
 });
 ```
@@ -3347,125 +3441,104 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: FAIL — `Failed to resolve import "./pp-grid-row" from "libs/shared-ui/src/lib/grid-table/pp-grid-table.spec.ts". Does the file exist?`
+Expected: FAIL — `Failed to resolve import "./pp-grid-head" from "libs/shared-ui/src/lib/grid-table/pp-grid-table.spec.ts". Does the file exist?`
 
 - [ ] **Step 3: Write the minimal implementation**
+
+Create `libs/shared-ui/src/lib/grid-table/pp-grid-head.ts`:
+
+```ts
+import { Directive } from '@angular/core';
+
+/**
+ * The one row of column heads, written by the caller and projected into `pp-grid-table`:
+ *
+ * ```html
+ * <div ppGridHead><div>EAN</div><div>CITY</div></div>
+ * ```
+ *
+ * ALL CAPS is applied by the stylesheet, not typed into the copy — a column head is one of
+ * only two places the product shouts.
+ */
+@Directive({
+  selector: '[ppGridHead]',
+  host: { class: 'pp-grid-table__head' },
+})
+export class PpGridHead {}
+```
 
 Create `libs/shared-ui/src/lib/grid-table/pp-grid-row.ts`:
 
 ```ts
-import { Directive, inject, input, TemplateRef } from '@angular/core';
-
-export interface PpGridRowContext<Row> {
-  $implicit: Row;
-  index: number;
-}
+import { Directive } from '@angular/core';
 
 /**
- * Supplies one row's cells to `pp-grid-table`:
- *
- * ```html
- * <ng-template [ppGridRow]="rows()" let-row>
- *   <div>{{ row.ean }}</div>
- * </ng-template>
- * ```
- *
- * The bound array is a **type anchor only** — it is never read. Binding it is what lets
- * TypeScript infer `Row` so that `let-row` is typed under `strictTemplates`.
+ * One row, written by the caller and projected into `pp-grid-table`. It is the caller's own
+ * element — often an `<a routerLink>` covering the whole row — and this directive only lays its
+ * children out on the table's tracks.
  */
-@Directive({ selector: '[ppGridRow]' })
-export class PpGridRow<Row> {
-  readonly ppGridRow = input.required<readonly Row[]>();
-
-  readonly template: TemplateRef<PpGridRowContext<Row>> = inject<
-    TemplateRef<PpGridRowContext<Row>>
-  >(TemplateRef);
-
-  static ngTemplateContextGuard<Row>(
-    _directive: PpGridRow<Row>,
-    _context: unknown,
-  ): _context is PpGridRowContext<Row> {
-    return true;
-  }
-}
+@Directive({
+  selector: '[ppGridRow]',
+  host: { class: 'pp-grid-table__row' },
+})
+export class PpGridRow {}
 ```
 
 Create `libs/shared-ui/src/lib/grid-table/pp-grid-table.ts`:
 
 ```ts
-import { NgTemplateOutlet } from '@angular/common';
 import {
-  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
-  contentChild,
+  contentChildren,
   input,
+  ViewEncapsulation,
 } from '@angular/core';
 import { PpGridRow } from './pp-grid-row';
-
-export interface PpGridColumn {
-  /** Rendered upper-case at 10.5/700 — one of only two places ALL CAPS is allowed. */
-  readonly label: string;
-  /** Numbers are right-aligned, always. */
-  readonly align?: 'left' | 'right';
-}
 
 @Component({
   selector: 'pp-grid-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './pp-grid-table.css',
-  imports: [NgTemplateOutlet],
-  template: `
-    @if (rows().length > 0) {
-      <div class="pp-grid-table__head">
-        @for (column of columns(); track column.label) {
-          <div [class.pp-grid-table__num]="column.align === 'right'">{{ column.label }}</div>
-        }
-      </div>
-      @for (row of rows(); track $index) {
-        <div
-          class="pp-grid-table__row"
-          [class.pp-grid-table__row--zebra]="zebra() && $index % 2 === 1"
-        >
-          <ng-container
-            [ngTemplateOutlet]="rowTemplate().template"
-            [ngTemplateOutletContext]="{ $implicit: row, index: $index }"
-          />
-        </div>
-      }
-    } @else {
-      <p class="pp-grid-table__empty">{{ emptyMessage() }}</p>
-    }
-  `,
-  host: { '[class]': 'hostClass()', '[style.--pp-grid-tracks]': 'tracks()' },
+  /**
+   * The head and the rows are the CALLER's elements: under emulated encapsulation they carry
+   * the caller's `_ngcontent` attribute and a scoped rule here would never match them. Every
+   * selector in pp-grid-table.css is namespaced under `.pp-grid-table` to pay for this.
+   */
+  encapsulation: ViewEncapsulation.None,
+  template: `<ng-content />`,
+  host: {
+    '[class]': 'hostClass()',
+    '[style.--pp-grid-columns]': 'columns()',
+  },
 })
 export class PpGridTable {
-  readonly columns = input.required<readonly PpGridColumn[]>();
-  readonly rows = input.required<readonly unknown[]>();
   /**
    * A raw `grid-template-columns` value, copied from the screen's design and never tidied
-   * into equal columns — e.g. `0.9fr 1fr 1.8fr 1fr 1fr 0.8fr 0.8fr 1fr`.
+   * into equal columns — e.g. `minmax(0, 2.2fr) 1fr 0.8fr 1fr 1.4fr`.
    */
-  readonly tracks = input.required<string>();
-  /** Says WHY the list is empty. Required, so an empty state can never be blank. */
-  readonly emptyMessage = input.required<string>();
-  /** The density for a table nested inside a card. */
-  readonly dense = input(false, { transform: booleanAttribute });
-  readonly zebra = input(false, { transform: booleanAttribute });
+  readonly columns = input.required<string>();
+  /** `dense` is the tighter row a table nested inside a card uses. */
+  readonly density = input<'default' | 'dense'>('default');
 
-  protected readonly rowTemplate = contentChild.required(PpGridRow);
+  private readonly rows = contentChildren(PpGridRow, { descendants: true });
 
-  protected readonly hostClass = computed(() =>
-    this.dense() ? 'pp-grid-table pp-grid-table--dense' : 'pp-grid-table',
-  );
+  protected readonly hostClass = computed(() => {
+    const classes = ['pp-grid-table', `pp-grid-table--${this.density()}`];
+    if (this.rows().length === 0) {
+      // A head with nothing under it reads as a loading failure, so it is not shown.
+      classes.push('pp-grid-table--no-rows');
+    }
+    return classes.join(' ');
+  });
 }
 ```
 
 Create `libs/shared-ui/src/lib/grid-table/pp-grid-table.css`:
 
 ```css
-:host {
+.pp-grid-table {
   display: block;
   font-family: var(--font-sans);
   background: var(--color-surface);
@@ -3476,7 +3549,7 @@ Create `libs/shared-ui/src/lib/grid-table/pp-grid-table.css`:
 }
 
 /* One property, read by the head and by every row, so the columns can never drift. */
-.pp-grid-table__head,.pp-grid-table__row{display:grid;grid-template-columns:var(--pp-grid-tracks);align-items:center}
+.pp-grid-table__head,.pp-grid-table__row{display:grid;grid-template-columns:var(--pp-grid-columns);align-items:center}
 
 .pp-grid-table__head {
   background: var(--color-surface-alt);
@@ -3498,29 +3571,27 @@ Create `libs/shared-ui/src/lib/grid-table/pp-grid-table.css`:
   border-top: 1px solid var(--color-border);
   transition: background-color 0.12s ease;
 }
+/* A row is often the caller's own <a>. It must not look like a link. */
+.pp-grid-table__row:is(a) { text-decoration: none; color: inherit; }
+.pp-grid-table__row:hover { background: var(--color-surface-zebra); }
 .pp-grid-table__head + .pp-grid-table__row { border-top: none; }
-.pp-grid-table__row--zebra { background: var(--color-surface-zebra); }
 
-:host(.pp-grid-table--dense) .pp-grid-table__head{padding:9px 12px;font-size:var(--text-2xs);gap:10px}
-:host(.pp-grid-table--dense) .pp-grid-table__row{padding:11px 12px;font-size:12px;gap:10px}
+/* Zero rows: the head is projected but never shown. The caller renders the empty
+   card, because the sentence that names the reason belongs to the screen. */
+.pp-grid-table--no-rows .pp-grid-table__head { display: none; }
+
+.pp-grid-table--dense .pp-grid-table__head{padding:9px 12px;font-size:var(--text-2xs);gap:10px}
+.pp-grid-table--dense .pp-grid-table__row{padding:11px 12px;font-size:12px;gap:10px}
 
 .pp-grid-table__num { text-align: right; }
-
-/* The empty treatment. It replaces the head and the rows — it never sits under them. */
-.pp-grid-table__empty {
-  margin: 0;
-  padding: 22px 16px;
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--color-text-faint);
-}
 ```
 
 Append to `libs/shared-ui/src/public-api.ts`:
 
 ```ts
-export { PpGridRow, type PpGridRowContext } from './lib/grid-table/pp-grid-row';
-export { PpGridTable, type PpGridColumn } from './lib/grid-table/pp-grid-table';
+export { PpGridHead } from './lib/grid-table/pp-grid-head';
+export { PpGridRow } from './lib/grid-table/pp-grid-row';
+export { PpGridTable } from './lib/grid-table/pp-grid-table';
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -3531,14 +3602,14 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 60 passing tests.
+Expected: PASS — Vitest reports 63 passing tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-web
 git add libs/shared-ui/src/lib/grid-table libs/shared-ui/src/public-api.ts
-git commit -m "feat(shared-ui): add pp-grid-table, never rendered with zero rows"
+git commit -m "feat(shared-ui): add pp-grid-table with projected heads and rows"
 ```
 
 ---
@@ -3550,8 +3621,9 @@ search affordance in the product and it carries the **only icon in the entire pr
 2px-stroke magnifier, drawn inline. There is no icon set, no icon font and no CDN — adding one
 would be off-brand, and the CSP in the deployed portals would block it anyway.
 
-The placeholder is required to say what is searchable ("Search name, description or EAN…"), so it
-doubles as the field's accessible name.
+The placeholder should say what is searchable ("Search name, description or EAN…"), because it
+doubles as the field's accessible name. Its default is the bare `'Search'` of shared contract
+§10.1 — enough for a field the reader can already see, and a prompt to pass something better.
 
 `value` is a `model()` rather than an `input()` so the caller can write `[(value)]="query"` and
 get a two-way binding without an output of their own.
@@ -3566,7 +3638,7 @@ get a two-way binding without an output of their own.
 - Consumes: `export function cssText(relativePath: string): string` from Task 3.
 - Produces:
   - `export class PpSearchInput` — selector `pp-search-input`, input
-    `placeholder: InputSignal<string>` (default `'Search…'`), two-way
+    `placeholder: InputSignal<string>` (default `'Search'`), two-way
     `value: ModelSignal<string>` (default `''`).
 
 - [ ] **Step 1: Write the failing test**
@@ -3675,7 +3747,7 @@ import { ChangeDetectionStrategy, Component, input, model } from '@angular/core'
 })
 export class PpSearchInput {
   /** Say what is searchable — it is also the field's accessible name. */
-  readonly placeholder = input<string>('Search…');
+  readonly placeholder = input<string>('Search');
   readonly value = model<string>('');
 
   protected onInput(event: Event): void {
@@ -3742,7 +3814,7 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 64 passing tests.
+Expected: PASS — Vitest reports 67 passing tests.
 
 - [ ] **Step 5: Commit**
 
@@ -3759,7 +3831,7 @@ git commit -m "feat(shared-ui): add pp-search-input with the product's only icon
 The frame both portals live in: a permanent 236px dark rail at `#2D3F54` with the five-stop
 spectrum hairline across its top, a 64px topbar, and a scrolling content column.
 
-Three rules:
+Four rules:
 
 - **The body never scrolls.** The host is `height: 100vh; overflow: hidden`, and the content
   column is the only element with `overflow: auto`. Let the body scroll and the rail and the
@@ -3767,17 +3839,21 @@ Three rules:
   ledger.
 - **236px and 64px come from `--sidebar-width` and `--topbar-height`**, never from a literal in
   this stylesheet. Two places for one number is how they drift.
-- **The topbar shows a crumb *or* a subtitle, never both.** They occupy the same 11px line above
-  or below the title; showing both makes the 64px bar overflow and pushes the title off-centre.
-  A crumb wins, because it is navigation and the subtitle is only description.
+- **The rail is grouped, and every row carries a small domain-coloured dot** — design §8.4. The
+  grouping is data: `PpNavSection[]`, each section a label and its items.
+- **The topbar shows a crumb *or* a subtitle, never both.** A crumb wins, because it is
+  navigation and the subtitle is only description.
 
-The shell deliberately does **not** depend on `@angular/router`. It emits the key of the item that
-was clicked and lets the application route, which keeps `@peakpower/shared-ui`'s peer dependencies
-to `@angular/core` and `@angular/common`.
+Navigation is **`routerLink` on the item's `path`** — shared contract §10.1. That is a change of
+job from an output the application has to wire up: the shell now depends on `@angular/router`,
+which is why the library declares it as a peer in Task 3. In exchange, a rail row is a real
+link — middle-click, copy link address and the browser's own active handling all work, and
+neither portal has to keep a click handler in sync with its route table.
 
-Nav items outside the current slice render **disabled with the sentence explaining why**, rather
-than being hidden — a rail that grows between demos looks unfinished; a rail that is complete and
-honest looks planned.
+An item whose `path` is `null` is disabled, and renders **with the sentence explaining why**
+rather than being hidden — a rail that grows between demos looks unfinished; a rail that is
+complete and honest looks planned. The sentence is rendered verbatim under the label, and
+carried in `title` as well, so it is readable and hoverable both.
 
 **Files:**
 - Create: `libs/shared-ui/src/lib/app-shell/pp-app-shell.ts`
@@ -3786,20 +3862,19 @@ honest looks planned.
 - Test: `libs/shared-ui/src/lib/app-shell/pp-app-shell.spec.ts`
 
 **Interfaces:**
-- Consumes: `export function cssText(relativePath: string): string` from Task 3, and the
+- Consumes: `export function cssText(relativePath: string): string` from Task 3; the
   `--sidebar-width` (236px), `--topbar-height` (64px), `--pp-sidebar-bg`, `--pp-sidebar-text`,
   `--pp-sidebar-active-bg` and `--pp-rail-spectrum` custom properties from that task's
-  `styles/layout.css` and `styles/colors.css`.
+  `styles/layout.css` and `styles/colors.css`; and `RouterLink` from `@angular/router`.
 - Produces:
-  - `export interface PpNavItem { readonly key: string; readonly label: string; readonly group?: string; readonly disabled?: boolean; readonly disabledReason?: string }`
+  - `export interface PpNavItem { readonly routeKey: string; readonly label: string; readonly path: string | null; readonly dot: string; readonly disabledReason?: string }`
+  - `export interface PpNavSection { readonly label: string; readonly items: readonly PpNavItem[] }`
   - `export class PpAppShell` — selector `pp-app-shell`, inputs
-    `portalLabel: InputSignal<string>` (required), `nav: InputSignal<readonly PpNavItem[]>`
-    (required), `activeKey: InputSignal<string>` (default `''`),
-    `title: InputSignal<string>` (required), `crumb: InputSignal<readonly string[]>`
-    (default `[]`), `subtitle: InputSignal<string>` (default `''`),
-    `userName: InputSignal<string>` (default `''`),
-    `companyName: InputSignal<string>` (default `''`); output
-    `navigate: OutputEmitterRef<string>`; two content slots — `[ppAppShellActions]` into the
+    `sections: InputSignal<readonly PpNavSection[]>` (required),
+    `activeRouteKey: InputSignal<string>` (required),
+    `productName: InputSignal<string>` (required),
+    `crumb: InputSignal<string>` (default `''`), `subtitle: InputSignal<string>`
+    (default `''`); two content slots — anything carrying `slot="topbar-actions"` goes into the
     topbar, everything else into the scrolling content column.
 
 - [ ] **Step 1: Write the failing test**
@@ -3808,31 +3883,44 @@ Create `libs/shared-ui/src/lib/app-shell/pp-app-shell.spec.ts`:
 
 ```ts
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it } from 'vitest';
+import { provideRouter } from '@angular/router';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { cssText } from '../../testing/read-css';
-import { PpAppShell, type PpNavItem } from './pp-app-shell';
+import { PpAppShell, type PpNavSection } from './pp-app-shell';
 
-const NAV: readonly PpNavItem[] = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'connections', label: 'Connections' },
+const NAV: readonly PpNavSection[] = [
   {
-    key: 'trades',
-    label: 'Trades',
-    disabled: true,
-    disabledReason: 'Trading is not part of this slice.',
+    label: 'Overview',
+    items: [
+      { routeKey: 'dashboard', label: 'Dashboard', path: '/dashboard', dot: 'var(--pp-blue-500)' },
+      { routeKey: 'connections', label: 'Connections', path: '/connections', dot: 'var(--pp-mint)' },
+    ],
+  },
+  {
+    label: 'Market',
+    items: [
+      {
+        routeKey: 'trading',
+        label: 'Trades',
+        path: null,
+        dot: 'var(--pp-blue-700)',
+        disabledReason: 'Trading arrives with feature F05.',
+      },
+    ],
   },
 ];
 
 function createShell() {
   const fixture = TestBed.createComponent(PpAppShell);
-  fixture.componentRef.setInput('portalLabel', 'Customer portal');
-  fixture.componentRef.setInput('nav', NAV);
-  fixture.componentRef.setInput('activeKey', 'connections');
-  fixture.componentRef.setInput('title', 'Connections');
+  fixture.componentRef.setInput('sections', NAV);
+  fixture.componentRef.setInput('activeRouteKey', 'connections');
+  fixture.componentRef.setInput('productName', 'PeakPower');
   return fixture;
 }
 
 describe('pp-app-shell', () => {
+  beforeEach(() => TestBed.configureTestingModule({ providers: [provideRouter([])] }));
+
   it('is exactly the viewport, so the body never scrolls', () => {
     const css = cssText('lib/app-shell/pp-app-shell.css');
     const host = css.slice(css.indexOf(':host{'), css.indexOf('}', css.indexOf(':host{')));
@@ -3855,14 +3943,53 @@ describe('pp-app-shell', () => {
     expect(css).not.toContain('64px');
   });
 
+  it('groups the rail and gives every row its domain dot — design §8.4', () => {
+    const fixture = createShell();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const groups = el.querySelectorAll('.pp-app-shell__group');
+    expect(groups).toHaveLength(2);
+    expect(groups[0].querySelector('.pp-app-shell__group-label')?.textContent?.trim())
+      .toBe('Overview');
+
+    const dots = el.querySelectorAll<HTMLElement>('.pp-app-shell__dot');
+    expect(dots).toHaveLength(3);
+    expect(dots[1].style.background).toContain('--pp-mint');
+  });
+
+  it('navigates by routerLink, and marks the active row from activeRouteKey', () => {
+    const fixture = createShell();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const enabled = el.querySelectorAll('a.pp-app-shell__nav-item');
+    expect(enabled).toHaveLength(2);
+    expect(enabled[1].getAttribute('href')).toBe('/connections');
+    expect(enabled[1].classList.contains('pp-app-shell__nav-item--active')).toBe(true);
+    expect(enabled[0].classList.contains('pp-app-shell__nav-item--active')).toBe(false);
+  });
+
+  it('renders a disabled item with its reason, verbatim, instead of hiding it', () => {
+    const fixture = createShell();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    const disabled = el.querySelector('.pp-app-shell__nav-item--disabled') as HTMLElement;
+    expect(disabled.tagName.toLowerCase()).toBe('span');
+    expect(disabled.querySelector('.pp-app-shell__nav-reason')?.textContent?.trim())
+      .toBe('Trading arrives with feature F05.');
+    expect(disabled.title).toBe('Trading arrives with feature F05.');
+  });
+
   it('shows the crumb and drops the subtitle when both are supplied', () => {
     const fixture = createShell();
-    fixture.componentRef.setInput('crumb', ['Connections', 'Vriescel 1']);
+    fixture.componentRef.setInput('crumb', 'Connections');
     fixture.componentRef.setInput('subtitle', 'Three connections, one contract.');
     fixture.detectChanges();
 
     const el: HTMLElement = fixture.nativeElement;
-    expect(el.querySelector('.pp-app-shell__crumb')?.textContent).toContain('Vriescel 1');
+    expect(el.querySelector('.pp-app-shell__crumb')?.textContent).toContain('Connections');
     expect(el.querySelector('.pp-app-shell__subtitle')).toBeNull();
   });
 
@@ -3875,26 +4002,6 @@ describe('pp-app-shell', () => {
     expect(el.querySelector('.pp-app-shell__crumb')).toBeNull();
     expect(el.querySelector('.pp-app-shell__subtitle')?.textContent)
       .toContain('Three connections, one contract.');
-  });
-
-  it('renders a disabled nav item with its reason instead of hiding it', () => {
-    const fixture = createShell();
-    fixture.detectChanges();
-
-    const el: HTMLElement = fixture.nativeElement;
-    const emitted: string[] = [];
-    fixture.componentInstance.navigate.subscribe((key: string) => emitted.push(key));
-
-    const items = el.querySelectorAll('.pp-app-shell__nav-item');
-    expect(items).toHaveLength(3);
-    expect(items[1].classList.contains('pp-app-shell__nav-item--active')).toBe(true);
-
-    const trades = items[2] as HTMLElement;
-    expect(trades.tagName.toLowerCase()).toBe('span');
-    expect(trades.title).toBe('Trading is not part of this slice.');
-
-    (items[0] as HTMLElement).click();
-    expect(emitted).toEqual(['dashboard']);
   });
 });
 ```
@@ -3914,24 +4021,32 @@ Expected: FAIL — `Failed to resolve import "./pp-app-shell" from "libs/shared-
 Create `libs/shared-ui/src/lib/app-shell/pp-app-shell.ts`:
 
 ```ts
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 export interface PpNavItem {
-  /** The route key the application knows this destination by. */
-  readonly key: string;
+  /** The SPECIFICATION's route key — 'consumption', 'trading', 'wallet' — never the label. */
+  readonly routeKey: string;
+  /** The DESIGN's label — 'Volume', 'Trades', 'Balance'. */
   readonly label: string;
-  /** Optional group heading — "Overview", "Position", "Market", "Finance". */
-  readonly group?: string;
-  /** Out of scope for now. Disabled items are shown, never hidden. */
-  readonly disabled?: boolean;
-  /** The sentence that explains the disabled state. Always say it. */
+  /** `null` renders the item disabled. */
+  readonly path: string | null;
+  /** The domain colour, a CSS custom-property reference such as `var(--pp-mint)`. */
+  readonly dot: string;
+  /** Rendered verbatim. A disabled item must carry one. */
   readonly disabledReason?: string;
+}
+
+export interface PpNavSection {
+  readonly label: string;
+  readonly items: readonly PpNavItem[];
 }
 
 @Component({
   selector: 'pp-app-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './pp-app-shell.css',
+  imports: [RouterLink],
   template: `
     <aside class="pp-app-shell__rail">
       <div class="pp-app-shell__brand">
@@ -3939,52 +4054,50 @@ export interface PpNavItem {
           <circle cx="30" cy="34" r="11" fill="#1DBD8E" />
           <path d="M 26 34 L 30 27 L 30 33 L 34 33 L 30 41 L 30 35 Z" fill="#2D3F54" />
         </svg>
-        <div>
-          <div class="pp-app-shell__brand-name">PeakPower</div>
-          <div class="pp-app-shell__brand-portal">{{ portalLabel() }}</div>
-        </div>
+        <div class="pp-app-shell__brand-name">{{ productName() }}</div>
       </div>
 
       <nav class="pp-app-shell__nav">
-        @for (item of nav(); track item.key) {
-          @if (item.disabled) {
-            <span
-              class="pp-app-shell__nav-item pp-app-shell__nav-item--disabled"
-              [title]="item.disabledReason ?? ''"
-              >{{ item.label }}</span
-            >
-          } @else {
-            <button
-              type="button"
-              class="pp-app-shell__nav-item"
-              [class.pp-app-shell__nav-item--active]="item.key === activeKey()"
-              (click)="navigate.emit(item.key)"
-            >
-              {{ item.label }}
-            </button>
-          }
+        @for (section of sections(); track section.label) {
+          <div class="pp-app-shell__group">
+            <div class="pp-app-shell__group-label">{{ section.label }}</div>
+            @for (item of section.items; track item.routeKey) {
+              @if (item.path; as path) {
+                <a
+                  class="pp-app-shell__nav-item"
+                  [class.pp-app-shell__nav-item--active]="item.routeKey === activeRouteKey()"
+                  [routerLink]="path"
+                >
+                  <span class="pp-app-shell__dot" [style.background]="item.dot"></span>
+                  <span class="pp-app-shell__nav-label">{{ item.label }}</span>
+                </a>
+              } @else {
+                <span
+                  class="pp-app-shell__nav-item pp-app-shell__nav-item--disabled"
+                  [title]="item.disabledReason ?? ''"
+                >
+                  <span class="pp-app-shell__dot" [style.background]="item.dot"></span>
+                  <span class="pp-app-shell__nav-label">{{ item.label }}</span>
+                  <span class="pp-app-shell__nav-reason">{{ item.disabledReason }}</span>
+                </span>
+              }
+            }
+          </div>
         }
       </nav>
-
-      <div class="pp-app-shell__me">
-        <div class="pp-app-shell__me-name">{{ userName() }}</div>
-        <div class="pp-app-shell__me-company">{{ companyName() }}</div>
-      </div>
     </aside>
 
     <div class="pp-app-shell__main">
       <header class="pp-app-shell__topbar">
         <div class="pp-app-shell__heading">
-          @if (crumb().length > 0) {
-            <div class="pp-app-shell__crumb">{{ crumb().join(' › ') }}</div>
-          }
-          <div class="pp-app-shell__title">{{ title() }}</div>
-          @if (crumb().length === 0 && subtitle()) {
+          @if (crumb()) {
+            <div class="pp-app-shell__crumb">{{ crumb() }}</div>
+          } @else if (subtitle()) {
             <div class="pp-app-shell__subtitle">{{ subtitle() }}</div>
           }
         </div>
         <div class="pp-app-shell__actions">
-          <ng-content select="[ppAppShellActions]" />
+          <ng-content select="[slot=topbar-actions]" />
         </div>
       </header>
 
@@ -3994,19 +4107,15 @@ export interface PpNavItem {
   host: { class: 'pp-app-shell' },
 })
 export class PpAppShell {
-  readonly portalLabel = input.required<string>();
-  readonly nav = input.required<readonly PpNavItem[]>();
-  readonly activeKey = input<string>('');
-  readonly title = input.required<string>();
+  /** The grouped rail — design §8.4. */
+  readonly sections = input.required<readonly PpNavSection[]>();
+  /** Keyed on the specification's route key, never on the label. */
+  readonly activeRouteKey = input.required<string>();
+  readonly productName = input.required<string>();
   /** Navigation. A crumb and a subtitle never appear together — the crumb wins. */
-  readonly crumb = input<readonly string[]>([]);
+  readonly crumb = input<string>('');
   /** Description. Rendered only when there is no crumb. */
   readonly subtitle = input<string>('');
-  readonly userName = input<string>('');
-  readonly companyName = input<string>('');
-
-  /** The key of the nav item that was clicked. The application does the routing. */
-  readonly navigate = output<string>();
 }
 ```
 
@@ -4026,6 +4135,7 @@ Create `libs/shared-ui/src/lib/app-shell/pp-app-shell.css`:
   flex-direction: column;
   padding: 22px 0 18px;
   position: relative;
+  overflow-y: hidden;
 }
 /* The five-stop spectrum hairline across the top of the rail. */
 .pp-app-shell__rail::before {
@@ -4038,30 +4148,34 @@ Create `libs/shared-ui/src/lib/app-shell/pp-app-shell.css`:
 
 .pp-app-shell__brand { display: flex; align-items: center; gap: 11px; padding: 0 20px 22px; }
 .pp-app-shell__brand-name { color: #ffffff; font-size: 15.5px; font-weight: var(--weight-bold); }
-.pp-app-shell__brand-portal {
-  color: var(--pp-sidebar-subtitle);
+
+.pp-app-shell__nav { display: flex; flex-direction: column; gap: 16px; padding: 0 10px; }
+.pp-app-shell__group { display: flex; flex-direction: column; gap: 1px; }
+/* The group heading. ALL CAPS is not legal here, so this is small and tracked instead. */
+.pp-app-shell__group-label {
+  color: #7f8ea3;
   font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-  margin-top: 1px;
+  padding: 0 12px 5px;
 }
 
-.pp-app-shell__nav { display: flex; flex-direction: column; gap: 1px; padding: 0 10px; }
+/* Two columns: the 6px domain dot, then the label. A disabled row's reason takes
+   the second column on its own line, so the dots stay in one vertical line. */
 .pp-app-shell__nav-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
+  display: grid;
+  grid-template-columns: 6px 1fr;
+  align-items: center;
+  column-gap: 9px;
+  row-gap: 3px;
   padding: 9px 12px;
   border-radius: var(--radius-md);
-  font-family: var(--font-sans);
   font-size: var(--text-sm);
   color: var(--pp-sidebar-text);
-  cursor: pointer;
+  text-decoration: none;
   transition: background-color 0.14s ease, color 0.14s ease;
 }
+.pp-app-shell__dot { width: 6px; height: 6px; border-radius: var(--radius-pill); }
 .pp-app-shell__nav-item:hover:not(.pp-app-shell__nav-item--active):not(.pp-app-shell__nav-item--disabled) {
   background: rgba(255, 255, 255, 0.06);
   color: var(--pp-sidebar-text-active);
@@ -4072,16 +4186,14 @@ Create `libs/shared-ui/src/lib/app-shell/pp-app-shell.css`:
   font-weight: var(--weight-semibold);
 }
 /* Shown, dimmed, and explained — never hidden. */
-.pp-app-shell__nav-item--disabled { opacity: 0.5; cursor: not-allowed; }
-
-.pp-app-shell__me {
-  margin-top: auto;
-  padding: 14px 20px 0;
-  margin-inline: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.09);
+.pp-app-shell__nav-item--disabled { color: #8697aa; cursor: not-allowed; }
+.pp-app-shell__nav-item--disabled .pp-app-shell__dot { opacity: 0.45; }
+.pp-app-shell__nav-reason {
+  grid-column: 2;
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  color: #7f8ea3;
 }
-.pp-app-shell__me-name { color: #ffffff; font-size: 12px; font-weight: var(--weight-semibold); }
-.pp-app-shell__me-company { color: #93a2b5; font-size: var(--text-2xs); margin-top: 1px; }
 
 .pp-app-shell__main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -4097,17 +4209,15 @@ Create `libs/shared-ui/src/lib/app-shell/pp-app-shell.css`:
   padding: 0 30px;
 }
 .pp-app-shell__heading { min-width: 0; }
-/* A crumb and a subtitle occupy the same 11px line; only one is ever rendered. */
+/* A crumb and a subtitle occupy the same line; only one is ever rendered. The crumb
+   names where the reader is, so it is set as the heading; the subtitle only describes. */
 .pp-app-shell__crumb {
-  font-size: 10.5px;
-  color: var(--color-text-faint);
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  font-weight: var(--weight-semibold);
+  font-size: 19px;
+  font-weight: var(--weight-bold);
+  color: var(--color-text-heading);
   white-space: nowrap;
 }
-.pp-app-shell__title { font-size: 19px; font-weight: var(--weight-bold); margin-top: 2px; }
-.pp-app-shell__subtitle { font-size: var(--text-xs); color: var(--color-text-body); }
+.pp-app-shell__subtitle { font-size: var(--text-base); color: var(--color-text-body); }
 .pp-app-shell__actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 /* The one scroll container in the application. */
@@ -4117,7 +4227,7 @@ Create `libs/shared-ui/src/lib/app-shell/pp-app-shell.css`:
 Append to `libs/shared-ui/src/public-api.ts`:
 
 ```ts
-export { PpAppShell, type PpNavItem } from './lib/app-shell/pp-app-shell';
+export { PpAppShell, type PpNavItem, type PpNavSection } from './lib/app-shell/pp-app-shell';
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -4128,14 +4238,14 @@ Run:
 cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test shared-ui --watch=false
 ```
 
-Expected: PASS — Vitest reports 70 passing tests.
+Expected: PASS — Vitest reports 75 passing tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-web
 git add libs/shared-ui/src/lib/app-shell libs/shared-ui/src/public-api.ts
-git commit -m "feat(shared-ui): add the pp-app-shell rail, topbar and scroll container"
+git commit -m "feat(shared-ui): add the pp-app-shell grouped rail, topbar and scroll container"
 ```
 
 ---
@@ -4163,11 +4273,11 @@ demo-honesty rule.
 
 **Interfaces:**
 - Consumes, all from `@peakpower/shared-ui` (Tasks 4–14):
-  `PP_MINUS`, `PpMoneyPipe`, `PpEnergyPipe`, `PpPowerPipe`, `PpPricePipe`, `PpBadge`,
-  `PpBadgeTone`, `PpButton`, `PpButtonVariant`, `PpCard`, `PpStatCard`, `PpBanner`, `PpDsBanner`,
-  `PpGridTable`, `PpGridColumn`, `PpGridRow`, `PpSearchInput`, `PpAppShell`, `PpNavItem`.
+  `PP_MINUS`, `PpMoneyPipe`, `PpEnergyPipe`, `PpPowerPipe`, `PpPricePipe`, `PpTone`, `PpBadge`,
+  `PpButton`, `PpButtonVariant`, `PpCard`, `PpStatCard`, `PpBanner`, `PpDsBanner`,
+  `PpGridTable`, `PpGridHead`, `PpGridRow`, `PpSearchInput`, `PpAppShell`, `PpNavSection`.
   Also `export const routes: Routes` from Task 2.
-- Produces: `export class Gallery` — selector `cp-gallery`, reachable at `/gallery`, and the
+- Produces: `export class Gallery` — selector `pp-gallery`, reachable at `/gallery`, and the
   default route of the customer portal.
 
 - [ ] **Step 1: Write the failing test**
@@ -4176,14 +4286,12 @@ Create `apps/customer-portal/src/app/gallery/gallery.spec.ts`:
 
 ```ts
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { PP_MINUS } from '@peakpower/shared-ui';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { Gallery } from './gallery';
 
-const ALL_BADGE_TONES = [
-  'success', 'warning', 'critical', 'info', 'brand',
-  'system', 'short', 'long', 'sell', 'neutral',
-];
+const ALL_TONES = ['neutral', 'brand', 'info', 'success', 'warning', 'critical'];
 
 function renderGallery(): HTMLElement {
   const fixture = TestBed.createComponent(Gallery);
@@ -4192,6 +4300,9 @@ function renderGallery(): HTMLElement {
 }
 
 describe('the component gallery', () => {
+  // The rail navigates by routerLink, so the shell needs a router to render at all.
+  beforeEach(() => TestBed.configureTestingModule({ providers: [provideRouter([])] }));
+
   it('puts one of every primitive on the screen', () => {
     const el = renderGallery();
     for (const selector of [
@@ -4209,10 +4320,10 @@ describe('the component gallery', () => {
     }
   });
 
-  it('shows every badge tone, so a contrast regression is visible in one scroll', () => {
+  it('shows every tone, so a contrast regression is visible in one scroll', () => {
     const el = renderGallery();
     const classes = [...el.querySelectorAll('pp-badge')].flatMap((badge) => [...badge.classList]);
-    for (const tone of ALL_BADGE_TONES) {
+    for (const tone of ALL_TONES) {
       expect(classes, `the ${tone} badge tone is missing`).toContain(`pp-badge--${tone}`);
     }
   });
@@ -4220,7 +4331,7 @@ describe('the component gallery', () => {
   it('shows every button variant', () => {
     const el = renderGallery();
     const classes = [...el.querySelectorAll('pp-button')].flatMap((b) => [...b.classList]);
-    for (const variant of ['primary', 'secondary', 'danger', 'accent', 'ghost']) {
+    for (const variant of ['primary', 'secondary', 'ghost', 'danger', 'accept']) {
       expect(classes, `the ${variant} button variant is missing`).toContain(
         `pp-button--${variant}`,
       );
@@ -4236,14 +4347,14 @@ describe('the component gallery', () => {
     expect(text).toContain(`€ ${PP_MINUS}4.210,00`);
   });
 
-  it('shows a populated grid table and an empty one that names its reason', () => {
+  it('shows a populated grid table, and an empty list as a card that names the reason', () => {
     const el = renderGallery();
     const tables = el.querySelectorAll('pp-grid-table');
-    expect(tables).toHaveLength(2);
-
+    expect(tables).toHaveLength(1);
     expect(tables[0].querySelectorAll('.pp-grid-table__row')).toHaveLength(3);
-    expect(tables[1].querySelector('.pp-grid-table__head')).toBeNull();
-    expect(tables[1].textContent).toContain('Gas connections are not tradeable in this portal.');
+
+    // The table is never rendered with a bare head; the caller says why the list is empty.
+    expect(el.textContent).toContain('Gas connections are not tradeable in this portal.');
   });
 });
 ```
@@ -4272,6 +4383,7 @@ import {
   PpCard,
   PpDsBanner,
   PpEnergyPipe,
+  PpGridHead,
   PpGridRow,
   PpGridTable,
   PpMoneyPipe,
@@ -4279,10 +4391,9 @@ import {
   PpPricePipe,
   PpSearchInput,
   PpStatCard,
-  type PpBadgeTone,
   type PpButtonVariant,
-  type PpGridColumn,
-  type PpNavItem,
+  type PpNavSection,
+  type PpTone,
 } from '@peakpower/shared-ui';
 
 interface Connection {
@@ -4293,7 +4404,7 @@ interface Connection {
 }
 
 @Component({
-  selector: 'cp-gallery',
+  selector: 'pp-gallery',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './gallery.css',
   imports: [
@@ -4304,6 +4415,7 @@ interface Connection {
     PpCard,
     PpDsBanner,
     PpEnergyPipe,
+    PpGridHead,
     PpGridRow,
     PpGridTable,
     PpMoneyPipe,
@@ -4314,29 +4426,25 @@ interface Connection {
   ],
   template: `
     <pp-app-shell
-      portalLabel="Customer portal"
-      [nav]="nav"
-      [activeKey]="activeKey()"
-      title="Design system"
+      productName="PeakPower"
+      [sections]="nav"
+      activeRouteKey="gallery"
       subtitle="Every SB-2026 primitive and every nl-NL pipe on one screen."
-      userName="J. de Vries"
-      companyName="Vandersteen Koeling B.V."
-      (navigate)="activeKey.set($event)"
     >
-      <pp-button ppAppShellActions variant="secondary" size="sm">Export tokens</pp-button>
+      <pp-button slot="topbar-actions" size="sm">Export tokens</pp-button>
 
-      <pp-banner
-        tone="warning"
-        title="Offer received — Base Nov-2026 · 0,20 MW · € 102,4000 / MWh"
-        body="Respond within 24:41 — the price is firm until then."
-      >
-        <pp-button size="sm">View offer</pp-button>
+      <pp-banner tone="warning" heading="Offer received — Base Nov-2026 · 0,20 MW · € 102,4000 / MWh">
+        Respond within 24:41 — the price is firm until then.
+        <div class="gallery__row">
+          <pp-button size="sm" variant="accept">Accept the price</pp-button>
+          <pp-button size="sm" variant="ghost">Let it lapse</pp-button>
+        </div>
       </pp-banner>
 
-      <pp-ds-banner
-        body="These are indicative market prices, not offers. A firm, time-limited price is
-              issued only in response to a trade request."
-      />
+      <pp-ds-banner heading="Indicative prices">
+        These are indicative market prices, not offers. A firm, time-limited price is issued
+        only in response to a trade request.
+      </pp-ds-banner>
 
       <div class="gallery__stats">
         <pp-stat-card
@@ -4372,28 +4480,27 @@ interface Connection {
       </div>
 
       <pp-card
-        title="Status vocabulary"
-        subtitle="Ten tones, ten meanings. Every tone carries a real 1px border."
+        heading="Status vocabulary"
+        subtitle="Six tones, six meanings. Every tone carries a real 1px border."
       >
         <div class="gallery__row">
-          @for (tone of badgeTones; track tone) {
+          @for (tone of tones; track tone) {
             <pp-badge [tone]="tone">{{ tone }}</pp-badge>
           }
         </div>
       </pp-card>
 
-      <pp-card title="Buttons" subtitle="Five variants, three sizes, one height.">
+      <pp-card heading="Buttons" subtitle="Five variants, two sizes, one height.">
         <div class="gallery__row">
           @for (variant of buttonVariants; track variant) {
             <pp-button [variant]="variant">{{ variant }}</pp-button>
           }
           <pp-button size="sm">Small</pp-button>
-          <pp-button size="lg">Large</pp-button>
           <pp-button disabled>Disabled — trading opens in slice 2</pp-button>
         </div>
       </pp-card>
 
-      <pp-card title="Connections" subtitle="Filtered live by the field on the right.">
+      <pp-card heading="Connections" subtitle="Filtered live by the field above the table.">
         <span ppCardAction>Export CSV</span>
         <div class="gallery__row gallery__row--controls">
           <pp-search-input
@@ -4402,42 +4509,36 @@ interface Connection {
           />
           <pp-badge tone="info">{{ visible().length }} of {{ connections.length }}</pp-badge>
         </div>
-        <pp-grid-table
-          [columns]="connectionColumns"
-          [rows]="visible()"
-          tracks="1.6fr 1.2fr 0.8fr 0.8fr"
-          emptyMessage="No connection matches that search."
-          zebra
-        >
-          <ng-template [ppGridRow]="visible()" let-row>
-            <div class="gallery__mono">{{ row.ean }}</div>
-            <div>{{ row.name }}</div>
-            <div class="pp-grid-table__num">{{ row.capacityMw | ppPower }}</div>
-            <div class="pp-grid-table__num">{{ row.coverage }}</div>
-          </ng-template>
-        </pp-grid-table>
+        @if (visible().length > 0) {
+          <pp-grid-table columns="1.6fr 1.2fr 0.8fr 0.8fr">
+            <div ppGridHead>
+              <div>EAN</div>
+              <div>Connection</div>
+              <div class="pp-grid-table__num">Contracted power</div>
+              <div class="pp-grid-table__num">Coverage</div>
+            </div>
+            @for (row of visible(); track row.ean) {
+              <div ppGridRow>
+                <div class="gallery__mono">{{ row.ean }}</div>
+                <div>{{ row.name }}</div>
+                <div class="pp-grid-table__num">{{ row.capacityMw | ppPower }}</div>
+                <div class="pp-grid-table__num">{{ row.coverage }}</div>
+              </div>
+            }
+          </pp-grid-table>
+        } @else {
+          <p class="gallery__empty">No connection matches that search.</p>
+        }
       </pp-card>
 
       <pp-card
-        title="Gas connections"
-        subtitle="An empty list is never a bare head — it says why it is empty."
+        heading="Gas connections"
+        subtitle="An empty list is never a bare head — the screen says why it is empty."
       >
-        <pp-grid-table
-          [columns]="connectionColumns"
-          [rows]="noConnections"
-          tracks="1.6fr 1.2fr 0.8fr 0.8fr"
-          emptyMessage="Gas connections are not tradeable in this portal."
-        >
-          <ng-template [ppGridRow]="noConnections" let-row>
-            <div class="gallery__mono">{{ row.ean }}</div>
-            <div>{{ row.name }}</div>
-            <div class="pp-grid-table__num">{{ row.capacityMw | ppPower }}</div>
-            <div class="pp-grid-table__num">{{ row.coverage }}</div>
-          </ng-template>
-        </pp-grid-table>
+        <p class="gallery__empty">Gas connections are not tradeable in this portal.</p>
       </pp-card>
 
-      <pp-card title="nl-NL formatting" subtitle="Comma decimal, period thousands, U+2212 minus.">
+      <pp-card heading="nl-NL formatting" subtitle="Comma decimal, period thousands, U+2212 minus.">
         <dl class="gallery__facts">
           <dt>ppMoney</dt>
           <dd>{{ balance | ppMoney }}</dd>
@@ -4452,11 +4553,9 @@ interface Connection {
         </dl>
       </pp-card>
 
-      <pp-banner
-        tone="critical"
-        title="Metering feed silent for two days"
-        body="This indicates a coverage defect, not a data gap. Engineering has been alerted."
-      />
+      <pp-banner tone="critical" heading="Metering feed silent for two days">
+        This indicates a coverage defect, not a data gap. Engineering has been alerted.
+      </pp-banner>
 
       <p class="gallery__footer">
         <b>Demo only.</b> Every figure on this page is synthetic test data generated for this
@@ -4466,22 +4565,65 @@ interface Connection {
   `,
 })
 export class Gallery {
-  readonly nav: readonly PpNavItem[] = [
-    { key: 'dashboard', label: 'Dashboard' },
-    { key: 'connections', label: 'Connections' },
-    { key: 'gallery', label: 'Design system' },
-    { key: 'volume', label: 'Volume', disabled: true, disabledReason: 'Volume arrives in slice 3.' },
-    { key: 'trades', label: 'Trades', disabled: true, disabledReason: 'Trading arrives in slice 4.' },
-    { key: 'balance', label: 'Balance', disabled: true, disabledReason: 'The wallet arrives in slice 5.' },
+  /** The grouped rail of design §8.4. Only the gallery itself is routable in this plan. */
+  readonly nav: readonly PpNavSection[] = [
+    {
+      label: 'Overview',
+      items: [
+        {
+          routeKey: 'gallery',
+          label: 'Design system',
+          path: '/gallery',
+          dot: 'var(--pp-blue-500)',
+        },
+      ],
+    },
+    {
+      label: 'Position',
+      items: [
+        {
+          routeKey: 'consumption',
+          label: 'Volume',
+          path: null,
+          dot: 'var(--pp-mint)',
+          disabledReason: 'Metering volume arrives with the ingestion feed, in a later slice.',
+        },
+        {
+          routeKey: 'connections',
+          label: 'Connections',
+          path: null,
+          dot: 'var(--pp-teal)',
+          disabledReason: 'The customer portal builds this screen in Plan 6.',
+        },
+      ],
+    },
+    {
+      label: 'Market',
+      items: [
+        {
+          routeKey: 'trading',
+          label: 'Trades',
+          path: null,
+          dot: 'var(--pp-blue-700)',
+          disabledReason: 'Trading arrives with feature F05.',
+        },
+        {
+          routeKey: 'wallet',
+          label: 'Balance',
+          path: null,
+          dot: 'var(--pp-amber)',
+          disabledReason: 'The wallet ledger arrives with feature F06.',
+        },
+      ],
+    },
   ];
 
-  readonly badgeTones: readonly PpBadgeTone[] = [
-    'success', 'warning', 'critical', 'info', 'brand',
-    'system', 'short', 'long', 'sell', 'neutral',
+  readonly tones: readonly PpTone[] = [
+    'neutral', 'brand', 'info', 'success', 'warning', 'critical',
   ];
 
   readonly buttonVariants: readonly PpButtonVariant[] = [
-    'primary', 'secondary', 'danger', 'accent', 'ghost',
+    'primary', 'secondary', 'ghost', 'danger', 'accept',
   ];
 
   readonly balance = 19722;
@@ -4491,22 +4633,12 @@ export class Gallery {
   readonly lastPrice = 102.4;
   readonly monthToDate = 2914.5;
 
-  readonly connectionColumns: readonly PpGridColumn[] = [
-    { label: 'EAN' },
-    { label: 'Connection' },
-    { label: 'Contracted power', align: 'right' },
-    { label: 'Coverage', align: 'right' },
-  ];
-
   readonly connections: readonly Connection[] = [
     { ean: '871687100000000001', name: 'Vriescel 1', capacityMw: 0.2, coverage: '78,4 %' },
     { ean: '871687100000000002', name: 'Vriescel 2', capacityMw: 0.45, coverage: '61,0 %' },
     { ean: '871687100000000003', name: 'Kantoor Nieuwegein', capacityMw: 0.08, coverage: '92,5 %' },
   ];
 
-  readonly noConnections: readonly Connection[] = [];
-
-  readonly activeKey = signal('gallery');
   readonly query = signal('');
 
   readonly visible = computed(() => {
@@ -4545,6 +4677,12 @@ Create `apps/customer-portal/src/app/gallery/gallery.css`:
 .gallery__mono {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+}
+
+.gallery__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-faint);
 }
 
 .gallery__facts {
@@ -4599,7 +4737,7 @@ cd /Users/thinhhuynh/PeakPower/peakpower-web && npx ng test customer-portal --wa
 ```
 
 Expected: PASS — 5 passing tests for `customer-portal`, then the full `npm run test` run reports
-`# pass 7` from the workspace contract tests and 70 passing Vitest tests for `shared-ui`.
+`# pass 7` from the workspace contract tests and 75 passing Vitest tests for `shared-ui`.
 
 - [ ] **Step 5: Commit**
 
@@ -4625,7 +4763,7 @@ renders the rail, the topbar and every specimen on the SB-2026 gradient canvas.
 Every box below is checked by running a command, not by reading the code.
 
 - [ ] `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test` exits zero. That is the
-      workspace-contract suite (`# pass 7`), 70 `shared-ui` Vitest tests and 5 `customer-portal`
+      workspace-contract suite (`# pass 7`), 75 `shared-ui` Vitest tests and 5 `customer-portal`
       Vitest tests.
 - [ ] `npx ng build customer-portal` and `npx ng build employee-portal` both print
       `Application bundle generation complete` with no budget error.
@@ -4637,7 +4775,13 @@ Every box below is checked by running a command, not by reading the code.
       root plus the library's own.
 - [ ] Every one of the nine `pp-` selectors from the shared contract resolves:
       `pp-card`, `pp-stat-card`, `pp-badge`, `pp-button`, `pp-banner`, `pp-ds-banner`,
-      `pp-grid-table`, `pp-search-input`, `pp-app-shell`.
+      `pp-grid-table`, `pp-search-input`, `pp-app-shell` — plus the two attribute directives
+      the table is driven by, `[ppGridHead]` and `[ppGridRow]`.
+- [ ] `grep -rn positive libs/shared-ui/src` returns nothing, and `grep -rn danger
+      libs/shared-ui/src` returns only `pp-button`'s `danger` variant: shared contract §10.1
+      spells the tones `success` and `critical`, and `PpTone` has no other members.
+- [ ] `grep -rn "pp-canvas" libs/shared-ui/src/styles/colors.css` returns the definition Plans 4
+      and 6 both paint their pages with.
 - [ ] `grep -rn "NgModule" libs apps --include=*.ts` returns nothing.
 - [ ] `grep -rn "certainty-provisional-opacity" libs` returns nothing.
 - [ ] `grep -rn "pp-cyan-text" libs` returns nothing — `--pp-cyan` has no text tier and never
@@ -4654,12 +4798,20 @@ Not done in this plan, and deliberately so:
 - `libs/api-client-customer` and `libs/api-client-employee` belong to Plans 5 and 6.
 - The employee portal has no routes yet; Plan 4 fills it in.
 - No E2E test. Plan 6 contributes the one Playwright path.
+- **The `[OQ-49]` / `[OQ-22]` component-library spike.** Design §13 asks for it during this
+  slice — whether an off-the-shelf Angular component library replaces these nine hand-built
+  primitives, decided before the chart slice. It is a procurement and architecture question
+  about components this plan is finishing, not a task inside it, and running it here would
+  block nine primitives Plans 4 and 6 need next week. It stays `[OQ-49]`, and the gallery this
+  plan ships is what the spike will be judged against.
 
 ## New names introduced
 
-Names this plan defines that the shared contract does not. Everything else — the nine `pp-`
-selectors, the workspace layout, the `@peakpower/` scope, the token values — comes from
-`docs/superpowers/plans/2026-08-26-slice-1-shared-contract.md`.
+Names this plan defines that the shared contract does not. The nine `pp-` selectors, the two
+grid directives, `PpTone`, `PpNavItem`, `PpNavSection` and every component input listed in
+shared contract §10.1 are **the contract's**, not this plan's — this plan implements them.
+Likewise the workspace layout, the `@peakpower/` scope, the token values and `--pp-canvas` come
+from `docs/superpowers/plans/2026-08-26-slice-1-shared-contract.md`.
 
 **Formatting layer** — `libs/shared-ui/src/lib/format/`
 
@@ -4681,98 +4833,36 @@ export class PpPricePipe implements PipeTransform {          // name: 'ppPrice'
 }
 ```
 
-**Component classes and their public inputs** — `libs/shared-ui/src/lib/`
+**Spec-only helpers** — `libs/shared-ui/src/testing/read-css.ts`, never bundled
 
 ```ts
-export type PpBadgeTone =
-  | 'success' | 'warning' | 'critical' | 'info' | 'brand'
-  | 'system' | 'short' | 'long' | 'sell' | 'neutral';
-export class PpBadge {                                       // <pp-badge>
-  readonly tone: InputSignal<PpBadgeTone>;                   // default 'neutral'
-}
+export function workspaceRoot(): string;
+export function readSharedUiCss(relativePath: string): string;
+export function cssText(relativePath: string): string;      // the same CSS, whitespace stripped
+export function colorDeclarations(css: string): string[];
+export const PP_BRIGHT_FILL_TOKENS: readonly string[];      // fills that may never become type
+```
 
-export type PpButtonVariant = 'primary' | 'secondary' | 'danger' | 'accent' | 'ghost';
-export type PpButtonSize = 'sm' | 'md' | 'lg';
-export class PpButton {                                      // <pp-button>
-  readonly variant: InputSignal<PpButtonVariant>;            // default 'primary'
-  readonly size: InputSignal<PpButtonSize>;                  // default 'md'
-  readonly disabled: InputSignalWithTransform<boolean, unknown>;
-  readonly type: InputSignal<'button' | 'submit'>;           // default 'button'
-}
+**Named beyond shared contract §10.1** — the contract fixes each component's selector, its tone
+type and the inputs that cross plan boundaries; these are this plan's additions inside that
+shape, and no other plan has to know them.
 
-export class PpCard {                                        // <pp-card>
-  readonly title: InputSignal<string>;
-  readonly subtitle: InputSignal<string>;
-}                                                            // slot: [ppCardAction]
+```ts
+// The two unions behind PpButton's inline literals in the contract.
+export type PpButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accept';
+export type PpButtonSize = 'md' | 'sm';
 
-export type PpStatCardTone = 'default' | 'brand' | 'warning' | 'critical' | 'success';
-export class PpStatCard {                                    // <pp-stat-card>
-  readonly label: InputSignal<string>;                       // required
-  readonly value: InputSignal<string>;                       // required, already formatted
-  readonly sublabel: InputSignal<string>;
-  readonly tone: InputSignal<PpStatCardTone>;                // default 'default'
-  readonly highlight: InputSignalWithTransform<boolean, unknown>;
-}
-
-export type PpBannerTone = 'info' | 'warning' | 'critical';
-export class PpBanner {                                      // <pp-banner>
-  readonly title: InputSignal<string>;                       // required
-  readonly body: InputSignal<string>;
-  readonly tone: InputSignal<PpBannerTone>;                  // default 'info'
-}
-
-export type PpDsBannerTone = 'info' | 'warning' | 'critical';
-export class PpDsBanner {                                    // <pp-ds-banner>
-  readonly title: InputSignal<string>;                       // optional — no title, no mark
-  readonly body: InputSignal<string>;
-  readonly tone: InputSignal<PpDsBannerTone>;                // default 'info'
-}
-
-export interface PpGridRowContext<Row> { $implicit: Row; index: number }
-export class PpGridRow<Row> {                                // <ng-template [ppGridRow]="rows()">
-  readonly ppGridRow: InputSignal<readonly Row[]>;           // required, type anchor only
-  readonly template: TemplateRef<PpGridRowContext<Row>>;
-}
-
-export interface PpGridColumn { readonly label: string; readonly align?: 'left' | 'right' }
-export class PpGridTable {                                   // <pp-grid-table>
-  readonly columns: InputSignal<readonly PpGridColumn[]>;    // required
-  readonly rows: InputSignal<readonly unknown[]>;            // required
-  readonly tracks: InputSignal<string>;                      // required, raw grid-template-columns
-  readonly emptyMessage: InputSignal<string>;                // required
-  readonly dense: InputSignalWithTransform<boolean, unknown>;
-  readonly zebra: InputSignalWithTransform<boolean, unknown>;
-}
-
-export class PpSearchInput {                                 // <pp-search-input>
-  readonly placeholder: InputSignal<string>;                 // default 'Search…'
-  readonly value: ModelSignal<string>;                       // two-way
-}
-
-export interface PpNavItem {
-  readonly key: string;
-  readonly label: string;
-  readonly group?: string;
-  readonly disabled?: boolean;
-  readonly disabledReason?: string;
-}
-export class PpAppShell {                                    // <pp-app-shell>
-  readonly portalLabel: InputSignal<string>;                 // required
-  readonly nav: InputSignal<readonly PpNavItem[]>;           // required
-  readonly activeKey: InputSignal<string>;
-  readonly title: InputSignal<string>;                       // required
-  readonly crumb: InputSignal<readonly string[]>;            // a crumb suppresses the subtitle
-  readonly subtitle: InputSignal<string>;
-  readonly userName: InputSignal<string>;
-  readonly companyName: InputSignal<string>;
-  readonly navigate: OutputEmitterRef<string>;               // the clicked item's key
-}                                                            // slot: [ppAppShellActions]
+// Inputs and slots the contract does not name:
+//   PpButton.type      — 'button' | 'submit', default 'button'
+//   PpStatCard.highlight — the amber surface for the column that needs action now
+//   pp-card    slot  [ppCardAction]        — the right-hand action in the card head
+//   pp-app-shell slot [slot=topbar-actions] — the right-hand actions in the topbar
 ```
 
 **Application** — `apps/customer-portal/src/app/gallery/`
 
 ```ts
-export class Gallery {}   // <cp-gallery>, lazy-loaded at /gallery, the portal's default route
+export class Gallery {}   // <pp-gallery>, lazy-loaded at /gallery, the portal's default route
 ```
 
 **CSS custom properties owned by a component**, set per tone/variant on the host and read inside
@@ -4784,5 +4874,5 @@ that component only:
 --pp-stat-card-cap     --pp-stat-card-value
 --pp-banner-bg         --pp-banner-border     --pp-banner-text     --pp-banner-mark
 --pp-ds-banner-bg      --pp-ds-banner-border  --pp-ds-banner-text  --pp-ds-banner-mark
---pp-grid-tracks
+--pp-grid-columns
 ```

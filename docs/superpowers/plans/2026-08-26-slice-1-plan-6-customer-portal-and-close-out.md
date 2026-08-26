@@ -21,7 +21,7 @@ refreshes exactly once against the HttpOnly `pp_refresh` cookie before redirecti
 
 **Tech Stack:** .NET SDK 10.0.400 · EF Core 10.x · PostgreSQL 17 · Aspire 13.5.3 ·
 Angular 22 (`@angular/cli` 22.1.6) · Node 24.15.0 / npm 11.12.1 · Vitest 4.1.11 ·
-Playwright 1.56.1 · openapi-typescript 7.13.0 · xUnit + FluentAssertions ·
+Playwright 1.56.1 · openapi-typescript 7.13.0 · xUnit + FluentAssertions 7.2.0 ·
 Testcontainers.PostgreSql 4.14.0 · Verify.Xunit 30.15.0
 
 **Spec:** `docs/superpowers/specs/2026-08-26-poc-slice-1-design.md`
@@ -345,9 +345,9 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + FluentAssertions (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** + NSubstitute |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
-| Architecture | NetArchTest |
+| Architecture | NetArchTest (facts 1-3, 5) and Mono.Cecil IL scanning (facts 4 and 6) |
 | OpenAPI contract | Verify snapshot |
 | Frontend unit | Vitest |
 | E2E | Playwright, in `peakpower-web` |
@@ -361,15 +361,25 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 | `Konscious.Security.Cryptography.Argon2` | **1.3.1** | the Argon2id hasher `[DEC-113]` |
 | `NetArchTest.Rules` | **1.3.2** | the six architecture facts |
 | `Testcontainers.PostgreSql` | **4.14.0** | real PostgreSQL 17 in tests |
+| `FluentAssertions` | **7.2.0** | ⚠ **pin 7.x — do not take 8.x** |
+| `Mono.Cecil` | **0.11.6** | IL scanning for architecture facts 3-6 |
+
+> ⚠ **FluentAssertions 8.x may not be used.** 8.10.0 ships an Xceed Software Community
+> License Agreement "for Non-Commercial Use"; PeakPower is a commercial trading platform, so
+> 8.x would need a paid Xceed licence. **7.2.0 is the last `Apache-2.0` release** and is what
+> every plan pins. Task 29 files the correction against the specification, and `[OQ-101]`
+> records the Shouldly 4.3.0 alternative if 7.x goes unmaintained.
 
 **Architecture facts that must exist from week 1:**
 
-1. `PeakPower.Domain` references no other project
-2. `PeakPower.Application` references only `PeakPower.Domain`
-3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter
-4. No type calls `IgnoreQueryFilters()`
-5. No type outside `PeakPower.Infrastructure.Time` uses `DateTime.Now` / `DateTime.UtcNow`
-6. No type outside the context-provider assembly reads a customer identifier from `HttpContext`
+1. `PeakPower.Domain` references no other project — NetArchTest, plan 1
+2. `PeakPower.Application` references only `PeakPower.Domain` — NetArchTest, plan 1
+3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter — Cecil, plan 1
+4. No type calls `IgnoreQueryFilters()` — Cecil, plan 2
+5. No type outside `PeakPower.Infrastructure.Time` calls `DateTime.Now`, `DateTime.UtcNow`,
+   `DateTime.Today`, `DateTimeOffset.Now` or `DateTimeOffset.UtcNow` — Cecil, plan 1
+6. No type outside `PeakPower.Infrastructure.Web` uses `IHttpContextAccessor` or reads a claim
+   off `ClaimsPrincipal` / `ClaimsIdentity` — Cecil, plan 2
 
 ---
 
@@ -383,7 +393,7 @@ test -f artifacts/openapi/employee.json          && echo "plan 2 OK"
 test -f src/Hosts/PeakPower.Api.Customer/Auth/AuthEndpoints.cs        && echo "plan 5 auth OK"
 test -f src/Hosts/PeakPower.Api.Customer/Onboarding/OnboardingEndpoints.cs && echo "plan 5 onboarding OK"
 cd /Users/thinhhuynh/PeakPower/peakpower-web
-test -f libs/shared-ui/src/index.ts              && echo "plan 3 OK"
+test -f libs/shared-ui/src/public-api.ts              && echo "plan 3 OK"
 test -f libs/api-client-employee/src/index.ts    && echo "plan 4 OK"
 ```
 
@@ -422,9 +432,43 @@ public sealed class Brp
     public Guid Id { get; }
     public string Code { get; }
     public string Name { get; }
-    public static Brp Create(string code, string name);
+    public bool IsActive { get; }
+    public static Result<Brp> Create(string code, string name, bool isActive);
 }
 ```
+
+Plan 1 owns every aggregate factory and mutator this plan calls — shared contract §5.1 is the
+one place they are declared. This plan only calls them, and every call unwraps the
+`Result<T>` they return:
+
+```csharp
+namespace PeakPower.Domain.Customers;
+static Result<Customer> Customer.Create(
+    string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber,
+    Address billingAddress, Address? visitingAddress, ContactPerson primaryContact,
+    string? internalReference, string locale);
+Result<Customer> Customer.ChangeStatus(CustomerStatus status);
+
+static Result<CustomerAccount> CustomerAccount.Create(
+    Guid customerId, string username, string firstName, string lastName,
+    string? jobTitle, string email, string? phone, AccountStatus status, bool isAdmin);
+void CustomerAccount.SetPassword(string passwordHash);          // bumps SecurityStamp
+
+static Result<MeteringPoint> MeteringPoint.Attach(
+    Guid customerId, EanCode ean, Guid brpId,
+    ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource,
+    string? name, string? description, string? gridOperator, decimal? capacityKw,
+    Address? address, DateOnly validFrom);
+Result<MeteringPoint> MeteringPoint.EndDate(DateOnly validTo);
+Result<MeteringPoint> MeteringPoint.Rename(string? name, string? description);
+Result<MeteringPoint> MeteringPoint.UpdateDetails(
+    Guid brpId, ProductionExpectation productionExpectation,
+    ProductionExpectationSource? expectationSource, string? gridOperator,
+    decimal? capacityKw, Address? address);
+```
+
+`MeteringPoint.Attach` takes no `Commodity` — `[DEC-68]` makes `ELECTRICITY` the only value, so
+the aggregate sets it — and no `ValidTo`; ending a connection is `EndDate`.
 
 Aspire resource names: `postgres`, `peakpower`, `migrator`, `customer-api`, `employee-api`,
 `customer-portal`, `employee-portal`. Plan 1 already registers `customer-portal` with
@@ -462,22 +506,8 @@ public static class TenancyEndpointExtensions
 }
 ```
 
-```csharp
-namespace PeakPower.Domain.Customers;   // members plan 2 added to plan 1's aggregates
-public static MeteringPoint MeteringPoint.Attach(Guid customerId, EanCode ean, Guid brpId,
-    ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource,
-    string? name, string? description, string? gridOperator, decimal? capacityKw,
-    Address? address, DateOnly validFrom);
-public void MeteringPoint.UpdateDetails(Guid brpId, ProductionExpectation productionExpectation,
-    ProductionExpectationSource? expectationSource, string? name, string? description,
-    string? gridOperator, decimal? capacityKw, Address? address);
-public static Customer Customer.Create(string legalName, string? tradeName, KvkNumber kvkNumber,
-    string? vatNumber, Address billingAddress, Address? visitingAddress,
-    ContactPerson primaryContact, string? internalReference, string locale);
-public void Customer.ChangeStatus(CustomerStatus status);
-public static CustomerAccount CustomerAccount.Create(Guid customerId, string username,
-    string firstName, string lastName, string? jobTitle, string email, string? phone, bool isAdmin);
-```
+Plan 2 adds no members to plan 1's aggregates. Every factory and mutator this plan calls is
+declared once by plan 1, under shared contract §5.1, and reproduced above.
 
 ### From plan 5 (auth and onboarding)
 
@@ -557,11 +587,11 @@ public sealed class OnboardingApplication
     public void MarkBankVerified(DateTimeOffset at);
 }
 
-namespace PeakPower.Infrastructure.Security;
+namespace PeakPower.Infrastructure.Identity;
 public sealed class Argon2idPasswordHasher : IPasswordHasher;   // parameterless ctor
 
 namespace PeakPower.Integration.Tests;
-public sealed class CustomerApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public sealed class CustomerApiFactory : WebApplicationFactory<CustomerApiEntryPoint>, IAsyncLifetime
 {
     public string ConnectionString { get; }
     public HttpClient CreateAnonymousClient();
@@ -581,37 +611,37 @@ public sealed class CustomerApiFactory : WebApplicationFactory<Program>, IAsyncL
 ### From plan 3 (`@peakpower/shared-ui`)
 
 ```ts
-export type PpTone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info';
-export type PpButtonVariant = 'primary' | 'secondary' | 'danger';
+export type PpTone =
+  | 'neutral' | 'brand' | 'info' | 'success' | 'warning' | 'critical';
+export type PpButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accept';
 
 export interface PpNavItem {
-  readonly routeKey: string;               // the specification's route key, never the label
-  readonly label: string;                  // the design system's label
-  readonly path: string | null;            // null renders the item disabled
-  readonly disabledReason: string | null;  // the sentence shown when path is null
-  readonly dot?: string | null;            // ⚠ ADDED BY THIS PLAN — see New names
+  routeKey: string;          // the specification's route key, never the label
+  label: string;             // the design system's label
+  path: string | null;       // null renders the item disabled
+  dot: string;               // the domain colour, a CSS custom-property reference
+  disabledReason?: string;   // rendered verbatim; a disabled item MUST carry one
 }
-export interface PpNavSection {
-  readonly title: string | null;
-  readonly items: readonly PpNavItem[];
-}
+export interface PpNavSection { label: string; items: PpNavItem[]; }
 
-// selector: 'pp-app-shell'
+// selector: 'pp-app-shell'  — navigation is routerLink on each item's path; no navigate output
 export class PpAppShell {
-  readonly sections = input.required<readonly PpNavSection[]>();
-  readonly crumb = input<string | null>(null);      // crumb OR subtitle, never both
-  readonly subtitle = input<string | null>(null);
+  readonly sections = input.required<PpNavSection[]>();
+  readonly activeRouteKey = input.required<string>();
+  readonly productName = input.required<string>();
+  readonly crumb = input<string>();                 // crumb OR subtitle, never both
+  readonly subtitle = input<string>();
 }
 // selector: 'pp-card'
 export class PpCard {
-  readonly heading = input<string | null>(null);
-  readonly subtitle = input<string | null>(null);
+  readonly heading = input<string>();               // heading, NOT title
+  readonly subtitle = input<string>();
 }
 // selector: 'pp-stat-card'
 export class PpStatCard {
   readonly label = input.required<string>();        // rendered ALL CAPS
   readonly value = input.required<string>();
-  readonly sublabel = input<string | null>(null);
+  readonly sublabel = input<string>();
   readonly tone = input<PpTone>('neutral');
 }
 // selector: 'pp-badge'
@@ -623,27 +653,33 @@ export class PpButton {
   readonly type = input<'button' | 'submit'>('button');
   readonly disabled = input<boolean>(false);
 }
-// selector: 'pp-banner'
+// selector: 'pp-banner'   — the compact in-page notice; pp-ds-banner is a DIFFERENT component
 export class PpBanner {
   readonly tone = input<PpTone>('info');
-  readonly heading = input<string | null>(null);
+  readonly heading = input<string>();
 }
 // selector: 'pp-grid-table'  — display:grid divs, never <table>
 export class PpGridTable {
   readonly columns = input.required<string>();      // a grid-template-columns string
-  readonly density = input<'default' | 'compact'>('default');
+  readonly density = input<'default' | 'dense'>('default');
 }
 export class PpGridHead {}   // selector: '[ppGridHead]'
 export class PpGridRow {}    // selector: '[ppGridRow]'
 // selector: 'pp-search-input'
 export class PpSearchInput {
-  readonly placeholder = input<string>('');
+  readonly placeholder = input<string>('Search');
   readonly value = model<string>('');
 }
 ```
 
+Shared contract §10.1 is the normative version of this list; plan 3 declares it in
+`libs/shared-ui/src/public-api.ts`, and this plan only binds it. Nothing here is extended: a
+field this portal needs and the library does not have is a change to plan 3, not a local
+widening.
+
 Plan 3's token stylesheet lives at `libs/shared-ui/src/styles/tokens.css` and is importable
-from a plain CSS file. **`pp-grid-table` is never rendered with zero rows** — every table in
+from a plain CSS file. The page ground is `--pp-canvas`, defined by plan 3 in
+`libs/shared-ui/src/styles/colors.css`. **`pp-grid-table` is never rendered with zero rows** — every table in
 this plan is wrapped in `@if (rows().length > 0) { … } @else { … }` and the empty branch is a
 `pp-card` whose text names the reason.
 
@@ -709,7 +745,7 @@ plausible-looking date. Design §8.5 forbids fabricated figures beside real ones
 | `src/Core/PeakPower.Domain/Customers/ConnectionStatus.cs` | Derives `Pending` / `Active` / `Ending` / `Ended` from a validity window and today |
 | `src/Core/PeakPower.Contracts/Customer/Portal/PortalContracts.cs` | Every request and response DTO for the seven customer endpoints |
 | `src/Infrastructure/PeakPower.Persistence/Configurations/EanPoolEntryConfiguration.cs` | EF mapping for `metering.ean_pool` |
-| `src/Infrastructure/PeakPower.Persistence/Migrations/*_M3_EanPool.cs` | Migration 3 — `metering.ean_pool` plus its grants |
+| `src/Infrastructure/PeakPower.Persistence/Migrations/*_EanPool.cs` | Migration 4 — `metering.ean_pool` plus its grants |
 | `src/Infrastructure/PeakPower.Persistence/Seeding/DemoDataSeeder.cs` | The six companies, their accounts and connections, and the EAN pool |
 | `src/Hosts/PeakPower.Api.Customer/Portal/CompanyEndpoints.cs` | `GET /company`, `GET /company/accounts` |
 | `src/Hosts/PeakPower.Api.Customer/Portal/ConnectionEndpoints.cs` | The four `/metering-points` routes |
@@ -727,6 +763,7 @@ plausible-looking date. Design §8.5 forbids fabricated figures beside real ones
 | `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs` | Add `DbSet<EanPoolEntry> EanPool` |
 | `src/Hosts/PeakPower.Migrator/Program.cs` | Run `DemoDataSeeder` after migrations in Development |
 | `tests/PeakPower.Integration.Tests/Auth/AnonymousEndpointAllowListTests.cs` | Add the sign-code peek to the expected set |
+| `tests/PeakPower.Integration.Tests/Tenancy/TenancyFixture.cs` | `SampleBodies` delegates to `CustomerSampleBodies` |
 
 ### `peakpower-platform` — tests created by this plan
 
@@ -742,6 +779,8 @@ plausible-looking date. Design §8.5 forbids fabricated figures beside real ones
 | `tests/PeakPower.Integration.Tests/Portal/ClaimConnectionTests.cs` | The claim, `CUSTOMER_DECLARED`, and the double-claim conflict |
 | `tests/PeakPower.Integration.Tests/Contract/CustomerOpenApiSnapshotTests.cs` | The customer contract, frozen |
 | `tests/PeakPower.Integration.Tests/Seeding/DemoDataSeederTests.cs` | Six companies, idempotent, pool loads under `[DEC-114]` |
+| `tests/PeakPower.Integration.Tests/Tenancy/CustomerSampleBodies.cs` | A valid body for every mutating tenant-scoped customer route |
+| `tests/PeakPower.Integration.Tests/Tenancy/CustomerApiRouteTableTests.cs` | Plan 2's route-table harness, run against the customer host |
 
 ### `peakpower-web` — `libs/api-client-customer`
 
@@ -800,13 +839,13 @@ Each page file carries its own `*.spec.ts` beside it.
 | --- | --- |
 | `package.json` | *(modify)* customer-portal scripts, Playwright, the customer client workspace entry |
 | `angular.json` | *(modify)* the `customer-portal` project |
-| `tsconfig.base.json` | *(modify)* the `@peakpower/api-client-customer` path mapping |
+| `tsconfig.json` | *(modify)* the `@peakpower/api-client-customer` path mapping |
 | `tools/openapi-clients.mjs` | *(modify)* register the customer client in `CLIENTS` |
 | `playwright.config.ts` | The E2E runner configuration |
 | `e2e/onboard-and-rename.spec.ts` | The one slice-1 path |
 | `e2e/fixtures/api.ts` | Direct-API helpers the E2E needs (the sign-code peek) |
 
-### `peakpowerspecs` — modified by Task 28
+### `peakpowerspecs` — modified by Task 29
 
 | File | Change |
 | --- | --- |
@@ -826,9 +865,9 @@ Each page file carries its own `*.spec.ts` beside it.
 
 ## Tasks
 
-Commands are run from `/Users/thinhhuynh/PeakPower/peakpower-platform` for tasks 1–8,
-from `/Users/thinhhuynh/PeakPower/peakpower-web` for tasks 9–21, and from
-`/Users/thinhhuynh/PeakPower/peakpowerspecs` for task 22. Each task says which.
+Commands are run from `/Users/thinhhuynh/PeakPower/peakpower-platform` for tasks 1–10 and 27,
+from `/Users/thinhhuynh/PeakPower/peakpower-web` for tasks 11–26 and 28, and from
+`/Users/thinhhuynh/PeakPower/peakpowerspecs` for task 29. Each task says which.
 
 ---
 
@@ -1326,7 +1365,10 @@ namespace PeakPower.Api.Customer.Portal;
 /// <para>
 /// The <c>Wire</c> overloads spell every enum explicitly rather than deriving SCREAMING_SNAKE
 /// from the C# name. A derivation looks tidier and gets <c>UpTo250Mwh</c> wrong; an explicit
-/// switch cannot compile if a member is added and left unhandled.
+/// switch cannot compile if a member is added and left unhandled. The spellings are shared
+/// contract section 5.2's, the same ones the hosts' shared <c>JsonStringEnumConverter</c>
+/// produces — these DTOs carry <c>string</c>, so the converter never sees them, and the two
+/// must not be allowed to drift apart.
 /// </para>
 /// </summary>
 public static class PortalMappings
@@ -1609,7 +1651,16 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
         DateOnly validFrom, DateOnly? validTo = null)
     {
         await using var db = factory.CreateOwnerDbContext();
-        var brp = await db.Brps.OrderBy(b => b.Code).FirstAsync();
+        // metering.brp is created empty by migration 1 and filled by DemoDataSeeder, which
+        // only runs in Development — so an integration database has no BRP until something
+        // writes one. Code and name are the ones shared contract 5.1 fixes verbatim.
+        var brp = await db.Brps.OrderBy(b => b.Code).FirstOrDefaultAsync();
+        if (brp is null)
+        {
+            brp = Brp.Create("PVNED", "PVNed B.V.", isActive: true).Value;
+            db.Brps.Add(brp);
+            await db.SaveChangesAsync();
+        }
 
         var point = MeteringPoint.Attach(
             customerId,
@@ -1622,7 +1673,7 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
             gridOperator: "Stedin",
             capacityKw: 4200m,
             address: new Address("Waalhaven Zuidzijde", "8", null, "3089JH", "Rotterdam", "NL"),
-            validFrom: validFrom);
+            validFrom: validFrom).Value;
 
         if (validTo is { } end) point.EndDate(end);
 
@@ -1949,6 +2000,7 @@ using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Portal;
 using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
+using PeakPower.Domain.Metering;
 using Xunit;
 
 namespace PeakPower.Integration.Tests.Portal;
@@ -1976,14 +2028,23 @@ public sealed class ConnectionDetailTests(CustomerApiFactory factory)
     private async Task<Guid> AttachAsync(Guid customerId, string ean, string? name)
     {
         await using var db = factory.CreateOwnerDbContext();
-        var brp = await db.Brps.OrderBy(b => b.Code).FirstAsync();
+        // metering.brp is created empty by migration 1 and filled by DemoDataSeeder, which
+        // only runs in Development — so an integration database has no BRP until something
+        // writes one. Code and name are the ones shared contract 5.1 fixes verbatim.
+        var brp = await db.Brps.OrderBy(b => b.Code).FirstOrDefaultAsync();
+        if (brp is null)
+        {
+            brp = Brp.Create("PVNED", "PVNed B.V.", isActive: true).Value;
+            db.Brps.Add(brp);
+            await db.SaveChangesAsync();
+        }
 
         var point = MeteringPoint.Attach(
             customerId, EanCode.Create(ean).Value, brp.Id,
             ProductionExpectation.Expected, ProductionExpectationSource.CustomerDeclared,
             name, "Freezer hall + dock 3 compressors", "Enexis", 2500m,
             new Address("Ceresstraat", "14", null, "5928LA", "Venlo", "NL"),
-            new DateOnly(2024, 1, 1));
+            new DateOnly(2024, 1, 1)).Value;
 
         db.MeteringPoints.Add(point);
         await db.SaveChangesAsync();
@@ -2142,7 +2203,7 @@ with no name, the grouped EAN is the label.
 
 The route is `/naming`, not `/label`. The specification writes `/label`; §5.4 of the design
 settles the friendly name as `name` + `description` columns rather than a `Label` property, so
-the route name follows. Task 28 files that as a correction — the route has no consumers yet, so
+the route name follows. Task 29 files that as a correction — the route has no consumers yet, so
 renaming is free now and awkward later.
 
 **Clearing is a first-class operation.** Sending `{"name": null}` or `{"name": ""}` removes the
@@ -2154,8 +2215,10 @@ value traps a customer with a typo they made once.
 - Test: `tests/PeakPower.Integration.Tests/Portal/ConnectionNamingTests.cs`
 
 **Interfaces:**
-- Consumes: `MeteringPoint.UpdateDetails(Guid brpId, ProductionExpectation, ProductionExpectationSource?, string? name, string? description, string? gridOperator, decimal? capacityKw, Address?)`;
-  `ApiResults.InvalidRequest(string property, string error)` and `ApiResults.NotFound()`.
+- Consumes: `Result<MeteringPoint> MeteringPoint.Rename(string? name, string? description)` —
+  shared contract §5.1's naming mutator, which is `Rename` and not `UpdateDetails`; the latter
+  carries the BRP, the expectation and the technical fields and has no name parameter at all.
+  Also `ApiResults.InvalidRequest(string property, string error)` and `ApiResults.NotFound()`.
 - Produces: `PATCH /api/v1/metering-points/{id:guid}/naming`, body `RenameConnectionRequest`
   → 200 `ConnectionDetailDto` · 400 problem+json · 404
 
@@ -2173,6 +2236,7 @@ using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Portal;
 using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
+using PeakPower.Domain.Metering;
 using Xunit;
 
 namespace PeakPower.Integration.Tests.Portal;
@@ -2201,12 +2265,21 @@ public sealed class ConnectionNamingTests(CustomerApiFactory factory)
     private async Task<Guid> AttachAsync(Guid customerId, string ean, string? name)
     {
         await using var db = factory.CreateOwnerDbContext();
-        var brp = await db.Brps.OrderBy(b => b.Code).FirstAsync();
+        // metering.brp is created empty by migration 1 and filled by DemoDataSeeder, which
+        // only runs in Development — so an integration database has no BRP until something
+        // writes one. Code and name are the ones shared contract 5.1 fixes verbatim.
+        var brp = await db.Brps.OrderBy(b => b.Code).FirstOrDefaultAsync();
+        if (brp is null)
+        {
+            brp = Brp.Create("PVNED", "PVNed B.V.", isActive: true).Value;
+            db.Brps.Add(brp);
+            await db.SaveChangesAsync();
+        }
 
         var point = MeteringPoint.Attach(
             customerId, EanCode.Create(ean).Value, brp.Id,
             ProductionExpectation.Unknown, null, name, null, "Liander", 900m, null,
-            new DateOnly(2024, 1, 1));
+            new DateOnly(2024, 1, 1)).Value;
 
         db.MeteringPoints.Add(point);
         await db.SaveChangesAsync();
@@ -2360,15 +2433,15 @@ Add to `MapConnectionEndpoints` in `ConnectionEndpoints.cs`, before `return rout
                     .SingleOrDefaultAsync(p => p.Id == id, cancellationToken);
                 if (point is null) return ApiResults.NotFound();
 
-                point.UpdateDetails(
-                    point.BrpId,
-                    point.ProductionExpectation,
-                    point.ExpectationSource,
-                    name,
-                    description,
-                    point.GridOperator,
-                    point.CapacityKw,
-                    point.Address);
+                // Rename is the naming mutator; UpdateDetails carries the BRP and the
+                // technical fields and would need every one of them restated to change a name.
+                // It re-checks the two limits, so the endpoint's checks above exist only to
+                // name the offending property in the 400.
+                var renamed = point.Rename(name, description);
+                if (!renamed.IsSuccess)
+                {
+                    return ApiResults.InvalidRequest("name", renamed.Error);
+                }
 
                 await db.SaveChangesAsync(cancellationToken);
 
@@ -2415,7 +2488,7 @@ git commit -m "feat(customer-api): name and describe a connection at PATCH /nami
 
 ---
 
-### Task 6: The shared EAN pool — the aggregate, migration 3, and `GET /ean-pool`
+### Task 6: The shared EAN pool — the aggregate, migration 4, and `GET /ean-pool`
 
 `[DEC-113]` lets a customer claim a metering point themselves rather than waiting for a
 PeakPower employee to attach one, which amends `[F01-R23]`. The demo already works this way:
@@ -2427,12 +2500,14 @@ removes the entry for everyone.
 granted to `app_customer_role`. Nothing leaks, because the endpoint only ever returns
 **unclaimed** rows and the DTO carries no claimant.
 
-Slice 1 has migration 1 (plan 1) and migration 2 (plan 5). This is **migration 3**.
+Slice 1 has migration 1 `InitialSchema` (plan 1), migration 2 `TenancyRowLevelSecurity`
+(plan 2, which creates the `app_customer_role` and `app_employee_role` roles) and migration 3
+`AuthAndOnboarding` (plan 5). This is **migration 4, `EanPool`**.
 
 **Files:**
 - Create: `src/Core/PeakPower.Domain/Metering/EanPoolEntry.cs`
 - Create: `src/Infrastructure/PeakPower.Persistence/Configurations/EanPoolEntryConfiguration.cs`
-- Create: `src/Infrastructure/PeakPower.Persistence/Migrations/*_M3_EanPool.cs` *(scaffolded)*
+- Create: `src/Infrastructure/PeakPower.Persistence/Migrations/*_EanPool.cs` *(scaffolded)*
 - Modify: `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs`
 - Create: `src/Hosts/PeakPower.Api.Customer/Portal/EanPoolEndpoints.cs`
 - Modify: `src/Hosts/PeakPower.Api.Customer/Portal/PortalMappings.cs`
@@ -2443,7 +2518,7 @@ Slice 1 has migration 1 (plan 1) and migration 2 (plan 5). This is **migration 3
 **Interfaces:**
 - Consumes: `EanCode`, `Result<T>`, `Address`, `Commodity`; `AnonymousEndpoint`/`TenantScoped`
   conventions; the `app_customer_role` and `app_employee_role` roles created by plan 2's
-  migration 2.
+  migration 2, `TenancyRowLevelSecurity` — the grants below extend those roles.
 - Produces:
   - `PeakPower.Domain.Metering.EanPoolEntry` — see Step 3 for the full member list
   - `PeakPowerDbContext.EanPool` — `DbSet<EanPoolEntry>`
@@ -2614,7 +2689,7 @@ public sealed class EanPoolEntry
 Run: `dotnet test tests/PeakPower.Domain.Tests --filter "FullyQualifiedName~EanPoolEntryTests"`
 Expected: PASS — 4 passed, 0 failed
 
-- [ ] **Step 5: Map it and scaffold migration 3**
+- [ ] **Step 5: Map it and scaffold migration 4**
 
 Create `src/Infrastructure/PeakPower.Persistence/Configurations/EanPoolEntryConfiguration.cs`:
 
@@ -2677,12 +2752,12 @@ Scaffold the migration:
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-platform
-dotnet ef migrations add M3_EanPool \
+dotnet ef migrations add EanPool \
   --project src/Infrastructure/PeakPower.Persistence \
   --startup-project src/Hosts/PeakPower.Migrator
 ```
 
-Then open the generated `*_M3_EanPool.cs` and append the grants to the end of `Up`:
+Then open the generated `*_EanPool.cs` and append the grants to the end of `Up`:
 
 ```csharp
         // The pool is shared reference data, like metering.brp: no row-level security, because
@@ -3243,7 +3318,7 @@ Add to `MapConnectionEndpoints` in `ConnectionEndpoints.cs`, before `return rout
                 var claimed = entry.Claim(tenancy.CustomerId, calendar.UtcNow);
                 if (!claimed.IsSuccess) return ApiResults.Conflict(claimed.Error);
 
-                var point = MeteringPoint.Attach(
+                var attached = MeteringPoint.Attach(
                     tenancy.CustomerId,
                     ean.Value,
                     brp.Id,
@@ -3257,6 +3332,16 @@ Add to `MapConnectionEndpoints` in `ConnectionEndpoints.cs`, before `return rout
                     entry.CapacityKw,
                     entry.Address,
                     calendar.TodayInAmsterdam);
+
+                // Attach validates the name and description lengths, so its failure is the
+                // caller's fault and belongs in a 400 rather than an unhandled exception. The
+                // transaction is disposed without a commit, which puts the pool entry back.
+                if (!attached.IsSuccess)
+                {
+                    return ApiResults.InvalidRequest("name", attached.Error);
+                }
+
+                var point = attached.Value;
 
                 db.MeteringPoints.Add(point);
                 await db.SaveChangesAsync(cancellationToken);
@@ -3298,7 +3383,7 @@ git commit -m "feat(customer-api): claim a connection from the pool as CUSTOMER_
 The onboarding wizard emails a six-digit signing code through `IEmailSender`, whose slice-1
 adapter is a **console sink** — it writes the message to the customer API's log and nothing
 else. A browser-driven end-to-end test cannot read a log line, so without a second way in, the
-Playwright path in Task 27 stops dead at step 9 and design DoD 2 goes unproven.
+Playwright path in Task 28 stops dead at step 9 and design DoD 2 goes unproven.
 
 Plan 5 already set the precedent with
 `POST /onboarding/applications/{id}/bank-verification/simulate`, which exists only in
@@ -3470,7 +3555,7 @@ namespace PeakPower.Integration.Tests.Onboarding;
 /// rather than on a comment saying they are.
 /// </summary>
 public sealed class ProductionCustomerApiFactory(string connectionString)
-    : WebApplicationFactory<Program>
+    : WebApplicationFactory<CustomerApiEntryPoint>
 {
     private readonly string _signingKeyPath =
         Path.Combine(Path.GetTempPath(), "pp-tests", Guid.NewGuid().ToString("N"), "key.pkcs8");
@@ -3567,7 +3652,7 @@ Two separate things, both needed, and both mirror what plan 2 did for the employ
 
 - **Emission at build.** `Microsoft.Extensions.ApiDescription.Server` runs the host's document
   generation as an MSBuild step and writes `artifacts/openapi/customer.json`. That file is
-  committed, and Task 10 generates `@peakpower/api-client-customer` from it.
+  committed, and Task 11 generates `@peakpower/api-client-customer` from it.
 - **A Verify snapshot.** The emitted document is compared against a reviewed copy. Any change
   to a route, a status code or a DTO shape turns the test red, and the only way to make it green
   is to look at the diff and accept it. An API contract change should cost a deliberate act,
@@ -3583,7 +3668,7 @@ Two separate things, both needed, and both mirror what plan 2 did for the employ
 - Consumes: `RepositoryRoot.Find()` from plan 2's
   `tests/PeakPower.Integration.Tests/Contract/RepositoryRoot.cs`; `Verify.Xunit` 30.15.0,
   already referenced by plan 2.
-- Produces: `artifacts/openapi/customer.json`, consumed by Task 10's `npm run generate:clients`.
+- Produces: `artifacts/openapi/customer.json`, consumed by Task 11's `npm run generate:clients`.
 
 - [ ] **Step 1: Turn on build-time document generation**
 
@@ -3591,7 +3676,7 @@ Add to the first `<PropertyGroup>` in
 `src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj`:
 
 ```xml
-    <!-- Emit the OpenAPI document at build. Task 10 generates the typed npm client from it,
+    <!-- Emit the OpenAPI document at build. Task 11 generates the typed npm client from it,
          and the snapshot test below fails the build on an unreviewed contract change. -->
     <OpenApiGenerateDocuments>true</OpenApiGenerateDocuments>
     <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/../../../artifacts/openapi</OpenApiDocumentsDirectory>
@@ -3779,7 +3864,341 @@ git commit -m "feat(customer-api): emit customer.json at build and freeze it beh
 
 ---
 
-### Task 10: `@peakpower/api-client-customer`
+### Task 10: The route-table harness, pointed at the customer API
+
+Plan 2 built the route-table harness — `RouteTable.Enumerate`, `TenancyProbeApp`,
+`TenancyFixture.SampleBodies` — and pointed it at its own probe host and at the employee host.
+Neither is tenant-scoped in production: the probe is a test-only app, and the employee API is
+back-office by design. **The customer API is the one host where tenancy is real, and until this
+task nothing enumerates it.**
+
+That gap is the exact failure design §6 set the harness up to prevent: the customer endpoints'
+isolation is otherwise covered only by the per-endpoint
+`Another_companys_connection_is_404_and_never_403` tests written in Tasks 4, 5 and 7 — a
+hand-written list, which is what the design rejected. A customer endpoint added later that
+forgets `.TenantScoped(...)` turns nothing red.
+
+It comes after Task 9 on purpose: `customer.json` is frozen by then, so the endpoint set this
+task enumerates is the endpoint set the contract snapshot has already agreed to.
+
+**The sample bodies move to one file.** Every mutating tenant-scoped route needs a body that
+passes validation, or the probe's request is rejected before it ever reaches the tenancy check
+and the 404 assertion proves nothing. Plan 2 left `TenancyFixture.SampleBodies` empty with a
+comment saying this plan fills it. Rather than a second copy in a second collection, this task
+puts the entries in `CustomerSampleBodies` and has `TenancyFixture.SampleBodies` return it, so
+plan 2's `every_tenant_scoped_endpoint_can_actually_be_probed` and this task's tests read the
+same dictionary.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-platform`)*
+- Create: `tests/PeakPower.Integration.Tests/Tenancy/CustomerSampleBodies.cs`
+- Create: `tests/PeakPower.Integration.Tests/Tenancy/CustomerApiRouteTableTests.cs`
+- Modify: `tests/PeakPower.Integration.Tests/Tenancy/TenancyFixture.cs`
+
+**Interfaces:**
+- Consumes, from plan 2: `RouteTable.Enumerate(IServiceProvider) : IReadOnlyList<RouteTableEntry>`,
+  `RouteTable.Substitute(string routePattern, Guid id) : string`, `RouteTableEntry`
+  (`HttpMethod`, `RoutePattern`, `Classification`, `HasRouteParameter`), `TenancyScope` and
+  `TenancyFixture.SampleBodies`. From plan 5: `CustomerApiFactory` with
+  `SeedCustomerWithAccountAsync` and `CreateAnonymousClient`.
+- Produces:
+  - `PeakPower.Integration.Tests.Tenancy.CustomerSampleBodies` — `IReadOnlyDictionary<string, string> All`
+  - `PeakPower.Integration.Tests.Tenancy.CustomerApiRouteTableTests`
+
+- [ ] **Step 1: Write the sample-body registry**
+
+Create `tests/PeakPower.Integration.Tests/Tenancy/CustomerSampleBodies.cs`:
+
+```csharp
+namespace PeakPower.Integration.Tests.Tenancy;
+
+/// <summary>
+/// A valid JSON body for every tenant-scoped customer route with a mutating verb, keyed by the
+/// route pattern exactly as ASP.NET registers it.
+/// <para>
+/// Each body must pass the endpoint's own validation. A body that fails validation is rejected
+/// with a 400 before the handler runs, and a 400 is not the 404 the cross-tenant test asserts —
+/// the test would then be green for the wrong reason.
+/// </para>
+/// <para>
+/// The EAN below is one of the seeded pool entries, so <c>POST /api/v1/metering-points</c>
+/// reaches the claim path rather than failing on an unknown EAN.
+/// </para>
+/// </summary>
+public static class CustomerSampleBodies
+{
+    public static IReadOnlyDictionary<string, string> All { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v1/metering-points/{id:guid}/naming"] =
+                """{"name":"Probe","description":"Written by the route-table probe."}""",
+            ["/api/v1/metering-points"] =
+                """
+                {"ean":"871687100000000114","productionExpectation":"NEVER",
+                 "name":"Probe","description":"Written by the route-table probe."}
+                """,
+        };
+}
+```
+
+Then replace the body of `TenancyFixture.SampleBodies` in
+`tests/PeakPower.Integration.Tests/Tenancy/TenancyFixture.cs` with a delegation, so there is one
+registry and not two:
+
+```csharp
+    /// <summary>
+    /// A valid JSON body for every tenant-scoped endpoint with a mutating verb, keyed by route
+    /// pattern. The entries live in <see cref="CustomerSampleBodies"/> because the customer API
+    /// is the only host with mutating tenant-scoped routes; this property is the seam plan 2's
+    /// probe test reads them through.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> SampleBodies => CustomerSampleBodies.All;
+```
+
+- [ ] **Step 2: Write the failing test**
+
+Create `tests/PeakPower.Integration.Tests/Tenancy/CustomerApiRouteTableTests.cs`:
+
+```csharp
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using PeakPower.Contracts.Customer.Auth;
+using PeakPower.Domain.Common;
+using PeakPower.Domain.Customers;
+using PeakPower.Domain.Metering;
+using PeakPower.Infrastructure.Web.Tenancy;
+using Xunit;
+
+namespace PeakPower.Integration.Tests.Tenancy;
+
+/// <summary>
+/// The route-table test, pointed at the real customer host. Plan 2 runs the same two arms
+/// against its probe host and against the employee host; this is the one host where tenancy is
+/// not a test fiction, so it is the one that matters most.
+/// </summary>
+public sealed class CustomerApiRouteTableTests(CustomerApiFactory factory)
+    : IClassFixture<CustomerApiFactory>
+{
+    private const string Password = "correct-horse-battery";
+
+    [Fact]
+    public void Every_customer_endpoint_declares_its_tenancy()
+    {
+        // Touching the factory's client forces the host to build, which is what makes
+        // factory.Services — and therefore the endpoint table — available.
+        using var _ = factory.CreateAnonymousClient();
+
+        var undeclared = RouteTable.Enumerate(factory.Services)
+            .Where(entry => entry.Classification is null)
+            .Select(entry => entry.ToString())
+            .ToArray();
+
+        undeclared.Should().BeEmpty(
+            "every endpoint on the customer host must call .TenantScoped(kind), " +
+            ".BackOffice(reason) or .AnonymousEndpoint(reason) where it is mapped. An endpoint " +
+            "that declares nothing is invisible to this test, which is exactly how a " +
+            "tenant-scoped route escapes isolation unnoticed.");
+    }
+
+    [Fact]
+    public void Every_tenant_scoped_customer_endpoint_can_actually_be_probed()
+    {
+        using var _ = factory.CreateAnonymousClient();
+
+        var problems = new List<string>();
+
+        foreach (var entry in RouteTable.Enumerate(factory.Services))
+        {
+            if (entry.Classification is not { Scope: TenancyScope.TenantScoped })
+            {
+                continue;
+            }
+
+            if (!string.Equals(entry.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase) &&
+                !CustomerSampleBodies.All.ContainsKey(entry.RoutePattern))
+            {
+                problems.Add(
+                    $"{entry} is a tenant-scoped mutating endpoint with no sample request body. " +
+                    "Add one to CustomerSampleBodies so the probe reaches the handler.");
+            }
+        }
+
+        problems.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Signed_in_as_company_a_every_one_of_company_bs_objects_returns_404()
+    {
+        var (clientA, _) = await SignedInAsync("Route table A", "34215678");
+        var (_, companyBPointId) = await SignedInWithAConnectionAsync("Route table B", "65543210");
+
+        var failures = new List<string>();
+
+        foreach (var entry in RouteTable.Enumerate(factory.Services))
+        {
+            if (entry.Classification is not { Scope: TenancyScope.TenantScoped } ||
+                !entry.HasRouteParameter)
+            {
+                continue;
+            }
+
+            var url = RouteTable.Substitute(entry.RoutePattern, companyBPointId);
+
+            using var request = new HttpRequestMessage(
+                new HttpMethod(entry.HttpMethod), url);
+
+            if (CustomerSampleBodies.All.TryGetValue(entry.RoutePattern, out var body))
+            {
+                request.Content = new StringContent(
+                    body, System.Text.Encoding.UTF8, "application/json");
+            }
+
+            using var response = await clientA.SendAsync(request);
+
+            if (response.StatusCode != HttpStatusCode.NotFound)
+            {
+                failures.Add($"{entry} returned {(int)response.StatusCode}, expected 404");
+            }
+        }
+
+        failures.Should().BeEmpty(
+            "[F13-R19] a cross-tenant read returns 404, never 403 and never 200 — a 403 would " +
+            "confirm the row exists");
+    }
+
+    [Fact]
+    public async Task Signed_in_as_company_a_no_collection_leaks_a_company_b_identifier()
+    {
+        var (clientA, _) = await SignedInAsync("Route table leak A", "67554433");
+        var (_, companyBPointId) = await SignedInWithAConnectionAsync("Route table leak B", "55555555");
+
+        var failures = new List<string>();
+
+        foreach (var entry in RouteTable.Enumerate(factory.Services))
+        {
+            if (entry.Classification is not { Scope: TenancyScope.TenantScoped } ||
+                entry.HasRouteParameter ||
+                !string.Equals(entry.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            using var response = await clientA.GetAsync(entry.RoutePattern);
+            var payload = await response.Content.ReadAsStringAsync();
+
+            if (payload.Contains(companyBPointId.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                failures.Add($"{entry} leaked {companyBPointId}");
+            }
+        }
+
+        failures.Should().BeEmpty(
+            "a collection endpoint that returns another company's identifier has lost its " +
+            "query filter, and no per-endpoint test would have noticed");
+    }
+
+    private async Task<(HttpClient Client, Guid CustomerId)> SignedInAsync(
+        string legalName, string kvk)
+    {
+        var email = $"{Guid.NewGuid():N}@example.nl";
+        var account = await factory.SeedCustomerWithAccountAsync(legalName, kvk, email, Password);
+
+        var client = factory.CreateAnonymousClient();
+        var signIn = await client.PostAsJsonAsync(
+            "/api/v1/auth/sign-in", new SignInRequest(email, Password));
+        var body = await signIn.Content.ReadFromJsonAsync<SignInResponse>();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", body!.AccessToken);
+
+        return (client, account.CustomerId);
+    }
+
+    /// <summary>
+    /// A company with one connection, written straight onto the owner connection. The probe
+    /// substitutes the returned id into every route pattern that takes one, so this is the
+    /// object company A must not be able to see.
+    /// </summary>
+    private async Task<(Guid CustomerId, Guid MeteringPointId)> SignedInWithAConnectionAsync(
+        string legalName, string kvk)
+    {
+        var (client, customerId) = await SignedInAsync(legalName, kvk);
+        client.Dispose();
+
+        await using var db = factory.CreateOwnerDbContext();
+
+        var brp = await db.Brps.OrderBy(b => b.Code).FirstOrDefaultAsync();
+        if (brp is null)
+        {
+            brp = Brp.Create("PVNED", "PVNed B.V.", isActive: true).Value;
+            db.Brps.Add(brp);
+            await db.SaveChangesAsync();
+        }
+
+        var point = MeteringPoint.Attach(
+            customerId,
+            EanCode.Create($"8716871{Random.Shared.NextInt64(0, 99_999_999_999L):D11}").Value,
+            brp.Id,
+            ProductionExpectation.Unknown,
+            expectationSource: null,
+            name: "Probe target",
+            description: null,
+            gridOperator: "Stedin",
+            capacityKw: 900m,
+            address: null,
+            validFrom: new DateOnly(2024, 1, 1)).Value;
+
+        db.MeteringPoints.Add(point);
+        await db.SaveChangesAsync();
+
+        return (customerId, point.Id);
+    }
+}
+```
+
+- [ ] **Step 3: Run the tests**
+
+There is no production code to write in this task — the endpoints are already mapped and already
+declare themselves — so this is the one place in the plan where the first run is expected green.
+What it is really testing is Tasks 2-8: any route that forgot `.TenantScoped(...)`, or any
+mutating route with no entry in `CustomerSampleBodies`, is named here.
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~CustomerApiRouteTableTests"`
+Expected: PASS — 4 tests. Docker must be running. A failure names the offending
+`METHOD /route`; go back to the task that mapped it rather than editing the assertion.
+
+Also re-run plan 2's probe test, which now reads the same registry:
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~RouteTableTenancyTests"`
+Expected: PASS — 7 tests, unchanged. The probe host maps GET endpoints only, so the two new
+sample bodies are inert there.
+
+- [ ] **Step 4: Prove the gate has teeth**
+
+Temporarily delete `.TenantScoped("metering-point")` from the `GET /{id:guid}` mapping in
+`ConnectionEndpoints.cs`, then re-run:
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-platform
+dotnet test tests/PeakPower.Integration.Tests \
+  --filter "FullyQualifiedName~Every_customer_endpoint_declares_its_tenancy"
+```
+
+Expected: FAIL, naming `GET /api/v1/metering-points/{id:guid}`. Restore the line and re-run to
+confirm PASS. An endpoint added in a later slice that forgets the call fails the same way.
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-platform
+git add tests/PeakPower.Integration.Tests/Tenancy
+git commit -m "test(customer-api): drive the route-table tenancy harness off the customer host"
+```
+
+---
+
+### Task 11: `@peakpower/api-client-customer`
 
 Everything from here on is in `/Users/thinhhuynh/PeakPower/peakpower-web`.
 
@@ -3798,7 +4217,7 @@ at `src/generated/`.
 
 **Files:**
 - Modify: `package.json`
-- Modify: `tsconfig.base.json`
+- Modify: `tsconfig.json`
 - Modify: `angular.json`
 - Modify: `tools/openapi-clients.mjs`
 - Modify: `tools/openapi-clients.test.mjs`
@@ -3810,7 +4229,7 @@ at `src/generated/`.
 - Create: `libs/api-client-customer/src/lib/customer-api.testing.ts`
 - Create: `libs/api-client-customer/src/index.ts`
 - Create: `apps/customer-portal/src/index.html`
-- Create: `apps/customer-portal/src/main.ts` *(stub, replaced in Task 12)*
+- Create: `apps/customer-portal/src/main.ts` *(stub, replaced in Task 13)*
 - Create: `apps/customer-portal/src/styles.css`
 - Create: `apps/customer-portal/proxy.conf.mjs`
 - Create: `apps/customer-portal/tsconfig.app.json`
@@ -3835,10 +4254,33 @@ at `src/generated/`.
     ConnectionStatusValue, ProductionExpectationValue, AccountStatusValue, CustomerStatusValue`
   - `export interface ValidationProblemDetails` and
     `export function isValidationProblem(value: unknown): value is ValidationProblemDetails`
-  - `export class CustomerApiClient` — full method list in Step 5
+  - `export class CustomerApiClient` — full method list in Step 7
   - `export function provideCustomerApiTesting(baseUrl?: string): EnvironmentProviders`
 
-- [ ] **Step 1: Register the client and extend the registry test**
+- [ ] **Step 1: Write the failing registry test**
+
+Add to `tools/openapi-clients.test.mjs`, inside the existing `describe('CLIENTS', …)`:
+
+```js
+  it('registers the customer client with its committed output path', () => {
+    const customer = CLIENTS.find((c) => c.name === '@peakpower/api-client-customer');
+    assert.ok(customer, 'customer client must be registered');
+    assert.equal(customer.output,
+      resolve(WEB_ROOT, 'libs/api-client-customer/src/generated/customer-schema.d.ts'));
+    assert.match(customer.document, /artifacts\/openapi\/customer\.json$/);
+  });
+
+  it('registers exactly two clients', () => {
+    assert.equal(CLIENTS.length, 2);
+  });
+```
+
+- [ ] **Step 2: Run the tool test and watch it fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:tools`
+Expected: FAIL — `AssertionError [ERR_ASSERTION]: customer client must be registered`
+
+- [ ] **Step 3: Register the client**
 
 Add a second entry to `CLIENTS` in `tools/openapi-clients.mjs`, keeping the employee one:
 
@@ -3857,31 +4299,12 @@ export const CLIENTS = Object.freeze([
 ]);
 ```
 
-Add to `tools/openapi-clients.test.mjs`, inside the existing `describe('CLIENTS', …)`:
-
-```js
-  it('registers the customer client with its committed output path', () => {
-    const customer = CLIENTS.find((c) => c.name === '@peakpower/api-client-customer');
-    assert.ok(customer, 'customer client must be registered');
-    assert.equal(customer.output,
-      resolve(WEB_ROOT, 'libs/api-client-customer/src/generated/customer-schema.d.ts'));
-    assert.match(customer.document, /artifacts\/openapi\/customer\.json$/);
-  });
-
-  it('registers exactly two clients', () => {
-    assert.equal(CLIENTS.length, 2);
-  });
-```
-
-- [ ] **Step 2: Run the tool test and watch it fail, then pass**
+- [ ] **Step 4: Run the tool test and watch it pass**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:tools`
+Expected: PASS — 9 tests
 
-Run it **before** editing `openapi-clients.mjs` to see
-`AssertionError [ERR_ASSERTION]: customer client must be registered`, then after, to see PASS —
-9 tests.
-
-- [ ] **Step 3: Add the workspace package and generate its types**
+- [ ] **Step 5: Add the workspace package and generate its types**
 
 Create `libs/api-client-customer/package.json`:
 
@@ -3899,14 +4322,14 @@ Create `libs/api-client-customer/package.json`:
 }
 ```
 
-**Merge** into `tsconfig.base.json`'s `paths`, keeping the two existing entries:
+**Merge** into `tsconfig.json`'s `paths`, keeping the two existing entries:
 
 ```json
 {
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@peakpower/shared-ui": ["libs/shared-ui/src/index.ts"],
+      "@peakpower/shared-ui": ["libs/shared-ui/src/public-api.ts"],
       "@peakpower/api-client-employee": ["libs/api-client-employee/src/index.ts"],
       "@peakpower/api-client-customer": ["libs/api-client-customer/src/index.ts"]
     }
@@ -3914,12 +4337,14 @@ Create `libs/api-client-customer/package.json`:
 }
 ```
 
-**Merge** into `package.json`'s `scripts`, keeping everything already there:
+**Merge** into `package.json`'s `scripts`, keeping everything already there. `start:customer-portal`
+is **not** in this list: plan 3 already defines it as `ng serve customer-portal --port ${PORT:-4200}`,
+and the `${PORT}` is how Aspire's `.WithHttpEndpoint(env: "PORT")` reaches the dev server. Restating it
+without the port would silently unhook the AppHost.
 
 ```json
 {
   "scripts": {
-    "start:customer-portal": "ng serve customer-portal",
     "build:customer-portal": "ng build customer-portal",
     "test:customer-portal": "ng test customer-portal",
     "e2e": "playwright test"
@@ -3947,7 +4372,7 @@ npm run generate:clients
 
 Expected: two `wrote …` lines, one per client.
 
-Check three things in the generated file, because Step 5 depends on them:
+Check three things in the generated file, because Step 9 depends on them:
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-web
@@ -3960,12 +4385,14 @@ grep -c 'export const\|export function\|export class' \
 ```
 
 1. Every schema name in **Produces** above is present. If one is spelled differently, note the
-   real spelling — Step 5 aliases it and nothing else in the plan touches generated names.
-2. The enum unions use the database spelling (`"CUSTOMER_DECLARED"`). If they use the C#
-   spelling, Task 12's label maps key on that instead.
+   real spelling — Step 9 aliases it and nothing else in the plan touches generated names.
+2. The enum unions use the database spelling (`"CUSTOMER_DECLARED"`), because shared contract
+   §5.2 makes SCREAMING_SNAKE the wire format for every enum and both hosts register the one
+   shared `JsonStringEnumConverter` that produces it. A `"CustomerDeclared"` in this output
+   means the host is missing that converter — fix the host, not the client.
 3. The last count is `0` — the file is types only, with no runtime code.
 
-- [ ] **Step 4: Add the `customer-portal` project and its shell files**
+- [ ] **Step 6: Add the `customer-portal` project and its shell files**
 
 Merge this project into `angular.json`'s `projects`, keeping everything already there:
 
@@ -4020,7 +4447,7 @@ Create `apps/customer-portal/tsconfig.app.json`:
 
 ```json
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../out-tsc/customer-portal",
     "types": []
@@ -4034,7 +4461,7 @@ Create `apps/customer-portal/tsconfig.spec.json`:
 
 ```json
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../out-tsc/customer-portal-spec",
     "types": ["vitest/globals", "node"]
@@ -4103,15 +4530,15 @@ export default {
 };
 ```
 
-Create the stub `apps/customer-portal/src/main.ts`, replaced in Task 12:
+Create the stub `apps/customer-portal/src/main.ts`, replaced in Task 13:
 
 ```ts
-// Replaced by the real bootstrap in Task 12. It exists now so that angular.json's build target
+// Replaced by the real bootstrap in Task 13. It exists now so that angular.json's build target
 // resolves, which the unit-test builder needs as its buildTarget.
 export {};
 ```
 
-- [ ] **Step 5: Write the failing client test**
+- [ ] **Step 7: Write the failing client test**
 
 Create `libs/api-client-customer/src/lib/customer-api.client.spec.ts`:
 
@@ -4265,12 +4692,12 @@ describe('isValidationProblem', () => {
 });
 ```
 
-- [ ] **Step 6: Run the test and watch it fail**
+- [ ] **Step 8: Run the test and watch it fail**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal`
 Expected: FAIL — `Failed to resolve import "./customer-api.client"`
 
-- [ ] **Step 7: Write the library**
+- [ ] **Step 9: Write the library**
 
 Create `libs/api-client-customer/src/lib/customer-api.tokens.ts`:
 
@@ -4538,7 +4965,7 @@ import { CUSTOMER_API_BASE_URL } from './customer-api.tokens';
  * `provideZonelessChangeDetection` is required: this workspace ships no zone.js, so a TestBed
  * without it has no scheduler and `fixture.whenStable()` never settles.
  *
- * It deliberately does NOT install the auth interceptor. Task 11 tests that in isolation, and a
+ * It deliberately does NOT install the auth interceptor. Task 12 tests that in isolation, and a
  * screen spec that silently refreshed a token would hide the request it meant to assert on.
  */
 export function provideCustomerApiTesting(baseUrl = '/api/v1'): EnvironmentProviders {
@@ -4560,21 +4987,21 @@ export * from './lib/customer-api.client';
 export * from './lib/customer-api.testing';
 ```
 
-- [ ] **Step 8: Run the test and watch it pass**
+- [ ] **Step 10: Run the test and watch it pass**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal`
 Expected: PASS — 11 tests in `customer-api.client.spec.ts`
 
-- [ ] **Step 9: Confirm the staleness check still passes**
+- [ ] **Step 11: Confirm the staleness check still passes**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run verify:clients; echo "exit=$?"`
 Expected: `exit=0`, with a line per client saying it is up to date.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-web
-git add package.json package-lock.json tsconfig.base.json angular.json \
+git add package.json package-lock.json tsconfig.json angular.json \
         tools/openapi-clients.mjs tools/openapi-clients.test.mjs \
         libs/api-client-customer apps/customer-portal
 git commit -m "feat(api-client-customer): generate and commit the customer client"
@@ -4582,7 +5009,7 @@ git commit -m "feat(api-client-customer): generate and commit the customer clien
 
 ---
 
-### Task 11: The in-memory token store and the auth interceptor
+### Task 12: The in-memory token store and the auth interceptor
 
 This is the one part of the design where getting it wrong is **silently exploitable rather than
 visibly broken**, so it gets a task of its own.
@@ -4614,7 +5041,7 @@ Two rules, both from design §7:
 **Interfaces:**
 - Consumes: `CustomerApiClient.refresh(): Observable<SignInResponse>`,
   `CUSTOMER_API_BASE_URL`, `CurrentAccount`, `SignInResponse` from
-  `@peakpower/api-client-customer` (Task 10); `@angular/router`'s `Router`.
+  `@peakpower/api-client-customer` (Task 11); `@angular/router`'s `Router`.
 - Produces:
   - `export class AccessTokenStore` with `readonly token: Signal<string | null>`,
     `readonly account: Signal<CurrentAccount | null>`,
@@ -5102,7 +5529,7 @@ git commit -m "feat(customer-portal): hold the token in memory and refresh exact
 
 ---
 
-### Task 12: The navigation — the design's labels over the specification's route keys
+### Task 13: The navigation — the design's labels over the specification's route keys
 
 This is `D4` / `[DEC-115]`, and it is a small file that settles an argument, so it gets its own
 task and its own test.
@@ -5121,7 +5548,7 @@ looks unfinished; a rail that is complete and honest looks planned.
 Three items work in slice 1: `dashboard` (a shell and a placeholder), `connections`, and
 `company`. `company` is the one key the specification's list does not contain — the design's
 §8.3 has a "Company profile + accounts" screen but the wireframe rail does not carry it, so
-this plan adds the key and Task 28 records it.
+this plan adds the key and Task 29 records it.
 
 **Files:**
 - Create: `apps/customer-portal/src/app/shell/customer-nav.ts`
@@ -5133,7 +5560,7 @@ this plan adds the key and Task 28 records it.
   - `export const CUSTOMER_ROUTE_KEYS: readonly string[]`
   - `export type CustomerRouteKey`
   - `export const PAGE_LABELS: Readonly<Record<CustomerRouteKey, string>>`
-  - `export const CUSTOMER_NAV: readonly PpNavSection[]`
+  - `export const CUSTOMER_NAV: PpNavSection[]`  — `PpAppShell.sections` is a mutable array
   - `export const ENABLED_ROUTE_KEYS: readonly CustomerRouteKey[]`
 
 - [ ] **Step 1: Write the failing test**
@@ -5183,9 +5610,12 @@ describe('CUSTOMER_NAV', () => {
     }
   });
 
-  it('is grouped rather than a flat list of seven', () => {
+  it('is grouped rather than a flat list of seven, and every section is titled', () => {
     expect(CUSTOMER_NAV.length).toBeGreaterThan(1);
-    expect(CUSTOMER_NAV.some((s) => s.title !== null)).toBe(true);
+    // PpNavSection.label is a required string — a section with no heading is not expressible.
+    for (const section of CUSTOMER_NAV) {
+      expect(section.label.length).toBeGreaterThan(0);
+    }
   });
 
   it('gives every row a domain-coloured dot', () => {
@@ -5201,7 +5631,7 @@ describe('CUSTOMER_NAV', () => {
   it('gives every enabled item a path and no disabled reason', () => {
     for (const item of items.filter((i) => ENABLED_ROUTE_KEYS.includes(i.routeKey as never))) {
       expect(item.path).toBeTruthy();
-      expect(item.disabledReason).toBeNull();
+      expect(item.disabledReason).toBeUndefined();
     }
   });
 
@@ -5211,6 +5641,7 @@ describe('CUSTOMER_NAV', () => {
     expect(disabled.length).toBe(5);
     for (const item of disabled) {
       expect(item.path).toBeNull();
+      // Shared contract §10.1: a disabled item MUST carry a disabledReason.
       expect(item.disabledReason).toBeTruthy();
       // Sentence case with a full stop — "Empty and disabled states name the reason."
       expect(item.disabledReason!.endsWith('.')).toBe(true);
@@ -5322,35 +5753,34 @@ const PATH: Readonly<Partial<Record<CustomerRouteKey, string>>> = Object.freeze(
 });
 
 function item(routeKey: CustomerRouteKey): PpNavItem {
+  const path = PATH[routeKey] ?? null;
+  const reason = DISABLED_REASON[routeKey];
+  // `disabledReason` is optional on PpNavItem and mandatory on a disabled row, so it is
+  // present exactly when `path` is null rather than carried as a null alongside a path.
   return {
     routeKey,
     label: PAGE_LABELS[routeKey],
-    path: PATH[routeKey] ?? null,
-    disabledReason: DISABLED_REASON[routeKey] ?? null,
+    path,
     dot: DOT[routeKey],
+    ...(path === null ? { disabledReason: reason! } : {}),
   };
 }
 
 /**
- * The rail, grouped as the design specifies rather than as a flat list of seven. The first
- * section has no title: a single Dashboard row under a heading reading "Dashboard" is a
- * heading that says nothing.
+ * The rail, grouped as the design specifies rather than as a flat list of seven.
+ * `PpNavSection.label` is a required string, so the Dashboard row gets a heading of its own
+ * rather than sitting under an untitled block: "Overview" says what the row is for without
+ * repeating the row's own label.
  */
-export const CUSTOMER_NAV: readonly PpNavSection[] = Object.freeze([
-  Object.freeze({ title: null, items: Object.freeze([item('dashboard')]) }),
-  Object.freeze({
-    title: 'Your energy',
-    items: Object.freeze([item('connections'), item('consumption'), item('prices')]),
-  }),
-  Object.freeze({
-    title: 'Trading',
-    items: Object.freeze([item('trading'), item('wallet')]),
-  }),
-  Object.freeze({
-    title: 'Administration',
-    items: Object.freeze([item('settlements'), item('company')]),
-  }),
-]);
+export const CUSTOMER_NAV: PpNavSection[] = [
+  { label: 'Overview', items: [item('dashboard')] },
+  {
+    label: 'Your energy',
+    items: [item('connections'), item('consumption'), item('prices')],
+  },
+  { label: 'Trading', items: [item('trading'), item('wallet')] },
+  { label: 'Administration', items: [item('settlements'), item('company')] },
+];
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -5368,12 +5798,12 @@ git commit -m "feat(customer-portal): the design's labels over the specification
 
 ---
 
-### Task 13: Bootstrap, the session, the guard and the shell
+### Task 14: Bootstrap, the session, the guard and the shell
 
 The application boots, discovers whether there is a session, and either shows the shell or
 sends the visitor to sign in.
 
-**The bootstrap is the interesting part.** The access token lives in memory (Task 11), so a page
+**The bootstrap is the interesting part.** The access token lives in memory (Task 12), so a page
 reload has none. But the `pp_refresh` cookie survives — it is HttpOnly and scoped to
 `/api/v1/auth/refresh`, so the browser sends it and JavaScript never sees it. On the first
 guarded navigation the guard calls refresh **once**: if it succeeds the customer is signed in
@@ -5393,8 +5823,8 @@ case for anyone arriving cold.
 - Test: `apps/customer-portal/src/app/auth/authenticated.guard.spec.ts`
 
 **Interfaces:**
-- Consumes: `AccessTokenStore`, `TokenRefresher`, `authInterceptor` (Task 11);
-  `CUSTOMER_NAV` (Task 12); `CustomerApiClient.signIn/signOut/refresh` (Task 10);
+- Consumes: `AccessTokenStore`, `TokenRefresher`, `authInterceptor` (Task 12);
+  `CUSTOMER_NAV` (Task 13); `CustomerApiClient.signIn/signOut/refresh` (Task 11);
   `PpAppShell` from `@peakpower/shared-ui`.
 - Produces:
   - `export class AuthService` with
@@ -5769,10 +6199,69 @@ export const APP_ROUTES: Routes = [
 ];
 ```
 
-> Every `loadComponent` above points at a file a later task creates. Until Tasks 14, 15, 17,
-> 19 and 22 land, `ng build` fails on the missing modules. Create each file as an empty
-> placeholder now if you need an intermediate green build:
-> `echo 'export class X {}' > …` is enough to compile; the real component replaces it.
+Every `loadComponent` and `loadChildren` above points at a file a later task creates, so
+`ng build` cannot resolve them until Tasks 15, 16, 17, 23, 24 and 25 land. Write the six
+stubs now, each exporting the exact symbol its route names — an `@Component` with an empty
+template, and a routes array for the child route. A later task overwrites the file wholesale.
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web/apps/customer-portal/src/app
+mkdir -p features/sign-in features/company features/connections onboarding
+
+cat > features/sign-in/sign-in-page.ts <<'TS'
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+
+/** Stub — Task 15 replaces this file. */
+@Component({ selector: 'pp-sign-in-page', standalone: true, template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush })
+export class SignInPage {}
+TS
+
+cat > features/sign-in/forgot-password-page.ts <<'TS'
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+
+/** Stub — Task 16 replaces this file. */
+@Component({ selector: 'pp-forgot-password-page', standalone: true, template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush })
+export class ForgotPasswordPage {}
+TS
+
+cat > features/sign-in/reset-password-page.ts <<'TS'
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+
+/** Stub — Task 16 replaces this file. */
+@Component({ selector: 'pp-reset-password-page', standalone: true, template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush })
+export class ResetPasswordPage {}
+TS
+
+cat > onboarding/onboarding-wizard.ts <<'TS'
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+
+/** Stub — Task 17 replaces this file. */
+@Component({ selector: 'pp-onboarding-wizard', standalone: true, template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush })
+export class OnboardingWizard {}
+TS
+
+cat > features/company/company-page.ts <<'TS'
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+
+/** Stub — Task 26 replaces this file. */
+@Component({ selector: 'pp-company-page', standalone: true, template: '',
+  changeDetection: ChangeDetectionStrategy.OnPush })
+export class CompanyPage {}
+TS
+
+cat > features/connections/connections.routes.ts <<'TS'
+import type { Routes } from '@angular/router';
+
+/** Stub — Task 23 replaces this file. CONNECTION_ROUTES is a routes array, not a class. */
+export const CONNECTION_ROUTES: Routes = [];
+TS
+```
+
+`dashboard-page.ts` is not in that list: this step writes the real one immediately below.
 
 Create `apps/customer-portal/src/app/features/dashboard/dashboard-page.ts`:
 
@@ -5826,11 +6315,14 @@ Create `apps/customer-portal/src/app/app.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { PpAppShell, PpButton } from '@peakpower/shared-ui';
+import { filter, map } from 'rxjs';
 
 import { AuthService } from './auth/auth.service';
-import { CUSTOMER_NAV } from './shell/customer-nav';
+import { CUSTOMER_NAV, CUSTOMER_ROUTE_KEYS } from './shell/customer-nav';
+import type { CustomerRouteKey } from './shell/customer-nav';
 
 @Component({
   selector: 'pp-root',
@@ -5839,7 +6331,12 @@ import { CUSTOMER_NAV } from './shell/customer-nav';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (chrome()) {
-      <pp-app-shell [sections]="nav" [subtitle]="companyLine()">
+      <pp-app-shell
+        [sections]="nav"
+        [activeRouteKey]="activeRouteKey()"
+        [productName]="productName"
+        [subtitle]="companyLine()"
+      >
         <router-outlet />
         <pp-button slot="topbar-actions" variant="secondary" size="sm" (click)="signOut()">
           Sign out
@@ -5857,12 +6354,33 @@ export class App {
   private readonly router = inject(Router);
 
   readonly nav = CUSTOMER_NAV;
+  readonly productName = 'PeakPower';
 
   readonly chrome = computed(() => this.auth.isSignedIn());
 
+  /**
+   * `PpAppShell.activeRouteKey` is required and takes a route key, not a URL. The first path
+   * segment IS the route key by construction — Task 13's `PATH` map builds every path from its
+   * key — so the mapping is a lookup rather than a second table that can drift.
+   */
+  private readonly url = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => event.urlAfterRedirects),
+    ),
+    { initialValue: this.router.url },
+  );
+
+  readonly activeRouteKey = computed(() => {
+    const segment = this.url().split('?')[0].split('/')[1] ?? '';
+    return CUSTOMER_ROUTE_KEYS.includes(segment as CustomerRouteKey) ? segment : 'dashboard';
+  });
+
+  // `crumb` and `subtitle` are exclusive; this shell uses the subtitle. `PpAppShell.subtitle`
+  // is `input<string>()`, so "no subtitle" is undefined rather than null.
   readonly companyLine = computed(() => {
     const account = this.auth.account();
-    return account === null ? null : `${account.firstName} ${account.lastName}`;
+    return account === null ? undefined : `${account.firstName} ${account.lastName}`;
   });
 
   signOut(): void {
@@ -5931,7 +6449,7 @@ git commit -m "feat(customer-portal): bootstrap the session from the refresh coo
 
 ---
 
-### Task 14: Sign in
+### Task 15: Sign in
 
 The first screen a returning customer sees, and the first place the portal has to render a
 server error. Two small shared pieces land here because this is where they are first needed: a
@@ -5954,7 +6472,7 @@ design §7 makes the password-reset request always return 202.
 - Test: `apps/customer-portal/src/app/features/sign-in/sign-in-page.spec.ts`
 
 **Interfaces:**
-- Consumes: `AuthService.signIn(username, password)` (Task 13);
+- Consumes: `AuthService.signIn(username, password)` (Task 14);
   `isValidationProblem` and `ValidationProblemDetails` from `@peakpower/api-client-customer`;
   `PpButton`, `PpCard`, `PpBanner` from `@peakpower/shared-ui`.
 - Produces:
@@ -6461,7 +6979,7 @@ git commit -m "feat(customer-portal): sign in, with server-owned validation and 
 
 ---
 
-### Task 15: Forgotten password, and setting a new one
+### Task 16: Forgotten password, and setting a new one
 
 `[DEC-113]` puts a credential in the platform, so the reset path comes with it — a credential
 store without one is not shippable past a demo.
@@ -6483,8 +7001,8 @@ in rather than straight into the portal.
 
 **Interfaces:**
 - Consumes: `CustomerApiClient.requestPasswordReset({ email })` and
-  `.completePasswordReset({ token, newPassword })` (Task 10);
-  `applyProblemDetails` and `PpFormField` (Task 14); `@angular/router`'s `ActivatedRoute`.
+  `.completePasswordReset({ token, newPassword })` (Task 11);
+  `applyProblemDetails` and `PpFormField` (Task 15); `@angular/router`'s `ActivatedRoute`.
 - Produces:
   - `export class ForgotPasswordPage` — selector `pp-forgot-password-page`
   - `export class ResetPasswordPage` — selector `pp-reset-password-page`
@@ -6997,7 +7515,7 @@ git commit -m "feat(customer-portal): request a password reset and set a new pas
 ```
 
 ---
-### Task 16: The onboarding wizard — the step table, the gates and the shell
+### Task 17: The onboarding wizard — the step table, the gates and the shell
 
 Ten steps, in a rail, with a footer that refuses to move on until the step is answered. The
 demo in `/Users/thinhhuynh/PeakPower/trading-poc` already worked all of this out —
@@ -7022,9 +7540,9 @@ street and house number separately. Joining them in the browser and splitting th
 is a parser nobody wants to own.
 
 **The wizard's `@switch` grows one arm per task.** This task builds the chrome — rail, header,
-progress, footer, hint, and the network call each step makes — with an empty step body. Tasks 17
-to 21 each add their arms. Until Task 21 lands the wizard is not shippable, which is exactly what
-Task 21's last test asserts.
+progress, footer, hint, and the network call each step makes — with an empty step body. Tasks 18
+to 21 each add their arms. Until Task 22 lands the wizard is not shippable, which is exactly what
+Task 22's last test asserts.
 
 **Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
 - Create: `apps/customer-portal/src/app/onboarding/onboarding-flow.ts`
@@ -7033,9 +7551,9 @@ Task 21's last test asserts.
 - Test: `apps/customer-portal/src/app/onboarding/onboarding-wizard.spec.ts`
 
 **Interfaces:**
-- Consumes: `CustomerApiClient.startOnboarding(body)`, `.saveOnboardingStep(id, body)` (Task 10);
+- Consumes: `CustomerApiClient.startOnboarding(body)`, `.saveOnboardingStep(id, body)` (Task 11);
   `SaveOnboardingStepRequest`, `StartOnboardingRequest`, `OnboardingApplicationResponse` from
-  `@peakpower/api-client-customer` (Task 10); `applyProblemDetails(form, error)` (Task 14);
+  `@peakpower/api-client-customer` (Task 11); `applyProblemDetails(form, error)` (Task 15);
   `PpButton` from `@peakpower/shared-ui` (plan 3).
 - Produces:
   - `export interface OnboardingStep { readonly n: number; readonly group: string; readonly label: string; readonly title: string; readonly intro: string; readonly next?: string }`
@@ -8124,7 +8642,7 @@ interface RailRow {
           }
 
           <div class="step-body">
-            <!-- Tasks 17 to 21 each add their @switch arm here. -->
+            <!-- Tasks 18 to 21 each add their @switch arm here. -->
           </div>
 
           <div class="footer">
@@ -8389,7 +8907,7 @@ git commit -m "feat(customer-portal): port the onboarding step table and build t
 
 ---
 
-### Task 17: Wizard steps 1 and 2 — the account and the company
+### Task 18: Wizard steps 1 and 2 — the account and the company
 
 Step 1 creates the credential `[DEC-113]`, so it is the one step in the flow that a reader
 should look at twice. Two rules govern it and neither is negotiable:
@@ -8416,7 +8934,7 @@ value carries the digits alone.
 
 **Interfaces:**
 - Consumes: `OnboardingState`, `OnboardingFields`, `ENTITY_TYPES`, `MIN_PASSWORD`,
-  `withField`, `inputValue`, `defaultState` (Task 16); `PpCard` from `@peakpower/shared-ui`.
+  `withField`, `inputValue`, `defaultState` (Task 17); `PpCard` from `@peakpower/shared-ui`.
 - Produces:
   - `export class StepAccount` — selector `pp-step-account`, `state = model.required<OnboardingState>()`
   - `export class StepCompany` — selector `pp-step-company`, `state = model.required<OnboardingState>()`
@@ -8833,7 +9351,7 @@ git commit -m "feat(customer-portal): onboarding steps 1 and 2 — the account a
 
 ---
 
-### Task 18: Wizard steps 3, 4 and 5 — the address, the industry and the volume
+### Task 19: Wizard steps 3, 4 and 5 — the address, the industry and the volume
 
 Three short steps and one shared control. Steps 3 and 4 are the two the demo lets through
 unanswered on purpose: a company whose address the KvK register does not carry must not be
@@ -8857,7 +9375,7 @@ worth keeping: it makes "net volume" mean something specific.
 
 **Interfaces:**
 - Consumes: `OnboardingState`, `INDUSTRIES`, `FLOWS`, `VOLUMES`, `kvkDigits`, `withField`,
-  `inputValue` (Task 16); `PpCard`, `PpBanner` from `@peakpower/shared-ui`.
+  `inputValue` (Task 17); `PpCard`, `PpBanner` from `@peakpower/shared-ui`.
 - Produces:
   - `export class StepAddress` — selector `pp-step-address`, in `steps/step-company.ts`
   - `export class StepIndustry` — selector `pp-step-industry`, in `steps/step-company.ts`
@@ -9356,7 +9874,7 @@ git commit -m "feat(customer-portal): onboarding steps 3, 4 and 5 — address, i
 
 ---
 
-### Task 19: Wizard steps 6 and 7 — bank verification and signing authority
+### Task 20: Wizard steps 6 and 7 — bank verification and signing authority
 
 Step 6 verifies that the bank account belongs to the company that is about to sign, by moving one
 cent. It is the only step that reaches the API outside the footer, and it is the step where the
@@ -9385,8 +9903,8 @@ rebuild anything, or a colleague typed in on step 8 vanishes with nothing on scr
 
 **Interfaces:**
 - Consumes: `OnboardingState`, `AUTHORITY`, `signatoriesForAuthority`, `withField`, `inputValue`
-  (Task 16); `CustomerApiClient.simulateBankVerification(id)` and `.saveOnboardingStep(id, body)`
-  (Task 10); `PpCard`, `PpBadge`, `PpBanner`, `PpButton` from `@peakpower/shared-ui`.
+  (Task 17); `CustomerApiClient.simulateBankVerification(id)` and `.saveOnboardingStep(id, body)`
+  (Task 11); `PpCard`, `PpBadge`, `PpBanner`, `PpButton` from `@peakpower/shared-ui`.
 - Produces:
   - `export class StepBank` — selector `pp-step-bank`, `state = model.required<OnboardingState>()`,
     `verify = output<void>()`
@@ -9617,7 +10135,7 @@ import type { OnboardingFields, OnboardingState } from '../onboarding-flow';
     >
       <div class="status">
         <span class="fg-label">Status</span>
-        <pp-badge [tone]="state().bankVerified ? 'positive' : 'neutral'">
+        <pp-badge [tone]="state().bankVerified ? 'success' : 'neutral'">
           {{ state().bankVerified ? 'Verified' : 'Not verified' }}
         </pp-badge>
       </div>
@@ -9683,7 +10201,7 @@ import type { OnboardingFields, OnboardingState } from '../onboarding-flow';
       </div>
 
       @if (state().bankVerified) {
-        <pp-banner tone="positive" heading="Bank account verified">
+        <pp-banner tone="success" heading="Bank account verified">
           {{ state().f.iban || 'The account you gave' }} · account holder matches
           {{ state().f.bankAccountHolder || state().f.orgName || 'your company' }} · the cent is
           credited to your wallet.
@@ -9938,7 +10456,7 @@ git commit -m "feat(customer-portal): onboarding steps 6 and 7 — bank verifica
 
 ---
 
-### Task 20: Wizard steps 8 and 9 — the signatories and the signature
+### Task 21: Wizard steps 8 and 9 — the signatories and the signature
 
 Step 8 collects everyone who must sign. Step 9 takes the code one of them was emailed and turns
 it into a signature. Together they are the part of the flow that produces a company, an account
@@ -9960,7 +10478,7 @@ stale screen must not be able to do either.
 the wizard immediately calls `AuthService.signIn` with it and the password the customer chose on
 step 1, which is still in memory. That is what makes design DoD 2 — "a prospect completes the
 wizard in the browser and **lands in the customer portal**" — true rather than nearly true. If
-the sign-in fails the wizard still advances: the agreement is signed either way, and Task 21's
+the sign-in fails the wizard still advances: the agreement is signed either way, and Task 22's
 welcome step sends them to sign in instead.
 
 **Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
@@ -9972,9 +10490,9 @@ welcome step sends them to sign in instead.
 
 **Interfaces:**
 - Consumes: `OnboardingState`, `SignatoryDraft`, `blankSignatory`, `minSignatories`,
-  `SIGN_CODE_DIGITS`, `SUPPORT_EMAIL`, `fullName`, `codeDigits`, `inputValue` (Task 16);
-  `CustomerApiClient.submitSignatories(id, body)` and `.signOnboarding(id, body)` (Task 10);
-  `AuthService.signIn(username, password)` (Task 13); `PpCard` from `@peakpower/shared-ui`.
+  `SIGN_CODE_DIGITS`, `SUPPORT_EMAIL`, `fullName`, `codeDigits`, `inputValue` (Task 17);
+  `CustomerApiClient.submitSignatories(id, body)` and `.signOnboarding(id, body)` (Task 11);
+  `AuthService.signIn(username, password)` (Task 14); `PpCard` from `@peakpower/shared-ui`.
 - Produces:
   - `export class StepSignatories` — selector `pp-step-signatories`, in `steps/step-authority.ts`
   - `export class StepSign` — selector `pp-step-sign`, in `steps/step-sign.ts`
@@ -10760,12 +11278,12 @@ git commit -m "feat(customer-portal): onboarding steps 8 and 9 — signatories, 
 
 ---
 
-### Task 21: Wizard step 10 — the welcome, and landing in the portal
+### Task 22: Wizard step 10 — the welcome, and landing in the portal
 
 The last step has **two outcomes and must not print the wrong one**. "Welcome to PeakPower · your
 account is active" above a badge reading "With the desk" is the exact contradiction this step
 exists to avoid: the agreement is signed either way, but the account is only active once the cent
-has cleared. `stepTitle` and `stepIntro` (Task 16) already branch; this task makes the body
+has cleared. `stepTitle` and `stepIntro` (Task 17) already branch; this task makes the body
 branch with them.
 
 Three rules the demo established and this step keeps:
@@ -10777,7 +11295,7 @@ Three rules the demo established and this step keeps:
 - **Nothing is fabricated.** Design §8.5 forbids plausible-looking figures beside real ones, so
   the annual-volume card prints the band the customer declared and says "self-declared" under it.
 
-And the one thing the demo could not do: **this step lands them in the portal.** Task 20's sign
+And the one thing the demo could not do: **this step lands them in the portal.** Task 21's sign
 call signed them in, so the primary action goes to `/connections` — design DoD 2 and 3 are one
 click apart. If the automatic sign-in failed the action goes to `/sign-in` instead, and says so.
 
@@ -10788,7 +11306,7 @@ click apart. If the automatic sign-in failed the action goes to `/sign-in` inste
 
 **Interfaces:**
 - Consumes: `OnboardingState`, `summaryRows`, `fullName`, `VOLUMES`, `FLOWS`, `SUPPORT_EMAIL`
-  (Task 16); `AuthService.isSignedIn` (Task 13); `PpCard`, `PpStatCard`, `PpBadge`, `PpBanner`,
+  (Task 17); `AuthService.isSignedIn` (Task 14); `PpCard`, `PpStatCard`, `PpBadge`, `PpBanner`,
   `PpButton` from `@peakpower/shared-ui`; `RouterLink` from `@angular/router`.
 - Produces:
   - `export class StepWelcome` — selector `pp-step-welcome`, in `steps/step-sign.ts`, with
@@ -10956,7 +11474,7 @@ interface TimelineItem {
   template: `
     <pp-card [heading]="org()" [subtitle]="'Application ' + reference() + ' · signed just now'">
       <div class="head-row">
-        <pp-badge [tone]="state().bankVerified ? 'positive' : 'warning'">
+        <pp-badge [tone]="state().bankVerified ? 'success' : 'warning'">
           {{ state().bankVerified ? 'Account active' : 'With the desk' }}
         </pp-badge>
         <span class="faint">
@@ -10971,7 +11489,7 @@ interface TimelineItem {
           <pp-stat-card
             label="Account"
             value="Active"
-            tone="positive"
+            tone="success"
             sublabel="ready to register connections"
           />
         } @else {
@@ -10985,7 +11503,7 @@ interface TimelineItem {
         <pp-stat-card
           label="Agreement"
           value="Signed"
-          tone="positive"
+          tone="success"
           [sublabel]="signedBySublabel()"
         />
         <pp-stat-card label="Annual volume" [value]="volume()" [sublabel]="volumeSublabel()" />
@@ -11204,7 +11722,7 @@ import { StepSign, StepWelcome } from './steps/step-sign';
 add `StepWelcome` to `imports`, add the computed destination beside the others:
 
 ```ts
-  /** Task 20's sign call signs them in. If it did not take, sign-in is the honest next screen. */
+  /** Task 21's sign call signs them in. If it did not take, sign-in is the honest next screen. */
   readonly destination = computed(() => (this.auth.isSignedIn() ? '/connections' : '/sign-in'));
 ```
 
@@ -11258,7 +11776,7 @@ git commit -m "feat(customer-portal): onboarding step 10 — the welcome, and th
 
 ---
 
-### Task 22: The connections list
+### Task 23: The connections list
 
 The screen the slice is named after. `[F01-R35]` is the list, `[F01-R36]` is free-text search
 across the friendly name, the description and the EAN, and `[F01-R30]` and `[F01-R31]` are the
@@ -11288,9 +11806,9 @@ than a subset of it, and it is why the search box is debounced rather than firin
 - Test: `apps/customer-portal/src/app/features/connections/connection-list-page.spec.ts`
 
 **Interfaces:**
-- Consumes: `CustomerApiClient.listConnections(q)` (Task 10); `ConnectionSummary`,
+- Consumes: `CustomerApiClient.listConnections(q)` (Task 11); `ConnectionSummary`,
   `ConnectionListResponse`, `ConnectionStatusValue`, `AccountStatusValue`, `CustomerStatusValue`,
-  `ProductionExpectationValue` from `@peakpower/api-client-customer` (Task 10);
+  `ProductionExpectationValue` from `@peakpower/api-client-customer` (Task 11);
   `PpCard`, `PpBadge`, `PpGridTable`, `PpGridHead`, `PpGridRow`, `PpSearchInput`, `PpTone` from
   `@peakpower/shared-ui` (plan 3).
 - Produces:
@@ -11330,7 +11848,7 @@ describe('labels', () => {
   });
 
   it('gives each status a tone, and only ENDING warns', () => {
-    expect(connectionStatusTone('ACTIVE')).toBe('positive');
+    expect(connectionStatusTone('ACTIVE')).toBe('success');
     expect(connectionStatusTone('ENDING')).toBe('warning');
     expect(connectionStatusTone('ENDED')).toBe('neutral');
     expect(connectionStatusTone('PENDING')).toBe('info');
@@ -11348,7 +11866,7 @@ describe('labels', () => {
     expect(accountStatusLabel('ACTIVE')).toBe('Active');
     expect(accountStatusLabel('DEACTIVATED')).toBe('Deactivated');
     expect(accountStatusTone('DEACTIVATED')).toBe('neutral');
-    expect(accountStatusTone('ACTIVE')).toBe('positive');
+    expect(accountStatusTone('ACTIVE')).toBe('success');
   });
 
   it('reads the customer statuses', () => {
@@ -11563,7 +12081,7 @@ export function connectionStatusLabel(value: ConnectionStatusValue): string {
 export function connectionStatusTone(value: ConnectionStatusValue): PpTone {
   switch (value) {
     case 'PENDING': return 'info';
-    case 'ACTIVE': return 'positive';
+    case 'ACTIVE': return 'success';
     case 'ENDING': return 'warning';
     case 'ENDED': return 'neutral';
   }
@@ -11590,7 +12108,7 @@ export function accountStatusTone(value: AccountStatusValue): PpTone {
   switch (value) {
     case 'PENDING_APPROVAL': return 'warning';
     case 'INVITED': return 'info';
-    case 'ACTIVE': return 'positive';
+    case 'ACTIVE': return 'success';
     case 'DEACTIVATED': return 'neutral';
   }
 }
@@ -11632,7 +12150,7 @@ export const CONNECTION_ROUTES: Routes = [
 ];
 ```
 
-> `claim-connection-page` and `connection-detail-page` are created by Tasks 24 and 23. Until they
+> `claim-connection-page` and `connection-detail-page` are created by Tasks 25 and 23. Until they
 > land, `ng build` cannot resolve those two `loadComponent` calls; the unit tests here do not
 > touch them, so run the list page's spec before building.
 
@@ -11802,7 +12320,7 @@ git commit -m "feat(customer-portal): the connections list, with server-side sea
 
 ---
 
-### Task 23: The connection detail, and the friendly-name editor
+### Task 24: The connection detail, and the friendly-name editor
 
 `[F01-R38]` is the detail; `[F01-R29]` is the friendly name at ≤80 and the description at ≤500.
 This is the screen design DoD 3 turns on — *"that customer sees their connections, renames one"*.
@@ -11827,10 +12345,10 @@ server was willing to say.
 - Test: `apps/customer-portal/src/app/features/connections/connection-detail-page.spec.ts`
 
 **Interfaces:**
-- Consumes: `CustomerApiClient.getConnection(id)` and `.renameConnection(id, body)` (Task 10);
+- Consumes: `CustomerApiClient.getConnection(id)` and `.renameConnection(id, body)` (Task 11);
   `ConnectionDetail` from `@peakpower/api-client-customer`; `applyProblemDetails` and
-  `PpFormField` (Task 14); `connectionStatusLabel`, `connectionStatusTone`,
-  `productionExpectationLabel`, `NO_DATA_YET` (Task 22); `PpCard`, `PpBadge`, `PpButton`,
+  `PpFormField` (Task 15); `connectionStatusLabel`, `connectionStatusTone`,
+  `productionExpectationLabel`, `NO_DATA_YET` (Task 23); `PpCard`, `PpBadge`, `PpButton`,
   `PpBanner` from `@peakpower/shared-ui`; `ActivatedRoute` from `@angular/router`.
 - Produces:
   - `export class ConnectionDetailPage` — selector `pp-connection-detail-page`
@@ -12325,7 +12843,7 @@ export class ConnectionDetailPage {
 
 > The list page's `NO_DATA_YET` sentence uses an em dash; the assertion in this task's spec is
 > written with a comma so it can be typed on any keyboard. Whichever you keep, keep the **same**
-> string in `labels.ts` and in both specs — Task 22's `labels.spec.ts` pins it, so change it in
+> string in `labels.ts` and in both specs — Task 23's `labels.spec.ts` pins it, so change it in
 > one place and that test tells you about the other.
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -12343,7 +12861,7 @@ git commit -m "feat(customer-portal): the connection detail and the friendly-nam
 
 ---
 
-### Task 24: Claiming a connection from the shared pool
+### Task 25: Claiming a connection from the shared pool
 
 `[DEC-113]` lets a customer take a connection from the shared pool themselves rather than waiting
 for an employee to attach it `[F01-R23]`. Task 6 built the pool and Task 7 built the claim; this
@@ -12367,9 +12885,9 @@ were looking at is gone.
 - Test: `apps/customer-portal/src/app/features/connections/claim-connection-page.spec.ts`
 
 **Interfaces:**
-- Consumes: `CustomerApiClient.searchEanPool(q)` and `.claimConnection(body)` (Task 10);
+- Consumes: `CustomerApiClient.searchEanPool(q)` and `.claimConnection(body)` (Task 11);
   `EanPoolEntry`, `EanPoolResponse`, `ClaimConnectionRequest`, `ProductionExpectationValue` from
-  `@peakpower/api-client-customer`; `applyProblemDetails` and `PpFormField` (Task 14); `PpCard`,
+  `@peakpower/api-client-customer`; `applyProblemDetails` and `PpFormField` (Task 15); `PpCard`,
   `PpButton`, `PpSearchInput`, `PpGridTable`, `PpGridHead`, `PpGridRow` from
   `@peakpower/shared-ui`.
 - Produces:
@@ -12842,7 +13360,7 @@ git commit -m "feat(customer-portal): claim a connection from the shared pool"
 
 ---
 
-### Task 25: The company profile and the account list, read-only
+### Task 26: The company profile and the account list, read-only
 
 `[F01-R09]` is the profile and `[F01-R21]` is the list of colleagues who can sign in. Both are
 **read-only in the customer portal**: `[F01-R01]`…`[F01-R07]` put company edits with a PeakPower
@@ -12857,7 +13375,7 @@ column real; displaying it *with* the sentence saying four-eyes arrives later is
 reader assuming it already gates something.
 
 This screen is also where `company` — the one customer route key the specification's rail does
-not carry — earns its place. Task 12 added the key; Task 28 records it in
+not carry — earns its place. Task 13 added the key; Task 29 records it in
 `specs/60-mockups/screens-customer.mjs`.
 
 **Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
@@ -12865,10 +13383,10 @@ not carry — earns its place. Task 12 added the key; Task 28 records it in
 - Test: `apps/customer-portal/src/app/features/company/company-page.spec.ts`
 
 **Interfaces:**
-- Consumes: `CustomerApiClient.getCompany()` and `.getCompanyAccounts()` (Task 10);
+- Consumes: `CustomerApiClient.getCompany()` and `.getCompanyAccounts()` (Task 11);
   `CompanyProfile`, `CompanyAccount`, `CompanyAccountsResponse`, `Address` from
   `@peakpower/api-client-customer`; `accountStatusLabel`, `accountStatusTone`,
-  `customerStatusLabel` (Task 22); `PpCard`, `PpBadge`, `PpGridTable`, `PpGridHead`, `PpGridRow`
+  `customerStatusLabel` (Task 23); `PpCard`, `PpBadge`, `PpGridTable`, `PpGridHead`, `PpGridRow`
   from `@peakpower/shared-ui`.
 - Produces:
   - `export class CompanyPage` — selector `pp-company-page`
@@ -13072,7 +13590,7 @@ const NO_ACCOUNTS: CompanyAccountsResponse = { items: [] };
 
       @if (accounts().length > 0) {
         <pp-card heading="People" subtitle="Everyone who can sign in for this company">
-          <pp-grid-table columns="minmax(0, 1.4fr) 1.6fr 1fr 1fr" density="compact">
+          <pp-grid-table columns="minmax(0, 1.4fr) 1.6fr 1fr 1fr" density="dense">
             <div ppGridHead>
               <div>NAME</div>
               <div>EMAIL</div>
@@ -13212,7 +13730,7 @@ git commit -m "feat(customer-portal): the read-only company profile and account 
 
 ---
 
-### Task 26: The demo seed — six companies, their connections, and the unclaimed pool
+### Task 27: The demo seed — six companies, their connections, and the unclaimed pool
 
 Design §5.5: six companies mirroring `trading-poc`'s roster, so the built portal and the demo
 show the same names, plus enough unclaimed EANs to make the claim flow demonstrable.
@@ -13227,6 +13745,10 @@ wonder why a "real" EAN does not validate.
 is Development. Seed data in an environment that later becomes real is how a demo company ends up
 on an invoice.
 
+**It seeds the BRP reference row too.** Migration 1 creates `metering.brp` but inserts nothing,
+so PVNed — code `PVNED`, name `PVNed B.V.`, active — is written here, before the first
+connection that references it.
+
 **Idempotent, guarded on a table the query filter cannot hide.** The Migrator has no HTTP request
 and therefore no customer context, so `db.Customers` would come back filtered. The guard counts
 `customer.customer` in raw SQL instead — the Migrator connects as the owner, which the row-level
@@ -13240,16 +13762,18 @@ security policies do not apply to.
 **Interfaces:**
 - Consumes, from plan 1: `PeakPowerDbContext` with `DbSet<Customer> Customers`,
   `DbSet<CustomerAccount> CustomerAccounts`, `DbSet<MeteringPoint> MeteringPoints`,
-  `DbSet<Brp> Brps`. From plan 2:
-  `MeteringPoint.Attach(Guid customerId, EanCode ean, Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? name, string? description, string? gridOperator, decimal? capacityKw, Address? address, DateOnly validFrom)`,
-  `Customer.Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)`,
-  `Customer.ChangeStatus(CustomerStatus status)`,
-  `CustomerAccount.Create(Guid customerId, string username, string firstName, string lastName, string? jobTitle, string email, string? phone, bool isAdmin)`.
-  From plan 5: `PeakPower.Infrastructure.Security.Argon2idPasswordHasher : IPasswordHasher`
-  (parameterless constructor) and
-  **`CustomerAccount.SetPassword(string passwordHash)`** — the member plan 5's onboarding
-  materialisation uses to put an Argon2id hash on a new account. ⚠ Flagged in **New names
-  introduced**: if plan 5 named it something else, use that name here.
+  `DbSet<Brp> Brps`; and the aggregate members shared contract §5.1 declares —
+  `Result<Brp> Brp.Create(string code, string name, bool isActive)`,
+  `Result<Customer> Customer.Create(…, string locale)`,
+  `Result<Customer> Customer.ChangeStatus(CustomerStatus status)`,
+  `Result<CustomerAccount> CustomerAccount.Create(Guid customerId, string username, string firstName, string lastName, string? jobTitle, string email, string? phone, AccountStatus status, bool isAdmin)`,
+  `void CustomerAccount.SetPassword(string passwordHash)`,
+  `Result<MeteringPoint> MeteringPoint.Attach(Guid customerId, EanCode ean, Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? name, string? description, string? gridOperator, decimal? capacityKw, Address? address, DateOnly validFrom)`
+  and `Result<MeteringPoint> MeteringPoint.EndDate(DateOnly validTo)`. Every one of those but
+  `SetPassword` returns a `Result<T>`, and the seeder's private `Unwrap` throws on a failure
+  rather than seeding half a database.
+  From plan 5: `PeakPower.Infrastructure.Identity.Argon2idPasswordHasher : IPasswordHasher`
+  (parameterless constructor).
   From Task 6: `EanPoolEntry.Create(EanCode ean, Commodity commodity, string? gridOperator, decimal? capacityKw, Address? address)`
   and `PeakPowerDbContext.EanPool`.
 - Produces:
@@ -13264,7 +13788,7 @@ Create `tests/PeakPower.Integration.Tests/Seeding/DemoDataSeederTests.cs`:
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Domain.Customers;
-using PeakPower.Infrastructure.Security;
+using PeakPower.Infrastructure.Identity;
 using PeakPower.Persistence.Seeding;
 using Xunit;
 
@@ -13276,7 +13800,7 @@ public sealed class DemoDataSeederTests(CustomerApiFactory factory)
     private DemoDataSeeder Seeder()
     {
         var db = factory.CreateOwnerDbContext();
-        return new DemoDataSeeder(db, new Argon2idPasswordHasher(), new SystemMarketCalendar());
+        return new DemoDataSeeder(db, new Argon2idPasswordHasher(), new MarketCalendar(TimeProvider.System));
     }
 
     [Fact]
@@ -13443,34 +13967,44 @@ public sealed class DemoDataSeeder(
             return 0;
         }
 
-        // Migration 1 seeds the BRP reference table, PVNed first. Every demo connection is
-        // balanced by it, because slice 1 has exactly one BRP.
-        var brp = await db.Brps.OrderBy(b => b.Code).FirstAsync(ct);
+        // Migration 1 creates metering.brp but seeds no rows, so the reference row is this
+        // seeder's to insert. Slice 1 has exactly one BRP and every demo connection is balanced
+        // by it. The code and name are the ones shared contract 5.1 fixes verbatim.
+        var brp = await db.Brps.OrderBy(b => b.Code).FirstOrDefaultAsync(ct);
+        if (brp is null)
+        {
+            brp = Unwrap(Brp.Create("PVNED", "PVNed B.V.", isActive: true));
+            db.Brps.Add(brp);
+        }
+
         var today = calendar.TodayInAmsterdam;
         var passwordHash = hasher.Hash(DemoPassword);
 
         foreach (var company in Companies)
         {
-            var customer = Customer.Create(
+            var customer = Unwrap(Customer.Create(
                 company.LegalName,
                 company.TradeName,
-                KvkNumber.Create(company.Kvk).Value,
+                Unwrap(KvkNumber.Create(company.Kvk)),
                 company.Vat,
                 new Address(company.Street, company.HouseNumber, null,
                             company.PostalCode, company.City, "NL"),
                 visitingAddress: null,
                 new ContactPerson(company.ContactName, company.ContactEmail, company.ContactPhone),
                 internalReference: null,
-                Locale);
+                Locale));
 
-            customer.ChangeStatus(CustomerStatus.Active);
+            Unwrap(customer.ChangeStatus(CustomerStatus.Active));
             db.Customers.Add(customer);
 
             foreach (var person in company.People)
             {
-                var account = CustomerAccount.Create(
+                // Every demo account is already through onboarding, so it starts ACTIVE rather
+                // than PENDING_APPROVAL — the demo signs in on the first click.
+                var account = Unwrap(CustomerAccount.Create(
                     customer.Id, person.Email, person.First, person.Last,
-                    person.JobTitle, person.Email, phone: null, person.IsAdmin);
+                    person.JobTitle, person.Email, phone: null,
+                    AccountStatus.Active, person.IsAdmin));
 
                 account.SetPassword(passwordHash);
                 db.CustomerAccounts.Add(account);
@@ -13478,9 +14012,9 @@ public sealed class DemoDataSeeder(
 
             foreach (var c in company.Connections)
             {
-                var point = MeteringPoint.Attach(
+                var point = Unwrap(MeteringPoint.Attach(
                     customer.Id,
-                    EanCode.Create(c.Ean).Value,
+                    Unwrap(EanCode.Create(c.Ean)),
                     brp.Id,
                     c.Expectation,
                     ProductionExpectationSource.CustomerDeclared,
@@ -13489,13 +14023,13 @@ public sealed class DemoDataSeeder(
                     c.GridOperator,
                     c.CapacityKw,
                     new Address(c.Street, c.HouseNumber, null, c.PostalCode, c.City, "NL"),
-                    validFrom: new DateOnly(2024, 1, 1));
+                    validFrom: new DateOnly(2024, 1, 1)));
 
                 if (c.EndsInDays is { } days)
                 {
                     // Relative to today, never a literal date: a fixed end date drifts out of the
                     // ENDING window as the calendar moves and the demo silently loses that case.
-                    point.EndOn(today.AddDays(days));
+                    Unwrap(point.EndDate(today.AddDays(days)));
                 }
 
                 db.MeteringPoints.Add(point);
@@ -13504,8 +14038,10 @@ public sealed class DemoDataSeeder(
 
         foreach (var entry in Pool)
         {
+            // EanPoolEntry is this plan's own aggregate and its factory cannot fail — the EAN
+            // is already a validated EanCode by the time it arrives — so it returns the entry.
             db.EanPool.Add(EanPoolEntry.Create(
-                EanCode.Create(entry.Ean).Value,
+                Unwrap(EanCode.Create(entry.Ean)),
                 Commodity.Electricity,
                 entry.GridOperator,
                 entry.CapacityKw,
@@ -13516,6 +14052,17 @@ public sealed class DemoDataSeeder(
         await db.SaveChangesAsync(ct);
         return Companies.Count;
     }
+
+    /// <summary>
+    /// Every factory and mutator on an aggregate returns <see cref="Result{T}"/> rather than
+    /// throwing. The seeder's input is a constant table checked into this file, so a failure
+    /// here is a typo in that table and not a runtime condition worth handling — it must stop
+    /// the Migrator loudly and name the field, rather than silently seeding a partial database.
+    /// </summary>
+    private static T Unwrap<T>(Result<T> result) =>
+        result.IsSuccess
+            ? result.Value
+            : throw new InvalidOperationException($"Demo seed data is invalid: {result.Error}");
 
     // ─────────────────────────────────────────────────────────────────────────────────────
     // ⚠ NOT ONE OF THE SIX EANs BELOW CARRIES A CORRECT GS1 CHECK DIGIT. All six fail, under
@@ -13646,9 +14193,10 @@ public sealed class DemoDataSeeder(
 }
 ```
 
-> `MeteringPoint.EndOn(DateOnly validTo)` is plan 2's end-date mutator, behind
-> `POST /metering-points/{id}/end-date`. It is listed in **New names introduced** so the
-> consistency pass can confirm the member name plan 2 actually shipped.
+> `MeteringPoint.EndDate(DateOnly validTo)` is the end-date mutator shared contract §5.1
+> declares on plan 1's aggregate, behind `POST /metering-points/{id}/end-date`. It returns
+> `Result<MeteringPoint>` like every other mutator that can fail, which is why the seeder pushes
+> it through `Unwrap` rather than discarding what it returns.
 
 - [ ] **Step 4: Run the seeder from the Migrator, in Development only**
 
@@ -13701,7 +14249,7 @@ git commit -m "feat(persistence): seed the six demo companies and the unclaimed 
 
 ---
 
-### Task 27: The one end-to-end path
+### Task 28: The one end-to-end path
 
 Design §9 asks this slice to contribute **one** path to the Playwright suite rather than a full
 suite, and design DoD 2 and 3 name it: a prospect completes the wizard in the browser and lands
@@ -13977,13 +14525,13 @@ git commit -m "test(e2e): onboard, claim, sign in and rename in one Playwright p
 
 ---
 
-### Task 28: The specification pull request
+### Task 29: The specification pull request
 
 Design §10, in one pull request against `peakpowerspecs`, raised **alongside** the first week of
 code so the record and the build do not diverge. This is the last task and it is the only one
 outside the two build repositories.
 
-Five decisions, four open questions and the corrections. Nothing here is a refactor of the
+Five decisions, six open questions and the corrections. Nothing here is a refactor of the
 specification: each edit is either a new row or a change with a named reason, and every reversal
 keeps the reversed text visible rather than deleting it — that is the house style already used
 for `[DEC-63]`, `[DEC-71]` and every other amended row.
@@ -13997,6 +14545,7 @@ for `[DEC-63]`, `[DEC-71]` and every other amended row.
 - Modify: `specs/20-architecture/05-api-contracts.md`
 - Modify: `specs/10-features/F01-customer-and-metering-points.md`
 - Modify: `specs/10-features/F13-identity-and-access.md`
+- Modify: `specs/20-architecture/07-security.md`
 - Modify: `specs/70-delivery/01-roadmap-and-phasing.md`
 - Modify: `specs/60-mockups/README.md`
 - Modify: `specs/60-mockups/screens-customer.mjs`
@@ -14026,15 +14575,17 @@ In `specs/00-overview/04-assumptions-and-decisions.md`, append five rows immedia
 | **DEC-117** | **Customer authentication is a JWT access/refresh pair, ES256 over JWKS, with a `security_stamp` claim checked per request** | A shared-secret HS256 token, and accepting that a stateless token cannot be revoked before it expires | New ground: **[DEC-20]** assumed the proof of concept would run unauthenticated. Access token 15 minutes; refresh token 14 days, rotating, single-use, stored hashed, in an HttpOnly `SameSite=Strict` cookie scoped to the refresh endpoint. The access token is held **in memory only** in the browser — a JWT in `localStorage` is readable by any XSS. ES256 over a JWKS endpoint rather than a shared secret because the validation path then becomes the *same code* that will validate an Entra token. The `stamp` claim is compared to a `security_stamp` column on every request, which costs nothing measurable — every request already opens a transaction to `SET LOCAL app.customer_id` for row-level security — and it is what makes **[F01-R16]**'s *immediate* revocation literally true against a stateless token |
 ```
 
-- [ ] **Step 3: Register the four open questions**
+- [ ] **Step 3: Register the six open questions**
 
-In `specs/80-open-questions.md`, add four rows to the open register:
+In `specs/80-open-questions.md`, add six rows to the open register:
 
 ```markdown
 | **[OQ-97]** | 🟠 | **When is the GS1 check digit reinstated, and which weighting is normative?** **[DEC-114]** relaxed EAN validation to eighteen digits for the proof of concept. The two conventions in circulation disagree on five of the six demo EANs, and the specification says "GS1 check digit" without pinning the algorithm — so this needs an owner and a date, not just an intention | Needs an owner |
 | **[OQ-98]** | 🟡 | **Credential policy values** — the sign-in delay curve, the reset-token TTL, and password composition beyond the twelve-character minimum. The *mechanism* is designed and is no longer open (**[DEC-117]**, and the reset path in **[DEC-113]**); only the numbers are, and they belong to whoever owns security policy rather than to the delivery team | Needs an owner |
 | **[OQ-99]** | 🟡 | **The six-product entitlement gate in the prototype's rail.** `trading-poc` gates parts of the customer rail on a per-product entitlement. That is a commercial model which appears nowhere in this specification set: either it is real and F13 needs it, or the prototype invented it and the rail should not imply it | Needs an owner |
 | **[OQ-100]** | 🟢 | **Which GitHub organisation owns `peakpower-platform` and `peakpower-web`?** **Not blocking.** **[DEC-116]** defers publishing until a `peakpower` organisation exists, and slice 1 needs no remote at all. It matters when CI is stood up, and it stays cheap while nothing outside `peakpower-web` consumes the packages. Creating the organisation is not in the delivery team's gift, so it wants a named owner even though nothing waits on it today | Needs an owner |
+| **[OQ-101]** | 🟡 | **Does the assertion library stay FluentAssertions 7.2.0, or move to Shouldly?** 7.2.0 is the last Apache-2.0 release; 8.x ships an Xceed Community License for **non-commercial use only**, which PeakPower cannot take. Every test project is pinned to 7.2.0 today, so nothing is blocked — but 7.x is a frozen branch, and the decision of when to leave it (Shouldly 4.3.0 is the closest free equivalent) is a tooling-ownership call, not a delivery-team one | Needs an owner |
+| **[OQ-102]** | 🟠 | **Who owns the row-level-security login-role credentials?** Migration 2 creates `app_customer_role` and `app_employee_role` plus two non-owner login roles, and each host rewrites its connection string onto its own role — a superuser or table owner *bypasses* RLS silently, so this is what makes the mechanism real rather than decorative. Slice 1 is local-only with no deployment, so the two passwords are literals in the migration with a comment saying exactly that. **This needs an owner before anything is deployed anywhere** | Needs an owner |
 ```
 
 - [ ] **Step 4: Declare the two PostgreSQL extensions**
@@ -14060,7 +14611,7 @@ and an entirely avoidable one.
 ````
 
 In the same file, §1, remove the trailing `, labels` from the `customer` schema row — the friendly
-name is `name` and `description` on `metering_point`, per the change in Step 6:
+name is `name` and `description` on `metering_point`, per the change in Step 8:
 
 ```markdown
 | `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, **approval requests [DEC-71]**, metering points |
@@ -14123,7 +14674,61 @@ else
 }
 ```
 
-- [ ] **Step 6: Correct the domain model and the friendly name**
+- [ ] **Step 6: Correct the project list and pin the assertion library**
+
+Two more corrections in `specs/20-architecture/02-solution-structure.md`.
+
+§1.1 lists thirteen projects. Four infrastructure projects the architecture needs are missing
+from that list, and one of them is named by architecture fact 5 — so replace the
+`src/Infrastructure/` line with all five and reconcile where `dev-up` lives:
+
+```markdown
+| `src/Hosts/` | `AppHost` · `ServiceDefaults` · `Api.Customer` · `Api.Employee` · `Migrator` |
+| `src/Core/` | `Domain` · `Application` · `Contracts` |
+| `src/Infrastructure/` | `Persistence` · `Time` · `Web` · `Identity` · `Email` |
+| `tests/` | `Domain.Tests` · `Application.Tests` · `Integration.Tests` · `Architecture.Tests` |
+
+> ⚠ **Amended 2026-08-26.** Eleven source projects and four test projects, not thirteen in
+> total. `Infrastructure.Time` is required by name by architecture fact 5 — the fact is "no type
+> **outside `PeakPower.Infrastructure.Time`**", which cannot be written without the project.
+> `Infrastructure.Web` is the one context-provider assembly architecture fact 6 allow-lists, and
+> `Infrastructure.Identity` and `Infrastructure.Email` hold the `IPasswordHasher`, `ITokenIssuer`
+> and `IEmailSender` adapters, which have no business inside the persistence project.
+> `dev-up` lives at the repository root of `peakpower-platform`, not under `src/`.
+```
+
+§6's testing table names FluentAssertions with no version. Pin it, with the reason:
+
+```markdown
+| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** + NSubstitute |
+
+> ⚠ **Pin FluentAssertions 7.2.0. 8.x may not be used** (added 2026-08-26). 8.10.0 ships an
+> **Xceed Software Community License Agreement, "for Non-Commercial Use"**, where
+> non-commercial means use whose primary objective is not commercial advantage. PeakPower is a
+> commercial trading platform, so 8.x would need a paid Xceed licence. **7.2.0 is the last
+> `Apache-2.0` release.** The table was written when the library was still open source.
+> **[OQ-101]** owns the question of when to leave the frozen 7.x branch.
+```
+
+- [ ] **Step 7: Say that row-level security needs database roles**
+
+In `specs/20-architecture/07-security.md` §2, add after the row-level-security policy discussion:
+
+```markdown
+> ⚠ **Row-level security needs database roles, and this document never mentions them** (added
+> 2026-08-26). A superuser or a table owner **bypasses** RLS silently: with the APIs on the
+> default connection, every policy in this section is inert while every test still passes —
+> the most expensive kind of green. Migration 2 therefore creates `app_customer_role` and
+> `app_employee_role`, plus two non-owner **login** roles, and each host rewrites its
+> connection string onto its own role. The Migrator keeps the owner connection, because it
+> must be able to create and alter the tables the policies sit on.
+>
+> Slice 1 is local-only with no deployment, so the two login passwords are literals in the
+> migration with a comment saying exactly that. **[OQ-102]** owns them before anything is
+> deployed anywhere.
+```
+
+- [ ] **Step 8: Correct the domain model and the friendly name**
 
 In `specs/20-architecture/03-domain-model.md`, line 359, replace:
 
@@ -14175,7 +14780,7 @@ Add, under that table:
 > later.
 ```
 
-- [ ] **Step 7: Harden F13's business rule 2, and reconcile the roadmap**
+- [ ] **Step 9: Harden F13's business rule 2, and reconcile the roadmap**
 
 In `specs/10-features/F13-identity-and-access.md` §3, replace business rule 2 with:
 
@@ -14199,7 +14804,7 @@ count that governs. (An earlier draft of this note said five; the round that add
 also moved one out of phase 2.)
 ```
 
-- [ ] **Step 8: Record where labels and route keys come from**
+- [ ] **Step 10: Record where labels and route keys come from**
 
 In `specs/60-mockups/README.md`, under `## Design decisions worth noting`, add:
 
@@ -14227,7 +14832,7 @@ accounts" screen `[F01-R09]` `[F01-R21]` that these wireframes never had a row f
 const NAV = ['Dashboard', 'Connections', 'Volume', 'Prices', 'Trades', 'Balance', 'Settlements', 'Company'];
 ```
 
-- [ ] **Step 9: Regenerate the mockups and check the diff**
+- [ ] **Step 11: Regenerate the mockups and check the diff**
 
 Run:
 
@@ -14245,15 +14850,15 @@ reason** — it predates `[DEC-71]` and still shows editable bank details with a
 admin flag and no four-eyes toggle — and that regenerating it needs the requirements read first,
 so it is left for a follow-up rather than half-fixed here.
 
-- [ ] **Step 10: Commit and open the pull request**
+- [ ] **Step 12: Commit and open the pull request**
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpowerspecs
 git add specs
-git commit -m "Record DEC-113..117 and OQ-97..100, and correct nine documents for PoC slice 1"
+git commit -m "Record DEC-113..117 and OQ-97..102, and correct eleven documents for PoC slice 1"
 git push -u origin specs/poc-slice-1
 gh pr create \
-  --title "PoC slice 1: five decisions, four open questions, nine corrections" \
+  --title "PoC slice 1: five decisions, six open questions, eleven corrections" \
   --body "$(cat <<'BODY'
 Raised alongside the first week of slice-1 code, so the record and the build do not diverge.
 Everything here is design section 10 of `docs/superpowers/specs/2026-08-26-poc-slice-1-design.md`.
@@ -14274,7 +14879,9 @@ Everything here is design section 10 of `docs/superpowers/specs/2026-08-26-poc-s
 
 **[OQ-97]** when the GS1 check digit returns and under which weighting · **[OQ-98]** credential
 policy *values* (the mechanism is no longer open) · **[OQ-99]** the prototype's six-product
-entitlement gate · **[OQ-100]** which GitHub organisation owns the two repositories — not blocking.
+entitlement gate · **[OQ-100]** which GitHub organisation owns the two repositories — not blocking ·
+**[OQ-101]** FluentAssertions 7.2.0 or Shouldly, once the frozen 7.x branch stops being enough ·
+**[OQ-102]** who owns the row-level-security login-role credentials before anything is deployed.
 
 ## Corrections
 
@@ -14293,6 +14900,14 @@ entitlement gate · **[OQ-100]** which GitHub organisation owns the two reposito
 7. Roadmap §2.1: "five of the six" reconciled against "four of the six".
 8. Mockups README records that labels come from the design system and route keys from the
    specifications; `screens-customer.mjs` updated and the SVGs regenerated.
+9. Solution structure §1.1: the four implied infrastructure projects — `Time`, `Web`,
+   `Identity`, `Email` — are added, making eleven source projects and four test projects rather
+   than thirteen in total, and `dev-up`'s location is reconciled.
+10. Solution structure §6: **FluentAssertions is pinned to 7.2.0.** 8.x ships an Xceed Community
+    License for non-commercial use only, which a commercial trading platform cannot take.
+11. Security §2: row-level security needs database **roles**, which the document never
+    mentioned. A superuser or table owner bypasses RLS silently, so without them every policy is
+    inert while every test stays green.
 
 ## Deliberately not done here
 
@@ -14333,8 +14948,10 @@ holds — not when the last task's tests pass.
     documents generate.
 11. The specification pull request is open, covering §10.
 
-Points 1, 4, 5, 6, 7 and 9 are earned by plans 1, 2, 4 and 5 and are **verified**, not built,
-here: run the full suite in both repositories before calling the slice done.
+Points 1, 4, 6, 7 and 9 are earned by plans 1, 2, 4 and 5 and are **verified**, not built,
+here: run the full suite in both repositories before calling the slice done. Point 5 is
+half-and-half — plan 2 built the harness, and Task 10 is what finally points it at the customer
+host, the one place tenancy is real.
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test
@@ -14346,10 +14963,10 @@ cd /Users/thinhhuynh/PeakPower/peakpower-web && npm test && npm run verify:clien
 ## New names introduced
 
 Every name this plan introduces that the shared contract does not define, with its exact
-signature. Names introduced by Tasks 1–15 are listed in that half of the plan; this section
-covers Tasks 16–28.
+signature. Names introduced by Tasks 1–9 and 11–16 are listed in that half of the plan; this
+section covers Task 10 and Tasks 17–29.
 
-### `apps/customer-portal/src/app/onboarding/onboarding-flow.ts` (Task 16)
+### `apps/customer-portal/src/app/onboarding/onboarding-flow.ts` (Task 17)
 
 ```ts
 export interface OnboardingStep {
@@ -14417,7 +15034,7 @@ export function saveStepRequest(state: OnboardingState, step: number): SaveOnboa
 > carry one. Every other enum in this system is SCREAMING_SNAKE on the wire, so this is the one
 > place a reader will guess wrong.
 
-### Angular components (Tasks 16–25)
+### Angular components (Tasks 17–26)
 
 ```ts
 // apps/customer-portal/src/app/onboarding/
@@ -14462,7 +15079,7 @@ export class ClaimConnectionPage {}   // 'pp-claim-connection-page'
 export class CompanyPage {}           // 'pp-company-page'
 ```
 
-### `apps/customer-portal/src/app/shared/labels.ts` (Task 22)
+### `apps/customer-portal/src/app/shared/labels.ts` (Task 23)
 
 ```ts
 export const NO_DATA_YET: string;
@@ -14474,7 +15091,7 @@ export function accountStatusTone(value: AccountStatusValue): PpTone;
 export function customerStatusLabel(value: CustomerStatusValue): string;
 ```
 
-### `peakpower-platform` (Task 26)
+### `peakpower-platform` (Task 27)
 
 ```csharp
 namespace PeakPower.Persistence.Seeding;
@@ -14487,18 +15104,25 @@ public sealed class DemoDataSeeder(
 }
 ```
 
-⚠ **Two members this task calls belong to earlier plans and must be reconciled by the
-consistency pass:**
+The seeder introduces no domain members of its own. Every factory and mutator it calls —
+`Brp.Create`, `Customer.Create`, `Customer.ChangeStatus`, `CustomerAccount.Create`,
+`CustomerAccount.SetPassword`, `MeteringPoint.Attach` and `MeteringPoint.EndDate` — is declared
+by plan 1 under shared contract §5.1, and this plan only calls them.
+
+### `peakpower-platform` tenancy harness (Task 10)
 
 ```csharp
-public void CustomerAccount.SetPassword(string passwordHash);   // plan 5 — onboarding materialisation
-public void MeteringPoint.EndOn(DateOnly validTo);              // plan 2 — POST /metering-points/{id}/end-date
+namespace PeakPower.Integration.Tests.Tenancy;
+
+public static class CustomerSampleBodies
+{ public static IReadOnlyDictionary<string, string> All { get; } }
+public sealed class CustomerApiRouteTableTests;
 ```
 
-Both are used with exactly these signatures. If either plan shipped a different member name, the
-seeder follows that plan and this section is what is wrong.
+`RouteTable`, `RouteTableEntry`, `TenancyScope`, `TenancyProbeApp` and `TenancyFixture` are
+plan 2's; this plan only points them at the customer host and fills `SampleBodies`.
 
-### `peakpower-web` E2E (Task 27)
+### `peakpower-web` E2E (Task 28)
 
 ```ts
 // e2e/fixtures/api.ts

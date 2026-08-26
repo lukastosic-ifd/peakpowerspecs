@@ -21,8 +21,8 @@ tenant-scoped ones return an indistinguishable 404 for another company's objects
 
 **Tech Stack:** .NET SDK 10.0.400 · EF Core 10 · Npgsql.EntityFrameworkCore.PostgreSQL 10.0.0 ·
 PostgreSQL 17 · ASP.NET Core Minimal APIs · FluentValidation 12.0.0 · Microsoft.Extensions.
-ApiDescription.Server 10.0.0 · xUnit + FluentAssertions · NSubstitute · Testcontainers.PostgreSql
-4.6.0 · Microsoft.AspNetCore.Mvc.Testing 10.0.0 · Microsoft.AspNetCore.TestHost 10.0.0 ·
+ApiDescription.Server 10.0.0 · xUnit + FluentAssertions 7.2.0 · NSubstitute ·
+Testcontainers.PostgreSql 4.14.0 · Microsoft.AspNetCore.Mvc.Testing 10.0.0 · Microsoft.AspNetCore.TestHost 10.0.0 ·
 NetArchTest.Rules 1.3.2 · Mono.Cecil 0.11.6 · Verify.Xunit 30.15.0 · Aspire 13.5.3
 
 **Spec:** `docs/superpowers/specs/2026-08-26-poc-slice-1-design.md`
@@ -103,7 +103,8 @@ not one converter per property.
 3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter
 4. No type calls `IgnoreQueryFilters()`
 5. No type outside `PeakPower.Infrastructure.Time` uses `DateTime.Now` / `DateTime.UtcNow`
-6. No type outside the context-provider assembly reads a customer identifier from `HttpContext`
+6. No type outside `PeakPower.Infrastructure.Web` uses `IHttpContextAccessor`, or reads a claim
+   off `ClaimsPrincipal` / `ClaimsIdentity`
 
 Facts 1, 2, 3 and 5 are Plan 1's. Facts **4 and 6 are this plan's** (Tasks 7 and 8) because
 neither can be written before the query filters and the context-provider assembly exist. If Plan
@@ -141,12 +142,19 @@ strings follow the same sentence-case rule.)
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + FluentAssertions (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** (+ NSubstitute for ports) |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
 | Frontend unit | Vitest |
 | E2E | Playwright, in `peakpower-web` |
+
+> ⚠ **FluentAssertions is pinned to 7.2.0; 8.x may not be used.** 8.x ships an Xceed Software
+> Community License Agreement "for Non-Commercial Use", and PeakPower is a commercial trading
+> platform; 7.2.0 is the last `Apache-2.0` release. `Directory.Packages.props` is solution-wide,
+> so letting this version drift forward would relicense every test project in the platform. The
+> other versions this plan's tests rely on are fixed by shared contract §13 as well:
+> `NetArchTest.Rules` **1.3.2**, `Mono.Cecil` **0.11.6**, `Testcontainers.PostgreSql` **4.14.0**.
 
 ---
 
@@ -173,6 +181,15 @@ rewriting.
 
 **No JWT, no sign-in, no onboarding.** In this plan the customer identity comes from the
 development header provider only.
+
+**No audit records are written, and that is a deferral rather than an oversight.** Migration 1
+creates `audit.audit_record` — append-only, actor plus before-and-after image `[F01-R06]` — and
+Plan 1 hands it forward expecting this plan's employee edits to land in it. They do not. The
+mutating endpoints in Tasks 11–14 change customers, accounts and metering points without writing
+an audit row, and no other slice-1 plan writes one either. Everything a writer would need already
+exists — the table, the `audit` schema grant in migration 2, and the acting employee's identity on
+`IEmployeeContext.EmployeeId` — so this is a self-contained follow-up, not a redesign. Do not read
+the empty table as evidence that auditing was considered and rejected: `[F01-R06]` is still owed.
 
 ---
 
@@ -207,9 +224,9 @@ development header provider only.
 | `…/PeakPower.Infrastructure.Web/Tenancy/AppRoleConnectionString.cs` | Rewrites the Aspire connection string onto a non-owner login role. |
 | `…/PeakPower.Infrastructure.Web/Http/ApiResults.cs` | The result-to-HTTP mapping. Has no 403 member, and its 404 body carries no discriminator. |
 | `…/PeakPower.Infrastructure.Web/Http/ValidationFilter.cs` | FluentValidation at the boundary, emitting RFC 7807 validation problems. |
+| `…/PeakPower.Infrastructure.Web/Http/EnumWireFormat.cs` | The one enum wire spelling both APIs use — SCREAMING_SNAKE, shared contract §5.2. |
 | `src/Infrastructure/PeakPower.Persistence/Migrations/…_TenancyRowLevelSecurity.cs` | Migration 2: roles, grants, RLS policies. |
-| `src/Core/PeakPower.Contracts/Common/PagedResult.cs` | Paged list envelope. |
-| `src/Core/PeakPower.Contracts/Employee/*.cs` | Employee request/response DTOs, one file per topic. |
+| `src/Core/PeakPower.Contracts/Employee/*.cs` | Employee request/response DTOs, one file per topic, including the `CustomerListResponse` envelope. |
 | `src/Hosts/PeakPower.Api.Employee/Program.cs` | Employee host composition root. |
 | `src/Hosts/PeakPower.Api.Employee/Mapping/EmployeeMappings.cs` | Domain → DTO mapping, in memory (value-converted properties do not project in SQL). |
 | `src/Hosts/PeakPower.Api.Employee/Endpoints/ReferenceDataEndpoints.cs` | `GET /api/v1/reference-data/brps`. |
@@ -231,9 +248,6 @@ development header provider only.
 | `Directory.Packages.props` | Add the packages this plan needs. |
 | `PeakPower.sln` | Add `PeakPower.Infrastructure.Web` and `PeakPower.Api.Employee`. |
 | `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs` | Take `ICustomerContext`; add the three global query filters. |
-| `src/Core/PeakPower.Domain/Customers/Customer.cs` | Add the factory and the mutators the employee API needs. |
-| `src/Core/PeakPower.Domain/Customers/CustomerAccount.cs` | Add the factory, the profile mutator and `Deactivate()`. |
-| `src/Core/PeakPower.Domain/Customers/MeteringPoint.cs` | Add the factory, the detail mutator and `EndDate()`. |
 | `src/Hosts/PeakPower.AppHost/AppHost.cs` | Add `employee-api` with `WaitForCompletion(migrator)`. |
 
 ---
@@ -263,8 +277,10 @@ namespace PeakPower.Domain.Metering;
 public sealed class Brp                          // table metering.brp
 {
     public Guid Id { get; }
-    public string Code { get; }                  // e.g. "PVNED"
-    public string Name { get; }                  // e.g. "PVNed B.V."
+    public string Code { get; }                  // "PVNED"
+    public string Name { get; }                  // "PVNed B.V." — this exact string
+    public bool IsActive { get; }                // Plan 4's reference-data screen renders it
+    public static Result<Brp> Create(string code, string name, bool isActive);
 }
 
 // PeakPower.ServiceDefaults
@@ -277,6 +293,67 @@ public static class ServiceDefaultsExtensions
     public static WebApplication MapDefaultEndpoints(this WebApplication app);
 }
 ```
+
+Plan 1 also writes every aggregate factory and mutator this plan calls. **This plan declares
+none of them** — two plans declaring one class is a duplicate-member compile error, not a merge —
+and shared contract §5.1 is the normative spelling. Reproduced here exactly as this plan calls
+them:
+
+```csharp
+namespace PeakPower.Domain.Customers;
+
+// Every operation that can fail returns Result<T>. Unwrap with .Value only after checking
+// .IsSuccess, or after the boundary validator has already made failure impossible.
+static Result<Customer> Customer.Create(
+    string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber,
+    Address billingAddress, Address? visitingAddress, ContactPerson primaryContact,
+    string? internalReference, string locale);
+Result<Customer> Customer.ChangeStatus(CustomerStatus status);          // NOT SetStatus
+Result<Customer> Customer.UpdateDetails(
+    string legalName, string? tradeName, string? vatNumber,
+    Address billingAddress, Address? visitingAddress, ContactPerson primaryContact,
+    string? internalReference, string locale);
+
+static Result<CustomerAccount> CustomerAccount.Create(
+    Guid customerId, string username, string firstName, string lastName,
+    string? jobTitle, string email, string? phone, AccountStatus status, bool isAdmin);
+Result<CustomerAccount> CustomerAccount.UpdateProfile(
+    string firstName, string lastName, string? jobTitle, string email,
+    string? phone, bool isAdmin);
+Result<CustomerAccount> CustomerAccount.Deactivate();                   // bumps SecurityStamp
+void CustomerAccount.BumpSecurityStamp();
+
+// The factory is Attach, not Create: [F01-R23] is "attach a metering point to a customer".
+// Commodity is not a parameter — [DEC-68] makes ELECTRICITY the only value, so the aggregate
+// sets it. ValidTo is not a parameter either; closing a period is EndDate.
+static Result<MeteringPoint> MeteringPoint.Attach(
+    Guid customerId, EanCode ean, Guid brpId,
+    ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource,
+    string? name, string? description, string? gridOperator, decimal? capacityKw,
+    Address? address, DateOnly validFrom);
+Result<MeteringPoint> MeteringPoint.EndDate(DateOnly validTo);          // NOT EndOn
+Result<MeteringPoint> MeteringPoint.Rename(string? name, string? description);   // <=80 / <=500
+Result<MeteringPoint> MeteringPoint.UpdateDetails(
+    Guid brpId, ProductionExpectation productionExpectation,
+    ProductionExpectationSource? expectationSource, string? gridOperator,
+    decimal? capacityKw, Address? address);
+```
+
+Note the split on the metering point: `UpdateDetails` carries the settlement facts and `Rename`
+carries the two human-facing strings. `PATCH /api/v1/metering-points/{id}` accepts both in one
+body, so the handler calls both mutators — see Task 14.
+
+**Host entry points.** Shared contract §5.1 fixes a convention rather than a shared type: each
+host declares its own marker and **no host declares `public partial class Program`**. The one
+integration-test assembly references both API hosts, so a bare `WebApplicationFactory<Program>`
+would be ambiguous between two global-namespace types.
+
+```csharp
+public sealed class EmployeeApiEntryPoint;    // PeakPower.Api.Employee — Task 11 declares this
+public sealed class CustomerApiEntryPoint;    // PeakPower.Api.Customer — Plan 5 declares that
+```
+
+Tests use `WebApplicationFactory<EmployeeApiEntryPoint>`.
 
 Plus, from the shared contract, the domain types `Customer`, `CustomerAccount`, `MeteringPoint`,
 `Address`, `ContactPerson`, `EanCode`, `KvkNumber`, `Iban`, `Result<T>` and every enum; migration
@@ -1056,7 +1133,7 @@ wrong things.
 | `app_customer_role` | no — a group role holding grants and the isolation policy | only rows matching `app.customer_id` | — |
 | `app_employee_role` | no — a group role holding grants and a `USING (true)` policy | every row | — |
 | `peakpower_app` | yes | via `app_customer_role` | the customer API (Plan 5) and the probe host (Task 9) |
-| `peakpower_employee` | yes | via `app_employee_role` | the employee API (Task 12) |
+| `peakpower_employee` | yes | via `app_employee_role` | the employee API (Task 11) |
 
 Both login roles are **non-owners**, so `ENABLE ROW LEVEL SECURITY` applies to them. `FORCE ROW
 LEVEL SECURITY` is deliberately *not* set: the table owner is the migration role, which must be
@@ -1198,7 +1275,9 @@ public sealed class TenancyFixture : IAsyncLifetime
     {
         await using var db = OwnerContext();
 
-        var brp = Brp.Create("PVNED", "PVNed B.V.");
+        // Plan 1's factories return Result<T>; the fixture's inputs are all known-good, so
+        // .Value is safe here and a regression in a factory surfaces as a clear test failure.
+        var brp = Brp.Create("PVNED", "PVNed B.V.", isActive: true).Value;
         db.Brps.Add(brp);
 
         var companyA = NewCustomer("Zonneweide Beheer B.V.", "81000001");
@@ -1207,7 +1286,8 @@ public sealed class TenancyFixture : IAsyncLifetime
 
         var accountB = CustomerAccount.Create(
             companyB.Id, "b.jansen", "Bram", "Jansen", "Operations",
-            "bram.jansen@windkrachtnoord.example", null, isAdmin: false);
+            "bram.jansen@windkrachtnoord.example", null,
+            AccountStatus.Invited, isAdmin: false).Value;
         db.CustomerAccounts.Add(accountB);
 
         var meteringPointA = NewMeteringPoint(companyA.Id, brp.Id, "871687110000000101");
@@ -1241,7 +1321,7 @@ public sealed class TenancyFixture : IAsyncLifetime
             visitingAddress: null,
             primaryContact: new ContactPerson("Els Bakker", "els@example.test", null),
             internalReference: null,
-            locale: "nl-NL");
+            locale: "nl-NL").Value;
 
     private static MeteringPoint NewMeteringPoint(Guid customerId, Guid brpId, string ean) =>
         MeteringPoint.Attach(
@@ -1255,7 +1335,7 @@ public sealed class TenancyFixture : IAsyncLifetime
             gridOperator: "Stedin",
             capacityKw: 250m,
             address: null,
-            validFrom: new DateOnly(2026, 1, 1));
+            validFrom: new DateOnly(2026, 1, 1)).Value;
 
     public static NpgsqlConnection Connect(string connectionString) => new(connectionString);
 }
@@ -1389,12 +1469,15 @@ public sealed class RowLevelSecurityTests
 - [ ] **Step 3: Run the tests and watch them fail**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~RowLevelSecurityTests"`
-Expected: FAIL — `Npgsql.PostgresException: 28P01: password authentication failed for user "peakpower_app"`, because migration 2 has not created the role yet. (The fixture also needs `AppRoleConnectionString`, `Brp.Create`, `Customer.Create`, `CustomerAccount.Create` and `MeteringPoint.Attach`; those arrive in Tasks 5 and 10. Until then the failure will be a compile error naming them — that is expected and correct at this point. Complete Step 4 here, then Tasks 5 and 10, and this test turns green as part of Task 10's verification.)
+Expected: FAIL — `error CS0103: The name 'AppRoleConnectionString' does not exist in the current
+context`. The fixture seeds through Plan 1's factories, which already exist, but it rewrites the
+container's connection string onto the two login roles, and that helper is written in Task 5.
 
 > **Execution note.** This is the one place in the plan where a test cannot go green inside its
-> own task, because the RLS policies and the domain factories are genuinely independent
-> deliverables. Write the migration now, confirm it applies (Step 5), and re-run the full
-> `RowLevelSecurityTests` at the end of Task 10.
+> own task. `AppRoleConnectionString` and the RLS policies are genuinely separate deliverables and
+> each needs its own red-to-green step, so this task ends with the migration written and proven to
+> apply (Step 5), and `RowLevelSecurityTests` turns green at the end of Task 5 — where it is the
+> stated expected outcome.
 
 - [ ] **Step 4: Write the migration**
 
@@ -1754,7 +1837,15 @@ public static class TenantScopeMiddlewareExtensions
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~AppRoleConnectionStringTests"`
 Expected: PASS — 2 tests. (The middleware itself is exercised end-to-end by Task 9's probe host.)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Run the row-level-security tests deferred from Task 4**
+
+`TenancyFixture` now compiles, so migration 2 can finally be proven end to end.
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~RowLevelSecurityTests"`
+Expected: PASS — 5 tests. `peakpower_app` sees one company's rows with `app.customer_id` set and
+none with it unset; `peakpower_employee` sees both.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-platform
@@ -1766,7 +1857,7 @@ git commit -m "feat(tenancy): issue SET LOCAL app.customer_id per request and sc
 
 ---
 
-### Task 6: 404-not-403, and the boundary validation filter
+### Task 6: 404-not-403, the enum wire format, and the boundary validation filter
 
 `[F13-R19]` says a cross-tenant read returns **404, never 403**. A 403 is an admission that the
 object exists — it turns any endpoint into an existence oracle for another company's data.
@@ -1779,16 +1870,27 @@ tell them apart. Task 8 adds the compiled-IL check that nobody reintroduces a 40
 
 The validation filter is here too because it shares the problem-details plumbing.
 
+`EnumWireFormat` is here for the same reason — it is a property of the wire, shared by both APIs.
+Shared contract §4 makes the **database** spelling of every enum normative and §5.2 extends that
+to JSON: `ACTIVE`, never `"Active"`. `PeakPower.Contracts` references nothing, so its DTOs carry
+`string`, and the PascalCase CLR name must be converted somewhere. Doing it with `.ToString()` at
+each mapping site is how the two APIs end up disagreeing with each other; doing it once here, with
+the same `JsonNamingPolicy` the hosts hand to `JsonStringEnumConverter`, means the mappers, the
+validators' allowed-value lists and any future enum-typed property all produce one spelling.
+
 **Files:**
 - Create: `src/Infrastructure/PeakPower.Infrastructure.Web/Http/ApiResults.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Web/Http/EnumWireFormat.cs`
 - Create: `src/Infrastructure/PeakPower.Infrastructure.Web/Http/ValidationFilter.cs`
 - Test: `tests/PeakPower.Integration.Tests/Tenancy/ApiResultsTests.cs`
+- Test: `tests/PeakPower.Integration.Tests/Tenancy/EnumWireFormatTests.cs`
 
 **Interfaces:**
 - Consumes: nothing from other tasks.
 - Produces:
   - `public static class ApiResults` with `IResult Found<T>(T? value) where T : class`, `IResult NotFound()`, `IResult InvalidRequest(string property, string error)`, `IResult Conflict(string detail)`
   - constants `ApiResults.NotFoundType = "https://peakpower.dev/problems/not-found"`, `NotFoundTitle = "Not found"`, `NotFoundDetail = "The requested resource does not exist."`, `ValidationType = "https://peakpower.dev/problems/validation"`, `ValidationTitle = "The request is not valid."`, `ConflictType = "https://peakpower.dev/problems/conflict"`, `ConflictTitle = "The request conflicts with the current state."`
+  - `public static class EnumWireFormat` — `JsonNamingPolicy Naming`, `JsonStringEnumConverter Converter`, `string ToWire<TEnum>(TEnum value)`, `bool TryParse<TEnum>(string? wire, out TEnum value)`, `TEnum Parse<TEnum>(string wire)`, `string[] Names<TEnum>()`, all `where TEnum : struct, Enum`
   - `public sealed class ValidationFilter<TRequest> : IEndpointFilter where TRequest : class`
   - `public static class ValidationFilterExtensions` — `public static RouteHandlerBuilder Validate<TRequest>(this RouteHandlerBuilder builder) where TRequest : class`
 
@@ -1875,12 +1977,74 @@ public sealed class ApiResultsTests
 }
 ```
 
+Create `tests/PeakPower.Integration.Tests/Tenancy/EnumWireFormatTests.cs`:
+
+```csharp
+using System.Text.Json;
+using FluentAssertions;
+using PeakPower.Domain.Customers;
+using PeakPower.Infrastructure.Web.Http;
+using Xunit;
+
+namespace PeakPower.Integration.Tests.Tenancy;
+
+public sealed class EnumWireFormatTests
+{
+    [Theory]
+    [InlineData(AccountStatus.PendingApproval, "PENDING_APPROVAL")]
+    [InlineData(AccountStatus.Active, "ACTIVE")]
+    [InlineData(AccountStatus.Deactivated, "DEACTIVATED")]
+    public void an_enum_goes_onto_the_wire_in_the_database_spelling(AccountStatus status, string wire)
+    {
+        EnumWireFormat.ToWire(status).Should().Be(wire,
+            "shared contract §4 makes the database spelling normative and §5.2 extends it to JSON");
+    }
+
+    [Fact]
+    public void a_multi_word_source_keeps_its_underscore()
+    {
+        EnumWireFormat.ToWire(ProductionExpectationSource.CustomerDeclared)
+            .Should().Be("CUSTOMER_DECLARED");
+        EnumWireFormat.ToWire(ProductionExpectationSource.GridOperator)
+            .Should().Be("GRID_OPERATOR");
+    }
+
+    [Fact]
+    public void the_wire_spelling_round_trips_and_pascal_case_is_rejected()
+    {
+        EnumWireFormat.TryParse<CustomerStatus>("SUSPENDED", out var parsed).Should().BeTrue();
+        parsed.Should().Be(CustomerStatus.Suspended);
+
+        EnumWireFormat.TryParse<CustomerStatus>("Suspended", out _).Should().BeFalse(
+            "accepting PascalCase on the way in is how the two spellings survive side by side");
+    }
+
+    [Fact]
+    public void the_names_helper_lists_every_value_in_wire_spelling()
+    {
+        EnumWireFormat.Names<ProductionExpectation>()
+            .Should().Equal("UNKNOWN", "NEVER", "EXPECTED");
+    }
+
+    [Fact]
+    public void the_shared_converter_serialises_an_enum_typed_property_the_same_way()
+    {
+        var options = new JsonSerializerOptions();
+        options.Converters.Add(EnumWireFormat.Converter);
+
+        JsonSerializer.Serialize(AccountStatus.PendingApproval, options)
+            .Should().Be("\"PENDING_APPROVAL\"",
+                "the mappers and the serializer must never disagree about one enum");
+    }
+}
+```
+
 - [ ] **Step 2: Run the test and watch it fail**
 
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~ApiResultsTests"`
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~ApiResultsTests|FullyQualifiedName~EnumWireFormatTests"`
 Expected: FAIL — `error CS0246: The type or namespace name 'ApiResults' could not be found`.
 
-- [ ] **Step 3: Write the result mapping and the validation filter**
+- [ ] **Step 3: Write the result mapping, the enum wire format and the validation filter**
 
 Create `src/Infrastructure/PeakPower.Infrastructure.Web/Http/ApiResults.cs`:
 
@@ -1940,6 +2104,86 @@ public static class ApiResults
             statusCode: StatusCodes.Status409Conflict,
             title: ConflictTitle,
             type: ConflictType);
+}
+```
+
+Create `src/Infrastructure/PeakPower.Infrastructure.Web/Http/EnumWireFormat.cs`:
+
+```csharp
+using System.Collections.Frozen;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace PeakPower.Infrastructure.Web.Http;
+
+/// <summary>
+/// The single enum spelling both APIs put on the wire, shared contract §5.2.
+/// <para>
+/// <see cref="JsonNamingPolicy.SnakeCaseUpper"/> turns <c>PendingApproval</c> into
+/// <c>PENDING_APPROVAL</c>, which is exactly the database spelling shared contract §4 makes
+/// normative — so a value read out of PostgreSQL, a value serialised by
+/// <see cref="Converter"/> and a value written by a mapper are all the same string. Nothing in
+/// either host may call <c>.ToString()</c> on an enum destined for JSON: that is the one call
+/// that reintroduces PascalCase.
+/// </para>
+/// <para>
+/// Parsing is deliberately strict and case-sensitive. Accepting <c>"Active"</c> as well as
+/// <c>"ACTIVE"</c> would let a client keep using the wrong spelling indefinitely, and the two
+/// would drift apart unnoticed.
+/// </para>
+/// </summary>
+public static class EnumWireFormat
+{
+    public static readonly JsonNamingPolicy Naming = JsonNamingPolicy.SnakeCaseUpper;
+
+    /// <summary>Register this on both hosts' JSON options; do not construct a second one.</summary>
+    public static readonly JsonStringEnumConverter Converter = new(Naming);
+
+    private static class Map<TEnum>
+        where TEnum : struct, Enum
+    {
+        public static readonly string[] Wire =
+            Enum.GetNames<TEnum>().Select(Naming.ConvertName).ToArray();
+
+        public static readonly FrozenDictionary<string, TEnum> ByWire =
+            Enum.GetValues<TEnum>()
+                .Select((value, index) => (Wire[index], value))
+                .ToFrozenDictionary(pair => pair.Item1, pair => pair.value, StringComparer.Ordinal);
+    }
+
+    public static string ToWire<TEnum>(TEnum value)
+        where TEnum : struct, Enum
+        => Naming.ConvertName(value.ToString());
+
+    public static bool TryParse<TEnum>(string? wire, out TEnum value)
+        where TEnum : struct, Enum
+    {
+        if (wire is not null && Map<TEnum>.ByWire.TryGetValue(wire, out value))
+        {
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    /// <summary>
+    /// For call sites the boundary validator has already checked. An unknown value here is a
+    /// bug in the validator, not a bad request, so it throws rather than guessing.
+    /// </summary>
+    public static TEnum Parse<TEnum>(string wire)
+        where TEnum : struct, Enum
+        => TryParse<TEnum>(wire, out var value)
+            ? value
+            : throw new ArgumentOutOfRangeException(
+                nameof(wire),
+                wire,
+                $"'{wire}' is not one of: {string.Join(", ", Names<TEnum>())}.");
+
+    /// <summary>Every value of the enum, in wire spelling and declaration order.</summary>
+    public static string[] Names<TEnum>()
+        where TEnum : struct, Enum
+        => [.. Map<TEnum>.Wire];
 }
 ```
 
@@ -2013,16 +2257,17 @@ Add FluentValidation to `src/Infrastructure/PeakPower.Infrastructure.Web/PeakPow
 
 - [ ] **Step 4: Run the test and watch it pass**
 
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~ApiResultsTests"`
-Expected: PASS — 4 tests.
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~ApiResultsTests|FullyQualifiedName~EnumWireFormatTests"`
+Expected: PASS — 11 tests (4 result-mapping, 7 enum wire format including the three theory cases).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-platform
 git add src/Infrastructure/PeakPower.Infrastructure.Web \
-  tests/PeakPower.Integration.Tests/Tenancy/ApiResultsTests.cs
-git commit -m "feat(api): add the 404-not-403 result mapping and the boundary validation filter [F13-R19]"
+  tests/PeakPower.Integration.Tests/Tenancy/ApiResultsTests.cs \
+  tests/PeakPower.Integration.Tests/Tenancy/EnumWireFormatTests.cs
+git commit -m "feat(api): add the 404-not-403 result mapping, the SCREAMING_SNAKE enum wire format and the boundary validation filter [F13-R19]"
 ```
 
 ---
@@ -2059,7 +2304,7 @@ Add to `tests/PeakPower.Architecture.Tests/PeakPower.Architecture.Tests.csproj`:
 ```
 
 Plan 1 already references `PeakPower.Domain`, `PeakPower.Application` and `PeakPower.Persistence`
-from this project. `PeakPower.Api.Employee` is added in Task 12; until then `ProductionAssemblies()`
+from this project. `PeakPower.Api.Employee` is added in Task 11; until then `ProductionAssemblies()`
 below simply will not find it, and the scan still runs over everything that exists.
 
 - [ ] **Step 2: Write the failing test**
@@ -2136,13 +2381,24 @@ namespace PeakPower.Architecture.Tests;
 /// </summary>
 internal static class IlScanner
 {
+    /// <summary>
+    /// The eleven source projects of shared contract §3.1, minus the AppHost, which is a
+    /// build-time composition model rather than a running assembly. Keep this list complete:
+    /// an assembly that is missing here is silently exempt from every fact below. When a later
+    /// plan adds a source project, it adds the name here in the same commit.
+    /// </summary>
     private static readonly string[] ProductionAssemblyNames =
     [
         "PeakPower.Domain",
         "PeakPower.Application",
         "PeakPower.Contracts",
         "PeakPower.Persistence",
+        "PeakPower.Infrastructure.Time",
         "PeakPower.Infrastructure.Web",
+        "PeakPower.Infrastructure.Identity",
+        "PeakPower.Infrastructure.Email",
+        "PeakPower.ServiceDefaults",
+        "PeakPower.Migrator",
         "PeakPower.Api.Employee",
         "PeakPower.Api.Customer",
     ];
@@ -2309,12 +2565,20 @@ header for authorisation is a defect. Design §10 proposes hardening that from a
 "since this slice is the one where it would be tempting" — the development provider does exactly
 that, and once one class does it, the next one looks reasonable.
 
-Encoded two ways, because either alone leaks:
+Shared contract §13 states fact 6 as its **mechanisms**, not as intent, and that is deliberate:
+"reads a customer identifier from `HttpContext`" is unenforceable, because a minimal-API handler
+may legitimately take an `HttpContext`. Banning the ways a customer identifier can actually arrive
+is enforceable and has the same effect. Encoded three ways, because each alone leaks:
 
 1. **Dependency ban.** No type outside `PeakPower.Infrastructure.Web` may depend on `HttpContext`
    or `IHttpContextAccessor` at all. Minimal API handlers bind their parameters, so no endpoint
    needs `HttpContext` to do its job.
-2. **Literal ban.** No type outside `PeakPower.Infrastructure.Web` may contain the string
+2. **Claim-read ban.** No type outside `PeakPower.Infrastructure.Web` may *read* a claim off a
+   `ClaimsPrincipal` or a `ClaimsIdentity`. This is a call-site ban rather than a dependency ban
+   on purpose: Plan 5's token issuer, in `PeakPower.Infrastructure.Identity`, legitimately
+   **constructs** a `ClaimsIdentity` to sign, and banning the type outright would forbid that
+   while missing the thing that actually matters.
+3. **Literal ban.** No type outside `PeakPower.Infrastructure.Web` may contain the string
    `X-PeakPower-Customer-Id` or the claim name `customer_id`. That catches the case where someone
    reads the header through something other than `HttpContext` — a delegating handler, an
    `IHeaderDictionary` passed in, an `HttpRequest` extension.
@@ -2324,9 +2588,11 @@ Encoded two ways, because either alone leaks:
 
 **Interfaces:**
 - Consumes: `IlScanner` (Task 7); `DevelopmentCustomerContext.CustomerIdHeader` (Task 1).
-- Produces: nothing consumed by later tasks. Plan 5 must keep both facts green when it adds the
-  token-backed `ICustomerContext` — which means that class lives in
-  `PeakPower.Infrastructure.Web` too, not in `PeakPower.Api.Customer`.
+- Produces: nothing consumed by later tasks. Plan 5 must keep all three arms green when it adds
+  the token-backed `ICustomerContext` — which means that class, its session middleware and the
+  `pp_refresh` cookie writer live in `PeakPower.Infrastructure.Web`, not in
+  `PeakPower.Api.Customer`. Shared contract §6 says so in as many words: "Do NOT put a
+  provider inside an API host."
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2362,7 +2628,32 @@ directives at the top of the file: `using System.Reflection;` and `using NetArch
     }
 
     /// <summary>
-    /// Architecture fact 6, arm two. The dependency ban misses code that reads the header
+    /// Architecture fact 6, arm two. A bearer token arrives as a ClaimsPrincipal rather than as
+    /// a header, so the dependency ban above does not see it. Reading a claim is banned by call
+    /// site, not by type: Plan 5's token issuer builds a ClaimsIdentity to sign, which is
+    /// writing, and must stay legal in PeakPower.Infrastructure.Identity.
+    /// </summary>
+    [Fact]
+    public void no_type_outside_the_context_provider_assembly_reads_a_claim()
+    {
+        var policed = IlScanner.ProductionAssemblies()
+            .Where(assembly => assembly.GetName().Name != "PeakPower.Infrastructure.Web")
+            .ToArray();
+
+        string[] readers = ["FindFirst", "FindFirstValue", "FindAll", "HasClaim", "get_Claims"];
+
+        var offenders = readers
+            .SelectMany(reader => IlScanner.FindCalls(policed, "ClaimsPrincipal", reader)
+                .Concat(IlScanner.FindCalls(policed, "ClaimsIdentity", reader)))
+            .ToArray();
+
+        offenders.Should().BeEmpty(
+            "a customer identifier that arrives in a token is still a customer identifier; " +
+            "ICustomerContext is the one seam allowed to read it");
+    }
+
+    /// <summary>
+    /// Architecture fact 6, arm three. The two bans above miss code that reads the header
     /// through some other handle, so ban the identifiers themselves as well.
     /// </summary>
     [Theory]
@@ -2401,7 +2692,7 @@ reference is that both tests pass with no production change.
 - [ ] **Step 4: Run the tests and watch them pass**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Architecture.Tests --filter "FullyQualifiedName~TenancyArchitectureTests"`
-Expected: PASS — 5 tests (2 from Task 7, 1 dependency ban, 2 theory cases).
+Expected: PASS — 6 tests (2 from Task 7, 1 dependency ban, 1 claim-read ban, 2 theory cases).
 
 - [ ] **Step 5: Prove the literal ban has teeth**
 
@@ -2471,7 +2762,7 @@ registered sample body fails. Both mean "somebody added an endpoint and the prob
 it", which is exactly the silence this test exists to break.
 
 **Where it runs today.** The employee API is not tenant-scoped, so it exercises the gate but not
-the positive arm — Task 16 covers that. To exercise the positive arm now, this task builds
+the positive arm — Task 15 covers that. To exercise the positive arm now, this task builds
 `TenancyProbeApp`, a host that lives **inside the test project** and composes the real
 `PeakPowerDbContext`, the real query filters, the real `TenantScopeMiddleware`, the real
 `DevelopmentCustomerContext` and the real `ApiResults`. When Plan 5 creates
@@ -2876,8 +3167,8 @@ namespace PeakPower.Integration.Tests.Tenancy;
 /// real DevelopmentCustomerContext and the real ApiResults mapping — over a real PostgreSQL 17.
 /// <para>
 /// It exists because Plan 2 has no customer-facing API of its own: Plan 5 creates
-/// PeakPower.Api.Customer. When it does, it adds a test class pointing the same RouteTable
-/// harness at that host, and nothing here changes.
+/// PeakPower.Api.Customer, and Plan 6 Task 10 points this same RouteTable harness at that host
+/// once its full endpoint set exists. Nothing here changes when it does.
 /// </para>
 /// </summary>
 public sealed class TenancyProbeApp : IAsyncDisposable
@@ -3070,519 +3361,16 @@ git commit -m "test(tenancy): drive the cross-tenant 404 proof off the registere
 ```
 
 ---
-### Task 10: Domain factories and mutators
-
-The shared contract declares the aggregates with read-only properties, which is right — nothing
-outside the aggregate should be able to assign to them. The employee API needs to create and edit
-them, so each aggregate gets a factory and named mutators. Naming them after what the business
-does (`Deactivate`, `EndDate`, `UpdateNaming`) rather than after the fields they touch is what
-keeps the invariants in one place.
-
-Two behaviours in here are not obvious and are required by the specification:
-
-- **Editing or deactivating an account bumps its `SecurityStamp`.** `[F01-R16]` says deactivating
-  an account revokes its sessions *immediately*, and design §7 chose the stamp claim to make that
-  true against a stateless JWT. Plan 5 compares the stamp per request; the bump has to happen
-  here, in the aggregate, or an employee edit will quietly leave a live session behind.
-- **`EndDate` returns a `Result<MeteringPoint>` rather than throwing.** Validation failures are
-  results, not exceptions (shared contract §5). A validity period that ends before it starts is a
-  bad request, not a bug.
-
-**Files:**
-- Modify: `src/Core/PeakPower.Domain/Customers/Customer.cs`
-- Modify: `src/Core/PeakPower.Domain/Customers/CustomerAccount.cs`
-- Modify: `src/Core/PeakPower.Domain/Customers/MeteringPoint.cs`
-- Modify: `src/Core/PeakPower.Domain/Metering/Brp.cs`
-- Test: `tests/PeakPower.Domain.Tests/Customers/AggregateFactoryTests.cs`
-
-**Interfaces:**
-- Consumes: `Customer`, `CustomerAccount`, `MeteringPoint`, `Brp`, `Address`, `ContactPerson`, `EanCode`, `KvkNumber`, `Result<T>` and the enums (Plan 1 / shared contract).
-- Produces:
-  - `static Customer Customer.Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)`
-  - `void Customer.UpdateDetails(string legalName, string? tradeName, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)`
-  - `void Customer.ChangeStatus(CustomerStatus status)`
-  - `static CustomerAccount CustomerAccount.Create(Guid customerId, string username, string firstName, string lastName, string? jobTitle, string email, string? phone, bool isAdmin)`
-  - `void CustomerAccount.UpdateProfile(string firstName, string lastName, string? jobTitle, string email, string? phone, bool isAdmin)`
-  - `void CustomerAccount.Deactivate()`
-  - `static MeteringPoint MeteringPoint.Attach(Guid customerId, EanCode ean, Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? name, string? description, string? gridOperator, decimal? capacityKw, Address? address, DateOnly validFrom)`
-  - `void MeteringPoint.UpdateDetails(Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? name, string? description, string? gridOperator, decimal? capacityKw, Address? address)`
-  - `Result<MeteringPoint> MeteringPoint.EndDate(DateOnly validTo)`
-  - `static Brp Brp.Create(string code, string name)`
-
-- [ ] **Step 1: Write the failing test**
-
-Create `tests/PeakPower.Domain.Tests/Customers/AggregateFactoryTests.cs`:
-
-```csharp
-using FluentAssertions;
-using PeakPower.Domain.Common;
-using PeakPower.Domain.Customers;
-using Xunit;
-
-namespace PeakPower.Domain.Tests.Customers;
-
-public sealed class AggregateFactoryTests
-{
-    private static readonly Address AnyAddress =
-        new("Havenweg", "12", null, "3011 AA", "Rotterdam", "NL");
-
-    private static readonly ContactPerson AnyContact =
-        new("Els Bakker", "els@example.test", null);
-
-    private static Customer NewCustomer() =>
-        Customer.Create(
-            "Zonneweide Beheer B.V.", null, KvkNumber.Create("81000001").Value, null,
-            AnyAddress, null, AnyContact, null, "nl-NL");
-
-    [Fact]
-    public void a_new_customer_starts_as_a_prospect_without_four_eyes()
-    {
-        var customer = NewCustomer();
-
-        customer.Id.Should().NotBe(Guid.Empty);
-        customer.Status.Should().Be(CustomerStatus.Prospect);
-        customer.FourEyesEnabled.Should().BeFalse();
-        customer.Locale.Should().Be("nl-NL");
-    }
-
-    [Fact]
-    public void updating_a_customer_leaves_its_identity_and_kvk_alone()
-    {
-        var customer = NewCustomer();
-        var originalId = customer.Id;
-
-        customer.UpdateDetails(
-            "Zonneweide Holding B.V.", "Zonneweide", "NL810000012B01",
-            AnyAddress, AnyAddress, AnyContact, "CRM-4471", "nl-NL");
-
-        customer.Id.Should().Be(originalId);
-        customer.KvkNumber.Value.Should().Be("81000001");
-        customer.LegalName.Should().Be("Zonneweide Holding B.V.");
-        customer.TradeName.Should().Be("Zonneweide");
-        customer.InternalReference.Should().Be("CRM-4471");
-    }
-
-    [Fact]
-    public void an_employee_created_account_is_invited_and_has_no_password()
-    {
-        var account = CustomerAccount.Create(
-            Guid.NewGuid(), "e.bakker", "Els", "Bakker", "Operations",
-            "els@example.test", null, isAdmin: false);
-
-        account.Status.Should().Be(AccountStatus.Invited);
-        account.PasswordHash.Should().BeNull();
-        account.SecurityStamp.Should().NotBe(Guid.Empty);
-        account.ExternalSubjectId.Should().BeNull();
-    }
-
-    [Fact]
-    public void editing_an_account_bumps_the_security_stamp()
-    {
-        var account = CustomerAccount.Create(
-            Guid.NewGuid(), "e.bakker", "Els", "Bakker", null, "els@example.test", null, false);
-        var before = account.SecurityStamp;
-
-        account.UpdateProfile("Elsbeth", "Bakker", "Head of operations", "e.bakker@example.test", null, true);
-
-        account.SecurityStamp.Should().NotBe(before,
-            "[F01-R16] an edit must invalidate every outstanding token for the account");
-        account.IsAdmin.Should().BeTrue();
-    }
-
-    [Fact]
-    public void deactivating_an_account_bumps_the_security_stamp()
-    {
-        var account = CustomerAccount.Create(
-            Guid.NewGuid(), "e.bakker", "Els", "Bakker", null, "els@example.test", null, false);
-        var before = account.SecurityStamp;
-
-        account.Deactivate();
-
-        account.Status.Should().Be(AccountStatus.Deactivated);
-        account.SecurityStamp.Should().NotBe(before);
-    }
-
-    [Fact]
-    public void the_username_is_immutable()
-    {
-        var account = CustomerAccount.Create(
-            Guid.NewGuid(), "e.bakker", "Els", "Bakker", null, "els@example.test", null, false);
-
-        account.UpdateProfile("Elsbeth", "Bakker", null, "e.bakker@example.test", null, false);
-
-        account.Username.Should().Be("e.bakker");
-    }
-
-    [Fact]
-    public void an_attached_metering_point_is_electricity_and_open_ended()
-    {
-        var meteringPoint = MeteringPoint.Attach(
-            Guid.NewGuid(), EanCode.Create("871687110000000101").Value, Guid.NewGuid(),
-            ProductionExpectation.Unknown, null, null, null, "Stedin", 250m, null,
-            new DateOnly(2026, 1, 1));
-
-        meteringPoint.Commodity.Should().Be(Commodity.Electricity);
-        meteringPoint.ValidTo.Should().BeNull();
-        meteringPoint.DisplayLabel.Should().Be(meteringPoint.Ean.ToDisplayString(),
-            "[F01-R31] with no friendly name the grouped EAN is the label");
-    }
-
-    [Fact]
-    public void end_dating_a_metering_point_before_it_started_is_a_failure_not_an_exception()
-    {
-        var meteringPoint = MeteringPoint.Attach(
-            Guid.NewGuid(), EanCode.Create("871687110000000101").Value, Guid.NewGuid(),
-            ProductionExpectation.Unknown, null, null, null, null, null, null,
-            new DateOnly(2026, 6, 1));
-
-        var result = meteringPoint.EndDate(new DateOnly(2026, 1, 1));
-
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("after");
-        meteringPoint.ValidTo.Should().BeNull("a failed end-date must not mutate the aggregate");
-    }
-
-    [Fact]
-    public void end_dating_a_metering_point_sets_the_exclusive_upper_bound()
-    {
-        var meteringPoint = MeteringPoint.Attach(
-            Guid.NewGuid(), EanCode.Create("871687110000000101").Value, Guid.NewGuid(),
-            ProductionExpectation.Unknown, null, null, null, null, null, null,
-            new DateOnly(2026, 1, 1));
-
-        var result = meteringPoint.EndDate(new DateOnly(2026, 7, 1));
-
-        result.IsSuccess.Should().BeTrue();
-        meteringPoint.ValidTo.Should().Be(new DateOnly(2026, 7, 1));
-    }
-}
-```
-
-- [ ] **Step 2: Run the test and watch it fail**
-
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Domain.Tests --filter "FullyQualifiedName~AggregateFactoryTests"`
-Expected: FAIL — `error CS0117: 'Customer' does not contain a definition for 'Create'`.
-
-- [ ] **Step 3: Add the factory and mutators to `Customer`**
-
-In `src/Core/PeakPower.Domain/Customers/Customer.cs`, change every auto-property from `{ get; }`
-to `{ get; private set; }`, add a private parameterless constructor for EF Core materialisation,
-and add these members:
-
-```csharp
-    private Customer()
-    {
-        // EF Core materialisation. Non-nullable reference properties are assigned by EF.
-        LegalName = null!;
-        BillingAddress = null!;
-        PrimaryContact = null!;
-        Locale = null!;
-    }
-
-    public static Customer Create(
-        string legalName,
-        string? tradeName,
-        KvkNumber kvkNumber,
-        string? vatNumber,
-        Address billingAddress,
-        Address? visitingAddress,
-        ContactPerson primaryContact,
-        string? internalReference,
-        string locale)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(legalName);
-        ArgumentNullException.ThrowIfNull(billingAddress);
-        ArgumentNullException.ThrowIfNull(primaryContact);
-        ArgumentException.ThrowIfNullOrWhiteSpace(locale);
-
-        return new Customer
-        {
-            Id = Guid.NewGuid(),
-            LegalName = legalName.Trim(),
-            TradeName = string.IsNullOrWhiteSpace(tradeName) ? null : tradeName.Trim(),
-            KvkNumber = kvkNumber,
-            VatNumber = string.IsNullOrWhiteSpace(vatNumber) ? null : vatNumber.Trim(),
-            Status = CustomerStatus.Prospect,
-            FourEyesEnabled = false,          // [DEC-71] — a column with no behaviour in slice 1
-            BillingAddress = billingAddress,
-            VisitingAddress = visitingAddress,
-            PrimaryContact = primaryContact,
-            InternalReference = string.IsNullOrWhiteSpace(internalReference)
-                ? null
-                : internalReference.Trim(),
-            Locale = locale,
-        };
-    }
-
-    /// <summary>
-    /// The KvK number is the company's registration and is never edited; a different KvK number
-    /// is a different company. <c>[F01-R03]</c>.
-    /// </summary>
-    public void UpdateDetails(
-        string legalName,
-        string? tradeName,
-        string? vatNumber,
-        Address billingAddress,
-        Address? visitingAddress,
-        ContactPerson primaryContact,
-        string? internalReference,
-        string locale)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(legalName);
-        ArgumentNullException.ThrowIfNull(billingAddress);
-        ArgumentNullException.ThrowIfNull(primaryContact);
-        ArgumentException.ThrowIfNullOrWhiteSpace(locale);
-
-        LegalName = legalName.Trim();
-        TradeName = string.IsNullOrWhiteSpace(tradeName) ? null : tradeName.Trim();
-        VatNumber = string.IsNullOrWhiteSpace(vatNumber) ? null : vatNumber.Trim();
-        BillingAddress = billingAddress;
-        VisitingAddress = visitingAddress;
-        PrimaryContact = primaryContact;
-        InternalReference = string.IsNullOrWhiteSpace(internalReference)
-            ? null
-            : internalReference.Trim();
-        Locale = locale;
-    }
-
-    public void ChangeStatus(CustomerStatus status) => Status = status;
-```
-
-- [ ] **Step 4: Add the factory and mutators to `CustomerAccount`**
-
-In `src/Core/PeakPower.Domain/Customers/CustomerAccount.cs`, make the properties
-`{ get; private set; }` and add:
-
-```csharp
-    private CustomerAccount()
-    {
-        Username = null!;
-        FirstName = null!;
-        LastName = null!;
-        Email = null!;
-    }
-
-    public static CustomerAccount Create(
-        Guid customerId,
-        string username,
-        string firstName,
-        string lastName,
-        string? jobTitle,
-        string email,
-        string? phone,
-        bool isAdmin)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(username);
-        ArgumentException.ThrowIfNullOrWhiteSpace(firstName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(email);
-
-        return new CustomerAccount
-        {
-            Id = Guid.NewGuid(),
-            CustomerId = customerId,
-            Username = username.Trim(),
-            FirstName = firstName.Trim(),
-            LastName = lastName.Trim(),
-            JobTitle = string.IsNullOrWhiteSpace(jobTitle) ? null : jobTitle.Trim(),
-            Email = email.Trim(),
-            Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim(),
-            // An employee-created account has not chosen a credential yet.
-            Status = AccountStatus.Invited,
-            IsAdmin = isAdmin,                 // [DEC-71] — a column with no behaviour in slice 1
-            PasswordHash = null,
-            SecurityStamp = Guid.NewGuid(),
-            ExternalSubjectId = null,          // reserved for Entra
-            LastLoginAt = null,
-        };
-    }
-
-    /// <summary>
-    /// The username is immutable and platform-wide unique, so it is not a parameter here.
-    /// Every edit bumps <see cref="SecurityStamp"/>: <c>[F01-R16]</c> requires that a change to
-    /// an account takes effect on the account's next call rather than in fifteen minutes.
-    /// </summary>
-    public void UpdateProfile(
-        string firstName,
-        string lastName,
-        string? jobTitle,
-        string email,
-        string? phone,
-        bool isAdmin)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(firstName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(email);
-
-        FirstName = firstName.Trim();
-        LastName = lastName.Trim();
-        JobTitle = string.IsNullOrWhiteSpace(jobTitle) ? null : jobTitle.Trim();
-        Email = email.Trim();
-        Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
-        IsAdmin = isAdmin;
-        SecurityStamp = Guid.NewGuid();
-    }
-
-    /// <summary>
-    /// <c>[F01-R16]</c> — deactivation revokes the account's sessions immediately. The stamp
-    /// bump is what makes that true of a stateless bearer token.
-    /// </summary>
-    public void Deactivate()
-    {
-        Status = AccountStatus.Deactivated;
-        SecurityStamp = Guid.NewGuid();
-    }
-```
-
-- [ ] **Step 5: Add the factory and mutators to `MeteringPoint` and `Brp`**
-
-In `src/Core/PeakPower.Domain/Customers/MeteringPoint.cs`, make the properties
-`{ get; private set; }` and add:
-
-```csharp
-    private MeteringPoint()
-    {
-    }
-
-    public static MeteringPoint Attach(
-        Guid customerId,
-        EanCode ean,
-        Guid brpId,
-        ProductionExpectation productionExpectation,
-        ProductionExpectationSource? expectationSource,
-        string? name,
-        string? description,
-        string? gridOperator,
-        decimal? capacityKw,
-        Address? address,
-        DateOnly validFrom)
-    {
-        // [F01-R51] — a metering point without a balance responsible party cannot be settled.
-        if (brpId == Guid.Empty)
-        {
-            throw new ArgumentException("A balance responsible party is required.", nameof(brpId));
-        }
-
-        return new MeteringPoint
-        {
-            Id = Guid.NewGuid(),
-            CustomerId = customerId,
-            Ean = ean,
-            Commodity = Commodity.Electricity,   // gas is not a selectable value in slice 1
-            BrpId = brpId,
-            ProductionExpectation = productionExpectation,
-            ExpectationSource = expectationSource,
-            Name = Trimmed(name),
-            Description = Trimmed(description),
-            GridOperator = Trimmed(gridOperator),
-            CapacityKw = capacityKw,
-            Address = address,
-            ValidFrom = validFrom,
-            ValidTo = null,
-        };
-    }
-
-    public void UpdateDetails(
-        Guid brpId,
-        ProductionExpectation productionExpectation,
-        ProductionExpectationSource? expectationSource,
-        string? name,
-        string? description,
-        string? gridOperator,
-        decimal? capacityKw,
-        Address? address)
-    {
-        if (brpId == Guid.Empty)
-        {
-            throw new ArgumentException("A balance responsible party is required.", nameof(brpId));
-        }
-
-        BrpId = brpId;
-        ProductionExpectation = productionExpectation;
-        ExpectationSource = expectationSource;
-        Name = Trimmed(name);
-        Description = Trimmed(description);
-        GridOperator = Trimmed(gridOperator);
-        CapacityKw = capacityKw;
-        Address = address;
-    }
-
-    /// <summary>
-    /// Closes the validity period. The period is half-open <c>[ValidFrom, ValidTo)</c>, so
-    /// <paramref name="validTo"/> is the first day the connection no longer belongs to this
-    /// customer — which is what lets the same EAN move to another customer on that day without
-    /// tripping the database's exclusion constraint.
-    /// </summary>
-    public Result<MeteringPoint> EndDate(DateOnly validTo)
-    {
-        if (validTo <= ValidFrom)
-        {
-            return Result<MeteringPoint>.Failure(
-                $"The end date must be after the start date {ValidFrom:yyyy-MM-dd}.");
-        }
-
-        ValidTo = validTo;
-        return Result<MeteringPoint>.Success(this);
-    }
-
-    private static string? Trimmed(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-```
-
-In `src/Core/PeakPower.Domain/Metering/Brp.cs`, make the properties `{ get; private set; }` and
-add:
-
-```csharp
-    private Brp()
-    {
-        Code = null!;
-        Name = null!;
-    }
-
-    public static Brp Create(string code, string name)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(code);
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-
-        return new Brp
-        {
-            Id = Guid.NewGuid(),
-            Code = code.Trim().ToUpperInvariant(),
-            Name = name.Trim(),
-        };
-    }
-```
-
-- [ ] **Step 6: Run the domain tests and watch them pass**
-
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Domain.Tests --filter "FullyQualifiedName~AggregateFactoryTests"`
-Expected: PASS — 9 tests.
-
-- [ ] **Step 7: Run the row-level-security tests deferred from Task 4**
-
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~RowLevelSecurityTests"`
-Expected: PASS — 5 tests. This is the point where migration 2 is proven end to end.
-
-- [ ] **Step 8: Commit**
-
-```bash
-cd /Users/thinhhuynh/PeakPower/peakpower-platform
-git add src/Core/PeakPower.Domain tests/PeakPower.Domain.Tests
-git commit -m "feat(domain): add aggregate factories and mutators, bumping the security stamp on account changes"
-```
-
----
-### Task 11: `PeakPower.Contracts` — the employee DTOs
+### Task 10: `PeakPower.Contracts` — the employee DTOs
 
 The wire types. They are separate from the domain on purpose: the domain has value objects
 (`EanCode`, `KvkNumber`) and behaviour, and the wire has strings and no behaviour. Keeping them
 apart is what lets the OpenAPI document be stable while the aggregates change shape.
 
 `PeakPower.Contracts` references **nothing** — not the domain, not EF Core. Mapping lives in the
-API host (Task 12), which is allowed to know about both.
+API host (Task 11), which is allowed to know about both.
 
 **Files:**
-- Create: `src/Core/PeakPower.Contracts/Common/PagedResult.cs`
 - Create: `src/Core/PeakPower.Contracts/Employee/AddressDto.cs`
 - Create: `src/Core/PeakPower.Contracts/Employee/CustomerDtos.cs`
 - Create: `src/Core/PeakPower.Contracts/Employee/AccountDtos.cs`
@@ -3592,7 +3380,14 @@ API host (Task 12), which is allowed to know about both.
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: every type below, all in namespace `PeakPower.Contracts.Employee` except `PagedResult<T>` in `PeakPower.Contracts.Common`.
+- Produces: every type below, all in namespace `PeakPower.Contracts.Employee`.
+
+> **The list envelope is `CustomerListResponse`, not a generic `PagedResult<T>`.** Plan 4's
+> employee portal binds `CustomerListResponse { items, total }` and `CustomerListItemDto` by name
+> out of the generated OpenAPI client, and a generic envelope reaches that client as
+> `PagedResultOfCustomerSummaryDto` — a name nobody chose and nobody can rely on. The list page
+> also renders an account count and a city per row, so both are on the row type. `page` and
+> `pageSize` stay query parameters; the response carries the rows and the total only.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3600,7 +3395,6 @@ Create `tests/PeakPower.Domain.Tests/Contracts/ContractPurityTests.cs`:
 
 ```csharp
 using FluentAssertions;
-using PeakPower.Contracts.Common;
 using PeakPower.Contracts.Employee;
 using Xunit;
 
@@ -3611,7 +3405,7 @@ public sealed class ContractPurityTests
     [Fact]
     public void the_contracts_assembly_references_no_other_peakpower_assembly()
     {
-        var references = typeof(CustomerSummaryDto).Assembly
+        var references = typeof(CustomerListItemDto).Assembly
             .GetReferencedAssemblies()
             .Select(name => name.Name!)
             .Where(name => name.StartsWith("PeakPower.", StringComparison.Ordinal))
@@ -3623,14 +3417,20 @@ public sealed class ContractPurityTests
     }
 
     [Fact]
-    public void a_paged_result_reports_the_page_it_came_from()
+    public void the_customer_list_carries_its_rows_and_the_total_across_every_page()
     {
-        var page = new PagedResult<string>(["a", "b"], Page: 2, PageSize: 25, Total: 51);
+        var response = new CustomerListResponse(
+            [new CustomerListItemDto(
+                Guid.NewGuid(), "Zonneweide Beheer B.V.", null, "81000001",
+                "ACTIVE", "Rotterdam", AccountCount: 3, MeteringPointCount: 7)],
+            Total: 51);
 
-        page.Items.Should().HaveCount(2);
-        page.Page.Should().Be(2);
-        page.PageSize.Should().Be(25);
-        page.Total.Should().Be(51);
+        response.Items.Should().ContainSingle();
+        response.Items[0].AccountCount.Should().Be(3);
+        response.Items[0].Status.Should().Be("ACTIVE",
+            "shared contract §5.2 — the wire spelling is the database spelling");
+        response.Total.Should().Be(51,
+            "the pager needs the total across every page, not just this one");
     }
 
     [Fact]
@@ -3662,21 +3462,9 @@ dotnet add tests/PeakPower.Domain.Tests/PeakPower.Domain.Tests.csproj reference 
 - [ ] **Step 2: Run the test and watch it fail**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Domain.Tests --filter "FullyQualifiedName~ContractPurityTests"`
-Expected: FAIL — `error CS0246: The type or namespace name 'CustomerSummaryDto' could not be found`.
+Expected: FAIL — `error CS0246: The type or namespace name 'CustomerListItemDto' could not be found`.
 
 - [ ] **Step 3: Write the DTOs**
-
-Create `src/Core/PeakPower.Contracts/Common/PagedResult.cs`:
-
-```csharp
-namespace PeakPower.Contracts.Common;
-
-/// <param name="Items">The page of results.</param>
-/// <param name="Page">1-based page number.</param>
-/// <param name="PageSize">Maximum items per page.</param>
-/// <param name="Total">Total matching items across every page.</param>
-public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int Total);
-```
 
 Create `src/Core/PeakPower.Contracts/Employee/AddressDto.cs`:
 
@@ -3702,14 +3490,24 @@ Create `src/Core/PeakPower.Contracts/Employee/CustomerDtos.cs`:
 namespace PeakPower.Contracts.Employee;
 
 /// <summary>One row in the back office's customer list.</summary>
-public sealed record CustomerSummaryDto(
+/// <param name="Status">The wire spelling of <c>CustomerStatus</c> — <c>PROSPECT</c>,
+/// <c>ACTIVE</c>, <c>SUSPENDED</c> or <c>CLOSED</c>.</param>
+/// <param name="City">The billing address's city, which is what the list column shows.</param>
+public sealed record CustomerListItemDto(
     Guid Id,
     string LegalName,
     string? TradeName,
     string KvkNumber,
     string Status,
     string City,
+    int AccountCount,
     int MeteringPointCount);
+
+/// <summary>
+/// The customer list. One page of rows plus the total across every page — enough for the pager.
+/// The page number and size are not echoed back: they were the caller's own query parameters.
+/// </summary>
+public sealed record CustomerListResponse(IReadOnlyList<CustomerListItemDto> Items, int Total);
 
 public sealed record CustomerDetailDto(
     Guid Id,
@@ -3856,7 +3654,9 @@ namespace PeakPower.Contracts.Employee;
 /// A balance responsible party — the party answerable to the grid operator for the imbalance on
 /// a connection. Platform reference data, shared by every customer <c>[F12-R49]</c>.
 /// </summary>
-public sealed record BrpDto(Guid Id, string Code, string Name);
+/// <param name="IsActive">Plan 4's reference-data screen renders active and retired parties
+/// differently, and filters the metering-point form's picker down to the active ones.</param>
+public sealed record BrpDto(Guid Id, string Code, string Name, bool IsActive);
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -3874,7 +3674,7 @@ git commit -m "feat(contracts): add the employee API request and response types"
 
 ---
 
-### Task 12: The employee host, problem details, and the BRP reference-data endpoint
+### Task 11: The employee host, problem details, and the BRP reference-data endpoint
 
 The smallest complete vertical through the employee API: a host that boots, connects on the
 employee login role, emits RFC 7807 for everything that goes wrong, and serves one endpoint.
@@ -3890,6 +3690,7 @@ in `pg_policies`. **Do not scope this API to a tenant.**
 **Files:**
 - Create: `src/Hosts/PeakPower.Api.Employee/PeakPower.Api.Employee.csproj`
 - Create: `src/Hosts/PeakPower.Api.Employee/Program.cs`
+- Create: `src/Hosts/PeakPower.Api.Employee/EmployeeApiEntryPoint.cs`
 - Create: `src/Hosts/PeakPower.Api.Employee/appsettings.json`
 - Create: `src/Hosts/PeakPower.Api.Employee/Mapping/EmployeeMappings.cs`
 - Create: `src/Hosts/PeakPower.Api.Employee/Endpoints/ReferenceDataEndpoints.cs`
@@ -3898,12 +3699,12 @@ in `pg_policies`. **Do not scope this API to a tenant.**
 - Test: `tests/PeakPower.Integration.Tests/Employee/ReferenceDataEndpointTests.cs`
 
 **Interfaces:**
-- Consumes: `UnscopedCustomerContext`, `HeaderEmployeeContext` (Task 1); `TenancyStartupGuard` (Task 2); `PeakPowerDbContext` (Task 3); `TenancyFixture` (Task 4); `AppRoleConnectionString` (Task 5); `ApiResults`, `ValidationFilterExtensions.Validate<T>()` (Task 6); `TenancyEndpointExtensions.BackOffice()` (Task 9); `Brp` (Task 10); `BrpDto`, `AddressDto`, `ContactPersonDto`, `AccountDto`, `MeteringPointDto` (Task 11).
+- Consumes: `UnscopedCustomerContext`, `HeaderEmployeeContext` (Task 1); `TenancyStartupGuard` (Task 2); `PeakPowerDbContext` (Task 3); `TenancyFixture` (Task 4); `AppRoleConnectionString` (Task 5); `ApiResults`, `ValidationFilterExtensions.Validate<T>()` (Task 6); `TenancyEndpointExtensions.BackOffice()` (Task 9); `EnumWireFormat` (Task 6); `Brp` (Plan 1); `BrpDto`, `AddressDto`, `ContactPersonDto`, `AccountDto`, `MeteringPointDto` (Task 10).
 - Produces:
-  - `public partial class Program` in `PeakPower.Api.Employee` — the entry point `WebApplicationFactory<Program>` needs
+  - `public sealed class EmployeeApiEntryPoint` in `PeakPower.Api.Employee` — the marker type `WebApplicationFactory<T>` is pointed at (shared contract §5.1; **no host declares `public partial class Program`**)
   - `public static class ReferenceDataEndpoints` — `IEndpointRouteBuilder MapReferenceDataEndpoints(this IEndpointRouteBuilder routes)`
-  - `public static class EmployeeMappings` — `AddressDto? ToDto(Address? address)`, `Address ToDomain(AddressDto dto)`, `ContactPersonDto ToDto(ContactPerson contact)`, `ContactPerson ToDomain(ContactPersonDto dto)`, `AccountDto ToDto(CustomerAccount account)`, `MeteringPointDto ToDto(MeteringPoint meteringPoint, string brpName)`, `CustomerSummaryDto ToSummary(Customer customer, int meteringPointCount)`, `CustomerDetailDto ToDetail(Customer customer, IReadOnlyList<AccountDto> accounts, IReadOnlyList<MeteringPointDto> meteringPoints)`
-  - `public sealed class EmployeeApiFactory : WebApplicationFactory<Program>` — `EmployeeApiFactory(string connectionString)`, `HttpClient CreateEmployeeClient()`
+  - `public static class EmployeeMappings` — `AddressDto? ToDto(Address? address)`, `Address ToDomain(AddressDto dto)`, `ContactPersonDto ToDto(ContactPerson contact)`, `ContactPerson ToDomain(ContactPersonDto dto)`, `AccountDto ToDto(CustomerAccount account)`, `MeteringPointDto ToDto(MeteringPoint meteringPoint, string brpName)`, `CustomerListItemDto ToListItem(Customer customer, int accountCount, int meteringPointCount)`, `CustomerDetailDto ToDetail(Customer customer, IReadOnlyList<AccountDto> accounts, IReadOnlyList<MeteringPointDto> meteringPoints)`
+  - `public sealed class EmployeeApiFactory : WebApplicationFactory<EmployeeApiEntryPoint>` — `EmployeeApiFactory(string connectionString)`, `HttpClient CreateEmployeeClient()`
 
 - [ ] **Step 1: Create the project**
 
@@ -3928,7 +3729,7 @@ Create `src/Hosts/PeakPower.Api.Employee/PeakPower.Api.Employee.csproj`:
   <ItemGroup>
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
-    <!-- Direct, because Task 15 catches PostgresException to turn the EAN exclusion
+    <!-- Direct, because Task 14 catches PostgresException to turn the EAN exclusion
          constraint into a 409 rather than a 500. -->
     <PackageReference Include="Npgsql" />
   </ItemGroup>
@@ -3972,6 +3773,7 @@ Create `tests/PeakPower.Integration.Tests/Employee/EmployeeApiFactory.cs`:
 ```csharp
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using PeakPower.Api.Employee;
 using PeakPower.Infrastructure.Web.Tenancy;
 
 namespace PeakPower.Integration.Tests.Employee;
@@ -3981,7 +3783,7 @@ namespace PeakPower.Integration.Tests.Employee;
 /// its own login role from configuration, so nothing here overrides tenancy — only the address
 /// of the database.
 /// </summary>
-public sealed class EmployeeApiFactory : WebApplicationFactory<Program>
+public sealed class EmployeeApiFactory : WebApplicationFactory<EmployeeApiEntryPoint>
 {
     private readonly string _ownerConnectionString;
 
@@ -4044,8 +3846,11 @@ public sealed class ReferenceDataEndpointTests : IAsyncLifetime
         var brps = await _client.GetFromJsonAsync<List<BrpDto>>("/api/v1/reference-data/brps");
 
         brps.Should().NotBeNull();
-        brps!.Should().ContainSingle(brp => brp.Code == "PVNED")
-            .Which.Name.Should().Be("PVNed B.V.");
+        var pvned = brps!.Should().ContainSingle(brp => brp.Code == "PVNED").Which;
+        pvned.Name.Should().Be("PVNed B.V.");
+        pvned.IsActive.Should().BeTrue(
+            "Plan 4's reference-data screen renders the flag and filters the metering-point " +
+            "form's picker on it, so it has to reach the wire");
     }
 
     [Fact]
@@ -4062,7 +3867,7 @@ public sealed class ReferenceDataEndpointTests : IAsyncLifetime
 - [ ] **Step 3: Run the tests and watch them fail**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~ReferenceDataEndpointTests"`
-Expected: FAIL — `error CS0246: The type or namespace name 'Program' could not be found`.
+Expected: FAIL — `error CS0246: The type or namespace name 'EmployeeApiEntryPoint' could not be found`.
 
 - [ ] **Step 4: Write the mapping and the reference-data endpoint**
 
@@ -4071,6 +3876,7 @@ Create `src/Hosts/PeakPower.Api.Employee/Mapping/EmployeeMappings.cs`:
 ```csharp
 using PeakPower.Contracts.Employee;
 using PeakPower.Domain.Customers;
+using PeakPower.Infrastructure.Web.Http;
 
 namespace PeakPower.Api.Employee.Mapping;
 
@@ -4081,6 +3887,13 @@ namespace PeakPower.Api.Employee.Mapping;
 /// value converters, and a <c>Select</c> that reaches inside a converted property does not
 /// translate to SQL. Slice 1's page sizes are small, so materialising the entity and mapping
 /// here is both simpler and correct.
+/// </para>
+/// <para>
+/// Every enum leaves through <see cref="EnumWireFormat.ToWire"/>, never through
+/// <c>ToString()</c>. Shared contract §5.2: the wire spelling is the database spelling, so an
+/// account is <c>PENDING_APPROVAL</c> and not <c>PendingApproval</c>. One <c>ToString()</c> here
+/// is all it takes for the employee API and the customer API to start disagreeing about the same
+/// value, and for Plan 4's label maps to fall through to the raw string.
 /// </para>
 /// </summary>
 public static class EmployeeMappings
@@ -4103,7 +3916,8 @@ public static class EmployeeMappings
 
     public static AccountDto ToDto(CustomerAccount account) =>
         new(account.Id, account.CustomerId, account.Username, account.FirstName, account.LastName,
-            account.JobTitle, account.Email, account.Phone, account.Status.ToString(),
+            account.JobTitle, account.Email, account.Phone,
+            EnumWireFormat.ToWire(account.Status),
             account.IsAdmin, account.LastLoginAt);
 
     public static MeteringPointDto ToDto(MeteringPoint meteringPoint, string brpName) =>
@@ -4111,11 +3925,11 @@ public static class EmployeeMappings
             meteringPoint.CustomerId,
             meteringPoint.Ean.Value,
             meteringPoint.Ean.ToDisplayString(),
-            meteringPoint.Commodity.ToString(),
+            EnumWireFormat.ToWire(meteringPoint.Commodity),
             meteringPoint.BrpId,
             brpName,
-            meteringPoint.ProductionExpectation.ToString(),
-            meteringPoint.ExpectationSource?.ToString(),
+            EnumWireFormat.ToWire(meteringPoint.ProductionExpectation),
+            meteringPoint.ExpectationSource is { } source ? EnumWireFormat.ToWire(source) : null,
             meteringPoint.Name,
             meteringPoint.Description,
             meteringPoint.DisplayLabel,
@@ -4125,9 +3939,11 @@ public static class EmployeeMappings
             meteringPoint.ValidFrom,
             meteringPoint.ValidTo);
 
-    public static CustomerSummaryDto ToSummary(Customer customer, int meteringPointCount) =>
+    public static CustomerListItemDto ToListItem(
+        Customer customer, int accountCount, int meteringPointCount) =>
         new(customer.Id, customer.LegalName, customer.TradeName, customer.KvkNumber.Value,
-            customer.Status.ToString(), customer.BillingAddress.City, meteringPointCount);
+            EnumWireFormat.ToWire(customer.Status), customer.BillingAddress.City,
+            accountCount, meteringPointCount);
 
     public static CustomerDetailDto ToDetail(
         Customer customer,
@@ -4138,7 +3954,7 @@ public static class EmployeeMappings
             customer.TradeName,
             customer.KvkNumber.Value,
             customer.VatNumber,
-            customer.Status.ToString(),
+            EnumWireFormat.ToWire(customer.Status),
             customer.FourEyesEnabled,
             ToDto(customer.BillingAddress)!,
             ToDto(customer.VisitingAddress),
@@ -4171,7 +3987,7 @@ public static class ReferenceDataEndpoints
                 var brps = await db.Brps
                     .AsNoTracking()
                     .OrderBy(brp => brp.Name)
-                    .Select(brp => new BrpDto(brp.Id, brp.Code, brp.Name))
+                    .Select(brp => new BrpDto(brp.Id, brp.Code, brp.Name, brp.IsActive))
                     .ToListAsync(cancellationToken);
 
                 return Results.Ok(brps);
@@ -4193,8 +4009,10 @@ Create `src/Hosts/PeakPower.Api.Employee/Program.cs`:
 ```csharp
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using PeakPower.Api.Employee;
 using PeakPower.Api.Employee.Endpoints;
 using PeakPower.Application.Abstractions;
+using PeakPower.Infrastructure.Web.Http;
 using PeakPower.Infrastructure.Web.Tenancy;
 using PeakPower.Persistence;
 
@@ -4236,9 +4054,16 @@ builder.Services.AddDbContext<PeakPowerDbContext>(options => options
     .UseNpgsql(connectionString)
     .UseSnakeCaseNamingConvention());
 
+// Shared contract §5.2 — one converter, the database spelling, in both APIs. Every DTO in
+// PeakPower.Contracts carries `string` because that assembly references nothing, so the mappers
+// call EnumWireFormat.ToWire directly; this registration keeps any enum-typed property that
+// appears later on exactly the same spelling instead of quietly reverting to PascalCase.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(EnumWireFormat.Converter));
+
 // RFC 7807 for every failure, including the ones the framework raises.
 builder.Services.AddProblemDetails();
-builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: true);
+builder.Services.AddValidatorsFromAssemblyContaining<EmployeeApiEntryPoint>(includeInternalTypes: true);
 builder.Services.AddOpenApi("employee");
 
 // [F13-R31] — refuse to boot a development identity provider in Production.
@@ -4257,10 +4082,23 @@ app.MapReferenceDataEndpoints();
 
 app.Run();
 
+```
+
+Create `src/Hosts/PeakPower.Api.Employee/EmployeeApiEntryPoint.cs`:
+
+```csharp
+namespace PeakPower.Api.Employee;
+
 /// <summary>
-/// Exposed so WebApplicationFactory&lt;Program&gt; can boot this host in integration tests.
+/// The type <c>WebApplicationFactory&lt;T&gt;</c> is pointed at, so the integration-test
+/// assembly can boot this host. It is a named marker rather than the usual
+/// <c>public partial class Program</c> because that assembly references both API hosts, and two
+/// global-namespace <c>Program</c> types make a bare <c>WebApplicationFactory&lt;Program&gt;</c>
+/// ambiguous (CS0104). Shared contract §5.1: no host declares <c>public partial class Program</c>.
+/// It lives in its own file because <c>Program.cs</c> uses top-level statements, which may not be
+/// followed by a file-scoped namespace declaration.
 /// </summary>
-public partial class Program;
+public sealed class EmployeeApiEntryPoint;
 ```
 
 - [ ] **Step 6: Run the tests and watch them pass**
@@ -4278,7 +4116,7 @@ git commit -m "feat(employee-api): add the host, problem details and the BRP ref
 ```
 
 ---
-### Task 13: Customer endpoints — list, detail, create, edit
+### Task 12: Customer endpoints — list, detail, create, edit
 
 `[F01-R01]`…`[F01-R07]`. Four endpoints, one FluentValidation validator per request body.
 
@@ -4288,9 +4126,10 @@ Two details worth stating, because both look like mistakes if you have not seen 
   term is an exact KvK match; anything else is a case-insensitive `ILIKE` over the legal and trade
   names. Searching a value-converted property with `ILIKE` does not translate to SQL, and
   branching is both faster and clearer than forcing it.
-- **The metering-point counts are a second query.** Counting inside the list projection would
-  produce a correlated subquery per row; one grouped count over the page's identifiers is one
-  round trip.
+- **The per-row counts are two more queries, not two correlated subqueries.** The list shows an
+  account count and a connection count per row `[F01-R01]`. Counting inside the projection would
+  produce a correlated subquery per row per count; one grouped count over the page's identifiers
+  is one round trip each.
 
 **Files:**
 - Create: `src/Hosts/PeakPower.Api.Employee/Endpoints/CustomerEndpoints.cs`
@@ -4299,7 +4138,7 @@ Two details worth stating, because both look like mistakes if you have not seen 
 - Test: `tests/PeakPower.Integration.Tests/Employee/CustomerEndpointTests.cs`
 
 **Interfaces:**
-- Consumes: `ApiResults` and `Validate<T>()` (Task 6); `BackOffice()` (Task 9); `Customer.Create`, `Customer.UpdateDetails`, `Customer.ChangeStatus` (Task 10); `CustomerSummaryDto`, `CustomerDetailDto`, `CreateCustomerRequest`, `UpdateCustomerRequest`, `PagedResult<T>` (Task 11); `EmployeeMappings` (Task 12).
+- Consumes: `ApiResults`, `Validate<T>()` and `EnumWireFormat` (Task 6); `BackOffice()` (Task 9); `Customer.Create`, `Customer.UpdateDetails`, `Customer.ChangeStatus` (Plan 1, shared contract §5.1 — all three return `Result<T>`); `CustomerListItemDto`, `CustomerListResponse`, `CustomerDetailDto`, `CreateCustomerRequest`, `UpdateCustomerRequest` (Task 10); `EmployeeMappings` (Task 11).
 - Produces:
   - `public static class CustomerEndpoints` — `IEndpointRouteBuilder MapCustomerEndpoints(this IEndpointRouteBuilder routes)`
   - routes `GET /api/v1/customers`, `POST /api/v1/customers`, `GET /api/v1/customers/{id:guid}`, `PATCH /api/v1/customers/{id:guid}`
@@ -4316,7 +4155,6 @@ Create `tests/PeakPower.Integration.Tests/Employee/CustomerEndpointTests.cs`:
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
-using PeakPower.Contracts.Common;
 using PeakPower.Contracts.Employee;
 using PeakPower.Integration.Tests.Tenancy;
 using Xunit;
@@ -4354,30 +4192,34 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
     [Fact]
     public async Task the_list_shows_every_customer_because_the_back_office_is_not_tenant_scoped()
     {
-        var page = await _client.GetFromJsonAsync<PagedResult<CustomerSummaryDto>>("/api/v1/customers");
+        var list = await _client.GetFromJsonAsync<CustomerListResponse>("/api/v1/customers");
 
-        page.Should().NotBeNull();
-        page!.Items.Select(customer => customer.Id)
+        list.Should().NotBeNull();
+        list!.Items.Select(customer => customer.Id)
             .Should().Contain([_fixture.CompanyAId, _fixture.CompanyBId]);
+        list.Total.Should().BeGreaterThanOrEqualTo(2, "the total spans every page, not this one");
     }
 
     [Fact]
     public async Task the_list_can_be_searched_by_name()
     {
-        var page = await _client.GetFromJsonAsync<PagedResult<CustomerSummaryDto>>(
+        var list = await _client.GetFromJsonAsync<CustomerListResponse>(
             "/api/v1/customers?q=windkracht");
 
-        page!.Items.Should().ContainSingle()
-            .Which.Id.Should().Be(_fixture.CompanyBId);
+        var row = list!.Items.Should().ContainSingle().Which;
+        row.Id.Should().Be(_fixture.CompanyBId);
+        row.City.Should().Be("Rotterdam");
+        row.AccountCount.Should().Be(1, "company B was seeded with one account");
+        row.MeteringPointCount.Should().Be(1);
     }
 
     [Fact]
     public async Task the_list_can_be_searched_by_kvk_number()
     {
-        var page = await _client.GetFromJsonAsync<PagedResult<CustomerSummaryDto>>(
+        var list = await _client.GetFromJsonAsync<CustomerListResponse>(
             "/api/v1/customers?q=81000001");
 
-        page!.Items.Should().ContainSingle()
+        list!.Items.Should().ContainSingle()
             .Which.Id.Should().Be(_fixture.CompanyAId);
     }
 
@@ -4414,7 +4256,8 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await response.Content.ReadFromJsonAsync<CustomerDetailDto>();
-        created!.Status.Should().Be("Prospect");
+        created!.Status.Should().Be("PROSPECT",
+            "shared contract §5.2 — the wire spelling is the database spelling");
         created.KvkNumber.Should().Be("81000003");
         response.Headers.Location!.ToString().Should().EndWith(created.Id.ToString());
     }
@@ -4443,7 +4286,7 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
 
         var update = new UpdateCustomerRequest(
             "Duinwind Holding B.V.", "Duinwind", "NL810000045B01",
-            AnyAddress, AnyAddress, AnyContact, "CRM-9002", "nl-NL", "Active");
+            AnyAddress, AnyAddress, AnyContact, "CRM-9002", "nl-NL", "ACTIVE");
 
         using var response = await _client.PatchAsJsonAsync($"/api/v1/customers/{created!.Id}", update);
 
@@ -4451,7 +4294,7 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
         var updated = await response.Content.ReadFromJsonAsync<CustomerDetailDto>();
         updated!.LegalName.Should().Be("Duinwind Holding B.V.");
         updated.KvkNumber.Should().Be("81000004");
-        updated.Status.Should().Be("Active");
+        updated.Status.Should().Be("ACTIVE");
     }
 }
 ```
@@ -4469,6 +4312,8 @@ Create `src/Hosts/PeakPower.Api.Employee/Validation/CustomerValidators.cs`:
 ```csharp
 using FluentValidation;
 using PeakPower.Contracts.Employee;
+using PeakPower.Domain.Customers;
+using PeakPower.Infrastructure.Web.Http;
 
 namespace PeakPower.Api.Employee.Validation;
 
@@ -4524,8 +4369,8 @@ public sealed class CreateCustomerRequestValidator : AbstractValidator<CreateCus
 
 public sealed class UpdateCustomerRequestValidator : AbstractValidator<UpdateCustomerRequest>
 {
-    private static readonly string[] AllowedStatuses =
-        ["Prospect", "Active", "Suspended", "Closed"];
+    // Shared contract §5.2 — the wire spelling, generated from the enum so the two cannot drift.
+    private static readonly string[] AllowedStatuses = EnumWireFormat.Names<CustomerStatus>();
 
     public UpdateCustomerRequestValidator()
     {
@@ -4553,7 +4398,6 @@ Create `src/Hosts/PeakPower.Api.Employee/Endpoints/CustomerEndpoints.cs`:
 ```csharp
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Api.Employee.Mapping;
-using PeakPower.Contracts.Common;
 using PeakPower.Contracts.Employee;
 using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
@@ -4574,7 +4418,7 @@ public static class CustomerEndpoints
         group.MapGet("/", ListAsync)
             .WithName("ListCustomers")
             .WithSummary("Lists customer companies, newest first. [F01-R01]")
-            .Produces<PagedResult<CustomerSummaryDto>>()
+            .Produces<CustomerListResponse>()
             .BackOffice("Back-office staff administer every customer company.");
 
         group.MapGet("/{id:guid}", DetailAsync)
@@ -4639,19 +4483,30 @@ public static class CustomerEndpoints
 
         var identifiers = customers.Select(customer => customer.Id).ToArray();
 
-        var counts = await db.MeteringPoints
+        var meteringPointCounts = await db.MeteringPoints
             .AsNoTracking()
             .Where(meteringPoint => identifiers.Contains(meteringPoint.CustomerId))
             .GroupBy(meteringPoint => meteringPoint.CustomerId)
             .Select(grouping => new { CustomerId = grouping.Key, Count = grouping.Count() })
             .ToDictionaryAsync(row => row.CustomerId, row => row.Count, cancellationToken);
 
+        var accountCounts = await db.CustomerAccounts
+            .AsNoTracking()
+            .Where(account => identifiers.Contains(account.CustomerId))
+            .GroupBy(account => account.CustomerId)
+            .Select(grouping => new { CustomerId = grouping.Key, Count = grouping.Count() })
+            .ToDictionaryAsync(row => row.CustomerId, row => row.Count, cancellationToken);
+
         var items = customers
-            .Select(customer => EmployeeMappings.ToSummary(
-                customer, counts.TryGetValue(customer.Id, out var count) ? count : 0))
+            .Select(customer => EmployeeMappings.ToListItem(
+                customer,
+                accountCounts.TryGetValue(customer.Id, out var accounts) ? accounts : 0,
+                meteringPointCounts.TryGetValue(customer.Id, out var points) ? points : 0))
             .ToArray();
 
-        return Results.Ok(new PagedResult<CustomerSummaryDto>(items, page, pageSize, total));
+        // `page` and `pageSize` were the caller's own query parameters, so the envelope carries
+        // the rows and the total across every page and nothing else.
+        return Results.Ok(new CustomerListResponse(items, total));
     }
 
     private static async Task<IResult> DetailAsync(
@@ -4684,7 +4539,10 @@ public static class CustomerEndpoints
                 $"A customer with KvK number {request.KvkNumber} is already registered.");
         }
 
-        var customer = Customer.Create(
+        // The aggregate returns Result<T> rather than throwing: a validation failure is a 400,
+        // not a 500. The boundary validator has already checked most of this, so a failure here
+        // is a rule the aggregate holds and the DTO validator does not.
+        var created = Customer.Create(
             request.LegalName,
             request.TradeName,
             kvk.Value,
@@ -4694,6 +4552,13 @@ public static class CustomerEndpoints
             EmployeeMappings.ToDomain(request.PrimaryContact),
             request.InternalReference,
             request.Locale);
+
+        if (!created.IsSuccess)
+        {
+            return ApiResults.InvalidRequest(nameof(request.LegalName), created.Error);
+        }
+
+        var customer = created.Value;
 
         db.Customers.Add(customer);
         await db.SaveChangesAsync(cancellationToken);
@@ -4716,7 +4581,7 @@ public static class CustomerEndpoints
             return ApiResults.NotFound();
         }
 
-        customer.UpdateDetails(
+        var updated = customer.UpdateDetails(
             request.LegalName,
             request.TradeName,
             request.VatNumber,
@@ -4726,7 +4591,21 @@ public static class CustomerEndpoints
             request.InternalReference,
             request.Locale);
 
-        customer.ChangeStatus(Enum.Parse<CustomerStatus>(request.Status));
+        if (!updated.IsSuccess)
+        {
+            return ApiResults.InvalidRequest(nameof(request.LegalName), updated.Error);
+        }
+
+        // The mutator is ChangeStatus, not SetStatus, and the request carries the wire spelling,
+        // so this parse goes through EnumWireFormat rather than Enum.Parse. The validator has
+        // already rejected anything that is not one of the four.
+        var statusChanged = customer.ChangeStatus(
+            EnumWireFormat.Parse<CustomerStatus>(request.Status));
+
+        if (!statusChanged.IsSuccess)
+        {
+            return ApiResults.InvalidRequest(nameof(request.Status), statusChanged.Error);
+        }
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -4798,9 +4677,16 @@ git commit -m "feat(employee-api): add customer list, detail, create and edit en
 ```
 
 ---
-### Task 14: Account endpoints — create, edit, deactivate
+### Task 13: Account endpoints — create, edit, deactivate
 
 `[F01-R10]`…`[F01-R17]`. An account is one person's login inside a customer company.
+
+**Every edit and every deactivation bumps the account's `SecurityStamp`.** `[F01-R16]` says a
+change to an account revokes its sessions *immediately*, and design §7 chose the stamp claim to
+make that true against a stateless JWT that Plan 5 will not re-check for another fifteen minutes.
+`Deactivate()` bumps on its own; shared contract §5.1 gives `UpdateProfile` no implicit bump, so
+the edit endpoint calls `BumpSecurityStamp()` itself. Forget it and an employee's revocation of an
+admin flag silently does nothing until the token expires.
 
 The username is unique **platform-wide**, not per customer, and it is immutable. That is why the
 uniqueness check queries `db.CustomerAccounts` with no customer predicate — and why it works: this
@@ -4815,7 +4701,7 @@ return a false "available" and then fail on the database's unique index.
 - Test: `tests/PeakPower.Integration.Tests/Employee/AccountEndpointTests.cs`
 
 **Interfaces:**
-- Consumes: `ApiResults`, `Validate<T>()` (Task 6); `BackOffice()` (Task 9); `CustomerAccount.Create`, `UpdateProfile`, `Deactivate` (Task 10); `AccountDto`, `CreateAccountRequest`, `UpdateAccountRequest` (Task 11); `EmployeeMappings.ToDto(CustomerAccount)` (Task 12).
+- Consumes: `ApiResults`, `Validate<T>()` (Task 6); `BackOffice()` (Task 9); `CustomerAccount.Create`, `UpdateProfile`, `Deactivate` (Plan 1, shared contract §5.1 — all three return `Result<T>`, and `Create` takes the initial `AccountStatus`); `AccountDto`, `CreateAccountRequest`, `UpdateAccountRequest` (Task 10); `EmployeeMappings.ToDto(CustomerAccount)` (Task 11).
 - Produces:
   - `public static class AccountEndpoints` — `IEndpointRouteBuilder MapAccountEndpoints(this IEndpointRouteBuilder routes)`
   - routes `POST /api/v1/customers/{customerId:guid}/accounts`, `PATCH /api/v1/accounts/{id:guid}`, `POST /api/v1/accounts/{id:guid}/deactivate`
@@ -4876,7 +4762,8 @@ public sealed class AccountEndpointTests : IAsyncLifetime
     {
         var account = await CreateAccountAsync("n.vos");
 
-        account.Status.Should().Be("Invited");
+        account.Status.Should().Be("INVITED",
+            "shared contract §5.2 — the wire spelling is the database spelling");
         account.CustomerId.Should().Be(_fixture.CompanyAId);
         account.Username.Should().Be("n.vos");
     }
@@ -4952,7 +4839,7 @@ public sealed class AccountEndpointTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var deactivated = await response.Content.ReadFromJsonAsync<AccountDto>();
-        deactivated!.Status.Should().Be("Deactivated");
+        deactivated!.Status.Should().Be("DEACTIVATED");
 
         await using var afterDb = _fixture.OwnerContext();
         var after = await afterDb.CustomerAccounts
@@ -5115,7 +5002,10 @@ public static class AccountEndpoints
             return ApiResults.Conflict($"The username {request.Username} is already in use.");
         }
 
-        var account = CustomerAccount.Create(
+        // AccountStatus is a parameter of the factory, not a decision the factory makes: Plan 5
+        // creates accounts in other states from the onboarding flow. An account an employee
+        // invites has no credential yet, so it starts Invited. [F01-R10]
+        var created = CustomerAccount.Create(
             customerId,
             request.Username,
             request.FirstName,
@@ -5123,7 +5013,15 @@ public static class AccountEndpoints
             request.JobTitle,
             request.Email,
             request.Phone,
+            AccountStatus.Invited,
             request.IsAdmin);
+
+        if (!created.IsSuccess)
+        {
+            return ApiResults.InvalidRequest(nameof(request.Username), created.Error);
+        }
+
+        var account = created.Value;
 
         db.CustomerAccounts.Add(account);
         await db.SaveChangesAsync(cancellationToken);
@@ -5146,13 +5044,25 @@ public static class AccountEndpoints
             return ApiResults.NotFound();
         }
 
-        account.UpdateProfile(
+        var updated = account.UpdateProfile(
             request.FirstName,
             request.LastName,
             request.JobTitle,
             request.Email,
             request.Phone,
             request.IsAdmin);
+
+        if (!updated.IsSuccess)
+        {
+            return ApiResults.InvalidRequest(nameof(request.Email), updated.Error);
+        }
+
+        // [F01-R16] — an edit must take effect on the account's next call, not in fifteen
+        // minutes. Against a stateless bearer token the stamp is what makes that true, and
+        // shared contract §5.1 gives UpdateProfile no implicit bump: Deactivate and SetPassword
+        // bump, everything else asks. `IsAdmin` in particular is an authorisation change and a
+        // live token must not outlive it.
+        account.BumpSecurityStamp();
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -5172,7 +5082,14 @@ public static class AccountEndpoints
             return ApiResults.NotFound();
         }
 
-        account.Deactivate();
+        var deactivated = account.Deactivate();
+        if (!deactivated.IsSuccess)
+        {
+            // Deactivating an already-deactivated account is the only way this fails, and the
+            // caller asked for a state the account is already in — that is a conflict, not a 500.
+            return ApiResults.Conflict(deactivated.Error);
+        }
+
         await db.SaveChangesAsync(cancellationToken);
 
         return Results.Ok(EmployeeMappings.ToDto(account));
@@ -5203,7 +5120,7 @@ git commit -m "feat(employee-api): add account create, edit and deactivate endpo
 
 ---
 
-### Task 15: Metering point endpoints — attach, edit, end-date
+### Task 14: Metering point endpoints — attach, edit, end-date
 
 `[F01-R23]`…`[F01-R27]`. Attaching a connection to a customer, editing it, and closing its
 validity period.
@@ -5223,7 +5140,7 @@ the argument, and a second check in C# would race.
 - Test: `tests/PeakPower.Integration.Tests/Employee/MeteringPointEndpointTests.cs`
 
 **Interfaces:**
-- Consumes: `ApiResults`, `Validate<T>()` (Task 6); `BackOffice()` (Task 9); `MeteringPoint.Attach`, `UpdateDetails`, `EndDate`, `EanCode.Create` (Task 10); `MeteringPointDto`, `AttachMeteringPointRequest`, `UpdateMeteringPointRequest`, `EndDateMeteringPointRequest` (Task 11); `EmployeeMappings.ToDto(MeteringPoint, string)` (Task 12).
+- Consumes: `ApiResults`, `Validate<T>()` and `EnumWireFormat` (Task 6); `BackOffice()` (Task 9); `MeteringPoint.Attach`, `UpdateDetails`, `Rename`, `EndDate`, `EanCode.Create` (Plan 1, shared contract §5.1 — all return `Result<T>`); `MeteringPointDto`, `AttachMeteringPointRequest`, `UpdateMeteringPointRequest`, `EndDateMeteringPointRequest` (Task 10); `EmployeeMappings.ToDto(MeteringPoint, string)` (Task 11).
 - Produces:
   - `public static class MeteringPointEndpoints` — `IEndpointRouteBuilder MapMeteringPointEndpoints(this IEndpointRouteBuilder routes)`
   - routes `POST /api/v1/customers/{customerId:guid}/metering-points`, `PATCH /api/v1/metering-points/{id:guid}`, `POST /api/v1/metering-points/{id:guid}/end-date`
@@ -5268,7 +5185,7 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
     }
 
     private AttachMeteringPointRequest Attach(string ean, DateOnly validFrom) =>
-        new(ean, _fixture.BrpId, "Unknown", null, null, null, "Stedin", 250m, null, validFrom);
+        new(ean, _fixture.BrpId, "UNKNOWN", null, null, null, "Stedin", 250m, null, validFrom);
 
     [Fact]
     public async Task attaching_a_connection_returns_it_with_a_grouped_ean_and_a_brp_name()
@@ -5282,7 +5199,8 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
         created!.Ean.Should().Be("871687110000000301");
         created.EanDisplay.Should().NotBe(created.Ean, "[F01-R31] the EAN is grouped for reading");
         created.BrpName.Should().Be("PVNed B.V.");
-        created.Commodity.Should().Be("Electricity");
+        created.Commodity.Should().Be("ELECTRICITY",
+            "shared contract §5.2 — the wire spelling is the database spelling");
         created.ValidTo.Should().BeNull();
         created.DisplayLabel.Should().Be(created.EanDisplay, "[F01-R30] there is no friendly name yet");
     }
@@ -5349,7 +5267,7 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
         var meteringPoint = await created.Content.ReadFromJsonAsync<MeteringPointDto>();
 
         var update = new UpdateMeteringPointRequest(
-            _fixture.BrpId, "Expected", "Contract", "Dakinstallatie noord",
+            _fixture.BrpId, "EXPECTED", "CONTRACT", "Dakinstallatie noord",
             "Zonnepanelen op het noorddak", "Stedin", 300m, null);
 
         using var response = await _client.PatchAsJsonAsync(
@@ -5359,8 +5277,8 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
         var updated = await response.Content.ReadFromJsonAsync<MeteringPointDto>();
         updated!.Name.Should().Be("Dakinstallatie noord");
         updated.DisplayLabel.Should().Be("Dakinstallatie noord", "[F01-R30]");
-        updated.ProductionExpectation.Should().Be("Expected");
-        updated.ExpectationSource.Should().Be("Contract");
+        updated.ProductionExpectation.Should().Be("EXPECTED");
+        updated.ExpectationSource.Should().Be("CONTRACT");
         updated.CapacityKw.Should().Be(300m);
     }
 
@@ -5373,7 +5291,7 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
         var meteringPoint = await created.Content.ReadFromJsonAsync<MeteringPointDto>();
 
         var update = new UpdateMeteringPointRequest(
-            _fixture.BrpId, "Unknown", null, new string('x', 81), null, null, null, null);
+            _fixture.BrpId, "UNKNOWN", null, new string('x', 81), null, null, null, null);
 
         using var response = await _client.PatchAsJsonAsync(
             $"/api/v1/metering-points/{meteringPoint!.Id}", update);
@@ -5420,15 +5338,21 @@ Create `src/Hosts/PeakPower.Api.Employee/Validation/MeteringPointValidators.cs`:
 ```csharp
 using FluentValidation;
 using PeakPower.Contracts.Employee;
+using PeakPower.Domain.Customers;
+using PeakPower.Infrastructure.Web.Http;
 
 namespace PeakPower.Api.Employee.Validation;
 
 internal static class MeteringPointRules
 {
-    internal static readonly string[] Expectations = ["Unknown", "Never", "Expected"];
+    // Generated from the enums in the wire spelling, so the accepted values, the error message
+    // and what the mappers emit are one list. Shared contract §5.2: UNKNOWN, NEVER, EXPECTED and
+    // CONTRACT, GRID_OPERATOR, OBSERVED, MANUAL, CUSTOMER_DECLARED.
+    internal static readonly string[] Expectations =
+        EnumWireFormat.Names<ProductionExpectation>();
 
     internal static readonly string[] ExpectationSources =
-        ["Contract", "GridOperator", "Observed", "Manual", "CustomerDeclared"];
+        EnumWireFormat.Names<ProductionExpectationSource>();
 }
 
 public sealed class AttachMeteringPointRequestValidator : AbstractValidator<AttachMeteringPointRequest>
@@ -5580,20 +5504,31 @@ public static class MeteringPointEndpoints
                 nameof(request.BrpId), "No balance responsible party has that identifier.");
         }
 
-        var meteringPoint = MeteringPoint.Attach(
+        // The factory is Attach, not Create — [F01-R23] is "attach a connection to a customer".
+        // Commodity is not a parameter: [DEC-68] makes ELECTRICITY the only value, so the
+        // aggregate sets it. The request carries the wire spelling of both enums, so the parse
+        // goes through EnumWireFormat; the validator has already rejected anything unknown.
+        var attached = MeteringPoint.Attach(
             customerId,
             ean.Value,
             request.BrpId,
-            Enum.Parse<ProductionExpectation>(request.ProductionExpectation),
+            EnumWireFormat.Parse<ProductionExpectation>(request.ProductionExpectation),
             request.ExpectationSource is null
                 ? null
-                : Enum.Parse<ProductionExpectationSource>(request.ExpectationSource),
+                : EnumWireFormat.Parse<ProductionExpectationSource>(request.ExpectationSource),
             request.Name,
             request.Description,
             request.GridOperator,
             request.CapacityKw,
             request.Address is null ? null : EmployeeMappings.ToDomain(request.Address),
             request.ValidFrom);
+
+        if (!attached.IsSuccess)
+        {
+            return ApiResults.InvalidRequest(nameof(request.ValidFrom), attached.Error);
+        }
+
+        var meteringPoint = attached.Value;
 
         db.MeteringPoints.Add(meteringPoint);
 
@@ -5641,17 +5576,32 @@ public static class MeteringPointEndpoints
                 nameof(request.BrpId), "No balance responsible party has that identifier.");
         }
 
-        meteringPoint.UpdateDetails(
+        // Two mutators, one request body. Shared contract §5.1 splits the aggregate's edit into
+        // UpdateDetails, which carries the settlement facts, and Rename, which carries the two
+        // human-facing strings and owns the 80/500 limits [F01-R29]. PATCH accepts both at once,
+        // so the endpoint calls both and returns on the first failure. Nothing is persisted
+        // unless both succeed: SaveChangesAsync is below them, so a rejected rename leaves the
+        // tracked entity dirty but the row untouched, and the request is a 400.
+        var detailsUpdated = meteringPoint.UpdateDetails(
             request.BrpId,
-            Enum.Parse<ProductionExpectation>(request.ProductionExpectation),
+            EnumWireFormat.Parse<ProductionExpectation>(request.ProductionExpectation),
             request.ExpectationSource is null
                 ? null
-                : Enum.Parse<ProductionExpectationSource>(request.ExpectationSource),
-            request.Name,
-            request.Description,
+                : EnumWireFormat.Parse<ProductionExpectationSource>(request.ExpectationSource),
             request.GridOperator,
             request.CapacityKw,
             request.Address is null ? null : EmployeeMappings.ToDomain(request.Address));
+
+        if (!detailsUpdated.IsSuccess)
+        {
+            return ApiResults.InvalidRequest(nameof(request.BrpId), detailsUpdated.Error);
+        }
+
+        var renamed = meteringPoint.Rename(request.Name, request.Description);
+        if (!renamed.IsSuccess)
+        {
+            return ApiResults.InvalidRequest(nameof(request.Name), renamed.Error);
+        }
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -5719,7 +5669,7 @@ git commit -m "feat(employee-api): add metering point attach, edit and end-date 
 ```
 
 ---
-### Task 16: The employee API route-table gate
+### Task 15: The employee API route-table gate
 
 Point the Task 9 harness at the real employee host. Two things get proved:
 
@@ -5734,7 +5684,7 @@ Point the Task 9 harness at the real employee host. Two things get proved:
 - Test: `tests/PeakPower.Integration.Tests/Employee/EmployeeRouteTableTests.cs`
 
 **Interfaces:**
-- Consumes: `RouteTable.Enumerate` (Task 9); `EmployeeApiFactory` (Task 12); `TenancyFixture` (Task 4).
+- Consumes: `RouteTable.Enumerate` (Task 9); `EmployeeApiFactory` (Task 11); `TenancyFixture` (Task 4).
 - Produces: nothing consumed by later tasks. Plans 5 and 6 add one more class of this shape per host.
 
 - [ ] **Step 1: Write the failing test**
@@ -5744,7 +5694,6 @@ Create `tests/PeakPower.Integration.Tests/Employee/EmployeeRouteTableTests.cs`:
 ```csharp
 using System.Net.Http.Json;
 using FluentAssertions;
-using PeakPower.Contracts.Common;
 using PeakPower.Contracts.Employee;
 using PeakPower.Infrastructure.Web.Tenancy;
 using PeakPower.Integration.Tests.Tenancy;
@@ -5811,10 +5760,10 @@ public sealed class EmployeeRouteTableTests : IAsyncLifetime
     [Fact]
     public async Task an_employee_sees_the_objects_of_every_customer()
     {
-        var page = await _client.GetFromJsonAsync<PagedResult<CustomerSummaryDto>>(
+        var list = await _client.GetFromJsonAsync<CustomerListResponse>(
             "/api/v1/customers?pageSize=100");
 
-        page!.Items.Select(customer => customer.Id)
+        list!.Items.Select(customer => customer.Id)
             .Should().Contain([_fixture.CompanyAId, _fixture.CompanyBId],
                 "back-office staff administer every customer company; scoping this API to one " +
                 "tenant would break it");
@@ -5837,7 +5786,7 @@ public sealed class EmployeeRouteTableTests : IAsyncLifetime
 - [ ] **Step 2: Run the tests and watch them fail**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~EmployeeRouteTableTests"`
-Expected: FAIL if any endpoint mapped in Tasks 12–15 is missing its `.BackOffice(...)` call, with
+Expected: FAIL if any endpoint mapped in Tasks 11–14 is missing its `.BackOffice(...)` call, with
 the offending `METHOD /route` printed. If all four endpoint modules were written as specified,
 these pass first time — in which case go to Step 3 and confirm the gate actually bites.
 
@@ -5866,7 +5815,7 @@ git commit -m "test(employee-api): gate every endpoint on a tenancy declaration"
 
 ---
 
-### Task 17: OpenAPI emitted at build, and the contract snapshot
+### Task 16: OpenAPI emitted at build, and the contract snapshot
 
 Two separate things, both needed:
 
@@ -5887,7 +5836,7 @@ Two separate things, both needed:
 - Modify: `.gitignore`
 
 **Interfaces:**
-- Consumes: the employee host and all its endpoints (Tasks 12–15).
+- Consumes: the employee host and all its endpoints (Tasks 11–14).
 - Produces:
   - `artifacts/openapi/employee.json` — consumed by Plan 4's `npm run generate:clients`
   - `internal static class RepositoryRoot` — `public static string Find()`
@@ -6101,7 +6050,7 @@ git commit -m "feat(employee-api): emit employee.json at build and freeze it beh
 
 ---
 
-### Task 18: Wire the employee API into the AppHost
+### Task 17: Wire the employee API into the AppHost
 
 The last piece: `./dev-up` must bring the employee API up behind the migrator. `WaitForCompletion`
 rather than `WaitFor` — the migrator is a job that runs to exit, not a service that stays up, and
@@ -6113,7 +6062,7 @@ an API that starts before migration 2 has applied would connect as a role that d
 - Test: `tests/PeakPower.Integration.Tests/Hosting/AppHostWiringTests.cs`
 
 **Interfaces:**
-- Consumes: Plan 1's AppHost with resources `postgres`, the `peakpower` database and `migrator`; the employee host (Task 12).
+- Consumes: Plan 1's AppHost with resources `postgres`, the `peakpower` database and `migrator`; the employee host (Task 11).
 - Produces: an Aspire resource named `employee-api`. Plan 4's employee portal reads its address through `PEAKPOWER_EMPLOYEE_API` (added there, not here).
 
 - [ ] **Step 1: Write the failing test**
@@ -6270,9 +6219,9 @@ Read this before starting Plan 5 or Plan 6.
 
 | Plan | What it must do with this plan's work |
 | --- | --- |
-| 4 · Employee portal | Generate `@peakpower/api-client-employee` from `artifacts/openapi/employee.json`. Send `X-PeakPower-Employee-Id` on every request until back-office authentication exists. |
+| 4 · Employee portal | Generate `@peakpower/api-client-employee` from `artifacts/openapi/employee.json`. Send `X-PeakPower-Employee-Id` on every request until back-office authentication exists. The customer list is `CustomerListResponse { items, total }` over `CustomerListItemDto`, whose rows carry `city`, `accountCount` and `meteringPointCount`; every enum on the wire is the database spelling (`ACTIVE`, `PENDING_APPROVAL`, `CUSTOMER_DECLARED`), so build label maps on those literals and never on PascalCase. `BrpDto` carries `isActive` and no EAN — the aggregate has none. `UpdateCustomerRequest` takes `status` and omits `kvkNumber`, and no request on this API carries a bank account: bank details belong to Plan 5's onboarding. The two nested POSTs are `/customers/{customerId}/accounts` and `/customers/{customerId}/metering-points`. |
 | 5 · Auth & onboarding | Put the token-backed `ICustomerContext` in **`PeakPower.Infrastructure.Web`**, not in `PeakPower.Api.Customer` — architecture fact 6 forbids reading `customer_id` anywhere else, and Task 8 enforces it. Register it in place of `DevelopmentCustomerContext` outside Development. Connect `PeakPower.Api.Customer` as **`peakpower_app`** with `Tenancy:DatabaseRole`, call `app.UseTenantScope()`, and add the `security_stamp` comparison inside the transaction that middleware already opens. Revisit `customer.refresh_token`, `customer.password_reset_token` and `customer.onboarding_application`, which migration 2 deliberately left without a policy because all three are read before the caller's customer is known. |
-| 6 · Customer portal | Every new customer endpoint calls `.TenantScoped(kind)`, and every mutating one gets an entry in `TenancyFixture.SampleBodies`. Add `CustomerApiRouteTableTests` pointing `RouteTable.Enumerate` at `WebApplicationFactory<Program>` for the customer host — the harness is already written. Any new customer-owned entity needs a `HasQueryFilter` (Task 3's model test catches it) **and** a policy pair in a new migration (nothing catches that automatically; add the table to `RowLevelSecurityTests`). |
+| 6 · Customer portal | Every new customer endpoint calls `.TenantScoped(kind)`, and every mutating one gets an entry in `TenancyFixture.SampleBodies`. Add `CustomerApiRouteTableTests` running **both** arms of the harness — `every_registered_endpoint_declares_its_tenancy` and the cross-tenant 404 arm — against `WebApplicationFactory<CustomerApiEntryPoint>`; the harness is already written, and until something points it at the customer host that host's tenancy rests on hand-written per-endpoint tests, which is the decaying list design §6 rejected. Register `EnumWireFormat.Converter` on that host too, and map its enums with `EnumWireFormat.ToWire` so the two APIs cannot disagree about one value. Any new customer-owned entity needs a `HasQueryFilter` (Task 3's model test catches it) **and** a policy pair in a new migration (nothing catches that automatically; add the table to `RowLevelSecurityTests`). |
 
 ---
 
@@ -6290,22 +6239,30 @@ Read this before starting Plan 5 or Plan 6.
    `app.customer_id` set, **zero** rows with it unset, cannot read another company's row by
    primary key, and is refused by SQLSTATE 42501 when it tries to insert a row for another
    company. `peakpower_employee` sees both companies.
-6. `TenancyArchitectureTests` passes — no `IgnoreQueryFilters()`, no 403, no `HttpContext`
-   dependency and no customer-identifier literal outside `PeakPower.Infrastructure.Web` — and each
-   of the three has been watched to fail once against a deliberate violation.
+6. `TenancyArchitectureTests` passes — no `IgnoreQueryFilters()`, no 403, and outside
+   `PeakPower.Infrastructure.Web` no `HttpContext` dependency, no claim read off a
+   `ClaimsPrincipal` or `ClaimsIdentity`, and no customer-identifier literal — and the
+   `IgnoreQueryFilters()`, 403 and literal bans have each been watched to fail once against a
+   deliberate violation.
 7. `QueryFilterModelTests` passes: every entity type with a `CustomerId` has a global query filter,
    and `Brp` does not.
 8. `TenancyStartupGuardTests` passes: a host with `DevelopmentCustomerContext` or
    `HeaderEmployeeContext` registered refuses to boot in Production `[F13-R31]`.
-9. The employee API serves all nine paths listed in Task 17 Step 2, returns
+9. The employee API serves all nine paths listed in Task 16 Step 2, returns
    `application/problem+json` for every failure, and **is not tenant-scoped**:
    `an_employee_sees_the_objects_of_every_customer` passes.
 10. Attaching an EAN whose validity period overlaps an existing one returns 409, and attaching it
     from the first day after the previous period was end-dated returns 201 `[F01-R26]`.
 11. Editing or deactivating an account changes its `security_stamp` `[F01-R16]`.
-12. `./dev-up` brings up postgres → migrator → employee-api, with the employee API waiting for the
+12. Every enum on the wire is the database spelling: `EnumWireFormatTests` passes, and in
+    `artifacts/openapi/employee.json` `grep -o '"PENDING_APPROVAL"'` finds a match while
+    `grep -o '"PendingApproval"'` finds none.
+13. `GET /api/v1/customers` returns `CustomerListResponse { items, total }` whose rows carry
+    `city`, `accountCount` and `meteringPointCount`, and `GET /api/v1/reference-data/brps`
+    returns `isActive` on every row — the fields Plan 4 binds by name.
+14. `./dev-up` brings up postgres → migrator → employee-api, with the employee API waiting for the
     migrator to complete, and `GET /api/v1/reference-data/brps` returns the PVNed row in a browser.
-13. Every commit in this plan is on the branch, and `git status` is clean.
+15. Every commit in this plan is on the branch, and `git status` is clean.
 
 ---
 
@@ -6409,6 +6366,17 @@ public static class ValidationFilterExtensions
     public static RouteHandlerBuilder Validate<TRequest>(this RouteHandlerBuilder builder)
         where TRequest : class;
 }
+
+/// The one enum wire spelling both APIs use — shared contract §5.2.
+public static class EnumWireFormat
+{
+    public static readonly JsonNamingPolicy Naming;          // JsonNamingPolicy.SnakeCaseUpper
+    public static readonly JsonStringEnumConverter Converter;
+    public static string ToWire<TEnum>(TEnum value) where TEnum : struct, Enum;
+    public static bool TryParse<TEnum>(string? wire, out TEnum value) where TEnum : struct, Enum;
+    public static TEnum Parse<TEnum>(string wire) where TEnum : struct, Enum;
+    public static string[] Names<TEnum>() where TEnum : struct, Enum;
+}
 ```
 
 ### Persistence
@@ -6430,54 +6398,7 @@ Migration `TenancyRowLevelSecurity` (migration 2) introduces, in the database:
 | `customer_customer_tenant_isolation`, `customer_customer_account_tenant_isolation`, `customer_metering_point_tenant_isolation`, `wallet_wallet_tenant_isolation` | RLS policies |
 | `customer_customer_back_office`, `customer_customer_account_back_office`, `customer_metering_point_back_office`, `wallet_wallet_back_office` | RLS policies |
 
-### Domain (added to Plan 1's aggregates)
-
-```csharp
-namespace PeakPower.Domain.Customers;
-
-public static Customer Customer.Create(string legalName, string? tradeName, KvkNumber kvkNumber,
-    string? vatNumber, Address billingAddress, Address? visitingAddress,
-    ContactPerson primaryContact, string? internalReference, string locale);
-public void Customer.UpdateDetails(string legalName, string? tradeName, string? vatNumber,
-    Address billingAddress, Address? visitingAddress, ContactPerson primaryContact,
-    string? internalReference, string locale);
-public void Customer.ChangeStatus(CustomerStatus status);
-
-public static CustomerAccount CustomerAccount.Create(Guid customerId, string username,
-    string firstName, string lastName, string? jobTitle, string email, string? phone, bool isAdmin);
-public void CustomerAccount.UpdateProfile(string firstName, string lastName, string? jobTitle,
-    string email, string? phone, bool isAdmin);        // bumps SecurityStamp
-public void CustomerAccount.Deactivate();               // bumps SecurityStamp
-
-public static MeteringPoint MeteringPoint.Attach(Guid customerId, EanCode ean, Guid brpId,
-    ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource,
-    string? name, string? description, string? gridOperator, decimal? capacityKw,
-    Address? address, DateOnly validFrom);
-public void MeteringPoint.UpdateDetails(Guid brpId, ProductionExpectation productionExpectation,
-    ProductionExpectationSource? expectationSource, string? name, string? description,
-    string? gridOperator, decimal? capacityKw, Address? address);
-public Result<MeteringPoint> MeteringPoint.EndDate(DateOnly validTo);
-```
-
-```csharp
-namespace PeakPower.Domain.Metering;
-
-// Assumed to exist from Plan 1; if it does not, create it here with this exact shape.
-public sealed class Brp
-{
-    public Guid Id { get; }
-    public string Code { get; }
-    public string Name { get; }
-    public static Brp Create(string code, string name);
-}
-```
-
 ### Contracts
-
-```csharp
-namespace PeakPower.Contracts.Common;
-public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int Total);
-```
 
 ```csharp
 namespace PeakPower.Contracts.Employee;
@@ -6486,8 +6407,9 @@ public sealed record AddressDto(string Street, string HouseNumber, string? House
     string PostalCode, string City, string Country);
 public sealed record ContactPersonDto(string Name, string Email, string? Phone);
 
-public sealed record CustomerSummaryDto(Guid Id, string LegalName, string? TradeName,
-    string KvkNumber, string Status, string City, int MeteringPointCount);
+public sealed record CustomerListItemDto(Guid Id, string LegalName, string? TradeName,
+    string KvkNumber, string Status, string City, int AccountCount, int MeteringPointCount);
+public sealed record CustomerListResponse(IReadOnlyList<CustomerListItemDto> Items, int Total);
 public sealed record CustomerDetailDto(Guid Id, string LegalName, string? TradeName,
     string KvkNumber, string? VatNumber, string Status, bool FourEyesEnabled,
     AddressDto BillingAddress, AddressDto? VisitingAddress, ContactPersonDto PrimaryContact,
@@ -6521,12 +6443,20 @@ public sealed record UpdateMeteringPointRequest(Guid BrpId, string ProductionExp
     decimal? CapacityKw, AddressDto? Address);
 public sealed record EndDateMeteringPointRequest(DateOnly ValidTo);
 
-public sealed record BrpDto(Guid Id, string Code, string Name);
+public sealed record BrpDto(Guid Id, string Code, string Name, bool IsActive);
 ```
+
+Every `string` above that carries an enum holds the **wire spelling**, which is the database
+spelling: `PROSPECT`, `PENDING_APPROVAL`, `ELECTRICITY`, `CUSTOMER_DECLARED`. Shared contract §5.2.
 
 ### Employee API
 
 ```csharp
+namespace PeakPower.Api.Employee;
+
+/// The type WebApplicationFactory<T> is pointed at. This host declares no `partial class Program`.
+public sealed class EmployeeApiEntryPoint;
+
 namespace PeakPower.Api.Employee.Endpoints;
 
 public static class ReferenceDataEndpoints
@@ -6539,7 +6469,7 @@ public static class MeteringPointEndpoints
 { public static IEndpointRouteBuilder MapMeteringPointEndpoints(this IEndpointRouteBuilder routes); }
 
 namespace PeakPower.Api.Employee.Mapping;
-public static class EmployeeMappings;   // ToDto / ToDomain / ToSummary / ToDetail
+public static class EmployeeMappings;   // ToDto / ToDomain / ToListItem / ToDetail
 
 namespace PeakPower.Api.Employee.Validation;
 public sealed class AddressDtoValidator, ContactPersonDtoValidator,
@@ -6575,7 +6505,7 @@ GET    /api/v1/reference-data/brps                       ListBalanceResponsibleP
 | `ConnectionStrings:peakpower` | the Aspire-supplied owning connection string |
 | `Tenancy:DatabaseRole` | the non-owner login role this host connects as |
 | `Tenancy:DatabasePassword` | that role's password (local-only in slice 1) |
-| Aspire resource `employee-api` | added to the AppHost in Task 18 |
+| Aspire resource `employee-api` | added to the AppHost in Task 17 |
 
 ### Test-only types
 

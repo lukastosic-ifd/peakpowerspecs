@@ -11,7 +11,8 @@ that every later slice-1 plan has a compiling, migrating, orchestrated platform 
 **Architecture:** A layered .NET 10 solution — `PeakPower.Domain` depends on nothing,
 `PeakPower.Application` depends only on `PeakPower.Domain`, and hosts reference infrastructure
 solely to register it in dependency injection at the composition root. Those three rules are
-enforced from week one by six executable architecture facts rather than by convention.
+enforced from week one by executable architecture facts rather than by convention — four of the
+six here, and the two that need plan 2's query filters and context-provider assembly there.
 PostgreSQL is the source of truth for the hard invariants (an EAN may serve different customers
 over non-overlapping periods, and the database rejects overlaps), and .NET Aspire brings up
 Postgres, the migrator, the two API hosts and — once they exist — the two Angular front-ends
@@ -20,7 +21,7 @@ with a single `./dev-up` from either repository.
 **Tech Stack:** .NET SDK 10.0.400 · C# `latest` · EF Core 10.0.11 ·
 Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3 · EFCore.NamingConventions 10.0.1 ·
 PostgreSQL 17 · .NET Aspire 13.5.3 (`aspire.cli` global tool + `Aspire.AppHost.Sdk`) ·
-xUnit v3 3.2.2 · FluentAssertions 8.10.0 · NSubstitute 6.2.0 · NetArchTest.Rules 1.3.2 ·
+xUnit v3 3.2.2 · FluentAssertions 7.2.0 · NSubstitute 6.2.0 · NetArchTest.Rules 1.3.2 ·
 Mono.Cecil 0.11.6 · Testcontainers.PostgreSql 4.14.0 · Node 24.15.0 / npm 11.12.1 ·
 Docker 29.7.2
 
@@ -102,7 +103,13 @@ Hosts reference infrastructure solely to register it in DI at the composition ro
 3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter
 4. No type calls `IgnoreQueryFilters()`
 5. No type outside `PeakPower.Infrastructure.Time` uses `DateTime.Now` / `DateTime.UtcNow`
-6. No type outside the context-provider assembly reads a customer identifier from `HttpContext`
+6. No type outside `PeakPower.Infrastructure.Web` uses `IHttpContextAccessor` or reads a claim
+   off `ClaimsPrincipal` / `ClaimsIdentity`
+
+Contract §13 splits the ownership: **this plan writes facts 1, 2, 3 and 5; plan 2 writes facts 4
+and 6**, because neither the query filters fact 4 protects nor the context-provider assembly
+fact 6 fences exists until plan 2 lands. Plan 1 leaves plan 2 the `AssemblyProbe` those two
+facts scan with.
 
 ### Database
 
@@ -136,7 +143,7 @@ EXCLUDE USING gist (ean WITH =, validity WITH &&)
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + FluentAssertions (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** (+ NSubstitute for ports) — 7.x is pinned because 8.x is licensed for non-commercial use only; see the note in `Directory.Packages.props` |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
@@ -152,25 +159,32 @@ EXCLUDE USING gist (ean WITH =, validity WITH &&)
 
 ## Scope boundary for this plan
 
-This is **plan 1 of 6**. It builds the solution skeleton, the six architecture facts,
-`PeakPower.Domain`, `PeakPower.Persistence` with migration 1, `PeakPower.Migrator`,
-`PeakPower.ServiceDefaults`, the two empty API hosts, `PeakPower.AppHost`,
-`PeakPower.Infrastructure.Time`, and `dev-up` in both repositories.
+This is **plan 1 of 6**. It builds the solution skeleton, architecture facts 1, 2, 3 and 5,
+`PeakPower.Domain`, the `PeakPower.Application` ports, `PeakPower.Persistence` with migration 1,
+`PeakPower.Migrator`, `PeakPower.ServiceDefaults`, the two empty API hosts, `PeakPower.AppHost`,
+`PeakPower.Infrastructure.Time`, the three empty infrastructure projects contract §3.1 names
+(`Web`, `Identity`, `Email`), and `dev-up` in both repositories.
 
 It deliberately does **not** build: tenancy (`ICustomerContext`, query filters, RLS,
 404-not-403 — plan 2), any `/api/v1` endpoint (plan 2), authentication or onboarding (plan 5),
-or any Angular code (plans 3, 4, 6).
+architecture facts 4 and 6 (plan 2 owns both — contract §13 — because neither can be written
+before the query filters and the context-provider assembly exist), or any Angular code
+(plans 3, 4, 6).
 
-**Two deliberate departures from the design, both flagged for the consistency pass:**
+**Two places where this plan follows the shared contract rather than the design:**
 
-1. Design §4.2 lists nine source projects; contract §13 fact 5 names a tenth,
-   `PeakPower.Infrastructure.Time`. This plan builds all ten.
+1. Design §4.2's tree names thirteen source projects, four of them infrastructure projects the
+   design had left implicit. Contract §3.1 is the normative list and this plan builds every one
+   of them, plus the fifth test project `PeakPower.AppHost.Tests`. Three of the infrastructure
+   projects — `Web`, `Identity` and `Email` — are created empty here and filled by plans 2
+   and 5, because a project invented mid-plan gets invented in the wrong place.
 2. Design §5.1 puts nine tables in migration 1. This plan's migration 1 creates six —
    `customer.customer`, `customer.customer_account`, `customer.metering_point`,
    `metering.brp`, `wallet.wallet`, `audit.audit_record`. The three auth/onboarding tables
    (`customer.onboarding_application`, `customer.refresh_token`,
    `customer.password_reset_token`) belong to plan 5, which owns their column sets, and land in
-   **plan 5's migration**. Migrations are forward-only and additive `[design §5.2]`, so this
+   **migration 3** (contract §3.2; migration 2 is plan 2's row-level security). Migrations are
+   forward-only and additive `[design §5.2]`, so this
    costs nothing and avoids inventing a twenty-column onboarding table that plan 5 would
    immediately rewrite.
 
@@ -199,6 +213,7 @@ Assume no knowledge of Dutch energy trading. The words that appear below mean:
 | File | Responsibility |
 | --- | --- |
 | `.gitignore` | .NET build output, user secrets, IDE noise |
+| `docs/entra-tenant-access-request.md` | the week-1 non-code deliverable: owner, date, status |
 | `global.json` | pins SDK 10.0.400 |
 | `Directory.Build.props` | `net10.0`, nullable, warnings-as-errors, analyzers, one place |
 | `Directory.Packages.props` | every NuGet version, central package management |
@@ -207,7 +222,7 @@ Assume no knowledge of Dutch energy trading. The words that appear below mean:
 | `tools/dev-up.test.sh` | asserts `dev-up`'s loud failure when the web checkout is missing |
 | `tools/verify-repositories.sh` | asserts both repositories are git repos on `main` with no remotes |
 | `tools/verify-build-settings.sh` | asserts the solution-wide build settings and pinned versions |
-| `tools/verify-solution-layout.sh` | asserts the fifteen projects exist and the solution builds |
+| `tools/verify-solution-layout.sh` | asserts the eighteen projects exist and the solution builds |
 | `tools/verify-aspire-api.sh` | asserts the Aspire 13.5.3 API surface we depend on |
 | `tools/verify-migrator.sh` | runs the migrator host against a throwaway Postgres 17 |
 | `artifacts/openapi/.gitkeep` | where plan 2 emits `customer.json` and `employee.json` |
@@ -226,9 +241,15 @@ Assume no knowledge of Dutch energy trading. The words that appear below mean:
 | `src/Core/PeakPower.Domain/Auditing/AuditRecord.cs` | append-only actor + before/after |
 | `src/Core/PeakPower.Domain/AssemblyMarker.cs` | anchor for architecture tests |
 | `src/Core/PeakPower.Application/Abstractions/IMarketCalendar.cs` | the only source of "now" |
+| `src/Core/PeakPower.Application/Abstractions/IPasswordHasher.cs` | Argon2id port; plan 5 implements it |
+| `src/Core/PeakPower.Application/Abstractions/ITokenIssuer.cs` | token port plus the `AccessToken` record |
+| `src/Core/PeakPower.Application/Abstractions/IEmailSender.cs` | outbound mail port; plan 5 implements it |
 | `src/Core/PeakPower.Application/AssemblyMarker.cs` | anchor for architecture tests |
 | `src/Core/PeakPower.Contracts/AssemblyMarker.cs` | empty shell; plan 2 fills it with DTOs |
 | `src/Infrastructure/PeakPower.Infrastructure.Time/MarketCalendar.cs` | the only clock reader |
+| `src/Infrastructure/PeakPower.Infrastructure.Web/AssemblyMarker.cs` | the ONE context-provider assembly; plan 2 and plan 5 fill it |
+| `src/Infrastructure/PeakPower.Infrastructure.Identity/AssemblyMarker.cs` | Argon2id and the token issuer; plan 5 fills it |
+| `src/Infrastructure/PeakPower.Infrastructure.Email/AssemblyMarker.cs` | the console mail sink; plan 5 fills it |
 | `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs` | the one DbContext |
 | `src/Infrastructure/PeakPower.Persistence/DatabaseMigrator.cs` | applies migrations to completion |
 | `src/Infrastructure/PeakPower.Persistence/PersistenceServiceCollectionExtensions.cs` | one DI entry point |
@@ -287,9 +308,17 @@ referenced from the AppHost project file.
 Both target directories exist and are empty. This task makes them git repositories and gives
 each an ignore file. **No remote is added** — slice 1 is local-only `[design §11]`.
 
+It also carries the one non-code deliverable of week 1. Design §13 asks for the corporate Entra
+tenant access request to be raised in week 1 with a named owner, because it has the longest lead
+time in phase 1 and `[DEC-67]` forbids proving the claim mapping against a developer tenant —
+there is no substitute and no way to shorten it. Design §11 predicts exactly how it gets missed:
+*running locally is precisely the condition under which it gets forgotten.* Step 6 below is that
+request, and definition-of-done item 13 is the check that it was actually raised.
+
 **Files:**
 - Create: `/Users/thinhhuynh/PeakPower/peakpower-platform/.gitignore`
 - Create: `/Users/thinhhuynh/PeakPower/peakpower-web/.gitignore`
+- Create: `/Users/thinhhuynh/PeakPower/peakpower-platform/docs/entra-tenant-access-request.md`
 - Test: `/Users/thinhhuynh/PeakPower/peakpower-platform/tools/verify-repositories.sh`
 
 **Interfaces:**
@@ -436,6 +465,42 @@ git add .gitignore
 git commit -m "chore: initialise the web repository with an ignore file"
 ```
 
+- [ ] **Step 6: Raise the corporate Entra tenant access request — non-code, and today**
+
+No test precedes this one because there is nothing to assert about someone else's ticket queue.
+Raise the request **before** starting Task 2, not at the end of the slice: nothing in slice 1
+blocks on it, and that is precisely why it slips.
+
+**Owner: Thinh Huynh** (`thinh@kikker.nl`). Ask the corporate IT service desk for a service
+principal and app registration in the **corporate** Entra tenant, with permission to read the
+claims PeakPower's employee sign-in will map — not a developer tenant, which `[DEC-67]` rules
+out as evidence. Then record it, so the next person does not have to ask whether it was done:
+
+```bash
+mkdir -p /Users/thinhhuynh/PeakPower/peakpower-platform/docs
+cd /Users/thinhhuynh/PeakPower/peakpower-platform
+cat > docs/entra-tenant-access-request.md <<MD
+# Corporate Entra tenant access request
+
+Design §13's week-1 non-code deliverable. Longest lead time in phase 1; [DEC-67] forbids
+proving the claim mapping against a developer tenant, so nothing here can be simulated.
+
+- Owner: Thinh Huynh <thinh@kikker.nl>
+- Raised: $(date -I)
+- Asked of: corporate IT service desk
+- Asked for: app registration and service principal in the corporate Entra tenant, with the
+  claims the employee sign-in maps (\`oid\`, \`upn\`, group membership)
+- Needed by: the slice that puts employee sign-in behind Entra. Slice 1 stores
+  \`CustomerAccount.ExternalSubjectId\` as null and does not use it.
+- Status: raised, awaiting the tenant administrator
+
+Update the status line when it is granted. Until then this file is the answer to "did anyone
+actually ask?"
+MD
+git add docs/entra-tenant-access-request.md
+git commit -m "chore: record the corporate Entra tenant access request raised in week 1"
+```
+
 ---
 
 ### Task 2: Solution skeleton and build settings
@@ -499,9 +564,15 @@ for pinned in \
   'Include="Aspire.Hosting.AppHost" Version="13.5.3"' \
   'Include="Aspire.Hosting.JavaScript" Version="13.5.3"' \
   'Include="Testcontainers.PostgreSql" Version="4.14.0"' \
-  'Include="NetArchTest.Rules" Version="1.3.2"' ; do
+  'Include="NetArchTest.Rules" Version="1.3.2"' \
+  'Include="FluentAssertions" Version="7.2.0"' ; do
   grep -q "$pinned" "$packages" 2>/dev/null || fail "Directory.Packages.props is missing: $pinned"
 done
+
+# FluentAssertions 8.x is licensed for non-commercial use only. This is a licence check, not a
+# style preference, so it is asserted rather than left to a comment.
+grep -q 'Include="FluentAssertions" Version="8' "$packages" 2>/dev/null \
+  && fail "FluentAssertions 8.x is an Xceed non-commercial licence; pin 7.2.0"
 
 if [[ $failures -gt 0 ]]; then
   echo "verify-build-settings: $failures check(s) failed" >&2
@@ -611,7 +682,13 @@ cat > Directory.Packages.props <<'XML'
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageVersion Include="FluentAssertions" Version="8.10.0" />
+    <!--
+      Pinned to 7.x on purpose. FluentAssertions 8.x ships an Xceed Software Community License
+      Agreement "for Non-Commercial Use"; PeakPower is a commercial trading platform, so 8.x
+      would need a paid Xceed licence. 7.2.0 is the last Apache-2.0 release. Do not let
+      `dotnet outdated` walk this forward.  [shared contract section 13]
+    -->
+    <PackageVersion Include="FluentAssertions" Version="7.2.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
     <PackageVersion Include="Mono.Cecil" Version="0.11.6" />
@@ -666,7 +743,7 @@ git commit -m "build: add the solution, SDK pin and central package versions"
 
 ---
 
-### Task 3: The ten source projects, the five test projects, and the reference graph
+### Task 3: The thirteen source projects, the five test projects, and the reference graph
 
 Every project file is written by hand rather than generated from a template, because the
 templates shipped with SDK 10 differ from what this solution needs (`dotnet new xunit` still
@@ -676,17 +753,28 @@ The reference graph below **is** architecture facts 1 and 2 expressed in MSBuild
 them executable so they cannot decay.
 
 **Files:**
-- Create: fifteen `.csproj` files plus five `AssemblyMarker.cs` files (listed in Step 3)
+- Create: eighteen `.csproj` files plus eight `AssemblyMarker.cs` files (listed in Step 3)
 - Test: `/Users/thinhhuynh/PeakPower/peakpower-platform/tools/verify-solution-layout.sh`
+
+Shared contract §3.1 names five infrastructure projects — `Persistence`, `Time`, `Web`,
+`Identity` and `Email`. Three of them hold no code until a later plan fills them: plan 2 puts
+its context providers in `PeakPower.Infrastructure.Web`, and plan 5 puts the Argon2id hasher
+and the token issuer in `PeakPower.Infrastructure.Identity` and the console sink in
+`PeakPower.Infrastructure.Email`. They are created here anyway, for the same reason
+`PeakPower.Contracts` is: a project that has to be invented mid-plan gets invented in the wrong
+place, and `PeakPower.Infrastructure.Web` in particular is the assembly architecture fact 6
+fences.
 
 **Interfaces:**
 - Consumes: `Directory.Build.props`, `Directory.Packages.props`, `PeakPower.sln` from Task 2.
 - Produces:
   - `PeakPower.Domain.AssemblyMarker`, `PeakPower.Application.AssemblyMarker`,
     `PeakPower.Contracts.AssemblyMarker`, `PeakPower.Persistence.AssemblyMarker`,
-    `PeakPower.Infrastructure.Time.AssemblyMarker` — each `public sealed class AssemblyMarker;`,
+    `PeakPower.Infrastructure.Time.AssemblyMarker`, `PeakPower.Infrastructure.Web.AssemblyMarker`,
+    `PeakPower.Infrastructure.Identity.AssemblyMarker`,
+    `PeakPower.Infrastructure.Email.AssemblyMarker` — each `public sealed class AssemblyMarker;`,
     used by the architecture tests to obtain an `Assembly` without depending on a real type.
-  - Fifteen projects in `PeakPower.sln` with this reference graph:
+  - Eighteen projects in `PeakPower.sln` with this reference graph:
 
 | Project | References |
 | --- | --- |
@@ -695,9 +783,12 @@ them executable so they cannot decay.
 | `PeakPower.Contracts` | *(nothing)* |
 | `PeakPower.Persistence` | `PeakPower.Application` |
 | `PeakPower.Infrastructure.Time` | `PeakPower.Application` |
+| `PeakPower.Infrastructure.Web` | `PeakPower.Application` |
+| `PeakPower.Infrastructure.Identity` | `PeakPower.Application` |
+| `PeakPower.Infrastructure.Email` | `PeakPower.Application` |
 | `PeakPower.ServiceDefaults` | *(framework only)* |
-| `PeakPower.Api.Customer` | `Application`, `Contracts`, `Persistence`, `Infrastructure.Time`, `ServiceDefaults` |
-| `PeakPower.Api.Employee` | `Application`, `Contracts`, `Persistence`, `Infrastructure.Time`, `ServiceDefaults` |
+| `PeakPower.Api.Customer` | `Application`, `Contracts`, `Persistence`, `Infrastructure.Time`, `Infrastructure.Web`, `Infrastructure.Identity`, `Infrastructure.Email`, `ServiceDefaults` |
+| `PeakPower.Api.Employee` | `Application`, `Contracts`, `Persistence`, `Infrastructure.Time`, `Infrastructure.Web`, `ServiceDefaults` |
 | `PeakPower.Migrator` | `Persistence`, `ServiceDefaults` |
 | `PeakPower.AppHost` | `Api.Customer`, `Api.Employee`, `Migrator` |
 | `PeakPower.Domain.Tests` | `Domain` |
@@ -712,7 +803,7 @@ Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tools/verify-solution-lay
 
 ```bash
 #!/usr/bin/env bash
-# Asserts that the fifteen slice-1 projects are in the solution and that the whole thing builds.
+# Asserts that the eighteen slice-1 projects are in the solution and that the whole thing builds.
 set -uo pipefail
 
 root="/Users/thinhhuynh/PeakPower/peakpower-platform"
@@ -728,6 +819,9 @@ expected=(
   "src/Core/PeakPower.Contracts/PeakPower.Contracts.csproj"
   "src/Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj"
   "src/Infrastructure/PeakPower.Infrastructure.Time/PeakPower.Infrastructure.Time.csproj"
+  "src/Infrastructure/PeakPower.Infrastructure.Web/PeakPower.Infrastructure.Web.csproj"
+  "src/Infrastructure/PeakPower.Infrastructure.Identity/PeakPower.Infrastructure.Identity.csproj"
+  "src/Infrastructure/PeakPower.Infrastructure.Email/PeakPower.Infrastructure.Email.csproj"
   "src/Hosts/PeakPower.ServiceDefaults/PeakPower.ServiceDefaults.csproj"
   "src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj"
   "src/Hosts/PeakPower.Api.Employee/PeakPower.Api.Employee.csproj"
@@ -774,7 +868,7 @@ chmod +x /Users/thinhhuynh/PeakPower/peakpower-platform/tools/verify-solution-la
 
 Expected: FAIL with
 `FAIL: not in the solution: src/Core/PeakPower.Domain/PeakPower.Domain.csproj`
-(fifteen such lines, then the build failure).
+(eighteen such lines, then the build failure).
 
 - [ ] **Step 3: Write the minimal implementation**
 
@@ -783,6 +877,9 @@ cd /Users/thinhhuynh/PeakPower/peakpower-platform
 
 mkdir -p src/Core/PeakPower.Domain src/Core/PeakPower.Application src/Core/PeakPower.Contracts \
          src/Infrastructure/PeakPower.Persistence src/Infrastructure/PeakPower.Infrastructure.Time \
+         src/Infrastructure/PeakPower.Infrastructure.Web \
+         src/Infrastructure/PeakPower.Infrastructure.Identity \
+         src/Infrastructure/PeakPower.Infrastructure.Email \
          src/Hosts/PeakPower.ServiceDefaults src/Hosts/PeakPower.Api.Customer \
          src/Hosts/PeakPower.Api.Employee src/Hosts/PeakPower.Migrator src/Hosts/PeakPower.AppHost \
          tests/PeakPower.Domain.Tests tests/PeakPower.Application.Tests \
@@ -878,6 +975,70 @@ namespace PeakPower.Infrastructure.Time;
 public sealed class AssemblyMarker;
 CS
 
+cat > src/Infrastructure/PeakPower.Infrastructure.Web/PeakPower.Infrastructure.Web.csproj <<'XML'
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Shared contract section 6: the ONE context-provider assembly. Architecture fact 6 allow-lists
+    this assembly and no other, so every ICustomerContext and IEmployeeContext implementation
+    lives here - the development one plan 2 writes and the token-backed one plan 5 writes.
+    A provider inside an API host turns fact 6 red. It needs ASP.NET Core because reading the
+    request is the entire job.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Core/PeakPower.Application/PeakPower.Application.csproj" />
+  </ItemGroup>
+</Project>
+XML
+
+cat > src/Infrastructure/PeakPower.Infrastructure.Web/AssemblyMarker.cs <<'CS'
+namespace PeakPower.Infrastructure.Web;
+
+/// <summary>Anchor type so tests can obtain this assembly without depending on a real type.</summary>
+public sealed class AssemblyMarker;
+CS
+
+cat > src/Infrastructure/PeakPower.Infrastructure.Identity/PeakPower.Infrastructure.Identity.csproj <<'XML'
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Shared contract section 6: IPasswordHasher and ITokenIssuer are implemented here. Plan 5 adds
+    the Argon2id hasher and the ES256 token issuer, and the package references they need. Empty
+    but for its AssemblyMarker in plan 1.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../../Core/PeakPower.Application/PeakPower.Application.csproj" />
+  </ItemGroup>
+</Project>
+XML
+
+cat > src/Infrastructure/PeakPower.Infrastructure.Identity/AssemblyMarker.cs <<'CS'
+namespace PeakPower.Infrastructure.Identity;
+
+/// <summary>Anchor type so tests can obtain this assembly without depending on a real type.</summary>
+public sealed class AssemblyMarker;
+CS
+
+cat > src/Infrastructure/PeakPower.Infrastructure.Email/PeakPower.Infrastructure.Email.csproj <<'XML'
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Shared contract section 6: IEmailSender is implemented here, as a console sink in slice 1.
+    Plan 5 writes it. Empty but for its AssemblyMarker in plan 1.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../../Core/PeakPower.Application/PeakPower.Application.csproj" />
+  </ItemGroup>
+</Project>
+XML
+
+cat > src/Infrastructure/PeakPower.Infrastructure.Email/AssemblyMarker.cs <<'CS'
+namespace PeakPower.Infrastructure.Email;
+
+/// <summary>Anchor type so tests can obtain this assembly without depending on a real type.</summary>
+public sealed class AssemblyMarker;
+CS
+
 # ---------- Hosts ----------
 
 cat > src/Hosts/PeakPower.ServiceDefaults/PeakPower.ServiceDefaults.csproj <<'XML'
@@ -908,6 +1069,7 @@ cat > "src/Hosts/PeakPower.Api.$api/PeakPower.Api.$api.csproj" <<XML
     <ProjectReference Include="../../Core/PeakPower.Contracts/PeakPower.Contracts.csproj" />
     <ProjectReference Include="../../Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj" />
     <ProjectReference Include="../../Infrastructure/PeakPower.Infrastructure.Time/PeakPower.Infrastructure.Time.csproj" />
+    <ProjectReference Include="../../Infrastructure/PeakPower.Infrastructure.Web/PeakPower.Infrastructure.Web.csproj" />
     <ProjectReference Include="../PeakPower.ServiceDefaults/PeakPower.ServiceDefaults.csproj" />
   </ItemGroup>
 </Project>
@@ -937,6 +1099,24 @@ public sealed class ${api}ApiEntryPoint;
 CS
 done
 
+# The customer host is the only one that signs people in and sends them mail, so it is the only
+# one that composes the Identity and Email adapters. Keeping the ES256 signing key store out of
+# the employee host is the whole point of splitting them out.
+cat > src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj <<'XML'
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../../Core/PeakPower.Application/PeakPower.Application.csproj" />
+    <ProjectReference Include="../../Core/PeakPower.Contracts/PeakPower.Contracts.csproj" />
+    <ProjectReference Include="../../Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj" />
+    <ProjectReference Include="../../Infrastructure/PeakPower.Infrastructure.Time/PeakPower.Infrastructure.Time.csproj" />
+    <ProjectReference Include="../../Infrastructure/PeakPower.Infrastructure.Web/PeakPower.Infrastructure.Web.csproj" />
+    <ProjectReference Include="../../Infrastructure/PeakPower.Infrastructure.Identity/PeakPower.Infrastructure.Identity.csproj" />
+    <ProjectReference Include="../../Infrastructure/PeakPower.Infrastructure.Email/PeakPower.Infrastructure.Email.csproj" />
+    <ProjectReference Include="../PeakPower.ServiceDefaults/PeakPower.ServiceDefaults.csproj" />
+  </ItemGroup>
+</Project>
+XML
+
 cat > src/Hosts/PeakPower.Migrator/PeakPower.Migrator.csproj <<'XML'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -953,7 +1133,7 @@ cat > src/Hosts/PeakPower.Migrator/PeakPower.Migrator.csproj <<'XML'
 XML
 
 cat > src/Hosts/PeakPower.Migrator/Program.cs <<'CS'
-// Task 22 replaces this with the real migration runner.
+// Task 23 replaces this with the real migration runner.
 await Task.CompletedTask;
 CS
 
@@ -990,7 +1170,7 @@ cat > src/Hosts/PeakPower.AppHost/PeakPower.AppHost.csproj <<'XML'
 XML
 
 cat > src/Hosts/PeakPower.AppHost/Program.cs <<'CS'
-// Task 26 replaces this with the real Aspire resource graph.
+// Task 27 replaces this with the real Aspire resource graph.
 var builder = DistributedApplication.CreateBuilder(args);
 builder.Build().Run();
 CS
@@ -1065,6 +1245,9 @@ cat > tests/PeakPower.Architecture.Tests/PeakPower.Architecture.Tests.csproj <<'
     <ProjectReference Include="../../src/Core/PeakPower.Contracts/PeakPower.Contracts.csproj" />
     <ProjectReference Include="../../src/Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj" />
     <ProjectReference Include="../../src/Infrastructure/PeakPower.Infrastructure.Time/PeakPower.Infrastructure.Time.csproj" />
+    <ProjectReference Include="../../src/Infrastructure/PeakPower.Infrastructure.Web/PeakPower.Infrastructure.Web.csproj" />
+    <ProjectReference Include="../../src/Infrastructure/PeakPower.Infrastructure.Identity/PeakPower.Infrastructure.Identity.csproj" />
+    <ProjectReference Include="../../src/Infrastructure/PeakPower.Infrastructure.Email/PeakPower.Infrastructure.Email.csproj" />
     <ProjectReference Include="../../src/Hosts/PeakPower.ServiceDefaults/PeakPower.ServiceDefaults.csproj" />
     <ProjectReference Include="../../src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj" />
     <ProjectReference Include="../../src/Hosts/PeakPower.Api.Employee/PeakPower.Api.Employee.csproj" />
@@ -1103,6 +1286,9 @@ dotnet sln PeakPower.sln add \
   src/Core/PeakPower.Contracts/PeakPower.Contracts.csproj \
   src/Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj \
   src/Infrastructure/PeakPower.Infrastructure.Time/PeakPower.Infrastructure.Time.csproj \
+  src/Infrastructure/PeakPower.Infrastructure.Web/PeakPower.Infrastructure.Web.csproj \
+  src/Infrastructure/PeakPower.Infrastructure.Identity/PeakPower.Infrastructure.Identity.csproj \
+  src/Infrastructure/PeakPower.Infrastructure.Email/PeakPower.Infrastructure.Email.csproj \
   src/Hosts/PeakPower.ServiceDefaults/PeakPower.ServiceDefaults.csproj \
   src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj \
   src/Hosts/PeakPower.Api.Employee/PeakPower.Api.Employee.csproj \
@@ -1117,7 +1303,7 @@ dotnet sln PeakPower.sln add \
 
 Note: `PeakPower.ServiceDefaults` has no `Extensions.cs` yet, so `builder.AddServiceDefaults()`
 and `app.MapDefaultEndpoints()` in the two API `Program.cs` files will not compile. Add the
-stub below now so the solution builds; Task 23 replaces it with the real implementation.
+stub below now so the solution builds; Task 24 replaces it with the real implementation.
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-platform
@@ -1127,7 +1313,7 @@ using Microsoft.Extensions.Hosting;
 
 namespace PeakPower.ServiceDefaults;
 
-/// <summary>Cross-cutting host wiring. Task 23 fills these in with the real behaviour.</summary>
+/// <summary>Cross-cutting host wiring. Task 24 fills these in with the real behaviour.</summary>
 public static class Extensions
 {
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
@@ -1148,7 +1334,7 @@ Expected: PASS — prints `verify-solution-layout: OK`
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-platform
 git add PeakPower.sln src tests tools/verify-solution-layout.sh
-git commit -m "build: add the ten source projects, five test projects and the reference graph"
+git commit -m "build: add the thirteen source projects, five test projects and the reference graph"
 ```
 
 ---
@@ -1157,7 +1343,8 @@ git commit -m "build: add the ten source projects, five test projects and the re
 
 Shared contract §13 requires six executable architecture facts from week one. The design's own
 reason for writing them first is the right one: *without the test the seam closes again within
-two sprints, silently.* This task does facts 1 and 2 with NetArchTest; Task 5 does 3 to 6.
+two sprints, silently.* This task does facts 1 and 2 with NetArchTest; Task 5 does 3 and 5.
+Facts 4 and 6 are plan 2's, per contract §13's ownership table.
 
 **Files:**
 - Create: `tests/PeakPower.Architecture.Tests/ModuleGraphFacts.cs`
@@ -1321,18 +1508,20 @@ git commit -m "test: assert architecture facts 1 and 2, the module graph"
 
 ---
 
-### Task 5: Architecture facts 3 to 6 — the IL scan
+### Task 5: Architecture facts 3 and 5 — the IL scan
 
 Facts 3 to 6 are about what code *calls*, not what a project references, so NetArchTest's
 type-dependency model is the wrong instrument: `System.DateTime` is referenced legitimately
 everywhere, and only the `DateTime.UtcNow` **call** is forbidden. Mono.Cecil (which NetArchTest
-already carries) reads the actual IL instructions, so these four facts are exact.
+already carries) reads the actual IL instructions, so these facts are exact.
 
-Fact 6 says "reads a customer identifier from `HttpContext`". No IL scan can see intent, so it
-is enforced through its two mechanisms: `IHttpContextAccessor`, and claim reads off
-`ClaimsPrincipal` / `ClaimsIdentity`. Plan 2's HTTP-backed context providers must therefore live
-in namespace `PeakPower.Api.Customer.Tenancy` or `PeakPower.Api.Employee.Tenancy` — those two
-namespaces are the allow-list, and nothing else in the solution may touch either mechanism.
+This task writes the two of them plan 1 can write — 3 and 5 — plus the `AssemblyProbe` all four
+share. **Facts 4 and 6 belong to plan 2** (contract §13's ownership table): fact 4 forbids
+`IgnoreQueryFilters()`, which nothing can call until plan 2 installs the query filters, and
+fact 6 fences `PeakPower.Infrastructure.Web` — the ONE context-provider assembly, still empty
+at the end of this plan. Plan 2 adds both to `CallSiteFacts` using the probe below, and
+`PeakPower.Infrastructure.Web` is the single allow-listed assembly: contract §6 is explicit
+that no provider goes inside an API host.
 
 **Files:**
 - Create: `tests/PeakPower.Architecture.Tests/AssemblyProbe.cs`
@@ -1340,12 +1529,13 @@ namespaces are the allow-list, and nothing else in the solution may touch either
 - Test: the same files
 
 **Interfaces:**
-- Consumes: the nine source assemblies referenced by `PeakPower.Architecture.Tests` (Task 3).
+- Consumes: the twelve source assemblies referenced by `PeakPower.Architecture.Tests` (Task 3).
 - Produces: `PeakPower.Architecture.Tests.AssemblyProbe` with
   `IReadOnlyList<AssemblyDefinition> ProductionAssemblies()`,
   `IEnumerable<CallSite> CallSites(AssemblyDefinition assembly)` and
   `readonly record struct CallSite(string AssemblyName, string TypeFullName, string TypeNamespace, string MethodName, MethodReference Called)`.
-  Plan 2 adds facts to `CallSiteFacts` using the same probe.
+  Plan 2 adds facts 4 and 6 to `CallSiteFacts` using the same probe, fencing
+  `PeakPower.Infrastructure.Web`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1382,6 +1572,9 @@ public static class AssemblyProbe
         "PeakPower.Contracts.dll",
         "PeakPower.Persistence.dll",
         "PeakPower.Infrastructure.Time.dll",
+        "PeakPower.Infrastructure.Web.dll",
+        "PeakPower.Infrastructure.Identity.dll",
+        "PeakPower.Infrastructure.Email.dll",
         "PeakPower.ServiceDefaults.dll",
         "PeakPower.Api.Customer.dll",
         "PeakPower.Api.Employee.dll",
@@ -1476,19 +1669,13 @@ using Mono.Cecil;
 
 namespace PeakPower.Architecture.Tests;
 
-/// <summary>Shared contract section 13, facts 3 to 6.</summary>
+/// <summary>
+/// Shared contract section 13, facts 3 and 5. Facts 4 and 6 are plan 2's and land in this same
+/// class, against the same AssemblyProbe: fact 4 bans IgnoreQueryFilters() once the query
+/// filters exist, and fact 6 allow-lists exactly one assembly, PeakPower.Infrastructure.Web.
+/// </summary>
 public sealed class CallSiteFacts
 {
-    /// <summary>
-    /// The only namespaces allowed to read identity out of the request. Plan 2 puts its
-    /// HTTP-backed ICustomerContext / IEmployeeContext implementations here and nowhere else.
-    /// </summary>
-    private static readonly string[] ContextProviderNamespaces =
-    [
-        "PeakPower.Api.Customer.Tenancy",
-        "PeakPower.Api.Employee.Tenancy",
-    ];
-
     private static readonly string[] ClockDeclaringTypes =
     [
         "System.DateTime",
@@ -1523,20 +1710,6 @@ public sealed class CallSiteFacts
     }
 
     [Fact]
-    public void Fact_4_no_type_calls_IgnoreQueryFilters()
-    {
-        var offenders = AllCallSites()
-            .Where(site => site.Called.Name is "IgnoreQueryFilters")
-            .Select(site => site.ToString())
-            .ToArray();
-
-        offenders.Should().BeEmpty(
-            "IgnoreQueryFilters() defeats the tenancy query filter that plan 2 installs on every "
-            + "customer-owned entity. If a query genuinely needs to cross tenants it belongs in a "
-            + "different DbContext, not behind this call.");
-    }
-
-    [Fact]
     public void Fact_5_only_Infrastructure_Time_reads_the_system_clock()
     {
         var offenders = AllCallSites()
@@ -1549,39 +1722,6 @@ public sealed class CallSiteFacts
         offenders.Should().BeEmpty(
             "IMarketCalendar is the only source of \"now\". Anything else makes a test that depends "
             + "on the wall clock, and business days are Europe/Amsterdam, not the machine's zone.");
-    }
-
-    [Fact]
-    public void Fact_6_only_the_context_provider_namespaces_read_identity_from_the_request()
-    {
-        var offenders = AllCallSites()
-            .Where(site => !ContextProviderNamespaces.Contains(site.TypeNamespace, StringComparer.Ordinal))
-            .Where(ReadsIdentityOffTheRequest)
-            .Select(site => site.ToString())
-            .ToArray();
-
-        offenders.Should().BeEmpty(
-            "F13 business rule 2: reading a customer identifier from a route, query, body or header "
-            + "for authorisation is a defect. ICustomerContext is the single seam, and only "
-            + $"{string.Join(" or ", ContextProviderNamespaces)} may build it.");
-    }
-
-    private static bool ReadsIdentityOffTheRequest(CallSite site)
-    {
-        var declaringType = site.Called.DeclaringType.FullName;
-
-        if (declaringType is "Microsoft.AspNetCore.Http.IHttpContextAccessor")
-        {
-            return true;
-        }
-
-        if (site.Called.Name is "FindFirstValue")
-        {
-            return true;
-        }
-
-        return declaringType is "System.Security.Claims.ClaimsPrincipal" or "System.Security.Claims.ClaimsIdentity"
-            && site.Called.Name is "FindFirst" or "FindAll" or "get_Claims" or "HasClaim";
     }
 
     private static IEnumerable<CallSite> AllCallSites()
@@ -1602,7 +1742,8 @@ public sealed class CallSiteFacts
 
 - [ ] **Step 2: Run the test and watch it fail**
 
-Prove facts 4, 5 and 6 all bite by adding one deliberate violation of each:
+Prove fact 5 bites by adding one deliberate violation of it. Fact 3 has nothing to violate
+until `PeakPower.Ingestion` exists, which is why it reports as skipped rather than green.
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-platform
@@ -1614,24 +1755,11 @@ internal static class TemporaryViolation
     public static DateTime Clock() => DateTime.UtcNow;
 }
 CS
-cat > src/Hosts/PeakPower.Api.Employee/TemporaryViolation.cs <<'CS'
-using System.Security.Claims;
-
-namespace PeakPower.Api.Employee;
-
-internal static class TemporaryViolation
-{
-    public static string? CustomerId(ClaimsPrincipal principal) =>
-        principal.FindFirst("customer_id")?.Value;
-}
-CS
 dotnet test tests/PeakPower.Architecture.Tests --nologo
 ```
 
 Expected: FAIL — `Fact_5_only_Infrastructure_Time_reads_the_system_clock` fails with
-`Expected offenders to be empty, but found {"PeakPower.Application.TemporaryViolation.Clock -> System.DateTime System.DateTime::get_UtcNow()"}`,
-and `Fact_6_only_the_context_provider_namespaces_read_identity_from_the_request` fails with an
-offender in `PeakPower.Api.Employee.TemporaryViolation.CustomerId`.
+`Expected offenders to be empty, but found {"PeakPower.Application.TemporaryViolation.Clock -> System.DateTime System.DateTime::get_UtcNow()"}`.
 `Fact_3_ingestion_references_no_Brp_adapter` is reported as skipped.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -1639,13 +1767,12 @@ offender in `PeakPower.Api.Employee.TemporaryViolation.CustomerId`.
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-platform
 rm src/Core/PeakPower.Application/TemporaryViolation.cs
-rm src/Hosts/PeakPower.Api.Employee/TemporaryViolation.cs
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Architecture.Tests --nologo`
-Expected: PASS — 7 passed, 1 skipped, 0 failed
+Expected: PASS — 5 passed, 1 skipped, 0 failed
 
 - [ ] **Step 5: Commit**
 
@@ -1653,7 +1780,7 @@ Expected: PASS — 7 passed, 1 skipped, 0 failed
 cd /Users/thinhhuynh/PeakPower/peakpower-platform
 git add tests/PeakPower.Architecture.Tests/AssemblyProbe.cs \
         tests/PeakPower.Architecture.Tests/CallSiteFacts.cs
-git commit -m "test: assert architecture facts 3 to 6 against the compiled IL"
+git commit -m "test: assert architecture facts 3 and 5 against the compiled IL"
 ```
 
 ---
@@ -2333,7 +2460,7 @@ it: the **database spelling is normative**, and the domain-model document is wro
 places. The test below pins the exact members so the wrong spellings cannot creep back.
 
 `Address` and `ContactPerson` are immutable records stored as a single `jsonb` column each
-(Task 18 wires the conversion). Being records matters: EF Core's change tracker compares them
+(Task 19 wires the conversion). Being records matters: EF Core's change tracker compares them
 by value, so a record with the same field values is the same address.
 
 **Files:**
@@ -2482,7 +2609,7 @@ namespace PeakPower.Domain.Customers;
 /// <summary>
 /// Every enum in the slice-1 domain, in one file, because the database spelling of each is
 /// normative (shared contract section 4) and they must be read together to stay consistent.
-/// EF Core persists all of them as SCREAMING_SNAKE text through one convention (Task 17).
+/// EF Core persists all of them as SCREAMING_SNAKE text through one convention (Task 18).
 /// </summary>
 
 /// <summary>Lifecycle of a customer company. db: PROSPECT | ACTIVE | SUSPENDED | CLOSED</summary>
@@ -2632,7 +2759,7 @@ column.
 - Produces: `PeakPower.Domain.Customers.Customer` with the contract's properties plus
   - `static Result<Customer> Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)`
   - `Result<Customer> ChangeStatus(CustomerStatus status)`
-  - `Result<Customer> UpdateDetails(string legalName, string? tradeName, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference)`
+  - `Result<Customer> UpdateDetails(string legalName, string? tradeName, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2757,7 +2884,8 @@ public sealed class CustomerTests
         var newAddress = new Address("Prinsengracht", "263", "A", "1016 GV", "Amsterdam", "NL");
 
         var result = customer.UpdateDetails(
-            "Zonnedak Holding B.V.", null, "NL812345678B02", newAddress, null, PrimaryContact, "CRM-9911");
+            "Zonnedak Holding B.V.", null, "NL812345678B02", newAddress, null, PrimaryContact,
+            "CRM-9911", "nl-NL");
 
         result.IsSuccess.Should().BeTrue();
         customer.LegalName.Should().Be("Zonnedak Holding B.V.");
@@ -2773,7 +2901,7 @@ public sealed class CustomerTests
         var customer = AValidCustomer();
 
         var result = customer.UpdateDetails(
-            "  ", null, null, BillingAddress, null, PrimaryContact, null);
+            "  ", null, null, BillingAddress, null, PrimaryContact, null, "nl-NL");
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("Legal name is required.");
@@ -2885,7 +3013,8 @@ public sealed class Customer
         Address billingAddress,
         Address? visitingAddress,
         ContactPerson primaryContact,
-        string? internalReference)
+        string? internalReference,
+        string locale)
     {
         if (string.IsNullOrWhiteSpace(legalName))
         {
@@ -2899,6 +3028,7 @@ public sealed class Customer
         VisitingAddress = visitingAddress;
         PrimaryContact = primaryContact;
         InternalReference = Blank(internalReference);
+        Locale = string.IsNullOrWhiteSpace(locale) ? "nl-NL" : locale.Trim();
 
         return Result<Customer>.Success(this);
     }
@@ -2936,6 +3066,11 @@ column and the bump.
 `PasswordHash` is nullable because an account created by an employee has no credential until
 the person sets one, and because `[DEC-113]`'s Argon2id hashing itself belongs to plan 5.
 
+`SetPassword` and `RecordSuccessfulSignIn` return `void` — contract §5.1's two book-keeping
+mutators, neither of which can fail. The hash `SetPassword` stores comes out of
+`IPasswordHasher`, never off a form, so a blank one is a caller bug and throws rather than
+returning a `Result<T>` nobody would inspect.
+
 **Files:**
 - Create: `src/Core/PeakPower.Domain/Customers/CustomerAccount.cs`
 - Test: `tests/PeakPower.Domain.Tests/Customers/CustomerAccountTests.cs`
@@ -2944,10 +3079,11 @@ the person sets one, and because `[DEC-113]`'s Argon2id hashing itself belongs t
 - Consumes: `Result<T>` (Task 6), `AccountStatus` (Task 10).
 - Produces: `PeakPower.Domain.Customers.CustomerAccount` with the contract's properties plus
   - `static Result<CustomerAccount> Create(Guid customerId, string username, string firstName, string lastName, string? jobTitle, string email, string? phone, AccountStatus status, bool isAdmin)`
-  - `Result<CustomerAccount> SetPasswordHash(string passwordHash)` — bumps `SecurityStamp`
-  - `Result<CustomerAccount> UpdateProfile(string firstName, string lastName, string? jobTitle, string email, string? phone)` — bumps `SecurityStamp`
+  - `void SetPassword(string passwordHash)` — bumps `SecurityStamp`
+  - `Result<CustomerAccount> UpdateProfile(string firstName, string lastName, string? jobTitle, string email, string? phone, bool isAdmin)` — bumps `SecurityStamp`
   - `Result<CustomerAccount> Deactivate()` — bumps `SecurityStamp`
-  - `CustomerAccount RecordLogin(DateTimeOffset at)`
+  - `void RecordSuccessfulSignIn(DateTimeOffset at)`
+  - `void BumpSecurityStamp()` — plan 5 calls it directly when a password reset revokes sessions
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3015,28 +3151,26 @@ public sealed class CustomerAccountTests
     }
 
     [Fact]
-    public void Setting_a_password_hash_bumps_the_security_stamp()
+    public void Setting_a_password_bumps_the_security_stamp()
     {
         var account = Create().Value;
         var before = account.SecurityStamp;
 
-        var result = account.SetPasswordHash("$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$aGFzaA");
+        account.SetPassword("$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$aGFzaA");
 
-        result.IsSuccess.Should().BeTrue();
         account.PasswordHash.Should().StartWith("$argon2id$");
         account.SecurityStamp.Should().NotBe(before);
     }
 
     [Fact]
-    public void An_empty_password_hash_is_rejected_and_the_stamp_is_untouched()
+    public void An_empty_password_hash_is_a_caller_bug_and_throws_rather_than_returning_a_failure()
     {
         var account = Create().Value;
         var before = account.SecurityStamp;
 
-        var result = account.SetPasswordHash("   ");
+        var setting = () => account.SetPassword("   ");
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Password hash is required.");
+        setting.Should().Throw<ArgumentException>();
         account.SecurityStamp.Should().Be(before);
     }
 
@@ -3070,23 +3204,25 @@ public sealed class CustomerAccountTests
         var account = Create().Value;
         var before = account.SecurityStamp;
 
-        var result = account.UpdateProfile("Sanne", "de Vries-Jansen", null, "sanne.new@example.nl", null);
+        var result = account.UpdateProfile(
+            "Sanne", "de Vries-Jansen", null, "sanne.new@example.nl", null, isAdmin: true);
 
         result.IsSuccess.Should().BeTrue();
         account.LastName.Should().Be("de Vries-Jansen");
         account.JobTitle.Should().BeNull();
         account.Email.Should().Be("sanne.new@example.nl");
+        account.IsAdmin.Should().BeTrue();
         account.SecurityStamp.Should().NotBe(before);
     }
 
     [Fact]
-    public void Recording_a_login_stores_the_moment_and_leaves_the_stamp_alone()
+    public void Recording_a_successful_sign_in_stores_the_moment_and_leaves_the_stamp_alone()
     {
         var account = Create().Value;
         var before = account.SecurityStamp;
         var moment = new DateTimeOffset(2026, 8, 26, 9, 30, 0, TimeSpan.Zero);
 
-        account.RecordLogin(moment);
+        account.RecordSuccessfulSignIn(moment);
 
         account.LastLoginAt.Should().Be(moment);
         account.SecurityStamp.Should().Be(before);
@@ -3205,16 +3341,16 @@ public sealed class CustomerAccount
         return Result<CustomerAccount>.Success(account);
     }
 
-    public Result<CustomerAccount> SetPasswordHash(string passwordHash)
+    /// <summary>
+    /// The hash comes from IPasswordHasher, never from user input, so this cannot fail on a
+    /// value a person typed. A blank hash is a caller bug and throws.  [contract section 5.1]
+    /// </summary>
+    public void SetPassword(string passwordHash)
     {
-        if (string.IsNullOrWhiteSpace(passwordHash))
-        {
-            return Result<CustomerAccount>.Failure("Password hash is required.");
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
 
         PasswordHash = passwordHash;
         BumpSecurityStamp();
-        return Result<CustomerAccount>.Success(this);
     }
 
     public Result<CustomerAccount> UpdateProfile(
@@ -3222,7 +3358,8 @@ public sealed class CustomerAccount
         string lastName,
         string? jobTitle,
         string email,
-        string? phone)
+        string? phone,
+        bool isAdmin)
     {
         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
         {
@@ -3239,6 +3376,7 @@ public sealed class CustomerAccount
         JobTitle = Blank(jobTitle);
         Email = email.Trim();
         Phone = Blank(phone);
+        IsAdmin = isAdmin;
         BumpSecurityStamp();
 
         return Result<CustomerAccount>.Success(this);
@@ -3260,13 +3398,13 @@ public sealed class CustomerAccount
     /// The moment comes from IMarketCalendar, never from the system clock: architecture fact 5
     /// forbids anything outside PeakPower.Infrastructure.Time from reading it.
     /// </summary>
-    public CustomerAccount RecordLogin(DateTimeOffset at)
-    {
-        LastLoginAt = at;
-        return this;
-    }
+    public void RecordSuccessfulSignIn(DateTimeOffset at) => LastLoginAt = at;
 
-    private void BumpSecurityStamp() => SecurityStamp = Guid.CreateVersion7();
+    /// <summary>
+    /// Kills every outstanding token for this account on its next call. Public because plan 5's
+    /// password reset revokes sessions without going through any of the mutators above.
+    /// </summary>
+    public void BumpSecurityStamp() => SecurityStamp = Guid.CreateVersion7();
 
     private static bool LooksLikeAnEmailAddress(string email) =>
         !string.IsNullOrWhiteSpace(email)
@@ -3298,11 +3436,17 @@ git commit -m "feat(domain): add the CustomerAccount aggregate with the security
 
 One EAN belonging to one customer for one half-open period `[ValidFrom, ValidTo)`. `[F01-R26]`
 and `[AS-03]` require that the same EAN may serve different customers over non-overlapping
-periods, and that overlaps be rejected — the database enforces that (Tasks 20 and 21); the
+periods, and that overlaps be rejected — the database enforces that (Tasks 21 and 22); the
 aggregate enforces the single-row invariants.
 
 `DisplayLabel` is `[F01-R30]` and `[F01-R31]` in one line: the friendly name replaces the EAN as
 the primary label, and when there is no name the grouped EAN is used instead.
+
+The factory is `Attach`, not `Create`, because `[F01-R23]` is *attach a metering point to a
+customer* — the connection exists in the grid whether or not PeakPower knows about it.
+`Commodity` is not a parameter: `[DEC-68]` leaves `ELECTRICITY` as the only selectable value, so
+the aggregate sets it. Neither is `ValidTo`: a period is closed later, through `EndDate`.
+`[contract §5.1]`
 
 **Files:**
 - Create: `src/Core/PeakPower.Domain/Customers/MeteringPoint.cs`
@@ -3312,8 +3456,9 @@ the primary label, and when there is no name the grouped EAN is used instead.
 - Consumes: `Result<T>`, `EanCode`, `Address` (Tasks 6, 7, 10), `Commodity`,
   `ProductionExpectation`, `ProductionExpectationSource` (Task 10).
 - Produces: `PeakPower.Domain.Customers.MeteringPoint` with the contract's properties plus
-  - `static Result<MeteringPoint> Create(Guid customerId, EanCode ean, Commodity commodity, Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? name, string? description, string? gridOperator, decimal? capacityKw, Address? address, DateOnly validFrom, DateOnly? validTo)`
+  - `static Result<MeteringPoint> Attach(Guid customerId, EanCode ean, Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? name, string? description, string? gridOperator, decimal? capacityKw, Address? address, DateOnly validFrom)`
   - `Result<MeteringPoint> Rename(string? name, string? description)`
+  - `Result<MeteringPoint> UpdateDetails(Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? gridOperator, decimal? capacityKw, Address? address)`
   - `Result<MeteringPoint> EndDate(DateOnly validTo)`
   - `string DisplayLabel { get; }`
   - `const int MaximumNameLength = 80` and `const int MaximumDescriptionLength = 500`
@@ -3336,21 +3481,20 @@ public sealed class MeteringPointTests
     private static readonly EanCode Ean = EanCode.Create("871687100000000011").Value;
     private static readonly DateOnly ValidFrom = new(2026, 1, 1);
 
-    private static Result<MeteringPoint> Create(
+    private static Result<MeteringPoint> Attach(
         string? name = null,
         string? description = null,
         Guid? brpId = null,
-        decimal? capacityKw = 630m,
-        DateOnly? validTo = null) =>
-        MeteringPoint.Create(
-            CustomerId, Ean, Commodity.Electricity, brpId ?? BrpId,
+        decimal? capacityKw = 630m) =>
+        MeteringPoint.Attach(
+            CustomerId, Ean, brpId ?? BrpId,
             ProductionExpectation.Expected, ProductionExpectationSource.CustomerDeclared,
-            name, description, "Liander", capacityKw, address: null, ValidFrom, validTo);
+            name, description, "Liander", capacityKw, address: null, ValidFrom);
 
     [Fact]
     public void A_new_metering_point_belongs_to_a_customer_and_a_BRP()
     {
-        var point = Create().Value;
+        var point = Attach().Value;
 
         point.Id.Should().NotBe(Guid.Empty);
         point.CustomerId.Should().Be(CustomerId);
@@ -3364,7 +3508,7 @@ public sealed class MeteringPointTests
     [Fact]
     public void A_metering_point_without_a_BRP_is_rejected_because_F01_R51_makes_it_mandatory()
     {
-        var result = Create(brpId: Guid.Empty);
+        var result = Attach(brpId: Guid.Empty);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("A metering point must name a balance responsible party.");
@@ -3375,13 +3519,13 @@ public sealed class MeteringPointTests
     {
         var name = new string('a', 80);
 
-        Create(name: name).Value.Name.Should().Be(name);
+        Attach(name: name).Value.Name.Should().Be(name);
     }
 
     [Fact]
     public void A_name_of_eighty_one_characters_is_rejected()
     {
-        var result = Create(name: new string('a', 81));
+        var result = Attach(name: new string('a', 81));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("Name must be 80 characters or fewer.");
@@ -3392,13 +3536,13 @@ public sealed class MeteringPointTests
     {
         var description = new string('a', 500);
 
-        Create(description: description).Value.Description.Should().Be(description);
+        Attach(description: description).Value.Description.Should().Be(description);
     }
 
     [Fact]
     public void A_description_of_five_hundred_and_one_characters_is_rejected()
     {
-        var result = Create(description: new string('a', 501));
+        var result = Attach(description: new string('a', 501));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("Description must be 500 characters or fewer.");
@@ -3407,46 +3551,46 @@ public sealed class MeteringPointTests
     [Fact]
     public void A_negative_capacity_is_rejected()
     {
-        var result = Create(capacityKw: -1m);
+        var result = Attach(capacityKw: -1m);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("Capacity must not be negative.");
     }
 
     [Fact]
-    public void A_validity_period_that_ends_before_it_starts_is_rejected()
+    public void An_attached_metering_point_is_open_ended_until_someone_end_dates_it()
     {
-        var result = Create(validTo: new DateOnly(2025, 12, 31));
-
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("The end date must be after the start date.");
+        Attach().Value.ValidTo.Should().BeNull();
     }
 
     [Fact]
-    public void A_validity_period_that_ends_on_the_day_it_starts_is_rejected_because_the_range_is_half_open()
+    public void End_dating_on_the_start_date_is_rejected_because_the_range_is_half_open()
     {
-        var result = Create(validTo: ValidFrom);
+        var point = Attach().Value;
+
+        var result = point.EndDate(ValidFrom);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("The end date must be after the start date.");
+        point.ValidTo.Should().BeNull();
     }
 
     [Fact]
     public void DisplayLabel_is_the_friendly_name_when_there_is_one()
     {
-        Create(name: "Zonnedak dak 1").Value.DisplayLabel.Should().Be("Zonnedak dak 1");
+        Attach(name: "Zonnedak dak 1").Value.DisplayLabel.Should().Be("Zonnedak dak 1");
     }
 
     [Fact]
     public void DisplayLabel_falls_back_to_the_grouped_EAN_when_there_is_no_name()
     {
-        Create().Value.DisplayLabel.Should().Be("8716 8710 0000 0000 11");
+        Attach().Value.DisplayLabel.Should().Be("8716 8710 0000 0000 11");
     }
 
     [Fact]
     public void Renaming_replaces_the_name_and_description()
     {
-        var point = Create(name: "Old", description: "Old description").Value;
+        var point = Attach(name: "Old", description: "Old description").Value;
 
         var result = point.Rename("Zonnedak dak 2", "Rooftop array, south facing");
 
@@ -3458,7 +3602,7 @@ public sealed class MeteringPointTests
     [Fact]
     public void Renaming_to_blank_clears_the_name_and_the_label_falls_back_to_the_EAN()
     {
-        var point = Create(name: "Old").Value;
+        var point = Attach(name: "Old").Value;
 
         point.Rename("   ", null);
 
@@ -3469,7 +3613,7 @@ public sealed class MeteringPointTests
     [Fact]
     public void Renaming_past_eighty_characters_is_rejected_and_changes_nothing()
     {
-        var point = Create(name: "Zonnedak dak 1").Value;
+        var point = Attach(name: "Zonnedak dak 1").Value;
 
         var result = point.Rename(new string('a', 81), null);
 
@@ -3479,9 +3623,43 @@ public sealed class MeteringPointTests
     }
 
     [Fact]
+    public void Updating_the_details_replaces_the_BRP_the_expectation_and_the_technical_fields()
+    {
+        var point = Attach(name: "Zonnedak dak 1").Value;
+        var otherBrp = Guid.Parse("0199a1a0-0000-7000-8000-0000000000b2");
+        var address = new Address("Keizersgracht", "104", null, "1015 CV", "Amsterdam", "NL");
+
+        var result = point.UpdateDetails(
+            otherBrp, ProductionExpectation.Never, ProductionExpectationSource.GridOperator,
+            "Stedin", 450m, address);
+
+        result.IsSuccess.Should().BeTrue();
+        point.BrpId.Should().Be(otherBrp);
+        point.ProductionExpectation.Should().Be(ProductionExpectation.Never);
+        point.ExpectationSource.Should().Be(ProductionExpectationSource.GridOperator);
+        point.GridOperator.Should().Be("Stedin");
+        point.CapacityKw.Should().Be(450m);
+        point.Address.Should().Be(address);
+        point.Name.Should().Be("Zonnedak dak 1");
+    }
+
+    [Fact]
+    public void Updating_the_details_without_a_BRP_is_rejected_and_changes_nothing()
+    {
+        var point = Attach().Value;
+
+        var result = point.UpdateDetails(
+            Guid.Empty, ProductionExpectation.Never, null, "Stedin", 450m, address: null);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("A metering point must name a balance responsible party.");
+        point.BrpId.Should().Be(BrpId);
+    }
+
+    [Fact]
     public void End_dating_sets_the_exclusive_upper_bound()
     {
-        var point = Create().Value;
+        var point = Attach().Value;
 
         var result = point.EndDate(new DateOnly(2026, 7, 1));
 
@@ -3492,7 +3670,7 @@ public sealed class MeteringPointTests
     [Fact]
     public void End_dating_before_the_start_date_is_rejected()
     {
-        var point = Create().Value;
+        var point = Attach().Value;
 
         var result = point.EndDate(new DateOnly(2025, 6, 1));
 
@@ -3531,7 +3709,7 @@ public sealed class MeteringPoint
     public const int MaximumNameLength = 80;
     public const int MaximumDescriptionLength = 500;
 
-    /// <summary>EF Core materialises through this; application code uses <see cref="Create"/>.</summary>
+    /// <summary>EF Core materialises through this; application code uses <see cref="Attach"/>.</summary>
     private MeteringPoint()
     {
     }
@@ -3542,6 +3720,10 @@ public sealed class MeteringPoint
 
     public EanCode Ean { get; private set; }
 
+    /// <summary>
+    /// ELECTRICITY, always. The discriminator stays so the column does not have to be added
+    /// later, but [DEC-68] makes it the only selectable value, so Attach sets it.
+    /// </summary>
     public Commodity Commodity { get; private set; }
 
     /// <summary>The balance responsible party. Mandatory. [F01-R51]</summary>
@@ -3574,10 +3756,13 @@ public sealed class MeteringPoint
     /// </summary>
     public string DisplayLabel => Name ?? Ean.ToDisplayString();
 
-    public static Result<MeteringPoint> Create(
+    /// <summary>
+    /// Attaches an existing grid connection to a customer from <paramref name="validFrom"/>
+    /// onwards. [F01-R23] The period is open-ended; EndDate closes it.
+    /// </summary>
+    public static Result<MeteringPoint> Attach(
         Guid customerId,
         EanCode ean,
-        Commodity commodity,
         Guid brpId,
         ProductionExpectation productionExpectation,
         ProductionExpectationSource? expectationSource,
@@ -3586,8 +3771,7 @@ public sealed class MeteringPoint
         string? gridOperator,
         decimal? capacityKw,
         Address? address,
-        DateOnly validFrom,
-        DateOnly? validTo)
+        DateOnly validFrom)
     {
         if (customerId == Guid.Empty)
         {
@@ -3610,17 +3794,12 @@ public sealed class MeteringPoint
             return Result<MeteringPoint>.Failure("Capacity must not be negative.");
         }
 
-        if (validTo is not null && validTo <= validFrom)
-        {
-            return Result<MeteringPoint>.Failure("The end date must be after the start date.");
-        }
-
         var point = new MeteringPoint
         {
             Id = Guid.CreateVersion7(),
             CustomerId = customerId,
             Ean = ean,
-            Commodity = commodity,
+            Commodity = Commodity.Electricity,
             BrpId = brpId,
             ProductionExpectation = productionExpectation,
             ExpectationSource = expectationSource,
@@ -3630,7 +3809,7 @@ public sealed class MeteringPoint
             CapacityKw = capacityKw,
             Address = address,
             ValidFrom = validFrom,
-            ValidTo = validTo,
+            ValidTo = null,
         };
 
         return Result<MeteringPoint>.Success(point);
@@ -3647,6 +3826,39 @@ public sealed class MeteringPoint
 
         Name = Blank(name);
         Description = Blank(description);
+        return Result<MeteringPoint>.Success(this);
+    }
+
+    /// <summary>
+    /// Replaces the fields an employee may edit on an existing connection. The EAN, the customer
+    /// and the validity period are not among them: moving an EAN is a new attachment, not an
+    /// edit. Name and description are Rename's job.  [F01-R28]
+    /// </summary>
+    public Result<MeteringPoint> UpdateDetails(
+        Guid brpId,
+        ProductionExpectation productionExpectation,
+        ProductionExpectationSource? expectationSource,
+        string? gridOperator,
+        decimal? capacityKw,
+        Address? address)
+    {
+        if (brpId == Guid.Empty)
+        {
+            return Result<MeteringPoint>.Failure("A metering point must name a balance responsible party.");
+        }
+
+        if (capacityKw is < 0m)
+        {
+            return Result<MeteringPoint>.Failure("Capacity must not be negative.");
+        }
+
+        BrpId = brpId;
+        ProductionExpectation = productionExpectation;
+        ExpectationSource = expectationSource;
+        GridOperator = Blank(gridOperator);
+        CapacityKw = capacityKw;
+        Address = address;
+
         return Result<MeteringPoint>.Success(this);
     }
 
@@ -3685,7 +3897,7 @@ public sealed class MeteringPoint
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests --nologo`
-Expected: PASS — 80 passed, 0 failed
+Expected: PASS — 82 passed, 0 failed
 
 - [ ] **Step 5: Commit**
 
@@ -3705,12 +3917,15 @@ in slice 1 puts behaviour on them, and inventing behaviour now would be guessing
 and 6's work.
 
 - **BRP** — the market participant answerable to the Dutch grid operator for a connection's
-  imbalance. Reference data `[F12-R49]`; plan 6 seeds the PVNed row first.
+  imbalance. Reference data `[F12-R49]`. Contract §3.2 puts `metering.brp` in migration 1, so
+  migration 1 also inserts the one row slice 1 has: code `PVNED`, name **`PVNed B.V.`** — that
+  exact string, which plan 2's fixture asserts on and plan 6's seeder reads back.
 - **Wallet** — one EUR wallet per customer `[F01-R05]`. A stub: movements and the ledger are
   F06 and out of scope. The balance is `numeric(18,6)` and is rounded to two decimals only at
   presentation `[DEC-12]`.
 - **AuditRecord** — append-only actor plus before/after `[F01-R06]`. Nothing writes one in
-  slice 1; the table exists so that plan 2's employee edits have somewhere to land.
+  slice 1: the table and the type exist so `[F01-R06]` has a shape to land in when auditing is
+  taken up, and so migration 1 does not have to be amended then.
 
 **Files:**
 - Create: `src/Core/PeakPower.Domain/Metering/Brp.cs`
@@ -3749,18 +3964,18 @@ public sealed class SupportingTypeTests
     [Fact]
     public void A_BRP_stores_its_code_upper_case_because_market_codes_are_case_insensitive()
     {
-        var brp = Brp.Create("pvned", "PVNED B.V.", isActive: true).Value;
+        var brp = Brp.Create("pvned", "PVNed B.V.", isActive: true).Value;
 
         brp.Id.Should().NotBe(Guid.Empty);
         brp.Code.Should().Be("PVNED");
-        brp.Name.Should().Be("PVNED B.V.");
+        brp.Name.Should().Be("PVNed B.V.");
         brp.IsActive.Should().BeTrue();
     }
 
     [Fact]
     public void A_BRP_without_a_code_is_rejected()
     {
-        var result = Brp.Create("  ", "PVNED B.V.", isActive: true);
+        var result = Brp.Create("  ", "PVNed B.V.", isActive: true);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("BRP code is required.");
@@ -4011,7 +4226,7 @@ public sealed class AuditRecord
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests --nologo`
-Expected: PASS — 87 passed, 0 failed
+Expected: PASS — 89 passed, 0 failed
 
 - [ ] **Step 5: Commit**
 
@@ -4030,7 +4245,7 @@ git commit -m "feat(domain): add Brp, Wallet and AuditRecord"
 
 `[DEC-08]` puts business days in Europe/Amsterdam behind one calendar service, and architecture
 fact 5 makes that the only place in the solution allowed to read the system clock. This task
-declares the port; Task 16 implements it.
+declares the port; Task 17 implements it.
 
 The two members are what the contract says and nothing more. `UtcNow` is what timestamps are
 written with — the database stores `timestamptz` in UTC `[design §5.2]`. `TodayInAmsterdam` is
@@ -4129,7 +4344,238 @@ git commit -m "feat(application): add the IMarketCalendar port, the only source 
 
 ---
 
-### Task 16: `MarketCalendar` — the one place allowed to read the clock
+### Task 16: The three ports plan 5 implements — hashing, tokens and mail
+
+Contract §6 declares six ports in `PeakPower.Application.Abstractions`. `IMarketCalendar` is
+Task 15's; plan 2 writes `ICustomerContext` and `IEmployeeContext` when it has something to put
+behind them. The remaining three — `IPasswordHasher`, `ITokenIssuer` and `IEmailSender` — are
+declared here, in this plan, even though plan 5 writes every implementation, because a port is
+part of the module graph rather than part of the feature: `PeakPower.Application` is the only
+project allowed to name them (architecture fact 2), and a plan that both declares and implements
+its own port has no seam to test against.
+
+They are inert until plan 5 arrives. That is the point: the interfaces compile, they are
+substitutable, and `PeakPower.Infrastructure.Identity` and `PeakPower.Infrastructure.Email` are
+already in the solution waiting for them.
+
+`AccessToken` travels with `ITokenIssuer`, in the same file, because it has no meaning apart
+from it. `IssueRefreshToken` reports its expiry through an `out` parameter rather than a second
+record: the refresh token is an opaque string, and plan 5 stores its hash and its expiry as two
+columns.
+
+**Files:**
+- Create: `src/Core/PeakPower.Application/Abstractions/IPasswordHasher.cs`
+- Create: `src/Core/PeakPower.Application/Abstractions/ITokenIssuer.cs`
+- Create: `src/Core/PeakPower.Application/Abstractions/IEmailSender.cs`
+- Test: `tests/PeakPower.Application.Tests/Abstractions/PortShapeTests.cs`
+
+**Interfaces:**
+- Consumes: `PeakPower.Domain.Customers.CustomerAccount` (Task 12) — `ITokenIssuer` issues a
+  token *for an account*, so the port names the aggregate.
+- Produces, all in `PeakPower.Application.Abstractions`:
+  - `IPasswordHasher` with `string Hash(string password)` and
+    `bool Verify(string password, string hash)` — Argon2id `[DEC-113]`, implemented by plan 5 in
+    `PeakPower.Infrastructure.Identity`
+  - `ITokenIssuer` with `AccessToken IssueAccessToken(CustomerAccount account)` and
+    `string IssueRefreshToken(Guid accountId, out DateTimeOffset expiresAt)` — ES256 over JWKS
+    `[DEC-117]`, implemented by plan 5 in `PeakPower.Infrastructure.Identity`
+  - `sealed record AccessToken(string Jwt, DateTimeOffset ExpiresAt)`
+  - `IEmailSender` with
+    `Task SendAsync(string to, string subject, string body, CancellationToken ct)` — implemented
+    by plan 5 in `PeakPower.Infrastructure.Email` as a console sink
+
+- [ ] **Step 1: Write the failing test**
+
+Create
+`/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Application.Tests/Abstractions/PortShapeTests.cs`:
+
+```csharp
+using FluentAssertions;
+using NSubstitute;
+using PeakPower.Application.Abstractions;
+using PeakPower.Domain.Customers;
+
+namespace PeakPower.Application.Tests.Abstractions;
+
+/// <summary>
+/// Plan 5 implements all three of these. This plan only has to prove they are declared where
+/// the contract says, and that they are substitutable — a port that cannot be faked is not a
+/// seam, it is a dependency wearing an interface.
+/// </summary>
+public sealed class PortShapeTests
+{
+    [Fact]
+    public void The_password_hasher_hashes_and_verifies_without_the_caller_knowing_Argon2id()
+    {
+        var hasher = Substitute.For<IPasswordHasher>();
+        hasher.Hash("correct horse").Returns("$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$aGFzaA");
+        hasher.Verify("correct horse", Arg.Any<string>()).Returns(true);
+
+        var hash = hasher.Hash("correct horse");
+
+        hash.Should().StartWith("$argon2id$");
+        hasher.Verify("correct horse", hash).Should().BeTrue();
+    }
+
+    [Fact]
+    public void An_access_token_carries_its_own_expiry_so_nobody_re_derives_the_fifteen_minutes()
+    {
+        var expiresAt = new DateTimeOffset(2026, 8, 26, 21, 45, 0, TimeSpan.Zero);
+
+        var token = new AccessToken("header.payload.signature", expiresAt);
+
+        token.Jwt.Should().Be("header.payload.signature");
+        token.ExpiresAt.Should().Be(expiresAt);
+    }
+
+    [Fact]
+    public void The_token_issuer_issues_an_access_token_for_an_account_and_a_refresh_token_with_an_expiry()
+    {
+        var account = CustomerAccount.Create(
+            Guid.Parse("0199a1a0-0000-7000-8000-000000000001"), "sanne.devries", "Sanne",
+            "de Vries", null, "sanne@example.nl", null, AccountStatus.Active, isAdmin: false).Value;
+
+        var accessExpiry = new DateTimeOffset(2026, 8, 26, 21, 45, 0, TimeSpan.Zero);
+        var refreshExpiry = new DateTimeOffset(2026, 9, 9, 21, 30, 0, TimeSpan.Zero);
+
+        var issuer = Substitute.For<ITokenIssuer>();
+        issuer.IssueAccessToken(account).Returns(new AccessToken("header.payload.signature", accessExpiry));
+        issuer.IssueRefreshToken(account.Id, out Arg.Any<DateTimeOffset>())
+            .Returns(call =>
+            {
+                call[1] = refreshExpiry;
+                return "opaque-refresh-token";
+            });
+
+        var access = issuer.IssueAccessToken(account);
+        var refresh = issuer.IssueRefreshToken(account.Id, out var actualRefreshExpiry);
+
+        access.ExpiresAt.Should().Be(accessExpiry);
+        refresh.Should().Be("opaque-refresh-token");
+        actualRefreshExpiry.Should().Be(refreshExpiry);
+    }
+
+    [Fact]
+    public async Task The_email_sender_takes_a_cancellation_token_because_it_talks_to_the_outside()
+    {
+        var sender = Substitute.For<IEmailSender>();
+
+        await sender.SendAsync(
+            "sanne@example.nl", "Set your password", "Follow the link.", TestContext.Current.CancellationToken);
+
+        await sender.Received(1).SendAsync(
+            "sanne@example.nl", "Set your password", "Follow the link.", Arg.Any<CancellationToken>());
+    }
+}
+```
+
+- [ ] **Step 2: Run the test and watch it fail**
+
+Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Application.Tests --nologo`
+Expected: FAIL with `error CS0246: The type or namespace name 'IPasswordHasher' could not be found`
+
+- [ ] **Step 3: Write the minimal implementation**
+
+Create
+`/Users/thinhhuynh/PeakPower/peakpower-platform/src/Core/PeakPower.Application/Abstractions/IPasswordHasher.cs`:
+
+```csharp
+namespace PeakPower.Application.Abstractions;
+
+/// <summary>
+/// Argon2id password hashing. [DEC-113]
+/// </summary>
+/// <remarks>
+/// Declared here so that nothing in the application layer names a hashing library. Plan 5
+/// implements it in PeakPower.Infrastructure.Identity over Konscious.Security.Cryptography.Argon2;
+/// the parameters (memory, iterations, parallelism) are the implementation's business and never
+/// leak through this port.
+/// </remarks>
+public interface IPasswordHasher
+{
+    /// <summary>Returns an encoded hash that carries its own salt and parameters.</summary>
+    string Hash(string password);
+
+    /// <summary>Constant-time comparison against an encoded hash produced by <see cref="Hash"/>.</summary>
+    bool Verify(string password, string hash);
+}
+```
+
+Create
+`/Users/thinhhuynh/PeakPower/peakpower-platform/src/Core/PeakPower.Application/Abstractions/ITokenIssuer.cs`:
+
+```csharp
+using PeakPower.Domain.Customers;
+
+namespace PeakPower.Application.Abstractions;
+
+/// <summary>One issued access token and the moment it stops being accepted.</summary>
+public sealed record AccessToken(string Jwt, DateTimeOffset ExpiresAt);
+
+/// <summary>
+/// Issues the customer session credentials. ES256 over JWKS. [DEC-117]
+/// </summary>
+/// <remarks>
+/// The access token carries sub, customer_id, is_admin, amr and stamp (shared contract section 7)
+/// and lives fifteen minutes; the refresh token is opaque, lives fourteen days, rotates and is
+/// stored hashed. Plan 5 implements this in PeakPower.Infrastructure.Identity. Nothing in the
+/// application layer may build a JWT itself.
+/// </remarks>
+public interface ITokenIssuer
+{
+    /// <summary>
+    /// Issues an access token for one account. Takes the aggregate rather than loose values so
+    /// that the SecurityStamp claim cannot drift away from the row it revokes against.
+    /// </summary>
+    AccessToken IssueAccessToken(CustomerAccount account);
+
+    /// <summary>
+    /// Issues an opaque refresh token and reports when it expires. The caller stores the hash
+    /// and the expiry; the plaintext goes into the pp_refresh cookie and is never persisted.
+    /// </summary>
+    string IssueRefreshToken(Guid accountId, out DateTimeOffset expiresAt);
+}
+```
+
+Create
+`/Users/thinhhuynh/PeakPower/peakpower-platform/src/Core/PeakPower.Application/Abstractions/IEmailSender.cs`:
+
+```csharp
+namespace PeakPower.Application.Abstractions;
+
+/// <summary>
+/// Outbound mail. A console sink in slice 1 [design §4.2]; a real transport later.
+/// </summary>
+/// <remarks>
+/// The onboarding wizard and the password-reset flow need a channel, not a vendor, so this is
+/// deliberately the smallest thing that can carry one message. Plan 5 implements it in
+/// PeakPower.Infrastructure.Email.
+/// </remarks>
+public interface IEmailSender
+{
+    Task SendAsync(string to, string subject, string body, CancellationToken ct);
+}
+```
+
+- [ ] **Step 4: Run the test and watch it pass**
+
+Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Application.Tests --nologo`
+Expected: PASS — 5 passed, 0 failed
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-platform
+git add src/Core/PeakPower.Application/Abstractions/IPasswordHasher.cs \
+        src/Core/PeakPower.Application/Abstractions/ITokenIssuer.cs \
+        src/Core/PeakPower.Application/Abstractions/IEmailSender.cs \
+        tests/PeakPower.Application.Tests/Abstractions/PortShapeTests.cs
+git commit -m "feat(application): declare the password hasher, token issuer and email sender ports"
+```
+
+---
+
+### Task 17: `MarketCalendar` — the one place allowed to read the clock
 
 `PeakPower.Infrastructure.Time` is the assembly architecture fact 5 exempts. Even here the
 implementation takes `TimeProvider` rather than calling `DateTimeOffset.UtcNow` directly, so
@@ -4290,12 +4736,12 @@ public static class TimeServiceCollectionExtensions
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Application.Tests --nologo`
-Expected: PASS — 5 passed, 0 failed
+Expected: PASS — 9 passed, 0 failed
 
 Then confirm the guard rail still holds, because this task is the one that touches time:
 
 Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Architecture.Tests --nologo`
-Expected: PASS — 7 passed, 1 skipped, 0 failed
+Expected: PASS — 5 passed, 1 skipped, 0 failed
 
 - [ ] **Step 5: Commit**
 
@@ -4308,7 +4754,7 @@ git commit -m "feat(time): add MarketCalendar, the only type allowed to read the
 
 ---
 
-### Task 17: The enum-to-text converter and the convention that applies it
+### Task 18: The enum-to-text converter and the convention that applies it
 
 Shared contract §4: *all enums persist as text, via a single EF Core value converter registered
 by convention, not one converter per property.* The database spelling is SCREAMING_SNAKE, so
@@ -4558,7 +5004,7 @@ git commit -m "feat(persistence): store enums as SCREAMING_SNAKE text through on
 
 ---
 
-### Task 18: The jsonb converter for `Address` and `ContactPerson`
+### Task 19: The jsonb converter for `Address` and `ContactPerson`
 
 `Address` and `ContactPerson` are stored as one `jsonb` column each. A value converter plus a
 value comparer is used rather than EF's owned-entity JSON mapping, because the converter is
@@ -4732,7 +5178,7 @@ git commit -m "feat(persistence): store Address and ContactPerson as jsonb with 
 
 ---
 
-### Task 19: `PeakPowerDbContext`, the entity configurations and the composition-root entry point
+### Task 20: `PeakPowerDbContext`, the entity configurations and the composition-root entry point
 
 One `DbContext`, one file per aggregate configuration, one DI extension every host calls, one
 design-time factory so `dotnet ef` works, and one `DatabaseMigrator` so the Migrator host and
@@ -4755,7 +5201,7 @@ never from per-property attributes. Schemas are given explicitly per entity.
 - Test: `tests/PeakPower.Integration.Tests/Model/ModelShapeTests.cs`
 
 **Interfaces:**
-- Consumes: every domain type (Tasks 6 to 14), the two converter files (Tasks 17, 18).
+- Consumes: every domain type (Tasks 6 to 14), the two converter files (Tasks 18, 19).
 - Produces:
   - `PeakPower.Persistence.PeakPowerDbContext(DbContextOptions<PeakPowerDbContext> options)` with
     `DbSet<Customer> Customers`, `DbSet<CustomerAccount> CustomerAccounts`,
@@ -5359,7 +5805,7 @@ git commit -m "feat(persistence): add PeakPowerDbContext, the entity configurati
 
 ---
 
-### Task 20: Migration 1 — extensions, schemas, tables, the generated `validity` column and the exclusion constraint
+### Task 21: Migration 1 — extensions, schemas, tables, the generated `validity` column and the exclusion constraint
 
 Three things go into migration 1 specifically because retrofitting them is expensive
 `[design §5.1]`:
@@ -5376,7 +5822,13 @@ already lost the argument — and no single aggregate can see the others, so thi
 `MeteringPoint`.
 
 **c. The two dead boolean columns**, `customer.four_eyes_enabled` and
-`customer_account.is_admin`, per `[DEC-71]` — already carried by Task 19's configurations.
+`customer_account.is_admin`, per `[DEC-71]` — already carried by Task 20's configurations.
+
+**d. The one BRP row.** Contract §3.2 puts `metering.brp` in migration 1, and every metering
+point must name a BRP `[F01-R51]`, so an empty `brp` table makes the schema unusable the moment
+it is migrated. PVNed is the only balance responsible party in slice 1 `[F12-R49]`. It is
+reference data, not demo data: plan 2's fixture asserts on the name `PVNed B.V.` and plan 6's
+seeder reads the row rather than writing it, so it belongs in the migration and nowhere else.
 
 **Migration 1 in this plan creates six tables.** `customer.onboarding_application`,
 `customer.refresh_token` and `customer.password_reset_token` belong to plan 5, which owns their
@@ -5389,7 +5841,7 @@ columns, and land in plan 5's own migration. Migrations are forward-only and add
 - Test: `tests/PeakPower.Integration.Tests/Migrations/MigrationScriptTests.cs`
 
 **Interfaces:**
-- Consumes: `PeakPowerDbContext`, `PersistenceServiceCollectionExtensions.ConfigureDbContext` (Task 19).
+- Consumes: `PeakPowerDbContext`, `PersistenceServiceCollectionExtensions.ConfigureDbContext` (Task 20).
 - Produces: one EF Core migration named `InitialSchema`, discoverable by
   `context.Database.GetPendingMigrations()` and by `IMigrator.GenerateScript()`.
 
@@ -5408,7 +5860,7 @@ using PeakPower.Persistence;
 namespace PeakPower.Integration.Tests.Migrations;
 
 /// <summary>
-/// Asserts what migration 1 contains, without a database. Task 21 asserts what it does to one.
+/// Asserts what migration 1 contains, without a database. Task 22 asserts what it does to one.
 /// </summary>
 public sealed class MigrationScriptTests : IDisposable
 {
@@ -5489,6 +5941,13 @@ public sealed class MigrationScriptTests : IDisposable
     }
 
     [Fact]
+    public void The_one_BRP_reference_row_is_seeded_because_every_metering_point_must_name_one()
+    {
+        _script.Should().Contain("INSERT INTO metering.brp");
+        _script.Should().Contain("'PVNed B.V.'");
+    }
+
+    [Fact]
     public void The_three_auth_tables_are_deliberately_absent_because_plan_5_owns_them()
     {
         _script.Should().NotContain("onboarding_application");
@@ -5556,11 +6015,24 @@ the three additions EF cannot express. Open the generated
                     ADD CONSTRAINT metering_point_ean_validity_excl
                     EXCLUDE USING gist (ean WITH =, validity WITH &&);
                 """);
+
+            // Reference data, not demo data. PVNed is the only balance responsible party in
+            // slice 1 [F12-R49], every metering point must name one [F01-R51], and the name is
+            // this exact string - plan 2 asserts on it and plan 6 reads the row back. The id is
+            // a literal so tests and seeds can name the row without a lookup; ON CONFLICT keeps
+            // a re-run of the migration on a populated database harmless.
+            migrationBuilder.Sql(
+                """
+                INSERT INTO metering.brp (id, code, name, is_active)
+                VALUES ('0199a1a0-0000-7000-8000-0000000000b1', 'PVNED', 'PVNed B.V.', TRUE)
+                ON CONFLICT (code) DO NOTHING;
+                """);
 ```
 
 **Insert immediately after the opening brace of `protected override void Down(MigrationBuilder migrationBuilder)`:**
 
 ```csharp
+            migrationBuilder.Sql("DELETE FROM metering.brp WHERE code = 'PVNED';");
             migrationBuilder.Sql(
                 "ALTER TABLE customer.metering_point DROP CONSTRAINT IF EXISTS metering_point_ean_validity_excl;");
             migrationBuilder.Sql(
@@ -5573,7 +6045,7 @@ them, and `CREATE EXTENSION IF NOT EXISTS` is idempotent so leaving them costs n
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integration.Tests --nologo`
-Expected: PASS — 49 passed, 0 failed
+Expected: PASS — 50 passed, 0 failed
 
 - [ ] **Step 5: Commit**
 
@@ -5586,7 +6058,7 @@ git commit -m "feat(persistence): add migration 1 with citext, btree_gist and th
 
 ---
 
-### Task 21: Migration 1 against a real PostgreSQL 17 container
+### Task 22: Migration 1 against a real PostgreSQL 17 container
 
 Definition of done item 9: *migration 1 applies to an empty PostgreSQL 17 container, and the
 exclusion constraint rejects an overlapping EAN period.* This task is that item.
@@ -5603,8 +6075,8 @@ Docker must be running. `Testcontainers` starts and disposes the container itsel
 - Test: the same files
 
 **Interfaces:**
-- Consumes: `DatabaseMigrator`, `PeakPowerDbContext`, `ConfigureDbContext` (Task 19); the
-  `InitialSchema` migration (Task 20).
+- Consumes: `DatabaseMigrator`, `PeakPowerDbContext`, `ConfigureDbContext` (Task 20); the
+  `InitialSchema` migration (Task 21).
 - Produces: `PeakPower.Integration.Tests.Database.PostgresFixture` — an `IAsyncLifetime` fixture
   exposing `string ConnectionString`, reusable by plan 2's tenancy tests and plan 5's auth tests.
 
@@ -5677,7 +6149,9 @@ namespace PeakPower.Integration.Tests.Database;
 public sealed class MigrationBehaviourTests(PostgresFixture fixture)
 {
     private static readonly Guid CustomerId = Guid.Parse("0199a1a0-0000-7000-8000-00000000c001");
-    private static readonly Guid BrpId = Guid.Parse("0199a1a0-0000-7000-8000-00000000b001");
+
+    /// <summary>The PVNed row migration 1 seeds. Nothing here creates a second BRP.</summary>
+    private static readonly Guid BrpId = Guid.Parse("0199a1a0-0000-7000-8000-0000000000b1");
 
     [Fact]
     public async Task Migration_1_applies_to_an_empty_PostgreSQL_17_container()
@@ -5748,10 +6222,19 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Migration_1_seeded_the_one_BRP_slice_1_has()
+    {
+        var name = await ScalarAsync<string>(
+            "SELECT name FROM metering.brp WHERE code = 'PVNED';");
+
+        name.Should().Be("PVNed B.V.");
+    }
+
+    [Fact]
     public async Task Two_overlapping_validity_periods_for_the_same_EAN_are_rejected_by_the_database()
     {
         const string ean = "871687100000000041";
-        await SeedCustomerAndBrpAsync();
+        await SeedCustomerAsync();
         await InsertMeteringPointAsync(ean, "2026-01-01", "2026-07-01");
 
         // 2026-06-01 falls inside [2026-01-01, 2026-07-01).
@@ -5766,7 +6249,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
     public async Task Two_touching_but_non_overlapping_periods_for_the_same_EAN_are_accepted()
     {
         const string ean = "871687100000000042";
-        await SeedCustomerAndBrpAsync();
+        await SeedCustomerAsync();
 
         // The range is half-open, so [2026-01-01, 2026-07-01) and [2026-07-01, null) do not overlap.
         await InsertMeteringPointAsync(ean, "2026-01-01", "2026-07-01");
@@ -5782,7 +6265,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
     [Fact]
     public async Task Two_different_EANs_may_hold_the_same_period()
     {
-        await SeedCustomerAndBrpAsync();
+        await SeedCustomerAsync();
 
         await InsertMeteringPointAsync("871687100000000043", "2026-01-01", null);
         await InsertMeteringPointAsync("871687100000000044", "2026-01-01", null);
@@ -5793,14 +6276,14 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
         count.Should().BeGreaterThanOrEqualTo(2);
     }
 
-    private async Task SeedCustomerAndBrpAsync()
+    /// <summary>
+    /// Only the customer: migration 1 already seeded the one BRP, and inserting a second row
+    /// with code 'PVNED' would trip the unique index rather than the constraint under test.
+    /// </summary>
+    private async Task SeedCustomerAsync()
     {
         await ExecuteAsync(
             """
-            INSERT INTO metering.brp (id, code, name, is_active)
-            VALUES (@brpId, 'PVNED', 'PVNED B.V.', true)
-            ON CONFLICT (id) DO NOTHING;
-
             INSERT INTO customer.customer
                 (id, legal_name, kvk_number, status, four_eyes_enabled,
                  billing_address, primary_contact, locale)
@@ -5812,7 +6295,6 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
                  'nl-NL')
             ON CONFLICT (id) DO NOTHING;
             """,
-            ("brpId", BrpId),
             ("customerId", CustomerId));
     }
 
@@ -5881,7 +6363,7 @@ two independent tests cover the same rule from different sides.)
 
 - [ ] **Step 3: Write the minimal implementation**
 
-Restore the exclusion-constraint block exactly as Task 20 wrote it:
+Restore the exclusion-constraint block exactly as Task 21 wrote it:
 
 ```csharp
             migrationBuilder.Sql(
@@ -5895,7 +6377,7 @@ Restore the exclusion-constraint block exactly as Task 20 wrote it:
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integration.Tests --nologo`
-Expected: PASS — 63 passed, 0 failed (the first run pulls the `postgres:17` image, so allow a
+Expected: PASS — 65 passed, 0 failed (the first run pulls the `postgres:17` image, so allow a
 few minutes)
 
 - [ ] **Step 5: Commit**
@@ -5909,7 +6391,7 @@ git commit -m "test: prove migration 1 applies and the EAN exclusion constraint 
 
 ---
 
-### Task 22: The `PeakPower.Migrator` host
+### Task 23: The `PeakPower.Migrator` host
 
 *Migrations run to completion before any API starts* `[design §3]`. That is why migration is a
 separate host rather than something an API does at boot: the AppHost can then make both APIs
@@ -5924,8 +6406,8 @@ It exits 0 on success and 1 on failure. Nothing else.
 
 **Interfaces:**
 - Consumes: `PersistenceServiceCollectionExtensions.AddPeakPowerPersistence(IServiceCollection, string)`
-  and `DatabaseMigrator.RunAsync(CancellationToken)` (Task 19); `Extensions.AddServiceDefaults`
-  (Task 3's stub, Task 23's real one).
+  and `DatabaseMigrator.RunAsync(CancellationToken)` (Task 20); `Extensions.AddServiceDefaults`
+  (Task 3's stub, Task 24's real one).
 - Produces: an executable that reads the connection string named `peakpower` from configuration
   (`ConnectionStrings__peakpower` as an environment variable, or Aspire's `WithReference`),
   applies every pending migration, and exits.
@@ -6086,7 +6568,7 @@ git commit -m "feat(migrator): apply migrations to completion and exit with a me
 
 ---
 
-### Task 23: `PeakPower.ServiceDefaults` and the two API shells
+### Task 24: `PeakPower.ServiceDefaults` and the two API shells
 
 Aspire's shared host wiring: OpenTelemetry (traces, metrics, logs over OTLP), health checks and
 standard HTTP resilience, applied identically by every host. The two API projects stay empty
@@ -6222,6 +6704,11 @@ public static class Extensions
         builder.ConfigureOpenTelemetry();
         builder.AddDefaultHealthChecks();
 
+        // Every host gets the calendar. Architecture fact 5 forbids reading the system clock
+        // anywhere else, so a host that forgot this line fails at resolve time rather than
+        // quietly using DateTime.UtcNow.
+        builder.Services.AddMarketCalendar();
+
         builder.Services.AddServiceDiscovery();
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
@@ -6290,7 +6777,7 @@ public static class Extensions
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integration.Tests --nologo`
-Expected: PASS — 69 passed, 0 failed
+Expected: PASS — 71 passed, 0 failed
 
 - [ ] **Step 5: Commit**
 
@@ -6303,7 +6790,7 @@ git commit -m "feat(hosts): add ServiceDefaults telemetry, health and resilience
 
 ---
 
-### Task 24: Assert the Aspire 13.5.3 API surface before writing the AppHost
+### Task 25: Assert the Aspire 13.5.3 API surface before writing the AppHost
 
 The specification's AppHost snippet was written against Aspire 9.x. **Three things changed and
 all three break the snippet.** Verify them before writing code rather than after:
@@ -6459,13 +6946,13 @@ git commit -m "test: assert the Aspire 13.5.3 API surface the AppHost depends on
 
 ---
 
-### Task 25: `WebRootLocator` and `AppHostOptions`
+### Task 26: `WebRootLocator` and `AppHostOptions`
 
 `[design §11]`: *the web root resolves as `PEAKPOWER_WEB_PATH` first, sibling checkout second,
 loud failure third — naming the path it looked in and the two ways to fix it.*
 
 `--backend-only` is the flag the specification's snippet promises and never checks. It is
-implemented here and actually checked in Task 26, so a developer who has not cloned
+implemented here and actually checked in Task 27, so a developer who has not cloned
 `peakpower-web` can still bring the backend up.
 
 Both are pure functions with no Aspire dependency, so they are unit-testable without starting a
@@ -6706,7 +7193,7 @@ git commit -m "feat(apphost): resolve the web root loudly and honour --backend-o
 
 ---
 
-### Task 26: The AppHost resource graph
+### Task 27: The AppHost resource graph
 
 `[design §4.4]`: `postgres` (with a data volume and pgAdmin) → database `peakpower` → `migrator`
 → `customer-api` and `employee-api`, both `WaitForCompletion(migrator)` → two front-ends
@@ -6720,7 +7207,7 @@ The front-ends are registered only when the resolved web root actually contains 
 `package.json`. In plan 1 it does not — plans 3, 4 and 6 create the Angular workspace — so the
 AppHost says so on stdout and brings up the backend. That decision is `FrontEndPlan`, which is
 pure and therefore tested; the Aspire calls around it are verified by the build and by
-`./dev-up` in Task 27.
+`./dev-up` in Task 28.
 
 **Files:**
 - Create: `src/Hosts/PeakPower.AppHost/FrontEndPlan.cs`
@@ -6729,7 +7216,7 @@ pure and therefore tested; the Aspire calls around it are verified by the build 
 
 **Interfaces:**
 - Consumes: `WebRootLocator.Locate`, `WebRootLocator.SiblingCheckoutPath`,
-  `AppHostOptions.IsBackendOnly` (Task 25); `Projects.PeakPower_Migrator`,
+  `AppHostOptions.IsBackendOnly` (Task 26); `Projects.PeakPower_Migrator`,
   `Projects.PeakPower_Api_Customer`, `Projects.PeakPower_Api_Employee` (generated by
   `Aspire.AppHost.Sdk` from the AppHost's `ProjectReference` items, Task 3).
 - Produces:
@@ -6978,7 +7465,7 @@ git commit -m "feat(apphost): add the Aspire resource graph for Postgres, the mi
 
 ---
 
-### Task 27: `dev-up` in `peakpower-platform`
+### Task 28: `dev-up` in `peakpower-platform`
 
 `[design §11]`: *`dev-up` exists in both repositories and does the same thing in reverse.*
 In `peakpower-platform` it checks for the sibling checkout and runs the AppHost.
@@ -6992,7 +7479,7 @@ test below can assert the resolution rules without starting Docker containers.
 - Test: `/Users/thinhhuynh/PeakPower/peakpower-platform/tools/dev-up.test.sh`
 
 **Interfaces:**
-- Consumes: `src/Hosts/PeakPower.AppHost/PeakPower.AppHost.csproj` (Task 26).
+- Consumes: `src/Hosts/PeakPower.AppHost/PeakPower.AppHost.csproj` (Task 27).
 - Produces: an executable `./dev-up` accepting `--backend-only` and honouring
   `PEAKPOWER_WEB_PATH` and `PEAKPOWER_DEV_UP_DRY_RUN`.
 
@@ -7128,7 +7615,7 @@ git commit -m "feat(dev): add ./dev-up with web-root resolution and --backend-on
 
 ---
 
-### Task 28: `dev-up` in `peakpower-web`
+### Task 29: `dev-up` in `peakpower-web`
 
 The mirror image: it finds the platform checkout, exports its own directory as
 `PEAKPOWER_WEB_PATH`, and hands over. Whichever repository a developer cloned first, one command
@@ -7143,7 +7630,7 @@ through `AddJavaScriptApp`, so a second `npm start` here would race it for the p
 - Test: `/Users/thinhhuynh/PeakPower/peakpower-web/tools/dev-up.test.sh`
 
 **Interfaces:**
-- Consumes: `/Users/thinhhuynh/PeakPower/peakpower-platform/dev-up` (Task 27).
+- Consumes: `/Users/thinhhuynh/PeakPower/peakpower-platform/dev-up` (Task 28).
 - Produces: an executable `./dev-up` in `peakpower-web` honouring `PEAKPOWER_PLATFORM_PATH` and
   `PEAKPOWER_DEV_UP_DRY_RUN`, and passing every argument through unchanged.
 
@@ -7274,13 +7761,15 @@ Run every one of these from a clean checkout. All of them must hold before plan 
 
 2. **The solution builds with warnings as errors.**
    `/Users/thinhhuynh/PeakPower/peakpower-platform/tools/verify-solution-layout.sh` prints
-   `verify-solution-layout: OK`. Fifteen projects are in `PeakPower.sln`, in the classic `.sln`
-   format, and `PeakPower.Domain.csproj` contains no `ProjectReference`.
+   `verify-solution-layout: OK`. Eighteen projects are in `PeakPower.sln` — every project
+   contract §3.1 names plus `PeakPower.AppHost.Tests` — in the classic `.sln` format, and
+   `PeakPower.Domain.csproj` contains no `ProjectReference`.
 
-3. **All six architecture facts pass.**
+3. **Architecture facts 1, 2, 3 and 5 pass.**
    `dotnet test /Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Architecture.Tests`
-   reports 7 passed and 1 skipped — the skip is fact 3, which is armed for the day
-   `PeakPower.Ingestion` exists.
+   reports 5 passed and 1 skipped — the skip is fact 3, which is armed for the day
+   `PeakPower.Ingestion` exists. Facts 4 and 6 are plan 2's (contract §13) and are not asserted
+   here.
 
 4. **The whole test suite passes.**
    `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test PeakPower.sln --nologo`
@@ -7326,6 +7815,12 @@ Run every one of these from a clean checkout. All of them must hold before plan 
 12. **Every commit is local.** `git -C /Users/thinhhuynh/PeakPower/peakpower-platform remote`
     and `git -C /Users/thinhhuynh/PeakPower/peakpower-web remote` both print nothing.
 
+13. **The corporate Entra tenant access request has been raised**, by a named owner, on a
+    recorded date — design §13's week-1 non-code deliverable.
+    `/Users/thinhhuynh/PeakPower/peakpower-platform/docs/entra-tenant-access-request.md` exists,
+    is committed, names Thinh Huynh as the owner and carries the date it was raised. This is the
+    one item on this list that cannot be caught up later: the lead time is somebody else's.
+
 ## New names introduced
 
 Names this plan invents that the shared contract does not define. Every one of them is either
@@ -7335,22 +7830,16 @@ scaffolding the contract implies but does not name, or a supporting type migrati
 
 | Name | Why |
 | --- | --- |
-| `PeakPower.Infrastructure.Time` | Contract §13 fact 5 names this assembly; design §4.2's project list omits it. Built as a tenth source project under `src/Infrastructure/`. |
-| `PeakPower.AppHost.Tests` | A fifth test project so the Aspire dependency stays out of `PeakPower.Integration.Tests` and `PeakPower.Architecture.Tests`. Tests `WebRootLocator`, `AppHostOptions` and `FrontEndPlan`. |
+| `PeakPower.AppHost.Tests` | A fifth test project, beyond the four contract §3.1 names, so the Aspire dependency stays out of `PeakPower.Integration.Tests` and `PeakPower.Architecture.Tests`. Tests `WebRootLocator`, `AppHostOptions` and `FrontEndPlan`. |
 
-### Namespaces other plans must use
-
-| Name | Signature / meaning |
-| --- | --- |
-| `PeakPower.Api.Customer.Tenancy` | The only namespace in `PeakPower.Api.Customer` allowed to read identity off the request. Plan 2's HTTP-backed `ICustomerContext` **must** live here or architecture fact 6 fails. |
-| `PeakPower.Api.Employee.Tenancy` | Ditto for plan 2's `IEmployeeContext`. |
+Every other project this plan creates is named by contract §3.1, including the four
+infrastructure projects (`Persistence`, `Time`, `Web`, `Identity`, `Email`) — this plan creates
+them, it does not invent them.
 
 ### Domain types migration 1 needs
 
 | Name | Signature |
 | --- | --- |
-| `PeakPower.Domain.Metering.Brp` | `Guid Id`, `string Code`, `string Name`, `bool IsActive`; `static Result<Brp> Create(string code, string name, bool isActive)` |
-| `PeakPower.Domain.Wallets.Wallet` | `Guid Id`, `Guid CustomerId`, `string Currency`, `decimal Balance`; `static Result<Wallet> CreateEuroWallet(Guid customerId)` |
 | `PeakPower.Domain.Auditing.AuditRecord` | `Guid Id`, `DateTimeOffset OccurredAt`, `string Actor`, `string Action`, `string EntityType`, `Guid EntityId`, `Guid? CustomerId`, `string? Before`, `string? After`; `static Result<AuditRecord> Create(DateTimeOffset occurredAt, string actor, string action, string entityType, Guid entityId, Guid? customerId, string? before, string? after)` |
 
 ### Domain members added to contract types
@@ -7360,20 +7849,13 @@ scaffolding the contract implies but does not name, or a supporting type migrati
 | `EanCode.FromPersistedValue` | `static EanCode FromPersistedValue(string value)` — EF value converter only |
 | `KvkNumber.FromPersistedValue` | `static KvkNumber FromPersistedValue(string value)` |
 | `Iban.FromPersistedValue` | `static Iban FromPersistedValue(string value)` |
-| `Customer.Create` | `static Result<Customer> Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)` |
-| `Customer.ChangeStatus` | `Result<Customer> ChangeStatus(CustomerStatus status)` |
-| `Customer.UpdateDetails` | `Result<Customer> UpdateDetails(string legalName, string? tradeName, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference)` |
-| `CustomerAccount.Create` | `static Result<CustomerAccount> Create(Guid customerId, string username, string firstName, string lastName, string? jobTitle, string email, string? phone, AccountStatus status, bool isAdmin)` |
-| `CustomerAccount.SetPasswordHash` | `Result<CustomerAccount> SetPasswordHash(string passwordHash)` — bumps `SecurityStamp` |
-| `CustomerAccount.UpdateProfile` | `Result<CustomerAccount> UpdateProfile(string firstName, string lastName, string? jobTitle, string email, string? phone)` — bumps `SecurityStamp` |
-| `CustomerAccount.Deactivate` | `Result<CustomerAccount> Deactivate()` — bumps `SecurityStamp` |
-| `CustomerAccount.RecordLogin` | `CustomerAccount RecordLogin(DateTimeOffset at)` |
-| `MeteringPoint.Create` | `static Result<MeteringPoint> Create(Guid customerId, EanCode ean, Commodity commodity, Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? name, string? description, string? gridOperator, decimal? capacityKw, Address? address, DateOnly validFrom, DateOnly? validTo)` |
-| `MeteringPoint.Rename` | `Result<MeteringPoint> Rename(string? name, string? description)` |
-| `MeteringPoint.EndDate` | `Result<MeteringPoint> EndDate(DateOnly validTo)` |
 | `MeteringPoint.MaximumNameLength` | `const int MaximumNameLength = 80` |
 | `MeteringPoint.MaximumDescriptionLength` | `const int MaximumDescriptionLength = 500` |
-| `AssemblyMarker` | `public sealed class AssemblyMarker;` in each of `PeakPower.Domain`, `PeakPower.Application`, `PeakPower.Contracts`, `PeakPower.Persistence`, `PeakPower.Infrastructure.Time` |
+| `AssemblyMarker` | `public sealed class AssemblyMarker;` in each of `PeakPower.Domain`, `PeakPower.Application`, `PeakPower.Contracts`, `PeakPower.Persistence`, `PeakPower.Infrastructure.Time`, `PeakPower.Infrastructure.Web`, `PeakPower.Infrastructure.Identity`, `PeakPower.Infrastructure.Email` |
+
+Every factory and mutator on `Customer`, `CustomerAccount`, `MeteringPoint`, `Brp` and `Wallet`
+is declared by **contract §5.1**, not here. This plan writes them; it does not name them, and no
+other plan may re-declare them.
 
 ### Persistence types
 
@@ -7398,8 +7880,6 @@ scaffolding the contract implies but does not name, or a supporting type migrati
 | Name | Signature |
 | --- | --- |
 | `PeakPower.ServiceDefaults.Extensions` | `AddServiceDefaults<TBuilder>`, `ConfigureOpenTelemetry<TBuilder>`, `AddDefaultHealthChecks<TBuilder>` (all `where TBuilder : IHostApplicationBuilder`), `MapDefaultEndpoints(WebApplication app)` |
-| `PeakPower.Api.Customer.CustomerApiEntryPoint` | `public sealed class CustomerApiEntryPoint;` — the type `WebApplicationFactory<T>` is pointed at |
-| `PeakPower.Api.Employee.EmployeeApiEntryPoint` | `public sealed class EmployeeApiEntryPoint;` |
 | `PeakPower.AppHost.WebRootLocator` | `static string Locate(string? environmentValue, string appHostDirectory, Func<string, bool> directoryExists)`, `static string SiblingCheckoutPath(string appHostDirectory)` |
 | `PeakPower.AppHost.AppHostOptions` | `const string BackendOnlyFlag = "--backend-only"`, `static bool IsBackendOnly(string[] args)` |
 | `PeakPower.AppHost.FrontEndPlan` | `sealed record FrontEndPlan(bool Include, string? WebRoot, string Reason)` with `static FrontEndPlan Decide(string[] args, string? environmentValue, string appHostDirectory, Func<string, bool> directoryExists, Func<string, bool> fileExists)` |

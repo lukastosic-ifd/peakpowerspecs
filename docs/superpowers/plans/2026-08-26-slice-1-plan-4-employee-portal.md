@@ -107,13 +107,13 @@ public enum FourEyesAction
 // NOTE: the domain model doc has four arms. It is wrong; there are five.
 ```
 
-**On the wire this plan assumes the database spelling** — `"ACTIVE"`, `"PENDING_APPROVAL"`,
-`"CUSTOMER_DECLARED"` — because the shared contract calls that spelling normative. The generated
-types are the arbiter: after Task 1 you can read the exact string unions out of
-`libs/api-client-employee/src/generated/employee-schema.d.ts`. If Plan 2 serialises the C# names
-instead (`"Active"`, `"PendingApproval"`), the only file that changes is
-`apps/employee-portal/src/app/shared/labels.ts` in Task 5 — every other file reads the label maps
-through a function.
+**On the wire the spelling is SCREAMING_SNAKE** — `"ACTIVE"`, `"PENDING_APPROVAL"`,
+`"CUSTOMER_DECLARED"`. Shared contract §5.2 settles this for both APIs: they register one shared
+`JsonStringEnumConverter` that maps each enum to its database spelling, no mapper calls
+`.ToString()` on an enum, and no client hard-codes PascalCase. The generated types confirm it:
+after Task 1 you can read the exact string unions out of
+`libs/api-client-employee/src/generated/employee-schema.d.ts`, and Task 1 Step 6 asserts the
+spelling rather than trusting it.
 
 ### HTTP (shared contract §8)
 
@@ -188,24 +188,32 @@ depend on it.
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + FluentAssertions (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** + NSubstitute |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
-| Architecture | NetArchTest |
+| Architecture | NetArchTest 1.3.2 and Mono.Cecil 0.11.6 |
 | OpenAPI contract | Verify snapshot |
 | Frontend unit | Vitest |
 | E2E | Playwright, in `peakpower-web` |
 
-**Architecture facts that must exist from week 1:**
+> ⚠ **FluentAssertions 8.x may not be used.** 8.10.0 ships an Xceed Software Community License
+> Agreement "for Non-Commercial Use"; PeakPower is a commercial trading platform. **7.2.0 is the
+> last `Apache-2.0` release** and is what every plan pins (shared contract §13).
 
-1. `PeakPower.Domain` references no other project
-2. `PeakPower.Application` references only `PeakPower.Domain`
-3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter
-4. No type calls `IgnoreQueryFilters()`
-5. No type outside `PeakPower.Infrastructure.Time` uses `DateTime.Now` / `DateTime.UtcNow`
-6. No type outside the context-provider assembly reads a customer identifier from `HttpContext`
+**The six architecture facts, with the tool that enforces each and the plan that owns it**
+(shared contract §13). Facts 3-6 are about *call sites*, which NetArchTest's type-level model
+cannot see, so they are Mono.Cecil IL scans:
 
-Those six are Plan 1's deliverable and are listed here because they constrain what Plan 2 may
-expose, which in turn constrains what this plan may consume.
+| # | Fact | Tool | Owned by |
+| --- | --- | --- | --- |
+| 1 | `PeakPower.Domain` references no other project | NetArchTest | Plan 1 |
+| 2 | `PeakPower.Application` references only `PeakPower.Domain` | NetArchTest | Plan 1 |
+| 3 | `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter | Cecil | Plan 1 |
+| 4 | No type calls `IgnoreQueryFilters()` | Cecil | Plan 2 |
+| 5 | No type outside `PeakPower.Infrastructure.Time` calls `DateTime.Now`, `DateTime.UtcNow`, `DateTime.Today`, `DateTimeOffset.Now` or `DateTimeOffset.UtcNow` | Cecil | Plan 1 |
+| 6 | No type outside `PeakPower.Infrastructure.Web` uses `IHttpContextAccessor` or reads a claim off `ClaimsPrincipal` / `ClaimsIdentity` | Cecil | Plan 2 |
+
+They are listed here because they constrain what Plan 2 may expose, which in turn constrains what
+this plan may consume. Nothing in this plan runs them.
 
 Two runners are used in this repository and they are not interchangeable:
 
@@ -213,7 +221,7 @@ Two runners are used in this repository and they are not interchangeable:
   Run it with `npm run test:employee-portal`. Never invoke `vitest` directly — the builder
   compiles the Angular templates first and hands Vitest the compiled output.
 - **`node --test`** for the two build scripts under `tools/`, which are plain ESM modules with
-  no Angular in them. Run it with `npm run test:tools`.
+  no Angular in them. Run it with `npm run test:workspace`.
 
 ### Preconditions before Task 1
 
@@ -221,45 +229,48 @@ Two runners are used in this repository and they are not interchangeable:
    `/Users/thinhhuynh/PeakPower/peakpower-platform/artifacts/openapi/employee.json` exists.
    Check it: `test -f ../peakpower-platform/artifacts/openapi/employee.json && echo present`
 2. `peakpower-web` exists, is a git repository, and contains Plan 3's `package.json`,
-   `angular.json`, `tsconfig.base.json` and `libs/shared-ui`. Check it:
-   `ls package.json angular.json tsconfig.base.json libs/shared-ui/src/index.ts`
+   `angular.json`, `tsconfig.json` and `libs/shared-ui`. Check it:
+   `ls package.json angular.json tsconfig.json libs/shared-ui/src/public-api.ts`
 
 If (1) fails, Plan 2 is not finished and this plan cannot start. If (2) fails, Plan 3 is not
 finished and this plan cannot start.
 
 ### What this plan consumes from Plan 3 (`@peakpower/shared-ui`)
 
-Plan 3 owns these; this plan only imports them. The exact surface assumed is reproduced here so
-that a consistency pass can reconcile the two plans, and every name in it is repeated in
-**New names introduced** at the end.
+Plan 3 owns these; this plan only imports them. **Shared contract §10.1 is the normative
+declaration** — it is reproduced verbatim below so that the templates in this plan can be read
+without a second file open. If a binding here disagrees with §10.1, §10.1 wins.
 
 ```ts
-// @peakpower/shared-ui
-export type PpTone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info';
-export type PpButtonVariant = 'primary' | 'secondary' | 'danger';
+// libs/shared-ui/src/public-api.ts   ← this filename. NOT index.ts.
+
+export type PpTone =
+  | 'neutral' | 'brand' | 'info' | 'success' | 'warning' | 'critical';
+// 'positive' and 'danger' are NOT tone values — they are spelled 'success' and 'critical'.
+// Neither spelling may appear anywhere in this plan's templates or specs.
 
 export interface PpNavItem {
-  readonly routeKey: string;          // the specification's route key, never the label
-  readonly label: string;             // the design system's label
-  readonly path: string | null;       // null renders the item disabled
-  readonly disabledReason: string | null;  // the sentence shown when path is null
+  routeKey: string;          // the specification's key, never the label
+  label: string;             // the design system's label
+  path: string | null;       // null when the item is disabled
+  dot: string;               // the domain colour, a CSS custom-property reference
+  disabledReason?: string;   // rendered verbatim; a disabled item MUST carry one
 }
-export interface PpNavSection {
-  readonly title: string | null;
-  readonly items: readonly PpNavItem[];
-}
+export interface PpNavSection { label: string; items: PpNavItem[]; }
 
 // selector: 'pp-app-shell'
 export class PpAppShell {
-  readonly sections = input.required<readonly PpNavSection[]>();
-  readonly crumb = input<string | null>(null);      // crumb OR subtitle, never both
-  readonly subtitle = input<string | null>(null);
+  readonly sections = input.required<PpNavSection[]>();     // the grouped rail
+  readonly activeRouteKey = input.required<string>();
+  readonly productName = input.required<string>();
+  readonly crumb = input<string>();
+  readonly subtitle = input<string>();                      // a crumb OR a subtitle, never both
 }
 
 // selector: 'pp-card'
 export class PpCard {
-  readonly heading = input<string | null>(null);
-  readonly subtitle = input<string | null>(null);
+  readonly heading = input<string>();      // heading, NOT title
+  readonly subtitle = input<string>();
 }
 
 // selector: 'pp-badge'
@@ -267,41 +278,51 @@ export class PpBadge { readonly tone = input<PpTone>('neutral'); }
 
 // selector: 'pp-button'
 export class PpButton {
-  readonly variant = input<PpButtonVariant>('secondary');
+  readonly variant = input<'primary'|'secondary'|'ghost'|'danger'|'accept'>('secondary');
   readonly size = input<'md' | 'sm'>('md');
-  readonly type = input<'button' | 'submit'>('button');
-  readonly disabled = input<boolean>(false);
+  readonly disabled = input(false);
 }
 
-// selector: 'pp-banner'
+// selector: 'pp-banner'  — the compact in-page notice
 export class PpBanner {
   readonly tone = input<PpTone>('info');
-  readonly heading = input<string | null>(null);
+  readonly heading = input<string>();
 }
 
 // selector: 'pp-grid-table'  — display:grid divs, never <table>
 export class PpGridTable {
-  readonly columns = input.required<string>();      // a grid-template-columns string
-  readonly density = input<'default' | 'compact'>('default');
+  readonly columns = input.required<string>();   // the verbatim grid-template-columns string
+  readonly density = input<'default' | 'dense'>('default');
+  // Head and rows are CONTENT-PROJECTED. There is no rows input.
 }
-// selector: '[ppGridHead]'   — one row of column heads; applies text-transform: uppercase
+// selector: '[ppGridHead]'   — one row of ALL-CAPS column heads
 export class PpGridHead {}
 // selector: '[ppGridRow]'    — one data row
 export class PpGridRow {}
 
 // selector: 'pp-search-input'
 export class PpSearchInput {
-  readonly placeholder = input<string>('');
+  readonly placeholder = input('Search');
   readonly value = model<string>('');
 }
 ```
+
+**§10.1 gives `PpButton` no `type` input**, so no template in this plan binds one. Every form
+here keeps `(ngSubmit)` on its `<form>` — which is what makes Enter in a text input submit — and
+its primary button calls the component's `submit()` method directly with `(click)`. Nothing is
+lost: the specs already drive submission through `fixture.componentInstance.submit()`.
+
+Navigation is by `routerLink` on each item's `path`; `PpAppShell` has **no `navigate` output**.
+`PpAppShell.activeRouteKey` and `PpAppShell.productName` are both **required**, so every
+`<pp-app-shell>` in this plan binds them.
 
 Plan 3's rule that **`pp-grid-table` is never rendered with zero rows** is enforced by every
 screen in this plan: each table is wrapped in `@if (rows().length > 0) { … } @else { … }` and the
 empty branch is a `pp-card` whose text names the reason.
 
-Plan 3's token stylesheet is assumed to live at `libs/shared-ui/src/styles/tokens.css` and to be
-importable from a plain CSS file.
+Plan 3's token stylesheet is at `libs/shared-ui/src/styles/tokens.css`. One further token this
+plan uses, `--pp-canvas` — the page ground — is defined by Plan 3 in
+`libs/shared-ui/src/styles/colors.css` (shared contract §10.1).
 
 ### What this plan consumes from Plan 2 (the employee API)
 
@@ -312,20 +333,24 @@ they are assumed here and repeated in **New names introduced**.
 Endpoints, all under `/api/v1` (design §7):
 
 ```
-GET    /customers?q=                    POST   /customers
-GET    /customers/{id}                  PATCH  /customers/{id}
-POST   /customers/{id}/accounts         PATCH  /accounts/{id}
+GET    /customers?q=                            POST   /customers
+GET    /customers/{id}                          PATCH  /customers/{id}
+POST   /customers/{customerId}/accounts         PATCH  /accounts/{id}
 POST   /accounts/{id}/deactivate
-POST   /customers/{id}/metering-points  PATCH  /metering-points/{id}
+POST   /customers/{customerId}/metering-points  PATCH  /metering-points/{id}
 POST   /metering-points/{id}/end-date
 GET    /reference-data/brps
 ```
+
+The two nested POSTs name their parameter **`{customerId}`**, not `{id}`: on a nested route `{id}`
+reads as the child's identifier and would collide in the generated client. Plan 2's route table
+uses the same spelling.
 
 Schema names in `employee.json` (the keys under `components.schemas`):
 
 ```
 CustomerListResponse   { items: CustomerListItemDto[]; total: number }
-CustomerListItemDto    { id, legalName, tradeName, kvkNumber, status,
+CustomerListItemDto    { id, legalName, tradeName, kvkNumber, status, city,
                          accountCount, meteringPointCount }
 CustomerDetailDto      { id, legalName, tradeName, kvkNumber, vatNumber, status,
                          fourEyesEnabled, billingAddress, visitingAddress, primaryContact,
@@ -336,13 +361,16 @@ AccountDto             { id, customerId, username, firstName, lastName, jobTitle
 MeteringPointDto       { id, customerId, ean, eanDisplay, commodity, brpId, brpName,
                          productionExpectation, expectationSource, name, description,
                          gridOperator, capacityKw, address, validFrom, validTo, displayLabel }
-BrpDto                 { id, code, name, eanCode, isActive }
+BrpDto                 { id, code, name, isActive }
 AddressDto             { street, houseNumber, houseNumberSuffix, postalCode, city, country }
 ContactPersonDto       { name, email, phone }
-CreateCustomerRequest  { legalName, tradeName?, kvkNumber, vatNumber?, bankAccountIban?,
+CreateCustomerRequest  { legalName, tradeName?, kvkNumber, vatNumber?,
                          internalReference?, locale, billingAddress, visitingAddress?,
                          primaryContact }
-UpdateCustomerRequest  — same shape as CreateCustomerRequest
+UpdateCustomerRequest  { legalName, tradeName?, vatNumber?, internalReference?, locale,
+                         billingAddress, visitingAddress?, primaryContact, status }
+                       — NOT the same shape: no kvkNumber (a KvK number is immutable once
+                         registered), plus status
 CreateAccountRequest   { username, firstName, lastName, jobTitle?, email, phone?, isAdmin }
 UpdateAccountRequest   { firstName, lastName, jobTitle?, email, phone?, isAdmin }
 AttachMeteringPointRequest { ean, brpId, productionExpectation, expectationSource?, name?,
@@ -352,13 +380,10 @@ UpdateMeteringPointRequest { brpId, productionExpectation, expectationSource?, n
 EndDateMeteringPointRequest { validTo }
 ```
 
-> **`bankAccountIban` is the one field in that list this plan is least sure of.** The shared
-> contract's `Customer` aggregate has no IBAN and migration 1 has no bank-account table, yet the
-> employee create/edit form is specified as surfacing IBAN validation. Task 9 therefore binds an
-> optional `bankAccountIban` control and sends it in `CreateCustomerRequest`. **If
-> `employee.json` has no `bankAccountIban` property, delete the control, its label block and its
-> two lines in `toRequest()`. Nothing else changes** — the RFC 7807 error mapping in Task 4 is
-> generic and does not know the field exists.
+> **There is no bank account on this screen.** Shared contract §5 gives `Customer` no IBAN and
+> migration 1 has no bank-account table: bank details are collected once, during onboarding, and
+> belong to Plan 5's `SaveOnboardingStepRequest.Iban`. The employee create and edit forms in
+> Task 9 therefore carry no IBAN control and send none.
 
 ---
 
@@ -370,9 +395,9 @@ Every path is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 
 | File | Responsibility |
 | --- | --- |
-| `package.json` | *(modify)* the one workspace manifest: workspace globs, pinned versions, the `generate:clients` / `verify:clients` / `start:` / `test:` scripts |
-| `angular.json` | *(modify)* adds the `employee-portal` project — build, serve, unit-test targets |
-| `tsconfig.base.json` | *(modify)* adds the `@peakpower/api-client-employee` path mapping |
+| `package.json` | *(modify, key-level)* Plan 3's one workspace manifest gains three keys: the `generate:clients` and `verify:clients` scripts and the `openapi-typescript` devDependency |
+| `angular.json` | *(modify, key-level)* Plan 3's `employee-portal` project gains `serve.options` (port + proxy) and `test.options` (runner + include globs) |
+| `tsconfig.json` | *(modify)* adds the `@peakpower/api-client-employee` path mapping |
 | `tools/openapi-clients.mjs` | the client registry and the three pure functions the two scripts share: `generateTypes`, `checkClient`, `firstDifferenceLine` |
 | `tools/generate-clients.mjs` | writes the generated types to their committed locations |
 | `tools/verify-clients.mjs` | the staleness check — regenerates to a temp dir and fails on any difference |
@@ -397,15 +422,15 @@ Every path is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 
 | File | Responsibility |
 | --- | --- |
-| `src/index.html` | the document shell |
-| `src/main.ts` | bootstrap |
-| `src/styles.css` | imports Plan 3's token stylesheet and sets the page canvas |
+| `src/index.html` | *(modify)* the document shell Plan 3 scaffolded |
+| `src/main.ts` | *(modify)* bootstrap |
+| `src/styles.css` | *(modify)* sets the page canvas from Plan 3's tokens, which `angular.json` loads ahead of it |
 | `proxy.conf.mjs` | dev-server proxy from `/api` to the employee API, resolved from Aspire's env |
 | `tsconfig.app.json` / `tsconfig.spec.json` | compiler configuration for build and test |
 | `src/app/app.ts` | the root component — `pp-app-shell` plus `router-outlet` |
 | `src/app/app.config.ts` | providers: zoneless CD, router, HttpClient, `LOCALE_ID`, base URL |
 | `src/app/app.routes.ts` | top-level routes; feature routes are lazy |
-| `src/app/shell/employee-nav.ts` | `EMPLOYEE_NAV` — the eight back-office nav items, six disabled with their reasons |
+| `src/app/shell/employee-nav.ts` | `EMPLOYEE_NAV` — one `PpNavSection` over the eight back-office items, five disabled with their reasons, plus `routeKeyForUrl` and `crumbForUrl` |
 | `src/app/shared/labels.ts` | wire-value → sentence-case label and `PpTone` for every enum |
 | `src/app/shared/apply-problem-details.ts` | RFC 7807 `errors` → reactive-form control errors |
 | `src/app/shared/form-field.ts` | `PpFormField` — label, control slot, and the server error message |
@@ -441,7 +466,7 @@ hand-owned; `verify:clients` only ever looks at `src/generated/`.
 
 **Files:**
 - Modify: `package.json`
-- Modify: `tsconfig.base.json`
+- Modify: `tsconfig.json`
 - Create: `tools/openapi-clients.mjs`
 - Create: `tools/generate-clients.mjs`
 - Create: `tools/__fixtures__/tiny-openapi.json`
@@ -451,7 +476,7 @@ hand-owned; `verify:clients` only ever looks at `src/generated/`.
 
 **Interfaces:**
 - Consumes: `/Users/thinhhuynh/PeakPower/peakpower-platform/artifacts/openapi/employee.json`,
-  emitted by Plan 2. Consumes Plan 3's existing `package.json` and `tsconfig.base.json`.
+  emitted by Plan 2. Consumes Plan 3's existing `package.json` and `tsconfig.json`.
 - Produces:
   - `export const BANNER: string`
   - `export const WEB_ROOT: string`
@@ -459,58 +484,40 @@ hand-owned; `verify:clients` only ever looks at `src/generated/`.
   - `export const CLIENTS: readonly { name: string; document: string; output: string }[]`
   - `export async function generateTypes(documentPath: string): Promise<string>`
   - `export async function writeClient(client): Promise<string>`
-  - npm scripts `generate:clients` and `test:tools`
+  - npm scripts `generate:clients` and `verify:clients`
   - the committed file `libs/api-client-employee/src/generated/employee-schema.d.ts`
 
 - [ ] **Step 1: Add the workspace plumbing and install**
 
-Plan 3 already created `package.json`. **Merge** the entries below into it rather than
-overwriting — keep every `workspaces` glob, script and dependency Plan 3 put there. The result
-must contain at least this:
+**Plan 3 owns the root `package.json`.** It already declares the workspace globs, `"type":
+"module"`, every `@angular/*` and `typescript` pin, `start:employee-portal`,
+`build:employee-portal`, `test:employee-portal` and `test:workspace`. Do **not** paste a
+competing manifest over it and do not restate a key it already sets — in particular, leave
+`start:employee-portal` exactly as Plan 3 wrote it (`ng serve employee-portal --port ${PORT:-4201}`),
+because shared contract §10's AppHost call is `.WithHttpEndpoint(env: "PORT")` and dropping
+`--port ${PORT:-4201}` takes the port away from Aspire.
 
-```json
-{
-  "name": "peakpower-web",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "workspaces": [
-    "libs/*",
-    "apps/*"
-  ],
-  "scripts": {
-    "start:employee-portal": "ng serve employee-portal",
-    "build:employee-portal": "ng build employee-portal",
-    "test:employee-portal": "ng test employee-portal",
-    "generate:clients": "node tools/generate-clients.mjs",
-    "verify:clients": "node tools/verify-clients.mjs",
-    "test:tools": "node --test tools/"
-  },
-  "dependencies": {
-    "@angular/common": "22.1.3",
-    "@angular/compiler": "22.1.3",
-    "@angular/core": "22.1.3",
-    "@angular/forms": "22.1.3",
-    "@angular/platform-browser": "22.1.3",
-    "@angular/router": "22.1.3",
-    "rxjs": "7.8.2",
-    "tslib": "2.8.1"
-  },
-  "devDependencies": {
-    "@angular/build": "22.1.6",
-    "@angular/cli": "22.1.6",
-    "@angular/compiler-cli": "22.1.3",
-    "jsdom": "30.0.1",
-    "openapi-typescript": "7.13.0",
-    "typescript": "6.0.3",
-    "vitest": "4.1.11"
-  }
-}
+Make these three key-level edits and nothing else:
+
+1. `scripts["generate:clients"] = "node tools/generate-clients.mjs"` — new key.
+2. `scripts["verify:clients"] = "node tools/verify-clients.mjs"` — new key.
+3. `devDependencies["openapi-typescript"] = "7.13.0"` — new key.
+
+The tool tests run under Plan 3's existing `test:workspace` (`node --test tools/*.test.mjs`),
+which already picks up `tools/openapi-clients.test.mjs` and `tools/verify-clients.test.mjs`; this
+plan adds no second script for the same job.
+
+Check the result before moving on:
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+node -e "const p=require('./package.json');
+  for (const k of ['generate:clients','verify:clients','test:workspace','start:employee-portal'])
+    console.log(k, '=', p.scripts[k]);
+  console.log('openapi-typescript =', p.devDependencies['openapi-typescript']);"
 ```
 
-`"type": "module"` is what lets `tools/*.mjs` and `proxy.conf.mjs` use `import`. There is no
-`zone.js`: this workspace is zoneless, and Angular 22 runs change detection without it when
-`provideZonelessChangeDetection()` is supplied.
+Expected: all five print a value, and `start:employee-portal` still contains `--port`.
 
 Create the workspace package manifest:
 
@@ -528,15 +535,16 @@ Create the workspace package manifest:
 }
 ```
 
-Add the path mapping to `tsconfig.base.json` — again, **merge**, keeping Plan 3's
-`@peakpower/shared-ui` entry:
+Add one key to `compilerOptions.paths` in the workspace `tsconfig.json` — Plan 3 created that
+file and its `@peakpower/shared-ui` entry, which points at `public-api.ts` and must be left
+alone. The result reads:
 
 ```json
 {
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@peakpower/shared-ui": ["libs/shared-ui/src/index.ts"],
+      "@peakpower/shared-ui": ["libs/shared-ui/src/public-api.ts"],
       "@peakpower/api-client-employee": ["libs/api-client-employee/src/index.ts"]
     }
   }
@@ -662,7 +670,7 @@ describe('CLIENTS', () => {
 
 - [ ] **Step 3: Run the test and watch it fail**
 
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:tools`
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:workspace`
 Expected: FAIL with `Cannot find module '.../tools/openapi-clients.mjs'`
 
 - [ ] **Step 4: Write the minimal implementation**
@@ -763,7 +771,7 @@ process.exit(failed ? 1 : 0);
 
 - [ ] **Step 5: Run the test and watch it pass**
 
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:tools`
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:workspace`
 Expected: PASS — 7 tests across `generateTypes`, `resolvePlatformRoot` and `CLIENTS`.
 
 - [ ] **Step 6: Generate the committed client and read it**
@@ -789,15 +797,17 @@ grep -o '"PENDING_APPROVAL"\|"PendingApproval"' \
 1. Every schema name listed in **What this plan consumes from Plan 2** is present. If one is
    spelled differently, note the real spelling — Task 3 aliases it and nothing else in the plan
    touches the generated names.
-2. The enum unions use the database spelling (`"PENDING_APPROVAL"`). If they use the C# spelling
-   (`"PendingApproval"`), Task 5's label maps are keyed on that instead.
+2. The enum unions use the database spelling (`"PENDING_APPROVAL"`). The second `grep` must print
+   `"PENDING_APPROVAL"` and nothing else. `"PendingApproval"` appearing at all means Plan 2's
+   shared `JsonStringEnumConverter` is not registered, which is a Plan 2 defect against shared
+   contract §5.2 — fix it there rather than re-keying Task 5's label maps here.
 3. There is no runtime code — the file is types only.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 cd /Users/thinhhuynh/PeakPower/peakpower-web
-git add package.json package-lock.json tsconfig.base.json \
+git add package.json package-lock.json tsconfig.json \
   tools/openapi-clients.mjs tools/generate-clients.mjs tools/openapi-clients.test.mjs \
   tools/__fixtures__/tiny-openapi.json \
   libs/api-client-employee/package.json \
@@ -906,7 +916,7 @@ describe('checkClient', () => {
 
 - [ ] **Step 2: Run the test and watch it fail**
 
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:tools`
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:workspace`
 Expected: FAIL with `SyntaxError: The requested module './openapi-clients.mjs' does not provide an export named 'checkClient'`
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -990,7 +1000,7 @@ process.exit(stale ? 1 : 0);
 
 - [ ] **Step 4: Run the test and watch it pass**
 
-Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:tools`
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:workspace`
 Expected: PASS — 14 tests total across both tool test files.
 
 - [ ] **Step 5: Prove the check catches a real hand-edit**
@@ -1054,17 +1064,19 @@ lets Plan 5's auth interceptor be added later without touching a single call sit
 - Create: `libs/api-client-employee/src/lib/employee-api.client.ts`
 - Create: `libs/api-client-employee/src/lib/employee-api.testing.ts`
 - Create: `libs/api-client-employee/src/index.ts`
-- Modify: `angular.json`
-- Create: `apps/employee-portal/tsconfig.spec.json`
-- Create: `apps/employee-portal/tsconfig.app.json`
-- Create: `apps/employee-portal/src/index.html`
-- Create: `apps/employee-portal/src/styles.css`
-- Create: `apps/employee-portal/src/main.ts`
+- Modify: `angular.json` (two key-level edits inside the existing `employee-portal` project)
+- Modify: `apps/employee-portal/tsconfig.spec.json`
+- Modify: `apps/employee-portal/tsconfig.app.json`
+- Modify: `apps/employee-portal/src/index.html`
+- Modify: `apps/employee-portal/src/styles.css`
+- Modify: `apps/employee-portal/src/main.ts`
 - Test: `libs/api-client-employee/src/lib/employee-api.client.spec.ts`
 
-> The `main.ts` written here is a two-line stub so that `angular.json`'s build target — which the
-> unit-test builder needs as its `buildTarget` — resolves. Task 6 replaces it with the real
-> bootstrap.
+> Plan 3 scaffolded `apps/employee-portal` — the two tsconfigs, `index.html`, `styles.css` and
+> `main.ts` all exist, copied from the customer portal. This task replaces the contents of each
+> with the employee portal's own, which is why every one of them is a *modify*. The `main.ts`
+> written here is a two-line stub so that `angular.json`'s build target — which the unit-test
+> builder needs as its `buildTarget` — resolves. Task 6 replaces it with the real bootstrap.
 
 **Interfaces:**
 - Consumes: the generated `components['schemas'][…]` names from Task 1;
@@ -1097,62 +1109,58 @@ lets Plan 5's auth interceptor be added later without touching a single call sit
     - `listBrps(): Observable<Brp[]>`
   - `export function provideEmployeeApiTesting(): EnvironmentProviders[]`
 
-- [ ] **Step 1: Add the `employee-portal` project so a test can run at all**
+- [ ] **Step 1: Point the `employee-portal` project at the proxy and the client specs**
 
-Merge this project into `angular.json`'s `projects` object, keeping everything Plan 3 put there:
+**Plan 3 already created the `employee-portal` project in `angular.json`** — `"prefix": "pp"`, a
+`"targets"` object (not `"architect"`), `libs/shared-ui/src/styles/tokens.css` ahead of the app
+stylesheet, the `public/` asset glob and the production budgets. Do not paste a competing project
+object over it. This plan makes exactly two key-level edits, both inside
+`projects["employee-portal"].targets`:
+
+1. **`serve.options`** — Plan 3's serve target has configurations but no `options`. Add one, so
+   the dev server binds the port the shell expects and forwards `/api`:
 
 ```json
-{
-  "employee-portal": {
-    "projectType": "application",
-    "root": "apps/employee-portal",
-    "sourceRoot": "apps/employee-portal/src",
-    "prefix": "pp",
-    "architect": {
-      "build": {
-        "builder": "@angular/build:application",
-        "options": {
-          "browser": "apps/employee-portal/src/main.ts",
-          "index": "apps/employee-portal/src/index.html",
-          "tsConfig": "apps/employee-portal/tsconfig.app.json",
-          "outputPath": "dist/employee-portal",
-          "styles": ["apps/employee-portal/src/styles.css"]
-        },
-        "configurations": {
-          "development": { "optimization": false, "sourceMap": true, "namedChunks": true },
-          "production": { "optimization": true, "outputHashing": "all" }
-        },
-        "defaultConfiguration": "development"
-      },
-      "serve": {
-        "builder": "@angular/build:dev-server",
-        "options": {
-          "buildTarget": "employee-portal:build:development",
-          "port": 4201,
-          "proxyConfig": "apps/employee-portal/proxy.conf.mjs"
-        }
-      },
-      "test": {
-        "builder": "@angular/build:unit-test",
-        "options": {
-          "buildTarget": "employee-portal:build:development",
-          "runner": "vitest",
-          "include": [
-            "apps/employee-portal/src/**/*.spec.ts",
-            "libs/api-client-employee/src/**/*.spec.ts"
-          ]
-        }
-      }
-    }
-  }
+"options": {
+  "port": 4201,
+  "proxyConfig": "apps/employee-portal/proxy.conf.mjs"
 }
 ```
 
-Create `apps/employee-portal/tsconfig.app.json`:
+2. **`test.options`** — Plan 3 set only `tsConfig`. Add the runner and the include list, because
+   the transport layer's specs live in `libs/api-client-employee`, outside the app root, and
+   would otherwise never run:
+
+```json
+"runner": "vitest",
+"include": [
+  "apps/employee-portal/src/**/*.spec.ts",
+  "libs/api-client-employee/src/**/*.spec.ts"
+]
+```
+
+Leave `build` untouched: its styles array, budgets and assets are Plan 3's and this plan has no
+reason to change any of them.
+
+Check the result before moving on:
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+node -e "const a=require('./angular.json').projects['employee-portal'];
+  console.log('prefix', a.prefix, '| targets', Object.keys(a.targets).join(','));
+  console.log('styles', a.targets.build.options.styles.join(' '));
+  console.log('serve', JSON.stringify(a.targets.serve.options));
+  console.log('test', JSON.stringify(a.targets.test.options.include));"
+```
+
+Expected: `prefix pp`, a `targets` key (never `architect`), `tokens.css` still first in `styles`,
+the two serve options, and both include globs.
+
+Replace `apps/employee-portal/tsconfig.app.json`:
 
 ```json
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../out-tsc/employee-portal",
     "types": []
@@ -1162,11 +1170,11 @@ Create `apps/employee-portal/tsconfig.app.json`:
 }
 ```
 
-Create `apps/employee-portal/tsconfig.spec.json`:
+Replace `apps/employee-portal/tsconfig.spec.json`:
 
 ```json
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../out-tsc/employee-portal-spec",
     "types": ["vitest/globals", "node"]
@@ -1179,7 +1187,7 @@ Create `apps/employee-portal/tsconfig.spec.json`:
 }
 ```
 
-Create `apps/employee-portal/src/index.html`:
+Replace `apps/employee-portal/src/index.html`:
 
 ```html
 <!doctype html>
@@ -1198,12 +1206,11 @@ Create `apps/employee-portal/src/index.html`:
 The viewport is a fixed 1280 on purpose. The back office is desktop only — design §8.4 records
 that as explicit scope, not an omission.
 
-Create `apps/employee-portal/src/styles.css`:
+Replace `apps/employee-portal/src/styles.css`:
 
 ```css
-/* Plan 3 owns every token in here. This file only wires them to the page canvas. */
-@import '../../../libs/shared-ui/src/styles/tokens.css';
-
+/* Plan 3 owns every token, and angular.json already loads tokens.css ahead of this file, so
+   there is no @import here. This file only wires those tokens to the page canvas. */
 html,
 body {
   margin: 0;
@@ -1218,7 +1225,7 @@ body {
 }
 ```
 
-Create the stub `apps/employee-portal/src/main.ts`, replaced in Task 6:
+Replace `apps/employee-portal/src/main.ts` with a stub, itself replaced in Task 6:
 
 ```ts
 // Replaced by the real bootstrap in Task 6. It exists now so that angular.json's build target
@@ -1639,7 +1646,7 @@ function buildForm() {
   return new FormGroup({
     legalName: new FormControl('', { nonNullable: true }),
     kvkNumber: new FormControl('', { nonNullable: true }),
-    bankAccountIban: new FormControl('', { nonNullable: true }),
+    ean: new FormControl('', { nonNullable: true }),
     billingAddress: new FormGroup({
       postalCode: new FormControl('', { nonNullable: true }),
     }),
@@ -1678,13 +1685,13 @@ describe('applyProblemDetails', () => {
     expect(form.controls.kvkNumber.valid).toBe(false);
   });
 
-  it('surfaces an IBAN checksum failure without a client-side IBAN rule', () => {
+  it('surfaces an EAN failure without a client-side EAN rule', () => {
     const form = buildForm();
     applyProblemDetails(form, {
       status: 400,
-      errors: { bankAccountIban: ['IBAN checksum is not valid.'] },
+      errors: { ean: ['EAN must be exactly 18 digits.'] },
     });
-    expect(serverError(form.controls.bankAccountIban)).toBe('IBAN checksum is not valid.');
+    expect(serverError(form.controls.ean)).toBe('EAN must be exactly 18 digits.');
   });
 
   it('reaches a nested control through a dotted path', () => {
@@ -1869,6 +1876,7 @@ Domain terms a reader may not know:
   - `export function accountStatusTone(value: AccountStatusValue): PpTone`
   - `export function productionExpectationLabel(value: ProductionExpectationValue): string`
   - `export function expectationSourceLabel(value: ProductionExpectationSourceValue | null | undefined): string`
+  - `export const CUSTOMER_STATUS_OPTIONS: readonly { value: CustomerStatusValue; label: string }[]`
   - `export const PRODUCTION_EXPECTATION_OPTIONS: readonly { value: ProductionExpectationValue; label: string }[]`
   - `export const EXPECTATION_SOURCE_OPTIONS: readonly { value: ProductionExpectationSourceValue; label: string }[]`
 
@@ -1880,6 +1888,7 @@ Create `apps/employee-portal/src/app/shared/labels.spec.ts`:
 import { describe, it, expect } from 'vitest';
 
 import {
+  CUSTOMER_STATUS_OPTIONS,
   EXPECTATION_SOURCE_OPTIONS,
   PRODUCTION_EXPECTATION_OPTIONS,
   accountStatusLabel,
@@ -1898,11 +1907,18 @@ describe('customer status', () => {
     expect(customerStatusLabel('CLOSED')).toBe('Closed');
   });
 
-  it('gives an active company a positive tone and a suspended one a warning tone', () => {
-    expect(customerStatusTone('ACTIVE')).toBe('positive');
+  it('gives an active company a success tone and a suspended one a warning tone', () => {
+    expect(customerStatusTone('ACTIVE')).toBe('success');
     expect(customerStatusTone('SUSPENDED')).toBe('warning');
     expect(customerStatusTone('PROSPECT')).toBe('info');
     expect(customerStatusTone('CLOSED')).toBe('neutral');
+  });
+
+  it('offers all four statuses to the edit form, in the order the domain declares them', () => {
+    expect(CUSTOMER_STATUS_OPTIONS.map((o) => o.value))
+      .toEqual(['PROSPECT', 'ACTIVE', 'SUSPENDED', 'CLOSED']);
+    expect(CUSTOMER_STATUS_OPTIONS.map((o) => o.label))
+      .toEqual(['Prospect', 'Active', 'Suspended', 'Closed']);
   });
 });
 
@@ -1914,11 +1930,11 @@ describe('account status', () => {
     expect(accountStatusLabel('DEACTIVATED')).toBe('Deactivated');
   });
 
-  it('tones a deactivated account neutral, not danger', () => {
+  it('tones a deactivated account neutral, not critical', () => {
     expect(accountStatusTone('DEACTIVATED')).toBe('neutral');
     expect(accountStatusTone('PENDING_APPROVAL')).toBe('warning');
     expect(accountStatusTone('INVITED')).toBe('info');
-    expect(accountStatusTone('ACTIVE')).toBe('positive');
+    expect(accountStatusTone('ACTIVE')).toBe('success');
   });
 });
 
@@ -1985,7 +2001,7 @@ const CUSTOMER_STATUS_LABELS: Record<CustomerStatusValue, string> = {
 
 const CUSTOMER_STATUS_TONES: Record<CustomerStatusValue, PpTone> = {
   PROSPECT: 'info',
-  ACTIVE: 'positive',
+  ACTIVE: 'success',
   SUSPENDED: 'warning',
   CLOSED: 'neutral',
 };
@@ -1997,11 +2013,11 @@ const ACCOUNT_STATUS_LABELS: Record<AccountStatusValue, string> = {
   DEACTIVATED: 'Deactivated',
 };
 
-// Deactivated is neutral, not danger: it is a normal end state, not a fault.
+// Deactivated is neutral, not critical: it is a normal end state, not a fault.
 const ACCOUNT_STATUS_TONES: Record<AccountStatusValue, PpTone> = {
   PENDING_APPROVAL: 'warning',
   INVITED: 'info',
-  ACTIVE: 'positive',
+  ACTIVE: 'success',
   DEACTIVATED: 'neutral',
 };
 
@@ -2046,6 +2062,15 @@ export function expectationSourceLabel(
   return value == null ? 'Not recorded' : EXPECTATION_SOURCE_LABELS[value];
 }
 
+/** The four statuses the customer edit form may send back as UpdateCustomerRequest.status. */
+export const CUSTOMER_STATUS_OPTIONS: readonly {
+  value: CustomerStatusValue;
+  label: string;
+}[] = (['PROSPECT', 'ACTIVE', 'SUSPENDED', 'CLOSED'] as const).map((value) => ({
+  value,
+  label: CUSTOMER_STATUS_LABELS[value],
+}));
+
 export const PRODUCTION_EXPECTATION_OPTIONS: readonly {
   value: ProductionExpectationValue;
   label: string;
@@ -2069,7 +2094,7 @@ plain object.
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:employee-portal`
-Expected: PASS — 9 tests in `labels.spec.ts`.
+Expected: PASS — 10 tests in `labels.spec.ts`.
 
 - [ ] **Step 5: Commit**
 
@@ -2116,7 +2141,8 @@ split is `[DEC-115]`, and `EMPLOYEE_NAV` is the single mapping between the two.
 - Consumes (Plan 3): `PpAppShell`, `PpNavSection`, `PpNavItem`, `PpCard`, `PpBanner`.
   Consumes (Task 3): `EMPLOYEE_API_BASE_URL`, `provideEmployeeApiTesting`.
 - Produces:
-  - `export const EMPLOYEE_NAV: readonly PpNavSection[]`
+  - `export const EMPLOYEE_NAV: PpNavSection[]`
+  - `export function routeKeyForUrl(url: string): string`
   - `export function crumbForUrl(url: string): string`
   - `export const routes: Routes`
   - `export const appConfig: ApplicationConfig`
@@ -2130,7 +2156,7 @@ Create `apps/employee-portal/src/app/shell/employee-nav.spec.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 
-import { EMPLOYEE_NAV, crumbForUrl } from './employee-nav';
+import { EMPLOYEE_NAV, crumbForUrl, routeKeyForUrl } from './employee-nav';
 
 const items = EMPLOYEE_NAV.flatMap((section) => section.items);
 
@@ -2177,15 +2203,37 @@ describe('EMPLOYEE_NAV', () => {
 
   it('gives every enabled item no reason and a real path', () => {
     for (const item of items.filter((i) => i.path !== null)) {
-      expect(item.disabledReason).toBeNull();
+      expect(item.disabledReason).toBeUndefined();
       expect(item.path!.startsWith('/')).toBe(true);
     }
+  });
+
+  it('gives every item a domain dot expressed as a token reference', () => {
+    for (const item of items) {
+      expect(item.dot, `${item.routeKey} needs a dot`).toMatch(/^var\(--pp-[a-z0-9-]+\)$/);
+    }
+  });
+
+  it('groups the eight rows under one named section', () => {
+    expect(EMPLOYEE_NAV.map((section) => section.label)).toEqual(['Back office']);
   });
 
   it('uses no emoji or icon glyphs in any label', () => {
     for (const item of items) {
       expect(item.label).toMatch(/^[A-Za-z& ]+$/);
     }
+  });
+});
+
+describe('routeKeyForUrl', () => {
+  it('names the route key a URL belongs to, not its label', () => {
+    expect(routeKeyForUrl('/customers/abc-123/edit')).toBe('customers');
+    expect(routeKeyForUrl('/reference-data/brps')).toBe('reference-data');
+  });
+
+  it('falls back to home for an unknown URL', () => {
+    expect(routeKeyForUrl('/nowhere')).toBe('home');
+    expect(routeKeyForUrl('/')).toBe('home');
   });
 });
 
@@ -2268,67 +2316,85 @@ import type { PpNavItem, PpNavSection } from '@peakpower/shared-ui';
 // Every item outside this slice renders disabled WITH the sentence that explains why: a rail
 // that is complete and honest looks planned, whereas one that grows between demos looks broken.
 
-const ITEMS: readonly PpNavItem[] = [
+// `dot` is required by PpNavItem: the domain colour of the row, a token reference, never a
+// literal hex. `disabledReason` is optional and is present exactly on the rows whose path is null.
+
+const ITEMS: PpNavItem[] = [
   {
     routeKey: 'home',
     label: 'Home',
     path: '/home',
-    disabledReason: null,
+    dot: 'var(--pp-blue-500)',
   },
   {
     routeKey: 'trade-desk',
     label: 'Trade desk',
     path: null,
+    dot: 'var(--pp-blue-700)',
     disabledReason: 'Trading arrives with feature F05. This slice stops at customer administration.',
   },
   {
     routeKey: 'customers',
     label: 'Customers',
     path: '/customers',
-    disabledReason: null,
+    dot: 'var(--pp-mint)',
   },
   {
     routeKey: 'wallets',
     label: 'Wallets',
     path: null,
+    dot: 'var(--pp-teal)',
     disabledReason: 'Wallet movements and the ledger arrive with feature F06. A wallet row is created per customer, but nothing reads it yet.',
   },
   {
     routeKey: 'settlements',
     label: 'Settlements',
     path: null,
+    dot: 'var(--pp-amber)',
     disabledReason: 'Surcharges, invoicing and settlement arrive with features F09 and F10.',
   },
   {
     routeKey: 'data-feeds',
     label: 'Data & feeds',
     path: null,
+    dot: 'var(--pp-violet)',
     disabledReason: 'Ingestion and the BRP feed arrive with feature F02. Reference data is editable in the meantime.',
   },
   {
     routeKey: 'reference-data',
     label: 'Reference data',
     path: '/reference-data',
-    disabledReason: null,
+    dot: 'var(--pp-blue-300)',
   },
   {
     routeKey: 'audit',
     label: 'Audit',
     path: null,
+    dot: 'var(--pp-coral)',
     disabledReason: 'Audit records are written from this slice onwards, but the viewer arrives in Phase 2.',
   },
 ];
 
-export const EMPLOYEE_NAV: readonly PpNavSection[] = [{ title: null, items: ITEMS }];
+// PpNavSection.label is required, so the single back-office group is named rather than blank.
+export const EMPLOYEE_NAV: PpNavSection[] = [{ label: 'Back office', items: ITEMS }];
+
+/**
+ * The route key a URL belongs to. `PpAppShell.activeRouteKey` is a required input and is keyed on
+ * the specification's route key, never on the label [DEC-115].
+ */
+export function routeKeyForUrl(url: string): string {
+  const firstSegment = url.split('?')[0].split('/').filter(Boolean)[0];
+  const match = ITEMS.find((item) => item.routeKey === firstSegment && item.path !== null);
+  return match?.routeKey ?? 'home';
+}
 
 /**
  * The area a URL belongs to, for the topbar crumb. The shell shows a crumb OR a subtitle, never
  * both, so the pages that want a subtitle pass one and leave the crumb alone.
  */
 export function crumbForUrl(url: string): string {
-  const firstSegment = url.split('?')[0].split('/').filter(Boolean)[0];
-  const match = ITEMS.find((item) => item.routeKey === firstSegment && item.path !== null);
-  return match?.label ?? 'Home';
+  const key = routeKeyForUrl(url);
+  return ITEMS.find((item) => item.routeKey === key)!.label;
 }
 ```
 
@@ -2421,14 +2487,21 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
 import { PpAppShell } from '@peakpower/shared-ui';
 
-import { EMPLOYEE_NAV, crumbForUrl } from './shell/employee-nav';
+import { EMPLOYEE_NAV, crumbForUrl, routeKeyForUrl } from './shell/employee-nav';
 
+// productName and activeRouteKey are both REQUIRED inputs on PpAppShell (shared contract §10.1),
+// so they are bound here rather than defaulted inside the shell.
 @Component({
   selector: 'pp-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterOutlet, PpAppShell],
   template: `
-    <pp-app-shell [sections]="sections" [crumb]="crumb()">
+    <pp-app-shell
+      [sections]="sections"
+      [activeRouteKey]="activeRouteKey()"
+      productName="PeakPower back office"
+      [crumb]="crumb()"
+    >
       <router-outlet />
     </pp-app-shell>
   `,
@@ -2438,6 +2511,7 @@ export class App {
 
   protected readonly sections = EMPLOYEE_NAV;
   protected readonly crumb = signal(crumbForUrl(this.router.url));
+  protected readonly activeRouteKey = signal(routeKeyForUrl(this.router.url));
 
   constructor() {
     this.router.events
@@ -2445,7 +2519,10 @@ export class App {
         filter((event): event is NavigationEnd => event instanceof NavigationEnd),
         takeUntilDestroyed(),
       )
-      .subscribe((event) => this.crumb.set(crumbForUrl(event.urlAfterRedirects)));
+      .subscribe((event) => {
+        this.crumb.set(crumbForUrl(event.urlAfterRedirects));
+        this.activeRouteKey.set(routeKeyForUrl(event.urlAfterRedirects));
+      });
   }
 }
 ```
@@ -2520,7 +2597,7 @@ export default {
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:employee-portal`
-Expected: PASS — 9 tests in `employee-nav.spec.ts` and 2 in `home-page.spec.ts`.
+Expected: PASS — 13 tests in `employee-nav.spec.ts` and 2 in `home-page.spec.ts`.
 
 - [ ] **Step 5: See it in a browser**
 
@@ -2598,6 +2675,7 @@ const TWO_CUSTOMERS: CustomerListResponse = {
       tradeName: 'Acme',
       kvkNumber: '12345678',
       status: 'ACTIVE',
+      city: 'Utrecht',
       accountCount: 3,
       meteringPointCount: 2,
     },
@@ -2607,6 +2685,7 @@ const TWO_CUSTOMERS: CustomerListResponse = {
       tradeName: null,
       kvkNumber: '87654321',
       status: 'SUSPENDED',
+      city: 'Rotterdam',
       accountCount: 1,
       meteringPointCount: 0,
     },
@@ -2797,10 +2876,11 @@ import { customerStatusLabel, customerStatusTone } from '../../shared/labels';
     } @else if (rows().length > 0) {
       <pp-card heading="Customers">
         <span class="count">{{ total() }} companies</span>
-        <pp-grid-table columns="2.2fr 1fr 0.8fr 0.8fr 0.9fr 24px">
+        <pp-grid-table columns="2.2fr 1fr 1fr 0.8fr 0.8fr 0.9fr 24px">
           <div ppGridHead>
             <span>Company</span>
             <span>KvK number</span>
+            <span>City</span>
             <span>Accounts</span>
             <span>Connections</span>
             <span>Status</span>
@@ -2810,6 +2890,7 @@ import { customerStatusLabel, customerStatusTone } from '../../shared/labels';
             <div ppGridRow>
               <a [routerLink]="['/customers', customer.id]">{{ customer.legalName }}</a>
               <span>{{ customer.kvkNumber }}</span>
+              <span>{{ customer.city }}</span>
               <span>{{ customer.accountCount }}</span>
               <span>{{ customer.meteringPointCount }}</span>
               <span>
@@ -3251,7 +3332,7 @@ export const DETAIL_GRID = '1.6fr 1fr';
               </a>
             </div>
             @if (accounts().length > 0) {
-              <pp-grid-table columns="1.4fr 1.1fr 1.6fr 0.8fr 1fr 0.8fr" density="compact">
+              <pp-grid-table columns="1.4fr 1.1fr 1.6fr 0.8fr 1fr 0.8fr" density="dense">
                 <div ppGridHead>
                   <span>Name</span>
                   <span>Username</span>
@@ -3301,7 +3382,7 @@ export const DETAIL_GRID = '1.6fr 1fr';
             @if (meteringPoints().length > 0) {
               <pp-grid-table
                 columns="1.6fr 1.5fr 0.9fr 1.2fr 0.8fr 0.8fr 0.9fr"
-                density="compact"
+                density="dense"
               >
                 <div ppGridHead>
                   <span>Name</span>
@@ -3482,15 +3563,16 @@ control name is a compile error rather than a silent `undefined` at runtime. Tha
 `FormGroup<{ … }>` with `FormControl<string>` buys, and it is the reason Angular's untyped
 `FormBuilder.group({})` is not used anywhere in this plan.
 
-The form deliberately carries **no client-side KvK or IBAN rule**. A KvK number is the eight-digit
-Dutch Chamber of Commerce registration number; an IBAN is validated with an ISO 7064 mod-97
-checksum. Both rules already exist in `PeakPower.Domain.Common` and a second copy in TypeScript
-would drift from the first. The API returns RFC 7807 and Task 4's `applyProblemDetails` puts each
-message on its control.
+The form deliberately carries **no client-side KvK rule**. A KvK number is the eight-digit Dutch
+Chamber of Commerce registration number, and that rule already exists in
+`PeakPower.Domain.Common.KvkNumber`; a second copy in TypeScript would drift from the first. The
+API returns RFC 7807 and Task 4's `applyProblemDetails` puts each message on its control.
 
-> If `employee.json` has no `bankAccountIban` property on `CreateCustomerRequest`, delete the
-> `bankAccountIban` control, its `pp-form-field` block and its line in `toRequest()`. Nothing else
-> changes.
+The two verbs do **not** send the same body. `CreateCustomerRequest` carries `kvkNumber` and no
+status; `UpdateCustomerRequest` carries `status` and **no** `kvkNumber`, because a KvK number is
+immutable once the company is registered and status is the one thing an employee changes after
+the fact. The form therefore renders the KvK control read-only in edit mode and the status select
+only in edit mode, and `toRequest()` has one arm per verb.
 
 **Files:**
 - Create: `apps/employee-portal/src/app/shared/form-field.ts`
@@ -3501,8 +3583,9 @@ message on its control.
 
 **Interfaces:**
 - Consumes (Task 3): `EmployeeApiClient.createCustomer/updateCustomer/getCustomer`,
-  `isValidationProblem`, `CustomerDetail`, `CreateCustomerRequest`.
+  `isValidationProblem`, `CustomerDetail`, `CreateCustomerRequest`, `UpdateCustomerRequest`.
   Consumes (Task 4): `applyProblemDetails`, `serverError`.
+  Consumes (Task 5): `CUSTOMER_STATUS_OPTIONS`.
   Consumes (Plan 3): `PpBanner`, `PpButton`, `PpCard`.
 - Produces:
   - `export class PpFormField` (selector `pp-form-field`) with inputs `label`, `for`, `hint`,
@@ -3559,7 +3642,6 @@ function fillMinimum(page: CustomerFormPage) {
   page.form.patchValue({
     legalName: 'Nieuwe Energie B.V.',
     kvkNumber: '123',
-    bankAccountIban: 'NL00BANK0123456789',
     locale: 'nl-NL',
     billingAddress: {
       street: 'Damrak',
@@ -3647,18 +3729,14 @@ describe('CustomerFormPage — create', () => {
     expect(text()).toContain('KvK number must be exactly 8 digits.');
   });
 
-  it('puts an IBAN problem detail on the IBAN control and shows it', async () => {
+  it('sends no status when creating — a new company is always a prospect', async () => {
     fillMinimum(fixture.componentInstance);
     fixture.componentInstance.submit();
     await settle();
 
-    http.expectOne('/api/v1/customers').flush(
-      { status: 400, errors: { bankAccountIban: ['IBAN checksum is not valid.'] } },
-      { status: 400, statusText: 'Bad Request' },
-    );
-    await settle();
-
-    expect(text()).toContain('IBAN checksum is not valid.');
+    const req = http.expectOne('/api/v1/customers');
+    expect('status' in req.request.body).toBe(false);
+    req.flush(EXISTING);
   });
 
   it('shows a message that matches no control in a banner', async () => {
@@ -3736,6 +3814,29 @@ describe('CustomerFormPage — edit', () => {
     expect(req.request.method).toBe('PATCH');
     expect(req.request.body.legalName).toBe('Acme Energie N.V.');
     req.flush(EXISTING);
+  });
+
+  it('sends status and omits kvkNumber on update', async () => {
+    await settle();
+    http.expectOne('/api/v1/customers/c1').flush(EXISTING);
+    await settle();
+
+    fixture.componentInstance.form.controls.status.setValue('SUSPENDED');
+    fixture.componentInstance.submit();
+    await settle();
+
+    const req = http.expectOne('/api/v1/customers/c1');
+    expect(req.request.body.status).toBe('SUSPENDED');
+    expect('kvkNumber' in req.request.body).toBe(false);
+    req.flush(EXISTING);
+  });
+
+  it('fills the status control from the loaded customer', async () => {
+    await settle();
+    http.expectOne('/api/v1/customers/c1').flush(EXISTING);
+    await settle();
+
+    expect(fixture.componentInstance.form.controls.status.value).toBe('ACTIVE');
   });
 });
 ```
@@ -3896,11 +3997,14 @@ import {
   isValidationProblem,
   type CreateCustomerRequest,
   type CustomerDetail,
+  type CustomerStatusValue,
+  type UpdateCustomerRequest,
 } from '@peakpower/api-client-employee';
 
 import { applyProblemDetails, serverError } from '../../shared/apply-problem-details';
 import { PpAddressFields, buildAddressGroup } from '../../shared/address-fields';
 import { PpFormField } from '../../shared/form-field';
+import { CUSTOMER_STATUS_OPTIONS } from '../../shared/labels';
 
 @Component({
   selector: 'pp-customer-form-page',
@@ -3916,7 +4020,7 @@ import { PpFormField } from '../../shared/form-field';
     <h1>{{ isEdit() ? 'Edit company' : 'New company' }}</h1>
 
     @for (message of bannerMessages(); track message) {
-      <pp-banner tone="danger" heading="This company was not saved">{{ message }}</pp-banner>
+      <pp-banner tone="critical" heading="This company was not saved">{{ message }}</pp-banner>
     }
 
     <form [formGroup]="form" (ngSubmit)="submit()">
@@ -3936,10 +4040,17 @@ import { PpFormField } from '../../shared/form-field';
           <pp-form-field
             label="KvK number"
             for="kvk-number"
-            hint="Eight digits, checked by the platform"
+            [hint]="isEdit()
+              ? 'A KvK number cannot be changed once the company is registered.'
+              : 'Eight digits, checked by the platform'"
             [error]="message('kvkNumber')"
           >
-            <input id="kvk-number" type="text" formControlName="kvkNumber" />
+            <input
+              id="kvk-number"
+              type="text"
+              formControlName="kvkNumber"
+              [readOnly]="isEdit()"
+            />
           </pp-form-field>
           <pp-form-field
             label="VAT number"
@@ -3949,14 +4060,20 @@ import { PpFormField } from '../../shared/form-field';
           >
             <input id="vat-number" type="text" formControlName="vatNumber" />
           </pp-form-field>
-          <pp-form-field
-            label="IBAN"
-            for="iban"
-            hint="Optional. The checksum is verified by the platform."
-            [error]="message('bankAccountIban')"
-          >
-            <input id="iban" type="text" formControlName="bankAccountIban" />
-          </pp-form-field>
+          @if (isEdit()) {
+            <pp-form-field
+              label="Status"
+              for="status"
+              hint="Only an edit changes a status; a new company starts as a prospect."
+              [error]="message('status')"
+            >
+              <select id="status" formControlName="status">
+                @for (option of statusOptions; track option.value) {
+                  <option [value]="option.value">{{ option.label }}</option>
+                }
+              </select>
+            </pp-form-field>
+          }
           <pp-form-field
             label="Internal reference"
             for="internal-reference"
@@ -3999,11 +4116,11 @@ import { PpFormField } from '../../shared/form-field';
       </pp-card>
 
       <div class="actions">
-        <pp-button type="submit" variant="primary" [disabled]="saving()">
+        <pp-button variant="primary" [disabled]="saving()" (click)="submit()">
           {{ isEdit() ? 'Save changes' : 'Create company' }}
         </pp-button>
         <a [routerLink]="cancelTarget()">
-          <pp-button type="button">Cancel</pp-button>
+          <pp-button>Cancel</pp-button>
         </a>
       </div>
     </form>
@@ -4018,15 +4135,18 @@ export class CustomerFormPage {
 
   readonly isEdit = computed(() => this.customerId() !== undefined);
   readonly saving = signal(false);
+  protected readonly statusOptions = CUSTOMER_STATUS_OPTIONS;
   readonly bannerMessages = signal<string[]>([]);
 
   readonly form = new FormGroup({
     legalName: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     tradeName: new FormControl('', { nonNullable: true }),
-    // No client-side KvK or IBAN rule: the domain owns both and a second copy would drift.
+    // No client-side KvK rule: the domain owns it and a second copy would drift.
     kvkNumber: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     vatNumber: new FormControl('', { nonNullable: true }),
-    bankAccountIban: new FormControl('', { nonNullable: true }),
+    // Sent only by the update arm; UpdateCustomerRequest requires it and the create request
+    // has no such property.
+    status: new FormControl<CustomerStatusValue>('PROSPECT', { nonNullable: true }),
     internalReference: new FormControl('', { nonNullable: true }),
     locale: new FormControl('nl-NL', { nonNullable: true, validators: [Validators.required] }),
     billingAddress: buildAddressGroup(),
@@ -4067,11 +4187,10 @@ export class CustomerFormPage {
     if (this.form.invalid) return;
 
     this.saving.set(true);
-    const body = this.toRequest();
     const id = this.customerId();
     const call = id === undefined
-      ? this.api.createCustomer(body)
-      : this.api.updateCustomer(id, body);
+      ? this.api.createCustomer(this.toCreateRequest())
+      : this.api.updateCustomer(id, this.toUpdateRequest());
 
     call.subscribe({
       next: (customer) => {
@@ -4096,16 +4215,14 @@ export class CustomerFormPage {
   }
 
   /** Empty text means "not provided", which the API expects as null rather than "". */
-  private toRequest(): CreateCustomerRequest {
+  private shared() {
     const value = this.form.getRawValue();
     const blankToNull = (text: string): string | null => (text.trim() === '' ? null : text.trim());
 
     return {
       legalName: value.legalName.trim(),
       tradeName: blankToNull(value.tradeName),
-      kvkNumber: value.kvkNumber.trim(),
       vatNumber: blankToNull(value.vatNumber),
-      bankAccountIban: blankToNull(value.bankAccountIban),
       internalReference: blankToNull(value.internalReference),
       locale: value.locale.trim(),
       billingAddress: {
@@ -4122,7 +4239,23 @@ export class CustomerFormPage {
         email: value.primaryContact.email.trim(),
         phone: blankToNull(value.primaryContact.phone),
       },
+    };
+  }
+
+  /** Create carries the KvK number and no status: a new company is always a prospect. */
+  private toCreateRequest(): CreateCustomerRequest {
+    return {
+      ...this.shared(),
+      kvkNumber: this.form.controls.kvkNumber.value.trim(),
     } as CreateCustomerRequest;
+  }
+
+  /** Update carries the status and NO KvK number — it is immutable once registered. */
+  private toUpdateRequest(): UpdateCustomerRequest {
+    return {
+      ...this.shared(),
+      status: this.form.controls.status.value,
+    } as UpdateCustomerRequest;
   }
 
   private fill(customer: CustomerDetail): void {
@@ -4131,7 +4264,7 @@ export class CustomerFormPage {
       tradeName: customer.tradeName ?? '',
       kvkNumber: customer.kvkNumber,
       vatNumber: customer.vatNumber ?? '',
-      bankAccountIban: '',
+      status: customer.status as CustomerStatusValue,
       internalReference: customer.internalReference ?? '',
       locale: customer.locale,
       billingAddress: {
@@ -4187,7 +4320,7 @@ export const CUSTOMERS_ROUTES: Routes = [
 - [ ] **Step 5: Run the test and watch it pass**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:employee-portal`
-Expected: PASS — 7 tests in `CustomerFormPage — create` and 2 in `CustomerFormPage — edit`.
+Expected: PASS — 7 tests in `CustomerFormPage — create` and 4 in `CustomerFormPage — edit`.
 
 - [ ] **Step 6: Commit**
 
@@ -4529,7 +4662,7 @@ import { accountStatusLabel, accountStatusTone } from '../../shared/labels';
     <h1>{{ isEdit() ? 'Edit account' : 'New account' }}</h1>
 
     @for (message of bannerMessages(); track message) {
-      <pp-banner tone="danger" heading="This account was not saved">{{ message }}</pp-banner>
+      <pp-banner tone="critical" heading="This account was not saved">{{ message }}</pp-banner>
     }
 
     @if (account(); as existing) {
@@ -4584,14 +4717,14 @@ import { accountStatusLabel, accountStatusTone } from '../../shared/labels';
       </pp-card>
 
       <div class="actions">
-        <pp-button type="submit" variant="primary" [disabled]="saving()">
+        <pp-button variant="primary" [disabled]="saving()" (click)="submit()">
           {{ isEdit() ? 'Save changes' : 'Create account' }}
         </pp-button>
         <a [routerLink]="['/customers', customerId()]">
-          <pp-button type="button">Cancel</pp-button>
+          <pp-button>Cancel</pp-button>
         </a>
         @if (canDeactivate()) {
-          <pp-button type="button" variant="danger" (click)="askToDeactivate()">
+          <pp-button variant="danger" (click)="askToDeactivate()">
             Deactivate
           </pp-button>
         }
@@ -4599,7 +4732,7 @@ import { accountStatusLabel, accountStatusTone } from '../../shared/labels';
     </form>
 
     @if (confirmingDeactivation()) {
-      <pp-banner tone="danger" heading="Deactivate this account?">
+      <pp-banner tone="critical" heading="Deactivate this account?">
         <p>
           The person will no longer be able to sign in, and any token they already hold stops
           working on its next call rather than when it expires.
@@ -4860,8 +4993,8 @@ import {
 import { MeteringPointFormPage } from './metering-point-form-page';
 
 const BRPS = [
-  { id: 'b1', code: 'PVNED', name: 'PVNed', eanCode: '8716867000006', isActive: true },
-  { id: 'b2', code: 'ENECO', name: 'Eneco', eanCode: null, isActive: true },
+  { id: 'b1', code: 'PVNED', name: 'PVNed', isActive: true },
+  { id: 'b2', code: 'ENECO', name: 'Eneco', isActive: true },
 ] as unknown as Brp[];
 
 const POINT = {
@@ -5131,7 +5264,7 @@ import {
     <h1>{{ isEdit() ? 'Edit connection' : 'Attach a connection' }}</h1>
 
     @for (message of bannerMessages(); track message) {
-      <pp-banner tone="danger" heading="This connection was not saved">{{ message }}</pp-banner>
+      <pp-banner tone="critical" heading="This connection was not saved">{{ message }}</pp-banner>
     }
 
     <form [formGroup]="form" (ngSubmit)="submit()">
@@ -5238,11 +5371,11 @@ import {
       </pp-card>
 
       <div class="actions">
-        <pp-button type="submit" variant="primary" [disabled]="saving()">
+        <pp-button variant="primary" [disabled]="saving()" (click)="submit()">
           {{ isEdit() ? 'Save changes' : 'Attach connection' }}
         </pp-button>
         <a [routerLink]="['/customers', customerId()]">
-          <pp-button type="button">Cancel</pp-button>
+          <pp-button>Cancel</pp-button>
         </a>
       </div>
     </form>
@@ -5259,7 +5392,7 @@ import {
             <input id="valid-to" type="date" formControlName="validTo" />
           </pp-form-field>
           <div class="actions">
-            <pp-button type="submit" variant="danger">End connection</pp-button>
+            <pp-button variant="danger" (click)="endDate()">End connection</pp-button>
           </div>
         </form>
       </pp-card>
@@ -5539,8 +5672,8 @@ import { provideEmployeeApiTesting, type Brp } from '@peakpower/api-client-emplo
 import { BrpListPage } from './brp-list-page';
 
 const BRPS = [
-  { id: 'b1', code: 'PVNED', name: 'PVNed', eanCode: '8716867000006', isActive: true },
-  { id: 'b2', code: 'OLD', name: 'Retired party', eanCode: null, isActive: false },
+  { id: 'b1', code: 'PVNED', name: 'PVNed', isActive: true },
+  { id: 'b2', code: 'OLD', name: 'Retired party', isActive: false },
 ] as unknown as Brp[];
 
 describe('BrpListPage', () => {
@@ -5576,7 +5709,6 @@ describe('BrpListPage', () => {
 
     expect(text()).toContain('PVNed');
     expect(text()).toContain('PVNED');
-    expect(text()).toContain('8716867000006');
   });
 
   it('shows inactive parties as inactive rather than hiding them', async () => {
@@ -5594,14 +5726,6 @@ describe('BrpListPage', () => {
     await settle();
 
     expect(text()).toContain('read-only');
-  });
-
-  it('says so when a party has no EAN rather than leaving the cell blank', async () => {
-    await settle();
-    http.expectOne('/api/v1/reference-data/brps').flush(BRPS);
-    await settle();
-
-    expect(text()).toContain('Not recorded');
   });
 
   it('never renders a grid table with zero rows', async () => {
@@ -5666,11 +5790,10 @@ import { EmployeeApiClient, type Brp } from '@peakpower/api-client-employee';
       } @else if (brps.isLoading()) {
         <p class="empty">Loading balance responsible parties…</p>
       } @else if (rows().length > 0) {
-        <pp-grid-table columns="0.8fr 1.6fr 1.2fr 0.8fr">
+        <pp-grid-table columns="0.8fr 2fr 0.8fr">
           <div ppGridHead>
             <span>Code</span>
             <span>Name</span>
-            <span>EAN</span>
             <span>Status</span>
           </div>
           @for (brp of rows(); track brp.id) {
@@ -5678,14 +5801,7 @@ import { EmployeeApiClient, type Brp } from '@peakpower/api-client-employee';
               <span>{{ brp.code }}</span>
               <span>{{ brp.name }}</span>
               <span>
-                @if (brp.eanCode) {
-                  {{ brp.eanCode }}
-                } @else {
-                  <span class="empty">Not recorded</span>
-                }
-              </span>
-              <span>
-                <pp-badge [tone]="brp.isActive ? 'positive' : 'neutral'">
+                <pp-badge [tone]="brp.isActive ? 'success' : 'neutral'">
                   {{ brp.isActive ? 'Active' : 'Inactive' }}
                 </pp-badge>
               </span>
@@ -5756,7 +5872,7 @@ export const routes: Routes = [
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:employee-portal`
-Expected: PASS — 6 tests in `brp-list-page.spec.ts`, and every earlier spec still green.
+Expected: PASS — 5 tests in `brp-list-page.spec.ts`, and every earlier spec still green.
 
 - [ ] **Step 5: Walk the whole portal against the running API**
 
@@ -5787,7 +5903,7 @@ git commit -m "feat(employee-portal): add the balance responsible party referenc
 
 ## Definition of done
 
-1. `npm run test:tools` passes — 14 tests across `tools/openapi-clients.test.mjs` and
+1. `npm run test:workspace` passes — 14 tests across `tools/openapi-clients.test.mjs` and
    `tools/verify-clients.test.mjs`.
 2. `npm run test:employee-portal` passes — every spec listed in this plan, with no skipped tests.
 3. `npm run generate:clients` writes
@@ -5809,8 +5925,9 @@ git commit -m "feat(employee-portal): add the balance responsible party referenc
    `apps/employee-portal/src/app/shared/labels.ts` in sentence case.
 10. No screen renders `pp-grid-table` with zero rows; every empty state names its reason, and
     every disabled state names why.
-11. No KvK, IBAN or EAN rule exists in TypeScript. Every one of those messages on screen came
-    from an RFC 7807 response.
+11. No KvK or EAN rule exists in TypeScript. Every one of those messages on screen came from an
+    RFC 7807 response. There is no IBAN on any employee screen at all — bank details are
+    collected once, in Plan 5's onboarding.
 12. The customer detail screen's layout element carries `grid-template-columns: 1.6fr 1fr`.
 13. There is no company switcher and no `customer_id` anywhere in `apps/employee-portal` — the
     employee API is not tenant-scoped. Check it:
@@ -5818,6 +5935,13 @@ git commit -m "feat(employee-portal): add the balance responsible party referenc
 14. `grep -rn "localStorage\|sessionStorage" apps/employee-portal/src` returns nothing.
 15. `grep -rn "bypassSecurityTrust\|innerHTML" apps/employee-portal/src` returns nothing —
     design §8.5 bans both, and `[security §6]` bans the first outright.
+16. No tone is spelled the design system's old way. Check it:
+    `grep -rn "tone=\"positive\"\|tone=\"danger\"\|'positive'\|'danger'" apps/employee-portal/src`
+    returns nothing — shared contract §10.1 spells them `'success'` and `'critical'`, and
+    `danger` survives only as a `pp-button` **variant**, never as a tone.
+17. Every `<pp-app-shell>` binds `sections`, `activeRouteKey` and `productName`; §10.1 makes the
+    last two required, so a missing one is a strict-template compile error rather than a blank
+    rail.
 
 ## New names introduced
 
@@ -5841,8 +5965,9 @@ export function checkClient(client): Promise<{
 }>;
 
 // npm scripts on the peakpower-web root package.json
-"generate:clients" | "verify:clients" | "test:tools"
-"start:employee-portal" | "build:employee-portal" | "test:employee-portal"
+"generate:clients" | "verify:clients"      // the only two scripts this plan adds;
+                                          // start/build/test:employee-portal and
+                                          // test:workspace are Plan 3's
 
 // libs/api-client-employee — @peakpower/api-client-employee
 export const EMPLOYEE_API_BASE_URL: InjectionToken<string>;
@@ -5861,7 +5986,8 @@ export type Address, ContactPerson, CustomerListItem, CustomerListResponse, Cust
   AccountStatusValue, ProductionExpectationValue, ProductionExpectationSourceValue;
 
 // apps/employee-portal
-export const EMPLOYEE_NAV: readonly PpNavSection[];
+export const EMPLOYEE_NAV: PpNavSection[];
+export function routeKeyForUrl(url: string): string;
 export function crumbForUrl(url: string): string;
 export const SERVER_ERROR_KEY = 'server';
 export function normaliseProblemKey(key: string): string;
@@ -5874,6 +6000,8 @@ export function accountStatusTone(value: AccountStatusValue): PpTone;
 export function productionExpectationLabel(value: ProductionExpectationValue): string;
 export function expectationSourceLabel(
   value: ProductionExpectationSourceValue | null | undefined): string;
+export const CUSTOMER_STATUS_OPTIONS: readonly {
+  value: CustomerStatusValue; label: string }[];
 export const PRODUCTION_EXPECTATION_OPTIONS: readonly {
   value: ProductionExpectationValue; label: string }[];
 export const EXPECTATION_SOURCE_OPTIONS: readonly {
@@ -5901,36 +6029,19 @@ export const REFERENCE_DATA_ROUTES: Routes;
 export const appConfig: ApplicationConfig;
 ```
 
-### Assumed from Plan 3 (`@peakpower/shared-ui`) — Plan 3 must agree
+### Assumed from Plan 3 (`@peakpower/shared-ui`)
 
-The shared contract fixes the nine selectors but not their inputs. These are the inputs this plan
-binds. If Plan 3 names them differently, this plan's templates change and nothing else does.
+**Nothing.** The whole `@peakpower/shared-ui` surface this plan binds — `PpTone`, `PpNavItem`,
+`PpNavSection`, `PpAppShell`, `PpCard`, `PpBadge`, `PpButton`, `PpBanner`, `PpGridTable`,
+`PpGridHead`, `PpGridRow`, `PpSearchInput` — is declared normatively in shared contract §10.1 and
+reproduced under **What this plan consumes from Plan 3** above. Plan 3 implements it; this plan
+only imports it; neither plan may vary it. The same section fixes the two file names this plan
+depends on: the barrel is `libs/shared-ui/src/public-api.ts`, and the workspace TypeScript config
+is `tsconfig.json`.
 
-```ts
-export type PpTone = 'neutral' | 'positive' | 'warning' | 'danger' | 'info';
-export type PpButtonVariant = 'primary' | 'secondary' | 'danger';
-export interface PpNavItem {
-  readonly routeKey: string; readonly label: string;
-  readonly path: string | null; readonly disabledReason: string | null;
-}
-export interface PpNavSection { readonly title: string | null; readonly items: readonly PpNavItem[]; }
-export class PpAppShell   { sections: input.required<readonly PpNavSection[]>;
-                            crumb: input<string | null>; subtitle: input<string | null>; }
-export class PpCard       { heading: input<string | null>; subtitle: input<string | null>; }
-export class PpBadge      { tone: input<PpTone>; }
-export class PpButton     { variant: input<PpButtonVariant>; size: input<'md' | 'sm'>;
-                            type: input<'button' | 'submit'>; disabled: input<boolean>; }
-export class PpBanner     { tone: input<PpTone>; heading: input<string | null>; }
-export class PpGridTable  { columns: input.required<string>; density: input<'default' | 'compact'>; }
-export class PpGridHead   {}   // selector '[ppGridHead]', applies text-transform: uppercase
-export class PpGridRow    {}   // selector '[ppGridRow]'
-export class PpSearchInput{ placeholder: input<string>; value: model<string>; }
-```
-
-Also assumed from Plan 3: the token stylesheet is at `libs/shared-ui/src/styles/tokens.css` and
-defines `--pp-text`, `--pp-text-faint`, `--pp-canvas` and `--pp-red-text`; and the workspace root
-already has `package.json`, `angular.json` and `tsconfig.base.json` with the
-`@peakpower/shared-ui` path mapping.
+Two token names, also from §10.1 and §11 rather than from this plan: `--pp-canvas`, the page
+ground, defined by Plan 3 in `libs/shared-ui/src/styles/colors.css`; and `--pp-text`,
+`--pp-text-faint` and `--pp-red-text` in `libs/shared-ui/src/styles/tokens.css`.
 
 ### Assumed from Plan 2 (the employee API) — Plan 2 must agree
 
@@ -5940,7 +6051,7 @@ written.
 
 ```
 CustomerListResponse { items: CustomerListItemDto[]; total: number }
-CustomerListItemDto  { id; legalName; tradeName; kvkNumber; status; accountCount;
+CustomerListItemDto  { id; legalName; tradeName; kvkNumber; status; city; accountCount;
                        meteringPointCount }
 CustomerDetailDto    { id; legalName; tradeName; kvkNumber; vatNumber; status; fourEyesEnabled;
                        billingAddress; visitingAddress; primaryContact; internalReference;
@@ -5950,13 +6061,15 @@ AccountDto           { id; customerId; username; firstName; lastName; jobTitle; 
 MeteringPointDto     { id; customerId; ean; eanDisplay; commodity; brpId; brpName;
                        productionExpectation; expectationSource; name; description;
                        gridOperator; capacityKw; address; validFrom; validTo; displayLabel }
-BrpDto               { id; code; name; eanCode; isActive }
+BrpDto               { id; code; name; isActive }
 AddressDto           { street; houseNumber; houseNumberSuffix; postalCode; city; country }
 ContactPersonDto     { name; email; phone }
-CreateCustomerRequest { legalName; tradeName; kvkNumber; vatNumber; bankAccountIban;
+CreateCustomerRequest { legalName; tradeName; kvkNumber; vatNumber;
                         internalReference; locale; billingAddress; visitingAddress;
                         primaryContact }
-UpdateCustomerRequest — the same shape as CreateCustomerRequest
+UpdateCustomerRequest { legalName; tradeName; vatNumber; internalReference; locale;
+                        billingAddress; visitingAddress; primaryContact; status }
+                      — NOT the same shape as CreateCustomerRequest: no kvkNumber, plus status
 CreateAccountRequest  { username; firstName; lastName; jobTitle; email; phone; isAdmin }
 UpdateAccountRequest  { firstName; lastName; jobTitle; email; phone; isAdmin }
 AttachMeteringPointRequest { ean; brpId; productionExpectation; expectationSource; name;
@@ -5966,18 +6079,18 @@ UpdateMeteringPointRequest { brpId; productionExpectation; expectationSource; na
 EndDateMeteringPointRequest { validTo }
 ```
 
-Three of those go beyond what the shared contract states, and each one is a question for Plan 2:
+Two of those go beyond what the shared contract states, and each one is a convenience Plan 2
+supplies rather than a shape the contract fixes:
 
 - **`MeteringPointDto.eanDisplay`** — the grouped EAN string `[F01-R31]`. The contract puts
-  `ToDisplayString()` on the domain type, so the DTO should carry its output rather than have the
+  `ToDisplayString()` on the domain type, so the DTO carries its output rather than have the
   browser re-implement the grouping.
 - **`MeteringPointDto.brpName`** — so the connections table does not need a second request per
   row to name the BRP.
-- **`CreateCustomerRequest.bankAccountIban`** — the least certain of the three. See the note in
-  Task 9.
 
 Two further assumptions that are not names but are load-bearing:
 
 - Enum values cross the wire in the **database spelling** (`PENDING_APPROVAL`, not
-  `PendingApproval`). Task 1 Step 6 verifies this against the generated file.
+  `PendingApproval`). That is shared contract §5.2 rather than an assumption of this plan's, and
+  Task 1 Step 6 verifies it against the generated file.
 - `GET /customers` accepts `?q=` and returns every customer when it is absent.

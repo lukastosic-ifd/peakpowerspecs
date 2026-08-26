@@ -23,7 +23,8 @@ wizard's answers and, on a verified six-digit signing code, writes `customer`,
 PostgreSQL 17 · Aspire 13.5.3 · `Konscious.Security.Cryptography.Argon2` 1.3.1 ·
 `Microsoft.AspNetCore.Authentication.JwtBearer` 10.0.0 ·
 `Microsoft.IdentityModel.JsonWebTokens` 8.16.0 · Npgsql 10.0.0 · xUnit +
-FluentAssertions + NSubstitute · Testcontainers (PostgreSQL 17) · NetArchTest
+**FluentAssertions 7.2.0** + NSubstitute · Testcontainers (PostgreSQL 17) · NetArchTest ·
+Mono.Cecil
 
 **Spec:** `docs/superpowers/specs/2026-08-26-poc-slice-1-design.md`
 **Shared contract:** `docs/superpowers/plans/2026-08-26-slice-1-shared-contract.md`
@@ -92,9 +93,23 @@ public enum FourEyesAction
 ```
 
 All enums persist as **text**, via a single EF Core value converter registered by convention,
-not one converter per property.
+not one converter per property. **The wire spelling is the database spelling** (shared contract
+§5.2): `ACTIVE`, never `"Active"`. Both APIs register plan 2's one shared
+`JsonStringEnumConverter`; no mapper in this plan calls `.ToString()` on an enum.
 
-### Application ports (already defined — this plan implements two of them)
+### Application ports (declared by plan 1 in `PeakPower.Application.Abstractions`)
+
+Shared contract §6 fixes where each one is implemented. This plan writes three of them, and
+none of them go in `PeakPower.Persistence`:
+
+| Port | Implementation lives in | Written by |
+| --- | --- | --- |
+| `ICustomerContext` | `PeakPower.Infrastructure.Web` | plan 2 (dev), **this plan** (token-backed) |
+| `IEmployeeContext` | `PeakPower.Infrastructure.Web` | plan 2 |
+| `IMarketCalendar` | `PeakPower.Infrastructure.Time` | plan 1 |
+| `IEmailSender` | `PeakPower.Infrastructure.Email` (console sink) | **this plan** |
+| `IPasswordHasher` | `PeakPower.Infrastructure.Identity` | **this plan** |
+| `ITokenIssuer` | `PeakPower.Infrastructure.Identity` | **this plan** |
 
 ```csharp
 namespace PeakPower.Application.Abstractions;
@@ -171,21 +186,31 @@ audit.audit_record
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + FluentAssertions (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** (+ NSubstitute for ports) |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
 | Frontend unit | Vitest |
 | E2E | Playwright, in `peakpower-web` |
 
-**Architecture facts that must exist from week 1:**
+> ⚠ **FluentAssertions 8.x may not be used.** 8.10.0 ships an Xceed Software Community License
+> Agreement for **non-commercial use only**; PeakPower is a commercial trading platform. 7.2.0 is
+> the last Apache-2.0 release and is what every plan pins. Do not let `dotnet outdated` walk it
+> forward. Shared contract §13 carries the full note and registers the alternative as `[OQ-101]`.
 
-1. `PeakPower.Domain` references no other project
-2. `PeakPower.Application` references only `PeakPower.Domain`
-3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter
-4. No type calls `IgnoreQueryFilters()`
-5. No type outside `PeakPower.Infrastructure.Time` uses `DateTime.Now` / `DateTime.UtcNow`
-6. No type outside the context-provider assembly reads a customer identifier from `HttpContext`
+**Architecture facts that must exist from week 1** (shared contract §13; facts 3-6 are
+Mono.Cecil IL scans, because their subject is a call site rather than a type reference):
+
+1. `PeakPower.Domain` references no other project — plan 1
+2. `PeakPower.Application` references only `PeakPower.Domain` — plan 1
+3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter — plan 1
+4. No type calls `IgnoreQueryFilters()` — plan 2
+5. No type outside `PeakPower.Infrastructure.Time` calls `DateTime.Now`, `DateTime.UtcNow`,
+   `DateTime.Today`, `DateTimeOffset.Now` or `DateTimeOffset.UtcNow` — plan 1
+6. No type outside `PeakPower.Infrastructure.Web` uses `IHttpContextAccessor` or reads a claim
+   off `ClaimsPrincipal` / `ClaimsIdentity` — plan 2
+
+**This plan writes none of them.** Fact 6 is the one it must keep green, and Task 6 explains how.
 
 ### Copy rules
 
@@ -199,23 +224,32 @@ Sentence case everywhere. **No emoji, no icon set.** nl-NL numbers: `€ 19.722,
 Three mechanical rules that apply to every task below. They are not in the shared contract
 because they only matter inside this plan's boundary, but they are load-bearing.
 
-**C1 — Where the security adapters live.** The design fixes thirteen projects and only one of
-them is an infrastructure project (`PeakPower.Persistence`). Adapters that are *not*
-persistence therefore live inside that project's assembly under a `PeakPower.Infrastructure.*`
-namespace — exactly the shape architecture fact 5 already assumes for
-`PeakPower.Infrastructure.Time`. So `Argon2idPasswordHasher` lives at
-`src/Infrastructure/PeakPower.Persistence/Security/Argon2idPasswordHasher.cs` with namespace
-`PeakPower.Infrastructure.Security`. Folder and namespace deliberately disagree; the project
-file must therefore not rely on the default root-namespace-follows-folder behaviour, and every
-file in this plan states its namespace explicitly.
+**C1 — Where the security adapters live.** The shared contract fixes fifteen projects, five of
+them under `src/Infrastructure/` — `Persistence`, `Time`, `Web`, `Identity` and `Email` (§3.1).
+Adapters that are *not* persistence do not belong in the persistence assembly, so this plan
+fills two projects plan 1 created empty: `PeakPower.Infrastructure.Identity` takes everything
+that hashes a password or mints a token, and `PeakPower.Infrastructure.Email` takes the console
+sink. Contract §6 assigns exactly that: `IPasswordHasher` and `ITokenIssuer` are implemented in
+`PeakPower.Infrastructure.Identity`, `IEmailSender` in `PeakPower.Infrastructure.Email`. So
+`Argon2idPasswordHasher` lives at
+`src/Infrastructure/PeakPower.Infrastructure.Identity/Argon2idPasswordHasher.cs` with namespace
+`PeakPower.Infrastructure.Identity` — folder, project and namespace all agree, and the employee
+host never links the ES256 key store because it never references the project.
 
-**C2 — Migration ownership.** Plan 1 owns migration `M1_Initial`. **This plan owns migration
-`M2_AuthAndOnboarding`.** Every table this plan touches beyond `customer.customer` and
-`customer.customer_account` is described by an `IEntityTypeConfiguration<T>` written here, and
-migration 2 is produced by `dotnet ef migrations add`, which emits only the delta against
-whatever migration 1 already created. If migration 1 created a table in exactly the shape this
-plan's configuration describes, the generated migration will be empty for that table — that is
-the correct outcome, not a mistake.
+A third project the contract names, `PeakPower.Infrastructure.Web`, already exists: plan 2 put
+the development `ICustomerContext` there, and Tasks 6 and 7 below add the token-backed provider
+and the session middleware beside it. Contract §6 is explicit — "Do NOT put a provider inside
+an API host" — and architecture fact 6 (plan 2) fails the build if one does.
+
+**C2 — Migration ownership.** Shared contract §3.2 numbers the four slice-1 migrations: plan 1
+owns migration 1, `InitialSchema`; plan 2 owns migration 2, `TenancyRowLevelSecurity`; plan 6
+owns migration 4, the EAN pool. **This plan owns migration 3, `AuthAndOnboarding`.** Every table
+this plan touches beyond `customer.customer` and `customer.customer_account` is described by an
+`IEntityTypeConfiguration<T>` written here, and migration 3 is produced by
+`dotnet ef migrations add`, which emits only the delta against whatever migrations 1 and 2
+already created. If migration 1 created a table in exactly the shape this plan's configuration
+describes, the generated migration will be empty for that table — that is the correct outcome,
+not a mistake.
 
 **C3 — Which database role a request runs as.** The customer API's connection string logs in as
 the *owner* role, which bypasses row-level security. Anonymous endpoints (sign-in, refresh,
@@ -242,21 +276,19 @@ the portal says connection, the schema says metering point.
 
 | File | Responsibility |
 | --- | --- |
-| `src/Infrastructure/PeakPower.Persistence/Security/Argon2idPasswordHasher.cs` | `IPasswordHasher` over Argon2id at the OWASP floor; PHC-string encoding |
-| `src/Infrastructure/PeakPower.Persistence/Security/ISigningKeyStore.cs` | The port for the ES256 key pair and its public JWK |
-| `src/Infrastructure/PeakPower.Persistence/Security/FileSigningKeyStore.cs` | Generates or loads the P-256 key from a mode-0600 dev file |
-| `src/Infrastructure/PeakPower.Persistence/Security/JwtTokenIssuer.cs` | `ITokenIssuer` — the five claims, 15-minute ES256 access token, 32-byte refresh token |
-| `src/Infrastructure/PeakPower.Persistence/Security/CustomerTokenValidation.cs` | The single `TokenValidationParameters` factory, shared by the host and its tests |
-| `src/Infrastructure/PeakPower.Persistence/Security/OpaqueToken.cs` | CSPRNG generation and SHA-256 hashing for refresh and reset tokens |
-| `src/Infrastructure/PeakPower.Persistence/Email/ConsoleEmailSender.cs` | `IEmailSender` console sink |
+| `src/Infrastructure/PeakPower.Infrastructure.Identity/Argon2idPasswordHasher.cs` | `IPasswordHasher` over Argon2id at the OWASP floor; PHC-string encoding |
+| `src/Infrastructure/PeakPower.Infrastructure.Identity/ISigningKeyStore.cs` | The port for the ES256 key pair and its public JWK |
+| `src/Infrastructure/PeakPower.Infrastructure.Identity/FileSigningKeyStore.cs` | Generates or loads the P-256 key from a mode-0600 dev file |
+| `src/Infrastructure/PeakPower.Infrastructure.Identity/JwtTokenIssuer.cs` | `ITokenIssuer` — the five claims, 15-minute ES256 access token, 32-byte refresh token |
+| `src/Infrastructure/PeakPower.Infrastructure.Identity/CustomerTokenValidation.cs` | The single `TokenValidationParameters` factory, shared by the host and its tests |
+| `src/Infrastructure/PeakPower.Infrastructure.Identity/OpaqueToken.cs` | CSPRNG generation and SHA-256 hashing for refresh and reset tokens |
+| `src/Infrastructure/PeakPower.Infrastructure.Email/ConsoleEmailSender.cs` | `IEmailSender` console sink |
 | `src/Infrastructure/PeakPower.Persistence/Configurations/RefreshTokenConfiguration.cs` | EF mapping for `customer.refresh_token` |
 | `src/Infrastructure/PeakPower.Persistence/Configurations/PasswordResetTokenConfiguration.cs` | EF mapping for `customer.password_reset_token` |
 | `src/Infrastructure/PeakPower.Persistence/Configurations/OnboardingApplicationConfiguration.cs` | EF mapping for `customer.onboarding_application`, incl. the two jsonb columns |
-| `src/Infrastructure/PeakPower.Persistence/Configurations/WalletConfiguration.cs` | EF mapping for `wallet.wallet` |
-| `src/Infrastructure/PeakPower.Persistence/Migrations/*_M2_AuthAndOnboarding.cs` | Migration 2 — the delta plus the RLS grants and policies |
+| `src/Infrastructure/PeakPower.Persistence/Migrations/*_AuthAndOnboarding.cs` | Migration 3 — the delta plus the RLS grants and policies |
 | `src/Core/PeakPower.Domain/Customers/RefreshToken.cs` | The rotating refresh-token record and its state transitions |
 | `src/Core/PeakPower.Domain/Customers/PasswordResetToken.cs` | The single-use reset token and its state transitions |
-| `src/Core/PeakPower.Domain/Wallets/Wallet.cs` | The one EUR wallet a customer gets at signing |
 | `src/Core/PeakPower.Domain/Onboarding/OnboardingEnums.cs` | `OnboardingStatus`, `LegalEntityType`, `FlowDirection`, `VolumeBand`, `SigningAuthority` |
 | `src/Core/PeakPower.Domain/Onboarding/OnboardingReferenceData.cs` | The 24-industry list, the volume-band labels, the authority options, the step table |
 | `src/Core/PeakPower.Domain/Onboarding/OnboardingSignatory.cs` | One person who must sign, as stored in the signatories jsonb |
@@ -264,8 +296,8 @@ the portal says connection, the schema says metering point.
 | `src/Core/PeakPower.Contracts/Customer/Auth/AuthContracts.cs` | Request/response DTOs for the six auth endpoints |
 | `src/Core/PeakPower.Contracts/Customer/Onboarding/OnboardingContracts.cs` | Request/response DTOs for the four onboarding endpoints |
 | `src/Hosts/PeakPower.Api.Customer/Program.cs` | Composition root — DI, authentication, middleware order, endpoint mapping |
-| `src/Hosts/PeakPower.Api.Customer/Tenancy/JwtCustomerContext.cs` | `ICustomerContext` read from the validated token and nothing else |
-| `src/Hosts/PeakPower.Api.Customer/Tenancy/CustomerSessionMiddleware.cs` | One round trip: role switch, `app.customer_id`, and the stamp check |
+| `src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/JwtCustomerContext.cs` | `ICustomerContext` read from the validated token and nothing else |
+| `src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/CustomerSessionMiddleware.cs` | One round trip: role switch, `app.customer_id`, and the stamp check |
 | `src/Hosts/PeakPower.Api.Customer/Auth/ISignInThrottle.cs` | The progressive-delay port |
 | `src/Hosts/PeakPower.Api.Customer/Auth/InMemorySignInThrottle.cs` | Sliding-window failure counters per username and per source |
 | `src/Hosts/PeakPower.Api.Customer/Auth/AuthEndpoints.cs` | sign-in, refresh, sign-out, me, and the two password-reset endpoints |
@@ -277,8 +309,7 @@ the portal says connection, the schema says metering point.
 
 | File | Change |
 | --- | --- |
-| `src/Core/PeakPower.Domain/Customers/CustomerAccount.cs` | Add `SetPassword`, `BumpSecurityStamp`, `RecordSuccessfulSignIn`, `CreateWithPassword` |
-| `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs` | Add four `DbSet`s: refresh tokens, reset tokens, onboarding applications, wallets |
+| `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs` | Add three `DbSet`s: refresh tokens, reset tokens, onboarding applications |
 | `src/Hosts/PeakPower.AppHost/AppHost.cs` | Add the `customer-api` resource, waiting on the migrator |
 | `Directory.Packages.props` | Add the Argon2, JwtBearer, JsonWebTokens and Npgsql package versions |
 
@@ -300,9 +331,8 @@ the portal says connection, the schema says metering point.
 | `tests/PeakPower.Integration.Tests/Auth/AnonymousEndpointAllowListTests.cs` | Every endpoint is authorized unless explicitly listed |
 | `tests/PeakPower.Integration.Tests/Onboarding/OnboardingMaterialisationTests.cs` | One transaction, idempotent, wallet created, RLS-visible afterwards |
 | `tests/PeakPower.Integration.Tests/Onboarding/OnboardingEndpointTests.cs` | The whole wizard over HTTP, end to end |
-| `tests/PeakPower.Integration.Tests/Migrations/AuthSchemaTests.cs` | Migration 2 applies and produces the expected columns and policies |
+| `tests/PeakPower.Integration.Tests/Migrations/AuthSchemaTests.cs` | Migration 3 applies and produces the expected columns and policies |
 | `tests/PeakPower.Integration.Tests/CustomerApiFactory.cs` | The `WebApplicationFactory` bound to the Testcontainers database |
-| `tests/PeakPower.Architecture.Tests/CustomerApiTenancyRules.cs` | Only `…Api.Customer.Tenancy` may touch `System.Security.Claims` |
 
 ---
 
@@ -323,13 +353,13 @@ with the hash and a future parameter bump can still verify old hashes.
 
 **Files:**
 - Modify: `Directory.Packages.props`
-- Create: `src/Infrastructure/PeakPower.Persistence/Security/Argon2idPasswordHasher.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Identity/Argon2idPasswordHasher.cs`
 - Test: `tests/PeakPower.Application.Tests/Security/Argon2idPasswordHasherTests.cs`
 
 **Interfaces:**
 - Consumes: `PeakPower.Application.Abstractions.IPasswordHasher` — `string Hash(string password)`,
   `bool Verify(string password, string hash)` (shared contract §6, defined by plan 1).
-- Produces: `PeakPower.Infrastructure.Security.Argon2idPasswordHasher : IPasswordHasher`,
+- Produces: `PeakPower.Infrastructure.Identity.Argon2idPasswordHasher : IPasswordHasher`,
   a public parameterless-constructible sealed class.
 
 - [ ] **Step 1: Add the package version**
@@ -340,12 +370,26 @@ Add to the `<ItemGroup>` in `Directory.Packages.props`:
 <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
 ```
 
-Then reference it from the persistence project — add to
-`src/Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj`:
+Then reference it from the identity project — plan 1 created
+`src/Infrastructure/PeakPower.Infrastructure.Identity/PeakPower.Infrastructure.Identity.csproj`
+already referencing `PeakPower.Application`, so this is the only addition:
 
 ```xml
 <ItemGroup>
   <PackageReference Include="Konscious.Security.Cryptography.Argon2" />
+</ItemGroup>
+```
+
+Persistence is deliberately untouched: shared contract §6 puts `IPasswordHasher` in
+`PeakPower.Infrastructure.Identity`, and keeping it out of Persistence is what stops the
+employee host from linking the customer realm's credential code.
+
+The unit tests need to see the new assembly, so add to
+`tests/PeakPower.Application.Tests/PeakPower.Application.Tests.csproj`:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="../../src/Infrastructure/PeakPower.Infrastructure.Identity/PeakPower.Infrastructure.Identity.csproj" />
 </ItemGroup>
 ```
 
@@ -355,7 +399,7 @@ Create `tests/PeakPower.Application.Tests/Security/Argon2idPasswordHasherTests.c
 
 ```csharp
 using FluentAssertions;
-using PeakPower.Infrastructure.Security;
+using PeakPower.Infrastructure.Identity;
 using Xunit;
 
 namespace PeakPower.Application.Tests.Security;
@@ -415,7 +459,7 @@ Expected: FAIL — `error CS0246: The type or namespace name 'Argon2idPasswordHa
 
 - [ ] **Step 4: Write the minimal implementation**
 
-Create `src/Infrastructure/PeakPower.Persistence/Security/Argon2idPasswordHasher.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Identity/Argon2idPasswordHasher.cs`:
 
 ```csharp
 using System.Globalization;
@@ -424,7 +468,7 @@ using System.Text;
 using Konscious.Security.Cryptography;
 using PeakPower.Application.Abstractions;
 
-namespace PeakPower.Infrastructure.Security;
+namespace PeakPower.Infrastructure.Identity;
 
 /// <summary>
 /// Argon2id at OWASP's current floor — 19 MiB of memory, two iterations, one lane.
@@ -523,8 +567,7 @@ Expected: PASS — 8 passed
 
 ```bash
 git add Directory.Packages.props \
-        src/Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj \
-        src/Infrastructure/PeakPower.Persistence/Security/Argon2idPasswordHasher.cs \
+        src/Infrastructure/PeakPower.Infrastructure.Identity \
         tests/PeakPower.Application.Tests/Security/Argon2idPasswordHasherTests.cs
 git commit -m "feat(auth): hash customer passwords with Argon2id at the OWASP floor"
 ```
@@ -548,11 +591,11 @@ from, so replacing `FileSigningKeyStore` with a vault-backed one later is a DI r
 
 **Files:**
 - Modify: `Directory.Packages.props`, `PeakPower.sln`, `.gitignore`
-- Create: `src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj`
+- Modify: `src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj` *(plan 1 Task 3 created it)*
 - Create: `src/Hosts/PeakPower.Api.Customer/Program.cs`
 - Create: `src/Hosts/PeakPower.Api.Customer/appsettings.json`
-- Create: `src/Infrastructure/PeakPower.Persistence/Security/ISigningKeyStore.cs`
-- Create: `src/Infrastructure/PeakPower.Persistence/Security/FileSigningKeyStore.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Identity/ISigningKeyStore.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Identity/FileSigningKeyStore.cs`
 - Create: `tests/PeakPower.Integration.Tests/CustomerApiFactory.cs`
 - Test: `tests/PeakPower.Integration.Tests/Auth/JwksEndpointTests.cs`
 
@@ -562,15 +605,14 @@ from, so replacing `FileSigningKeyStore` with a vault-backed one later is a DI r
   `PeakPower.ServiceDefaults` extension `IHostApplicationBuilder.AddServiceDefaults()` (plan 1);
   `PostgreSqlContainer` fixture conventions from `tests/PeakPower.Integration.Tests` (plan 2).
 - Produces:
-  - `PeakPower.Infrastructure.Security.ISigningKeyStore` with
+  - `PeakPower.Infrastructure.Identity.ISigningKeyStore` with
     `ECDsaSecurityKey SigningKey { get; }`, `ECDsaSecurityKey PublicKey { get; }`,
     `string KeyId { get; }`, `JwksDocument PublicJwks { get; }`
-  - `PeakPower.Infrastructure.Security.JwksDocument(IReadOnlyList<JwkDocument> keys)` and
+  - `PeakPower.Infrastructure.Identity.JwksDocument(IReadOnlyList<JwkDocument> keys)` and
     `JwkDocument(string kty, string crv, string use, string alg, string kid, string x, string y)`
-  - `PeakPower.Infrastructure.Security.FileSigningKeyStore(string filePath) : ISigningKeyStore`
-  - A `public partial class Program` in `PeakPower.Api.Customer` so
-    `WebApplicationFactory<Program>` can bind to it
-  - `PeakPower.Integration.Tests.CustomerApiFactory : WebApplicationFactory<Program>` with
+  - `PeakPower.Infrastructure.Identity.FileSigningKeyStore(string filePath) : ISigningKeyStore`
+  - `PeakPower.Integration.Tests.CustomerApiFactory : WebApplicationFactory<CustomerApiEntryPoint>`
+    with
     `Task InitializeAsync()`, `HttpClient CreateAnonymousClient()`,
     `PeakPowerDbContext CreateOwnerDbContext()`, `IServiceProvider Services`
 
@@ -591,7 +633,8 @@ Add to `.gitignore`:
 .local/
 ```
 
-Add to `src/Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj`:
+Add to
+`src/Infrastructure/PeakPower.Infrastructure.Identity/PeakPower.Infrastructure.Identity.csproj`:
 
 ```xml
 <ItemGroup>
@@ -644,8 +687,8 @@ public sealed class JwksEndpointTests(CustomerApiFactory factory)
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "key.pkcs8");
 
-        var first = new PeakPower.Infrastructure.Security.FileSigningKeyStore(path);
-        var second = new PeakPower.Infrastructure.Security.FileSigningKeyStore(path);
+        var first = new PeakPower.Infrastructure.Identity.FileSigningKeyStore(path);
+        var second = new PeakPower.Infrastructure.Identity.FileSigningKeyStore(path);
 
         second.KeyId.Should().Be(first.KeyId);
         second.PublicJwks.Keys[0].X.Should().Be(first.PublicJwks.Keys[0].X);
@@ -660,13 +703,13 @@ Expected: FAIL — `error CS0246: The type or namespace name 'CustomerApiFactory
 
 - [ ] **Step 4: Write the key store**
 
-Create `src/Infrastructure/PeakPower.Persistence/Security/ISigningKeyStore.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Identity/ISigningKeyStore.cs`:
 
 ```csharp
 using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
 
-namespace PeakPower.Infrastructure.Security;
+namespace PeakPower.Infrastructure.Identity;
 
 /// <summary>The ES256 key pair the customer realm signs and verifies with.</summary>
 public interface ISigningKeyStore
@@ -698,13 +741,13 @@ public sealed record JwkDocument(
     [property: JsonPropertyName("y")] string Y);
 ```
 
-Create `src/Infrastructure/PeakPower.Persistence/Security/FileSigningKeyStore.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Identity/FileSigningKeyStore.cs`:
 
 ```csharp
 using System.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
 
-namespace PeakPower.Infrastructure.Security;
+namespace PeakPower.Infrastructure.Identity;
 
 /// <summary>
 /// Slice 1 holds the ES256 private key in a mode-0600 file under the content root, created on
@@ -785,24 +828,12 @@ public sealed class FileSigningKeyStore : ISigningKeyStore, IDisposable
 
 - [ ] **Step 5: Write the host project and its composition root**
 
-Create `src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj`:
+**Plan 1 Task 3 already wrote this file** with every `ProjectReference` the host needs, and
+already added it to the solution. Do not recreate it — two plans writing one csproj is how the
+reference lists diverge. Append two item groups to the existing file:
 
 ```xml
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>PeakPower.Api.Customer</RootNamespace>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="../PeakPower.ServiceDefaults/PeakPower.ServiceDefaults.csproj" />
-    <ProjectReference Include="../../Core/PeakPower.Contracts/PeakPower.Contracts.csproj" />
-    <ProjectReference Include="../../Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj" />
-  </ItemGroup>
-
+  <!-- Add to src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj -->
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>
@@ -810,8 +841,6 @@ Create `src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj`:
   <ItemGroup>
     <InternalsVisibleTo Include="PeakPower.Integration.Tests" />
   </ItemGroup>
-
-</Project>
 ```
 
 Create `src/Hosts/PeakPower.Api.Customer/appsettings.json`:
@@ -833,7 +862,8 @@ Create `src/Hosts/PeakPower.Api.Customer/appsettings.json`:
 Create `src/Hosts/PeakPower.Api.Customer/Program.cs`:
 
 ```csharp
-using PeakPower.Infrastructure.Security;
+using PeakPower.Infrastructure.Identity;
+using PeakPower.Infrastructure.Web.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -842,6 +872,12 @@ builder.AddNpgsqlDbContext<PeakPower.Persistence.PeakPowerDbContext>("peakpower"
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
+
+// Shared contract §5.2 — enums go on the wire in their database spelling, ACTIVE not "Active".
+// EnumWireFormat is plan 2's; the employee API registers the same converter instance, which is
+// what keeps the two APIs from drifting into two spellings of one enum.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(EnumWireFormat.Converter));
 
 // One key per process, loaded once. The path is relative to the content root so a test host
 // and the real host can each point somewhere of their own.
@@ -868,15 +904,17 @@ app.MapGet("/.well-known/jwks.json", (ISigningKeyStore keys) => Results.Json(key
 app.MapDefaultEndpoints();
 
 app.Run();
-
-/// <summary>Named so <c>WebApplicationFactory&lt;Program&gt;</c> can find this host.</summary>
-public partial class Program;
 ```
+
+Do **not** append `public partial class Program;`. Shared contract §5.1 forbids it in both API
+hosts: the integration-test assembly references `PeakPower.Api.Customer` and
+`PeakPower.Api.Employee`, and two global-namespace `Program` types make a bare
+`WebApplicationFactory<Program>` ambiguous (CS0104). Plan 1 ships the marker type
+`PeakPower.Api.Customer.CustomerApiEntryPoint` for exactly this, and the factory binds to that.
 
 Register the project in the solution:
 
 ```bash
-dotnet sln add src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj
 ```
 
 - [ ] **Step 6: Write the test factory**
@@ -889,6 +927,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using PeakPower.Api.Customer;
 using PeakPower.Persistence;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -901,7 +940,8 @@ namespace PeakPower.Integration.Tests;
 /// convention C3: anonymous endpoints run unrestricted, and CustomerSessionMiddleware drops to
 /// app_customer_role for authenticated ones.
 /// </summary>
-public sealed class CustomerApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public sealed class CustomerApiFactory
+    : WebApplicationFactory<CustomerApiEntryPoint>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
         .WithImage("postgres:17")
@@ -972,8 +1012,7 @@ Expected: PASS — 2 passed
 ```bash
 git add .gitignore Directory.Packages.props PeakPower.sln \
         src/Hosts/PeakPower.Api.Customer \
-        src/Infrastructure/PeakPower.Persistence/Security \
-        src/Infrastructure/PeakPower.Persistence/PeakPower.Persistence.csproj \
+        src/Infrastructure/PeakPower.Infrastructure.Identity \
         tests/PeakPower.Integration.Tests
 git commit -m "feat(auth): stand up the customer API and publish the ES256 verification key"
 ```
@@ -987,8 +1026,8 @@ JWT: it is 32 bytes from a CSPRNG, base64url-encoded, and it carries no informat
 meaning lives in the `customer.refresh_token` row (Task 4), which is what makes it revocable.
 
 **Files:**
-- Create: `src/Infrastructure/PeakPower.Persistence/Security/OpaqueToken.cs`
-- Create: `src/Infrastructure/PeakPower.Persistence/Security/JwtTokenIssuer.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Identity/OpaqueToken.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Identity/JwtTokenIssuer.cs`
 - Test: `tests/PeakPower.Application.Tests/Security/JwtTokenIssuerTests.cs`
 
 **Interfaces:**
@@ -998,9 +1037,9 @@ meaning lives in the `customer.refresh_token` row (Task 4), which is what makes 
   `DateTimeOffset UtcNow { get; }` (plan 1); `PeakPower.Domain.Customers.CustomerAccount`
   (shared contract §5, plan 1); `ISigningKeyStore` (Task 2).
 - Produces:
-  - `PeakPower.Infrastructure.Security.OpaqueToken` — `static string Create()`,
+  - `PeakPower.Infrastructure.Identity.OpaqueToken` — `static string Create()`,
     `static string HashOf(string token)`, `static bool Matches(string token, string hash)`
-  - `PeakPower.Infrastructure.Security.JwtTokenIssuer(ISigningKeyStore, IMarketCalendar) : ITokenIssuer`
+  - `PeakPower.Infrastructure.Identity.JwtTokenIssuer(ISigningKeyStore, IMarketCalendar) : ITokenIssuer`
     with `const string Issuer`, `const string Audience`,
     `static readonly TimeSpan AccessTokenLifetime`, `static readonly TimeSpan RefreshTokenLifetime`
 
@@ -1014,7 +1053,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using NSubstitute;
 using PeakPower.Application.Abstractions;
 using PeakPower.Domain.Customers;
-using PeakPower.Infrastructure.Security;
+using PeakPower.Infrastructure.Identity;
 using Xunit;
 
 namespace PeakPower.Application.Tests.Security;
@@ -1033,42 +1072,42 @@ public sealed class JwtTokenIssuerTests
         return new JwtTokenIssuer(new FileSigningKeyStore(_keyPath), clock);
     }
 
-    private static CustomerAccount SampleAccount(Guid accountId, Guid customerId, Guid stamp) =>
-        CustomerAccount.CreateWithPassword(
-            customerId: customerId,
+    // Plan 1's factory, shared contract §5.1: nine parameters, and it returns Result<T>.
+    // The issuer reads Id, CustomerId, IsAdmin and SecurityStamp, all of which the factory
+    // assigns, so each test asserts against the account it just built rather than a
+    // pre-chosen guid.
+    private static CustomerAccount SampleAccount(bool isAdmin = true) =>
+        CustomerAccount.Create(
+            customerId: Guid.NewGuid(),
             username: "p.devries@vandersteen.nl",
             firstName: "Peter",
             lastName: "de Vries",
+            jobTitle: null,
             email: "p.devries@vandersteen.nl",
             phone: null,
-            passwordHash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA==$aGFzaA==",
-            isAdmin: true,
-            id: accountId,
-            securityStamp: stamp);
+            status: AccountStatus.Active,
+            isAdmin: isAdmin).Value;
 
     [Fact]
     public void The_access_token_carries_exactly_the_five_contract_claims()
     {
-        var accountId = Guid.NewGuid();
-        var customerId = Guid.NewGuid();
-        var stamp = Guid.NewGuid();
+        var account = SampleAccount();
 
-        var token = CreateIssuer().IssueAccessToken(SampleAccount(accountId, customerId, stamp));
+        var token = CreateIssuer().IssueAccessToken(account);
 
         var jwt = new JsonWebToken(token.Jwt);
         jwt.Alg.Should().Be("ES256");
-        jwt.GetClaim("sub").Value.Should().Be(accountId.ToString());
-        jwt.GetClaim("customer_id").Value.Should().Be(customerId.ToString());
+        jwt.GetClaim("sub").Value.Should().Be(account.Id.ToString());
+        jwt.GetClaim("customer_id").Value.Should().Be(account.CustomerId.ToString());
         jwt.GetClaim("is_admin").Value.Should().Be("true");
-        jwt.GetClaim("stamp").Value.Should().Be(stamp.ToString());
+        jwt.GetClaim("stamp").Value.Should().Be(account.SecurityStamp.ToString());
         jwt.GetPayloadValue<string[]>("amr").Should().BeEquivalentTo("pwd");
     }
 
     [Fact]
     public void The_access_token_expires_fifteen_minutes_after_the_calendar_says_now()
     {
-        var token = CreateIssuer()
-            .IssueAccessToken(SampleAccount(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()));
+        var token = CreateIssuer().IssueAccessToken(SampleAccount());
 
         token.ExpiresAt.Should().Be(Now.AddMinutes(15));
         new JsonWebToken(token.Jwt).ValidTo.Should().BeCloseTo(
@@ -1078,11 +1117,8 @@ public sealed class JwtTokenIssuerTests
     [Fact]
     public void Is_admin_false_is_written_as_the_string_false_not_omitted()
     {
-        var account = CustomerAccount.CreateWithPassword(
-            Guid.NewGuid(), "a@b.nl", "A", "B", "a@b.nl", null,
-            "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA==$aGFzaA==", isAdmin: false);
-
-        var jwt = new JsonWebToken(CreateIssuer().IssueAccessToken(account).Jwt);
+        var jwt = new JsonWebToken(
+            CreateIssuer().IssueAccessToken(SampleAccount(isAdmin: false)).Jwt);
 
         jwt.GetClaim("is_admin").Value.Should().Be("false");
     }
@@ -1119,20 +1155,19 @@ public sealed class JwtTokenIssuerTests
 
 Run: `dotnet test tests/PeakPower.Application.Tests --filter "FullyQualifiedName~JwtTokenIssuerTests"`
 Expected: FAIL — `error CS0246: The type or namespace name 'JwtTokenIssuer' could not be found`
-(and `CustomerAccount.CreateWithPassword` does not exist yet — it is added in Task 4; if you are
-executing tasks in order, add the factory now as shown in Task 4 Step 2 and leave the rest of
-that task alone.)
+(`CustomerAccount.Create` and `AccountStatus` already exist — plan 1 shipped both, so the only
+missing names are this task's.)
 
 - [ ] **Step 3: Write the opaque-token helper**
 
-Create `src/Infrastructure/PeakPower.Persistence/Security/OpaqueToken.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Identity/OpaqueToken.cs`:
 
 ```csharp
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 
-namespace PeakPower.Infrastructure.Security;
+namespace PeakPower.Infrastructure.Identity;
 
 /// <summary>
 /// Refresh tokens and password-reset tokens are 32 bytes from a CSPRNG, stored as a SHA-256
@@ -1166,7 +1201,7 @@ public static class OpaqueToken
 
 - [ ] **Step 4: Write the token issuer**
 
-Create `src/Infrastructure/PeakPower.Persistence/Security/JwtTokenIssuer.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Identity/JwtTokenIssuer.cs`:
 
 ```csharp
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -1174,7 +1209,7 @@ using Microsoft.IdentityModel.Tokens;
 using PeakPower.Application.Abstractions;
 using PeakPower.Domain.Customers;
 
-namespace PeakPower.Infrastructure.Security;
+namespace PeakPower.Infrastructure.Identity;
 
 /// <summary>
 /// ES256 over a local JWKS, not HS256 over a shared secret. The point is that the validation
@@ -1241,19 +1276,27 @@ Expected: PASS — 5 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/Infrastructure/PeakPower.Persistence/Security/OpaqueToken.cs \
-        src/Infrastructure/PeakPower.Persistence/Security/JwtTokenIssuer.cs \
+git add src/Infrastructure/PeakPower.Infrastructure.Identity/OpaqueToken.cs \
+        src/Infrastructure/PeakPower.Infrastructure.Identity/JwtTokenIssuer.cs \
         tests/PeakPower.Application.Tests/Security/JwtTokenIssuerTests.cs
 git commit -m "feat(auth): issue ES256 access tokens and opaque refresh tokens"
 ```
 
 ---
 
-### Task 4: The token tables, the account mutators, and migration 2
+### Task 4: The token tables and migration 3
 
-Four things at once, because they are one schema change and one reviewer gate: the two token
-entities, the account mutators every later task needs, the wallet entity signing will create,
-and the migration that puts them in PostgreSQL with the right row-level-security posture.
+Two things at once, because they are one schema change and one reviewer gate: the two token
+entities, and the migration that puts them in PostgreSQL with the right row-level-security
+posture. The migration also sets the posture for `customer.onboarding_application` (Task 15's
+table) and for `wallet.wallet`, which plan 1's `InitialSchema` already created.
+
+**What this task does not touch.** `Wallet`, `WalletConfiguration` and `DbSet<Wallet> Wallets`
+are plan 1's — shared contract §3.2 puts `wallet.wallet` in migration 1 and §5.1 gives the
+aggregate one factory, `Wallet.CreateEuroWallet(Guid customerId)`, returning `Result<Wallet>`.
+The account mutators are plan 1's too: §5.1 declares `SetPassword`, `BumpSecurityStamp` and
+`RecordSuccessfulSignIn` on `CustomerAccount`, and this plan only calls them. Writing either
+here would be a duplicate member, not a merge.
 
 **RLS posture, stated once.** `customer.refresh_token` gets a policy that reaches through
 `account_id` to the account's `customer_id`, so a signed-in tenant can revoke its own tokens
@@ -1264,32 +1307,26 @@ nothing on them at all and RLS is enabled with no policy — deny by default.
 **Files:**
 - Create: `src/Core/PeakPower.Domain/Customers/RefreshToken.cs`
 - Create: `src/Core/PeakPower.Domain/Customers/PasswordResetToken.cs`
-- Create: `src/Core/PeakPower.Domain/Wallets/Wallet.cs`
-- Modify: `src/Core/PeakPower.Domain/Customers/CustomerAccount.cs`
 - Create: `src/Infrastructure/PeakPower.Persistence/Configurations/RefreshTokenConfiguration.cs`
 - Create: `src/Infrastructure/PeakPower.Persistence/Configurations/PasswordResetTokenConfiguration.cs`
-- Create: `src/Infrastructure/PeakPower.Persistence/Configurations/WalletConfiguration.cs`
 - Modify: `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs`
-- Create: `src/Infrastructure/PeakPower.Persistence/Migrations/*_M2_AuthAndOnboarding.cs` (generated)
+- Create: `src/Infrastructure/PeakPower.Persistence/Migrations/*_AuthAndOnboarding.cs` (generated)
 - Test: `tests/PeakPower.Integration.Tests/Migrations/AuthSchemaTests.cs`
 
 **Interfaces:**
-- Consumes: `PeakPower.Persistence.PeakPowerDbContext` (plan 1); `AccountStatus` (shared
-  contract §4); the `app_customer_role` database role and the `app.customer_id` setting created
-  by plan 2's migration.
+- Consumes: `PeakPower.Persistence.PeakPowerDbContext` with its existing `DbSet<Wallet> Wallets`
+  (plan 1); `AccountStatus` (shared contract §4); `CustomerAccount.SetPassword(string)`,
+  `CustomerAccount.BumpSecurityStamp()` and `CustomerAccount.RecordSuccessfulSignIn(DateTimeOffset)`
+  (shared contract §5.1, plan 1); the `app_customer_role` database role and the
+  `app.customer_id` setting created by plan 2's migration 2.
 - Produces:
   - `PeakPower.Domain.Customers.RefreshToken` — `static RefreshToken Issue(Guid accountId, string tokenHash, DateTimeOffset issuedAt, DateTimeOffset expiresAt)`,
     `bool IsUsable(DateTimeOffset at)`, `void MarkUsed(DateTimeOffset at, Guid replacedByTokenId)`,
     `void Revoke(DateTimeOffset at)`
   - `PeakPower.Domain.Customers.PasswordResetToken` — `static PasswordResetToken Issue(Guid accountId, string tokenHash, DateTimeOffset issuedAt, DateTimeOffset expiresAt)`,
     `bool IsUsable(DateTimeOffset at)`, `void MarkUsed(DateTimeOffset at)`
-  - `PeakPower.Domain.Wallets.Wallet` — `static Wallet CreateFor(Guid customerId)`,
-    `Guid Id`, `Guid CustomerId`, `string Currency`, `decimal Balance`
-  - On `CustomerAccount`: `static CustomerAccount CreateWithPassword(Guid customerId, string username, string firstName, string lastName, string email, string? phone, string passwordHash, bool isAdmin, Guid? id = null, Guid? securityStamp = null)`,
-    `void SetPassword(string passwordHash)`, `void BumpSecurityStamp()`,
-    `void RecordSuccessfulSignIn(DateTimeOffset at)`
-  - On `PeakPowerDbContext`: `DbSet<RefreshToken> RefreshTokens`,
-    `DbSet<PasswordResetToken> PasswordResetTokens`, `DbSet<Wallet> Wallets`
+  - On `PeakPowerDbContext`: `DbSet<RefreshToken> RefreshTokens` and
+    `DbSet<PasswordResetToken> PasswordResetTokens` — and nothing else; `Wallets` is already there
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1411,7 +1448,16 @@ not already:
 <PackageVersion Include="Dapper" Version="2.1.66" />
 ```
 
-- [ ] **Step 2: Write the domain types and the account mutators**
+- [ ] **Step 2: Run the test and watch it fail**
+
+Run: `dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~AuthSchemaTests"`
+Expected: FAIL — every case throws
+`Npgsql.PostgresException: 42P01: relation "customer.refresh_token" does not exist`, because
+`InitialSchema` created neither token table. If instead the run stops at
+`error CS0246: The type or namespace name 'RefreshToken' could not be found`, that is the same
+failure one layer earlier and is equally correct at this point.
+
+- [ ] **Step 3: Write the two token entities**
 
 Create `src/Core/PeakPower.Domain/Customers/RefreshToken.cs`:
 
@@ -1497,102 +1543,26 @@ public sealed class PasswordResetToken
 }
 ```
 
-Create `src/Core/PeakPower.Domain/Wallets/Wallet.cs`:
+Do not open `CustomerAccount.cs`. Shared contract §5.1 declares its whole surface and plan 1
+writes it: `static Result<CustomerAccount> Create(Guid customerId, string username, string
+firstName, string lastName, string? jobTitle, string email, string? phone, AccountStatus status,
+bool isAdmin)`, and the three book-keeping mutators this plan leans on —
+`void SetPassword(string passwordHash)` (which bumps the stamp), `void BumpSecurityStamp()` and
+`void RecordSuccessfulSignIn(DateTimeOffset at)`. The self-service path is therefore two calls,
+not a second factory: build the account `Active`, then set the hash.
 
 ```csharp
-namespace PeakPower.Domain.Wallets;
-
-/// <summary>
-/// One EUR wallet per customer, created when the onboarding agreement is signed  [F01-R05].
-/// A stub in slice 1: movements and the ledger are F06 and are explicitly out of scope, so the
-/// balance is created at zero and nothing in this slice changes it.
-/// </summary>
-public sealed class Wallet
-{
-    private Wallet() { }   // EF
-
-    public Guid Id { get; private set; }
-    public Guid CustomerId { get; private set; }
-    public string Currency { get; private set; } = "EUR";
-    public decimal Balance { get; private set; }
-
-    public static Wallet CreateFor(Guid customerId) => new()
-    {
-        Id = Guid.NewGuid(),
-        CustomerId = customerId,
-        Currency = "EUR",
-        Balance = 0m,
-    };
-}
+    var account = CustomerAccount.Create(
+        customerId, username, firstName, lastName, jobTitle: null, email, phone,
+        AccountStatus.Active, isAdmin).Value;
+    account.SetPassword(passwordHash);
 ```
 
-Add to `src/Core/PeakPower.Domain/Customers/CustomerAccount.cs`, inside the existing class:
+`SetPassword` bumping the stamp is what makes a completed reset kill every outstanding access
+and refresh token — design §7's requirement comes for free rather than being a second thing a
+caller has to remember.
 
-```csharp
-    /// <summary>
-    /// The self-service path  [DEC-113]: the person chose a password during onboarding, so the
-    /// account is born Active with a hash. The employee path (plan 2) creates Invited accounts
-    /// with a null hash instead.
-    /// </summary>
-    public static CustomerAccount CreateWithPassword(
-        Guid customerId,
-        string username,
-        string firstName,
-        string lastName,
-        string email,
-        string? phone,
-        string passwordHash,
-        bool isAdmin,
-        Guid? id = null,
-        Guid? securityStamp = null) => new()
-        {
-            Id = id ?? Guid.NewGuid(),
-            CustomerId = customerId,
-            Username = username,
-            FirstName = firstName,
-            LastName = lastName,
-            Email = email,
-            Phone = phone,
-            PasswordHash = passwordHash,
-            IsAdmin = isAdmin,
-            Status = AccountStatus.Active,
-            SecurityStamp = securityStamp ?? Guid.NewGuid(),
-        };
-
-    /// <summary>
-    /// Setting a password always bumps the stamp, so completing a reset kills every access and
-    /// refresh token outstanding for this account — the requirement in design §7 comes for free
-    /// rather than being a second thing a caller has to remember.
-    /// </summary>
-    public void SetPassword(string passwordHash)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
-        PasswordHash = passwordHash;
-        BumpSecurityStamp();
-    }
-
-    /// <summary>
-    /// The single revocation lever  [F01-R16]. Every authenticated request compares the token's
-    /// stamp claim against this column, so a new value invalidates every outstanding token on
-    /// its next call rather than in fifteen minutes.
-    /// </summary>
-    public void BumpSecurityStamp() => SecurityStamp = Guid.NewGuid();
-
-    public void RecordSuccessfulSignIn(DateTimeOffset at) => LastLoginAt = at;
-```
-
-For those assignments to compile, the properties on `CustomerAccount` need private setters
-rather than get-only accessors. Change the five affected declarations to:
-
-```csharp
-    public string? PasswordHash { get; private set; }
-    public Guid SecurityStamp { get; private set; }
-    public DateTimeOffset? LastLoginAt { get; private set; }
-    public AccountStatus Status { get; private set; }
-    public bool IsAdmin { get; private set; }
-```
-
-- [ ] **Step 3: Write the EF configurations and register the sets**
+- [ ] **Step 4: Write the EF configurations and register the sets**
 
 Create `src/Infrastructure/PeakPower.Persistence/Configurations/RefreshTokenConfiguration.cs`:
 
@@ -1640,55 +1610,31 @@ public sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration<P
 }
 ```
 
-Create `src/Infrastructure/PeakPower.Persistence/Configurations/WalletConfiguration.cs`:
+There is no third configuration. `WalletConfiguration` already exists — plan 1 wrote it
+alongside migration 1's `wallet.wallet` table, including the tenancy query filter plan 2 later
+made central. Adding a second one here would map the entity twice.
 
-```csharp
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using PeakPower.Domain.Wallets;
-
-namespace PeakPower.Persistence.Configurations;
-
-public sealed class WalletConfiguration : IEntityTypeConfiguration<Wallet>
-{
-    public void Configure(EntityTypeBuilder<Wallet> builder)
-    {
-        builder.ToTable("wallet", "wallet");
-        builder.HasKey(w => w.Id);
-        builder.Property(w => w.Id).HasDefaultValueSql("gen_random_uuid()");
-        builder.Property(w => w.Currency).HasMaxLength(3).IsRequired();
-        builder.Property(w => w.Balance).HasColumnType("numeric(18,6)");
-        builder.HasIndex(w => w.CustomerId).IsUnique();
-
-        // [DEC-20] — every customer-owned entity carries the filter, wallet included.
-        builder.HasQueryFilter(w => w.CustomerId == EF.Property<Guid>(w, "__customerId"));
-    }
-}
-```
-
-> The query-filter line above must match plan 2's convention exactly. Plan 2 owns
-> `HasQueryFilter` registration; if it applies filters centrally in `OnModelCreating` by
-> scanning for a `CustomerId` property, delete this line and let the central mechanism pick the
-> wallet up. Do not end up with two filters on one entity.
-
-Modify `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs` — add the sets:
+Modify `src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs` — add exactly two sets,
+and leave the existing `Wallets` alone:
 
 ```csharp
     public DbSet<PeakPower.Domain.Customers.RefreshToken> RefreshTokens => Set<PeakPower.Domain.Customers.RefreshToken>();
     public DbSet<PeakPower.Domain.Customers.PasswordResetToken> PasswordResetTokens => Set<PeakPower.Domain.Customers.PasswordResetToken>();
-    public DbSet<PeakPower.Domain.Wallets.Wallet> Wallets => Set<PeakPower.Domain.Wallets.Wallet>();
 ```
 
-- [ ] **Step 4: Generate migration 2**
+> A second `public DbSet<Wallet> Wallets` is CS0102, not a merge. If the property is missing,
+> plan 1 is unfinished — stop and reconcile rather than adding it here.
+
+- [ ] **Step 5: Generate migration 3**
 
 ```bash
-dotnet ef migrations add M2_AuthAndOnboarding \
+dotnet ef migrations add AuthAndOnboarding \
   --project src/Infrastructure/PeakPower.Persistence \
   --startup-project src/Hosts/PeakPower.Migrator \
   --output-dir Migrations
 ```
 
-Open the generated `*_M2_AuthAndOnboarding.cs`. If migration 1 already created
+Open the generated `*_AuthAndOnboarding.cs`. If plan 1's `InitialSchema` already created
 `customer.refresh_token` and `customer.password_reset_token` in this shape, the `Up` body will
 be empty for those tables — that is correct, leave it. Then append the security posture to the
 end of `Up`:
@@ -1738,26 +1684,26 @@ and the matching teardown at the end of `Down`:
             """);
 ```
 
-> `customer.onboarding_application` must exist before this SQL runs. If plan 1's migration 1
-> did not create it, run Task 15 first — it defines the entity — then regenerate this migration
-> so the `CREATE TABLE` lands ahead of the `ALTER`.
+> `customer.onboarding_application` must exist before this SQL runs. Plan 1's `InitialSchema`
+> does not create it — shared contract §3.2 leaves it to this migration — so run Task 15 first,
+> which defines the entity, then regenerate this migration so the `CREATE TABLE` lands ahead of
+> the `ALTER`.
 
-- [ ] **Step 5: Run the test and watch it pass**
+- [ ] **Step 6: Run the test and watch it pass**
 
 Run: `dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~AuthSchemaTests"`
 Expected: PASS — 13 passed
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/Core/PeakPower.Domain/Customers \
-        src/Core/PeakPower.Domain/Wallets \
         src/Infrastructure/PeakPower.Persistence/Configurations \
         src/Infrastructure/PeakPower.Persistence/PeakPowerDbContext.cs \
         src/Infrastructure/PeakPower.Persistence/Migrations \
         Directory.Packages.props \
         tests/PeakPower.Integration.Tests/Migrations/AuthSchemaTests.cs
-git commit -m "feat(auth): add the refresh, reset and wallet tables with their RLS posture"
+git commit -m "feat(auth): add the refresh and reset tables with their RLS posture"
 ```
 
 ---
@@ -1775,14 +1721,14 @@ algorithm is rejected before any signature check is attempted — the classic JW
 confusion attack.
 
 **Files:**
-- Create: `src/Infrastructure/PeakPower.Persistence/Security/CustomerTokenValidation.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Identity/CustomerTokenValidation.cs`
 - Modify: `src/Hosts/PeakPower.Api.Customer/Program.cs`
 - Test: `tests/PeakPower.Application.Tests/Security/CustomerTokenValidationTests.cs`
 
 **Interfaces:**
 - Consumes: `ISigningKeyStore` (Task 2), `JwtTokenIssuer.Issuer`, `JwtTokenIssuer.Audience`
   (Task 3).
-- Produces: `PeakPower.Infrastructure.Security.CustomerTokenValidation` with
+- Produces: `PeakPower.Infrastructure.Identity.CustomerTokenValidation` with
   `static TokenValidationParameters Parameters(ISigningKeyStore keys)`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1795,7 +1741,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using NSubstitute;
 using PeakPower.Application.Abstractions;
 using PeakPower.Domain.Customers;
-using PeakPower.Infrastructure.Security;
+using PeakPower.Infrastructure.Identity;
 using Xunit;
 
 namespace PeakPower.Application.Tests.Security;
@@ -1813,9 +1759,9 @@ public sealed class CustomerTokenValidationTests
         return (new JwtTokenIssuer(keys, clock), keys);
     }
 
-    private static CustomerAccount Account() => CustomerAccount.CreateWithPassword(
-        Guid.NewGuid(), "a@b.nl", "A", "B", "a@b.nl", null,
-        "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA==$aGFzaA==", isAdmin: false);
+    private static CustomerAccount Account() => CustomerAccount.Create(
+        Guid.NewGuid(), "a@b.nl", "A", "B", jobTitle: null, "a@b.nl", phone: null,
+        AccountStatus.Active, isAdmin: false).Value;
 
     [Fact]
     public async Task A_token_from_our_key_validates_and_keeps_sub_as_sub()
@@ -1887,12 +1833,12 @@ Expected: FAIL — `error CS0103: The name 'CustomerTokenValidation' does not ex
 
 - [ ] **Step 3: Write the validation parameters and wire the handler**
 
-Create `src/Infrastructure/PeakPower.Persistence/Security/CustomerTokenValidation.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Identity/CustomerTokenValidation.cs`:
 
 ```csharp
 using Microsoft.IdentityModel.Tokens;
 
-namespace PeakPower.Infrastructure.Security;
+namespace PeakPower.Infrastructure.Identity;
 
 /// <summary>
 /// One place defines how a customer access token is validated, so the host and its tests can
@@ -1965,7 +1911,7 @@ Add the usings at the top of `Program.cs`:
 ```csharp
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using PeakPower.Application.Abstractions;
-using PeakPower.Infrastructure.Security;
+using PeakPower.Infrastructure.Identity;
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -1976,7 +1922,7 @@ Expected: PASS — 4 passed
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/Infrastructure/PeakPower.Persistence/Security/CustomerTokenValidation.cs \
+git add src/Infrastructure/PeakPower.Infrastructure.Identity/CustomerTokenValidation.cs \
         src/Hosts/PeakPower.Api.Customer/Program.cs \
         tests/PeakPower.Application.Tests/Security/CustomerTokenValidationTests.cs
 git commit -m "feat(auth): validate customer access tokens against the local ES256 key"
@@ -1984,27 +1930,32 @@ git commit -m "feat(auth): validate customer access tokens against the local ES2
 
 ---
 
-### Task 6: The token-backed `ICustomerContext`, and the architecture test that fences it
+### Task 6: The token-backed `ICustomerContext`
 
 `ICustomerContext` is the one seam identity crosses into the application through. `[F13]`
 business rule 2 makes reading a customer identifier from a route, query, body or header a
-defect, and the design proposes hardening it into an architecture test. That test is the second
-half of this task.
+defect, and architecture fact 6 already hardens that into a test — plan 2 wrote it, and it is
+the reason this class does not live in the API host.
 
-The fence is drawn as a namespace: only types in `PeakPower.Api.Customer.Tenancy` may reference
-`System.Security.Claims` at all. An endpoint handler that wants to know who is calling takes
-`ICustomerContext`; if it reaches for `ClaimsPrincipal` instead, the build fails.
+The fence is drawn as an assembly: no type outside `PeakPower.Infrastructure.Web` may use
+`IHttpContextAccessor` or read a claim off `ClaimsPrincipal`. Shared contract §6 names that
+assembly as the one context-provider home — "Do NOT put a provider inside an API host" — and
+plan 2 already put the development provider there under `PeakPower.Infrastructure.Web.Tenancy`.
+The token-backed provider goes beside it. An endpoint handler that wants to know who is calling
+takes `ICustomerContext`; if it reaches for `ClaimsPrincipal` instead, plan 2's fact-6 test
+fails the build. **Do not write a second fence here** — a namespace-scoped copy inside this plan
+would restate fact 6 with weaker terms and the two would drift.
 
 **Files:**
-- Create: `src/Hosts/PeakPower.Api.Customer/Tenancy/JwtCustomerContext.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/JwtCustomerContext.cs`
 - Modify: `src/Hosts/PeakPower.Api.Customer/Program.cs`
 - Test: `tests/PeakPower.Application.Tests/Auth/JwtCustomerContextTests.cs`
-- Test: `tests/PeakPower.Architecture.Tests/CustomerApiTenancyRules.cs`
 
 **Interfaces:**
 - Consumes: `PeakPower.Application.Abstractions.ICustomerContext` (shared contract §6, plan 2);
-  `Microsoft.AspNetCore.Http.IHttpContextAccessor`.
-- Produces: `PeakPower.Api.Customer.Tenancy.JwtCustomerContext(IHttpContextAccessor) : ICustomerContext`.
+  `Microsoft.AspNetCore.Http.IHttpContextAccessor`; the `PeakPower.Infrastructure.Web` project
+  plan 2 created.
+- Produces: `PeakPower.Infrastructure.Web.Tenancy.JwtCustomerContext(IHttpContextAccessor) : ICustomerContext`.
 
 - [ ] **Step 1: Write the failing unit test**
 
@@ -2014,7 +1965,7 @@ Create `tests/PeakPower.Application.Tests/Auth/JwtCustomerContextTests.cs`:
 using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
-using PeakPower.Api.Customer.Tenancy;
+using PeakPower.Infrastructure.Web.Tenancy;
 using Xunit;
 
 namespace PeakPower.Application.Tests.Auth;
@@ -2098,20 +2049,21 @@ Expected: FAIL — `error CS0246: The type or namespace name 'JwtCustomerContext
 
 - [ ] **Step 3: Write the context provider and register it**
 
-Create `src/Hosts/PeakPower.Api.Customer/Tenancy/JwtCustomerContext.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/JwtCustomerContext.cs`, beside
+plan 2's `DevelopmentCustomerContext`:
 
 ```csharp
 using System.Security.Claims;
 using PeakPower.Application.Abstractions;
 
-namespace PeakPower.Api.Customer.Tenancy;
+namespace PeakPower.Infrastructure.Web.Tenancy;
 
 /// <summary>
 /// The customer realm's tenancy seam  [F13-R30]. Every value comes from the validated access
 /// token and from nowhere else: <c>[F13]</c> business rule 2 makes reading a customer
-/// identifier out of a route, a query string, a body or a header a defect, and the
-/// architecture test in <c>CustomerApiTenancyRules</c> keeps that honest by forbidding any
-/// type outside this namespace from touching <see cref="ClaimsPrincipal"/> at all.
+/// identifier out of a route, a query string, a body or a header a defect, and architecture
+/// fact 6 keeps that honest by forbidding any type outside this assembly from touching
+/// <see cref="ClaimsPrincipal"/> or <see cref="IHttpContextAccessor"/> at all.
 /// </summary>
 public sealed class JwtCustomerContext(IHttpContextAccessor accessor) : ICustomerContext
 {
@@ -2136,7 +2088,16 @@ Modify `src/Hosts/PeakPower.Api.Customer/Program.cs` — add after `builder.Serv
 
 ```csharp
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICustomerContext, PeakPower.Api.Customer.Tenancy.JwtCustomerContext>();
+builder.Services.AddScoped<ICustomerContext, PeakPower.Infrastructure.Web.Tenancy.JwtCustomerContext>();
+```
+
+The unit test lives in `PeakPower.Application.Tests`, which does not yet see plan 2's assembly.
+Add to `tests/PeakPower.Application.Tests/PeakPower.Application.Tests.csproj`:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="../../src/Infrastructure/PeakPower.Infrastructure.Web/PeakPower.Infrastructure.Web.csproj" />
+</ItemGroup>
 ```
 
 - [ ] **Step 4: Run the unit test and watch it pass**
@@ -2144,82 +2105,25 @@ builder.Services.AddScoped<ICustomerContext, PeakPower.Api.Customer.Tenancy.JwtC
 Run: `dotnet test tests/PeakPower.Application.Tests --filter "FullyQualifiedName~JwtCustomerContextTests"`
 Expected: PASS — 4 passed
 
-- [ ] **Step 5: Write the failing architecture test**
+- [ ] **Step 5: Run plan 2's architecture facts and watch them stay green**
 
-Create `tests/PeakPower.Architecture.Tests/CustomerApiTenancyRules.cs`:
+The provider that just landed is the exact shape architecture fact 6 exists to police, so run
+plan 2's suite rather than writing a second one.
 
-```csharp
-using FluentAssertions;
-using NetArchTest.Rules;
-using Xunit;
+Run: `dotnet test tests/PeakPower.Architecture.Tests`
+Expected: PASS — every fact, including
+`no_type_outside_the_context_provider_assembly_depends_on_http_context` and
+`no_type_outside_the_context_provider_assembly_names_a_customer_identifier`.
 
-namespace PeakPower.Architecture.Tests;
+If either goes red, the file is in the wrong assembly. Move it into
+`src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/` — do not widen the allow-list.
 
-/// <summary>
-/// Design §10 asks that [F13] business rule 2 be hardened from advice into a test. This is it:
-/// inside the customer API, only the Tenancy namespace may look at a caller's claims. Everyone
-/// else asks ICustomerContext, which reads the token and nothing else.
-/// </summary>
-public sealed class CustomerApiTenancyRules
-{
-    private static readonly System.Reflection.Assembly CustomerApi =
-        typeof(PeakPower.Api.Customer.Tenancy.JwtCustomerContext).Assembly;
-
-    [Fact]
-    public void Only_the_tenancy_namespace_reads_a_callers_claims()
-    {
-        var result = Types.InAssembly(CustomerApi)
-            .That().DoNotResideInNamespace("PeakPower.Api.Customer.Tenancy")
-            .ShouldNot().HaveDependencyOn("System.Security.Claims")
-            .GetResult();
-
-        result.IsSuccessful.Should().BeTrue(
-            "types outside the tenancy seam must take ICustomerContext, not ClaimsPrincipal. "
-            + "Offenders: {0}",
-            string.Join(", ", result.FailingTypeNames ?? []));
-    }
-
-    [Fact]
-    public void Nothing_in_the_domain_or_application_layer_touches_HttpContext()
-    {
-        var result = Types.InAssemblies(
-            [
-                typeof(PeakPower.Domain.Customers.CustomerAccount).Assembly,
-                typeof(PeakPower.Application.Abstractions.ICustomerContext).Assembly,
-            ])
-            .ShouldNot().HaveDependencyOn("Microsoft.AspNetCore.Http")
-            .GetResult();
-
-        result.IsSuccessful.Should().BeTrue(
-            "Offenders: {0}", string.Join(", ", result.FailingTypeNames ?? []));
-    }
-}
-```
-
-Add to `tests/PeakPower.Architecture.Tests/PeakPower.Architecture.Tests.csproj`:
-
-```xml
-<ItemGroup>
-  <ProjectReference Include="../../src/Hosts/PeakPower.Api.Customer/PeakPower.Api.Customer.csproj" />
-</ItemGroup>
-```
-
-- [ ] **Step 6: Run the architecture test and watch it pass**
-
-Run: `dotnet test tests/PeakPower.Architecture.Tests --filter "FullyQualifiedName~CustomerApiTenancyRules"`
-Expected: PASS — 2 passed
-
-(If it fails on `Program`, that is the compiler-generated top-level-statements class picking up
-`ClaimsPrincipal` transitively. Add `.And().DoNotHaveName("Program")` to the first query's
-`That()` chain and note why in a comment.)
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/Hosts/PeakPower.Api.Customer/Tenancy/JwtCustomerContext.cs \
+git add src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/JwtCustomerContext.cs \
         src/Hosts/PeakPower.Api.Customer/Program.cs \
-        tests/PeakPower.Application.Tests/Auth/JwtCustomerContextTests.cs \
-        tests/PeakPower.Architecture.Tests
+        tests/PeakPower.Application.Tests
 git commit -m "feat(tenancy): read the customer context from the token, and fence off claims"
 ```
 
@@ -2254,7 +2158,7 @@ The transaction stays open for the whole request and commits when the pipeline u
 `SET LOCAL` remains in force for every query a handler runs.
 
 **Files:**
-- Create: `src/Hosts/PeakPower.Api.Customer/Tenancy/CustomerSessionMiddleware.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/CustomerSessionMiddleware.cs`
 - Create: `src/Hosts/PeakPower.Api.Customer/Auth/AuthEndpoints.cs`
 - Create: `src/Core/PeakPower.Contracts/Customer/Auth/AuthContracts.cs`
 - Modify: `src/Hosts/PeakPower.Api.Customer/Program.cs`
@@ -2263,10 +2167,10 @@ The transaction stays open for the whole request and commits when the pipeline u
 **Interfaces:**
 - Consumes: `PeakPowerDbContext` (plan 1); `ICustomerContext` / `JwtCustomerContext` (Task 6);
   `ITokenIssuer.IssueAccessToken(CustomerAccount)` (Task 3);
-  `CustomerAccount.BumpSecurityStamp()` (Task 4); the `app_customer_role` role and the
-  `app.customer_id` setting (plan 2).
+  `CustomerAccount.BumpSecurityStamp()` (shared contract §5.1, plan 1); the `app_customer_role`
+  role and the `app.customer_id` setting (plan 2).
 - Produces:
-  - `PeakPower.Api.Customer.Tenancy.CustomerSessionMiddleware` and the extension
+  - `PeakPower.Infrastructure.Web.Tenancy.CustomerSessionMiddleware` and the extension
     `IApplicationBuilder UseCustomerSession(this IApplicationBuilder app)`
   - `PeakPower.Contracts.Customer.Auth.CurrentAccountResponse(Guid AccountId, Guid CustomerId, string FirstName, string LastName, string Email, bool IsAdmin)`
   - `GET /api/v1/auth/me`, authenticated, 200 `CurrentAccountResponse`
@@ -2387,20 +2291,24 @@ Add the seeding helper to `tests/PeakPower.Integration.Tests/CustomerApiFactory.
             vatNumber: null,
             billingAddress: new PeakPower.Domain.Customers.Address(
                 "Havenweg", "22", null, "3089 JJ", "Rotterdam", "NL"),
+            visitingAddress: null,
             primaryContact: new PeakPower.Domain.Customers.ContactPerson(
                 "Peter de Vries", email, null),
-            internalReference: null);
+            internalReference: null,
+            locale: "nl-NL").Value;
         db.Customers.Add(customer);
 
-        var account = PeakPower.Domain.Customers.CustomerAccount.CreateWithPassword(
+        var account = PeakPower.Domain.Customers.CustomerAccount.Create(
             customerId: customer.Id,
             username: email,
             firstName: "Peter",
             lastName: "de Vries",
+            jobTitle: null,
             email: email,
             phone: null,
-            passwordHash: hasher.Hash(password),
-            isAdmin: true);
+            status: PeakPower.Domain.Customers.AccountStatus.Active,
+            isAdmin: true).Value;
+        account.SetPassword(hasher.Hash(password));
         db.CustomerAccounts.Add(account);
 
         await db.SaveChangesAsync();
@@ -2408,9 +2316,11 @@ Add the seeding helper to `tests/PeakPower.Integration.Tests/CustomerApiFactory.
     }
 ```
 
-> `Customer.Create(...)` is plan 1's factory. If plan 1 named it differently or ordered the
-> parameters differently, adapt this one call site — it is the only place this plan constructs a
-> `Customer` outside Task 17.
+> Both factories are plan 1's, in the shape shared contract §5.1 fixes: nine parameters each,
+> both returning `Result<T>`. `.Value` is safe here because the arrangement is well-formed by
+> construction — a failure would mean the fixture itself is wrong, and the `NullReferenceException`
+> says so loudly enough. `SetPassword` is the second call because the factory takes no hash; it
+> also bumps the security stamp, which is exactly what a freshly seeded account wants.
 
 - [ ] **Step 2: Run the test and watch it fail**
 
@@ -2419,7 +2329,9 @@ Expected: FAIL — all four fail with `404 Not Found` for `/api/v1/auth/me`
 
 - [ ] **Step 3: Write the middleware**
 
-Create `src/Hosts/PeakPower.Api.Customer/Tenancy/CustomerSessionMiddleware.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/CustomerSessionMiddleware.cs`.
+It reads `stamp` off the `ClaimsPrincipal`, so architecture fact 6 requires it here rather than
+in the host, next to `JwtCustomerContext`:
 
 ```csharp
 using System.Security.Claims;
@@ -2428,7 +2340,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using PeakPower.Persistence;
 
-namespace PeakPower.Api.Customer.Tenancy;
+namespace PeakPower.Infrastructure.Web.Tenancy;
 
 /// <summary>
 /// Opens the per-request transaction row-level security needs, and checks the token's stamp on
@@ -2638,7 +2550,7 @@ and add the usings:
 
 ```csharp
 using PeakPower.Api.Customer.Auth;
-using PeakPower.Api.Customer.Tenancy;
+using PeakPower.Infrastructure.Web.Tenancy;
 ```
 
 - [ ] **Step 5: Run the test and watch it pass**
@@ -2649,7 +2561,7 @@ Expected: PASS — 4 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/Hosts/PeakPower.Api.Customer/Tenancy/CustomerSessionMiddleware.cs \
+git add src/Infrastructure/PeakPower.Infrastructure.Web/Tenancy/CustomerSessionMiddleware.cs \
         src/Hosts/PeakPower.Api.Customer/Auth/AuthEndpoints.cs \
         src/Hosts/PeakPower.Api.Customer/Program.cs \
         src/Core/PeakPower.Contracts/Customer/Auth/AuthContracts.cs \
@@ -3071,7 +2983,8 @@ all produce the same 401 with the same body.
 
 **Interfaces:**
 - Consumes: `IPasswordHasher` (Task 1), `ITokenIssuer` (Task 3), `ISignInThrottle` (Task 9),
-  `RefreshToken.Issue(...)` and `CustomerAccount.RecordSuccessfulSignIn(...)` (Task 4),
+  `RefreshToken.Issue(...)` (Task 4) and `CustomerAccount.RecordSuccessfulSignIn(...)`
+  (shared contract §5.1, plan 1),
   `OpaqueToken.HashOf(...)` (Task 3), `IMarketCalendar` (plan 1).
 - Produces:
   - `PeakPower.Contracts.Customer.Auth.SignInRequest(string Username, string Password)`
@@ -3343,7 +3256,7 @@ with the extra usings at the top of the file:
 
 ```csharp
 using PeakPower.Domain.Customers;
-using PeakPower.Infrastructure.Security;
+using PeakPower.Infrastructure.Identity;
 ```
 
 > The `&& false` in the dummy-hash branch is deliberate and load-bearing: the call must happen
@@ -3772,7 +3685,7 @@ address.
 The console email sink lands here because this is the first thing that needs to send anything.
 
 **Files:**
-- Create: `src/Infrastructure/PeakPower.Persistence/Email/ConsoleEmailSender.cs`
+- Create: `src/Infrastructure/PeakPower.Infrastructure.Email/ConsoleEmailSender.cs`
 - Modify: `src/Hosts/PeakPower.Api.Customer/Auth/AuthEndpoints.cs`
 - Modify: `src/Core/PeakPower.Contracts/Customer/Auth/AuthContracts.cs`
 - Modify: `src/Hosts/PeakPower.Api.Customer/Program.cs`
@@ -3856,7 +3769,7 @@ Expected: FAIL — `error CS0246: The type or namespace name 'PasswordResetReque
 
 - [ ] **Step 3: Write the console email sink**
 
-Create `src/Infrastructure/PeakPower.Persistence/Email/ConsoleEmailSender.cs`:
+Create `src/Infrastructure/PeakPower.Infrastructure.Email/ConsoleEmailSender.cs`:
 
 ```csharp
 using Microsoft.Extensions.Logging;
@@ -3967,7 +3880,7 @@ Expected: PASS — 2 passed
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/Infrastructure/PeakPower.Persistence/Email/ConsoleEmailSender.cs \
+git add src/Infrastructure/PeakPower.Infrastructure.Email/ConsoleEmailSender.cs \
         src/Hosts/PeakPower.Api.Customer/Auth/AuthEndpoints.cs \
         src/Hosts/PeakPower.Api.Customer/Program.cs \
         src/Core/PeakPower.Contracts/Customer/Auth/AuthContracts.cs \
@@ -3992,7 +3905,8 @@ stolen is actually protected, immediately, rather than fifteen minutes later.
 
 **Interfaces:**
 - Consumes: `IPasswordHasher.Hash(string)` (Task 1);
-  `CustomerAccount.SetPassword(string)` and `PasswordResetToken.IsUsable/MarkUsed` (Task 4);
+  `CustomerAccount.SetPassword(string)` (shared contract §5.1, plan 1);
+  `PasswordResetToken.IsUsable/MarkUsed` (Task 4);
   `RefreshToken.Revoke(DateTimeOffset)` (Task 4).
 - Produces:
   - `PeakPower.Contracts.Customer.Auth.PasswordResetCompletion(string Token, string NewPassword)`
@@ -4014,13 +3928,13 @@ Add to `tests/PeakPower.Integration.Tests/Auth/PasswordResetTests.cs`:
 
         // The console sink cannot be read back, so the test mints its own token by the same
         // route the endpoint uses, and stores it exactly as the endpoint would.
-        var raw = PeakPower.Infrastructure.Security.OpaqueToken.Create();
+        var raw = PeakPower.Infrastructure.Identity.OpaqueToken.Create();
         await using (var db = factory.CreateOwnerDbContext())
         {
             var now = DateTimeOffset.UtcNow;
             db.PasswordResetTokens.Add(PeakPower.Domain.Customers.PasswordResetToken.Issue(
                 account.Id,
-                PeakPower.Infrastructure.Security.OpaqueToken.HashOf(raw),
+                PeakPower.Infrastructure.Identity.OpaqueToken.HashOf(raw),
                 now,
                 now.AddHours(1)));
             await db.SaveChangesAsync();
@@ -4945,13 +4859,13 @@ dotnet ef migrations remove \
   --project src/Infrastructure/PeakPower.Persistence \
   --startup-project src/Hosts/PeakPower.Migrator
 
-dotnet ef migrations add M2_AuthAndOnboarding \
+dotnet ef migrations add AuthAndOnboarding \
   --project src/Infrastructure/PeakPower.Persistence \
   --startup-project src/Hosts/PeakPower.Migrator \
   --output-dir Migrations
 ```
 
-Re-apply the raw SQL block from Task 4 Step 4 to the end of the regenerated `Up`, and the
+Re-apply the raw SQL block from Task 4 Step 5 to the end of the regenerated `Up`, and the
 `DROP POLICY` block to the end of `Down`.
 
 - [ ] **Step 7: Run the schema test and watch it still pass**
@@ -5344,9 +5258,13 @@ correctly now is the whole point of shipping the column early.
 - Test: `tests/PeakPower.Integration.Tests/Onboarding/OnboardingMaterialisationTests.cs`
 
 **Interfaces:**
-- Consumes: `Customer.Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, ContactPerson primaryContact, string? internalReference)`
-  (plan 1) and `Customer.SetStatus(CustomerStatus)` (plan 1);
-  `CustomerAccount.CreateWithPassword(...)` (Task 4); `Wallet.CreateFor(Guid)` (Task 4);
+- Consumes, all from shared contract §5.1 and written by plan 1:
+  `static Result<Customer> Customer.Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)`,
+  `Result<Customer> Customer.ChangeStatus(CustomerStatus)`,
+  `static Result<CustomerAccount> CustomerAccount.Create(Guid customerId, string username, string firstName, string lastName, string? jobTitle, string email, string? phone, AccountStatus status, bool isAdmin)`,
+  `void CustomerAccount.SetPassword(string)`, and
+  `static Result<Wallet> Wallet.CreateEuroWallet(Guid customerId)`.
+  Also `PeakPower.Infrastructure.Web.Http.EnumWireFormat.ToWire<TEnum>` (plan 2);
   `OnboardingApplication.VerifySignCode(...)` (Task 16); `IEmailSender` (Task 13);
   `IMarketCalendar` (plan 1); `OpaqueToken.HashOf(string)` (Task 3).
 - Produces:
@@ -5400,7 +5318,7 @@ public sealed class OnboardingMaterialisationTests(CustomerApiFactory factory)
 
         var code = OnboardingService.NewSignCode();
         application.IssueSignCode(
-            PeakPower.Infrastructure.Security.OpaqueToken.HashOf(code),
+            PeakPower.Infrastructure.Identity.OpaqueToken.HashOf(code),
             DateTimeOffset.UtcNow.AddMinutes(30));
 
         await using var db = factory.CreateOwnerDbContext();
@@ -5514,7 +5432,7 @@ public sealed class OnboardingMaterialisationTests(CustomerApiFactory factory)
 
         var code = OnboardingService.NewSignCode();
         application.IssueSignCode(
-            PeakPower.Infrastructure.Security.OpaqueToken.HashOf(code),
+            PeakPower.Infrastructure.Identity.OpaqueToken.HashOf(code),
             DateTimeOffset.UtcNow.AddMinutes(30));
 
         await using (var db = factory.CreateOwnerDbContext())
@@ -5597,7 +5515,8 @@ using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
 using PeakPower.Domain.Onboarding;
 using PeakPower.Domain.Wallets;
-using PeakPower.Infrastructure.Security;
+using PeakPower.Infrastructure.Identity;
+using PeakPower.Infrastructure.Web.Http;
 using PeakPower.Persistence;
 
 namespace PeakPower.Api.Customer.Onboarding;
@@ -5742,27 +5661,31 @@ public sealed class OnboardingService(
             kvkNumber: KvkNumber.Create(application.KvkNumber!).Value,
             vatNumber: null,
             billingAddress: application.RegisteredAddress!,
+            visitingAddress: null,
             primaryContact: new ContactPerson(
                 $"{application.FirstName} {application.LastName}", application.Email, null),
-            internalReference: application.Reference);
+            internalReference: application.Reference,
+            locale: "nl-NL").Value;
 
         // The demo's last step has two outcomes and must not print the wrong one: the agreement
         // is signed either way, but the company is only Active once the one cent has cleared.
-        customer.SetStatus(application.BankVerifiedAt is null
+        customer.ChangeStatus(application.BankVerifiedAt is null
             ? PeakPower.Domain.Customers.CustomerStatus.Prospect
             : PeakPower.Domain.Customers.CustomerStatus.Active);
 
-        var account = CustomerAccount.CreateWithPassword(
+        var account = CustomerAccount.Create(
             customerId: customer.Id,
             username: application.Email,
             firstName: application.FirstName,
             lastName: application.LastName,
+            jobTitle: null,
             email: application.Email,
             phone: null,
-            passwordHash: application.PasswordHash,
-            isAdmin: true);   // the first account has to be able to administer the company
+            status: AccountStatus.Active,
+            isAdmin: true).Value;   // the first account has to be able to administer the company
+        account.SetPassword(application.PasswordHash);
 
-        var wallet = Wallet.CreateFor(customer.Id);
+        var wallet = Wallet.CreateEuroWallet(customer.Id).Value;
 
         db.Customers.Add(customer);
         db.CustomerAccounts.Add(account);
@@ -5774,7 +5697,8 @@ public sealed class OnboardingService(
         await transaction.CommitAsync(ct);
 
         return Result<SignedOnboardingResult>.Success(new SignedOnboardingResult(
-            customer.Id, account.Id, wallet.Id, account.Username, customer.Status.ToString()));
+            customer.Id, account.Id, wallet.Id, account.Username,
+            EnumWireFormat.ToWire(customer.Status)));
     }
 
     private async Task<Result<SignedOnboardingResult>> AlreadySignedAsync(
@@ -5790,7 +5714,7 @@ public sealed class OnboardingService(
             application.AccountId!.Value,
             wallet.Id,
             application.Email,
-            customer.Status.ToString()));
+            EnumWireFormat.ToWire(customer.Status)));
     }
 }
 ```
@@ -5801,9 +5725,15 @@ Register it in `src/Hosts/PeakPower.Api.Customer/Program.cs`:
 builder.Services.AddScoped<PeakPower.Api.Customer.Onboarding.OnboardingService>();
 ```
 
-> `Customer.SetStatus(CustomerStatus)` is plan 1's. If plan 1 exposes status transitions under
-> different names — `Activate()` / `MarkProspect()` — call those instead; this is the only place
-> in the plan that sets a customer's status.
+> `Customer.ChangeStatus(CustomerStatus)` is plan 1's, and shared contract §5.1 fixes the name —
+> it is `ChangeStatus`, not `SetStatus`. Like every other operation that can fail it returns
+> `Result<Customer>`; the value is discarded here because the only transition this plan makes is
+> from the freshly created `Prospect` and cannot be rejected. This is the only place in the plan
+> that sets a customer's status.
+>
+> `EnumWireFormat.ToWire` is plan 2's, in `PeakPower.Infrastructure.Web.Http`. Shared contract
+> §5.2 is why it is here rather than `customer.Status.ToString()`: `CustomerStatus` reaches the
+> portal as `ACTIVE`, and plan 6's wizard branches on that exact spelling.
 
 - [ ] **Step 5: Run the test and watch it pass**
 
@@ -5897,7 +5827,7 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
         var application = (await created.Content
             .ReadFromJsonAsync<OnboardingApplicationResponse>())!;
         application.Reference.Should().StartWith("PP-ONB-");
-        application.Status.Should().Be("Draft");
+        application.Status.Should().Be("DRAFT");
 
         var url = $"/api/v1/onboarding/applications/{application.Id}";
 
@@ -5933,7 +5863,7 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
             new SubmitSignatoriesRequest([new SignatoryDto("Peter", "de Vries", email)]));
         signatories.StatusCode.Should().Be(HttpStatusCode.Accepted);
         (await signatories.Content.ReadFromJsonAsync<OnboardingApplicationResponse>())!
-            .Status.Should().Be("AwaitingSignature");
+            .Status.Should().Be("AWAITING_SIGNATURE");
 
         var code = await ReadSignCodeAsync(application.Id);
 
@@ -5943,7 +5873,7 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
 
         var outcome = (await signed.Content.ReadFromJsonAsync<SignedOnboardingResponse>())!;
         outcome.Username.Should().Be(email);
-        outcome.CustomerStatus.Should().Be("Prospect", "no one cent has arrived");
+        outcome.CustomerStatus.Should().Be("PROSPECT", "no one cent has arrived");
 
         var signIn = await client.PostAsJsonAsync("/api/v1/auth/sign-in",
             new SignInRequest(email, "correct-horse-battery"));
@@ -5961,7 +5891,7 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
         var application = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
             .SingleAsync(db.OnboardingApplications, a => a.Id == applicationId);
         application.IssueSignCode(
-            PeakPower.Infrastructure.Security.OpaqueToken.HashOf(code),
+            PeakPower.Infrastructure.Identity.OpaqueToken.HashOf(code),
             DateTimeOffset.UtcNow.AddMinutes(30));
         await db.SaveChangesAsync();
         return code;
@@ -6088,9 +6018,10 @@ public sealed record SignOnboardingRequest(string Code, bool AgreedDocuments);
 public sealed record OnboardingApplicationResponse(Guid Id, string Reference, string Status);
 
 /// <summary>
-/// Step 10. <paramref name="CustomerStatus"/> is "Active" when the € 0,01 has cleared and
-/// "Prospect" when it has not — the demo's two outcomes, which the welcome screen must not mix
-/// up.
+/// Step 10. <paramref name="CustomerStatus"/> is the database spelling of
+/// <c>PeakPower.Domain.Customers.CustomerStatus</c>, per shared contract §5.2: "ACTIVE" when
+/// the € 0,01 has cleared and "PROSPECT" when it has not — the demo's two outcomes, which the
+/// welcome screen must not mix up.
 /// </summary>
 public sealed record SignedOnboardingResponse(
     Guid CustomerId,
@@ -6109,6 +6040,7 @@ using PeakPower.Contracts.Customer.Onboarding;
 using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
 using PeakPower.Domain.Onboarding;
+using PeakPower.Infrastructure.Web.Http;
 using PeakPower.Persistence;
 
 namespace PeakPower.Api.Customer.Onboarding;
@@ -6251,8 +6183,10 @@ public static class OnboardingEndpoints
         return routes;
     }
 
+    // Shared contract §5.2 — the wire spelling is the database spelling, so DRAFT and
+    // AWAITING_SIGNATURE, never the PascalCase .ToString() of the enum.
     private static OnboardingApplicationResponse Describe(OnboardingApplication application) =>
-        new(application.Id, application.Reference, application.Status.ToString());
+        new(application.Id, application.Reference, EnumWireFormat.ToWire(application.Status));
 
     private static IResult Unprocessable(string detail) =>
         Results.Problem(
@@ -6404,9 +6338,10 @@ git commit -m "feat(onboarding): expose the wizard over HTTP and run the custome
    account is ever locked.
 8. `AnonymousEndpointAllowListTests` passes with `BeEquivalentTo`, so the set of anonymous
    endpoints is exactly the ten named in the test.
-9. `CustomerApiTenancyRules` passes: no type outside `PeakPower.Api.Customer.Tenancy` references
-   `System.Security.Claims`, and nothing in Domain or Application references
-   `Microsoft.AspNetCore.Http`.
+9. Plan 2's architecture fact 6 stays green with this plan's code in the tree: `JwtCustomerContext`
+   and `CustomerSessionMiddleware` are the only new types that touch `ClaimsPrincipal` or
+   `IHttpContextAccessor`, and both live in `PeakPower.Infrastructure.Web`. No type in
+   `PeakPower.Api.Customer` references `System.Security.Claims`.
 10. The ten-step wizard runs end to end over HTTP: an application is started, steps 2 to 7 save,
     signatories submit, a real generated code arrives through `IEmailSender`, and signing creates
     `customer` + `customer_account` + `wallet` in one transaction.
@@ -6416,7 +6351,7 @@ git commit -m "feat(onboarding): expose the wizard over HTTP and run the custome
     it was not; the account is `Active` and `IsAdmin` either way.
 14. `POST /auth/sign-in` with the credentials chosen during onboarding returns a token — the
     handover the customer portal (plan 6) depends on.
-15. Migration 2 applies to an empty PostgreSQL 17 container, `customer.refresh_token` carries a
+15. Migration 3 applies to an empty PostgreSQL 17 container, `customer.refresh_token` carries a
     tenant-isolation policy, and `app_customer_role` is granted nothing on
     `customer.password_reset_token` or `customer.onboarding_application`.
 16. `./dev-up` starts `customer-api` as an Aspire resource that waits for the migrator.
@@ -6432,18 +6367,17 @@ check these against the other five plans.
 
 | Name | Signature | Home |
 | --- | --- | --- |
-| `Argon2idPasswordHasher` | `sealed class Argon2idPasswordHasher : IPasswordHasher` | `PeakPower.Infrastructure.Security` |
-| `ISigningKeyStore` | `string KeyId { get; }` · `ECDsaSecurityKey SigningKey { get; }` · `ECDsaSecurityKey PublicKey { get; }` · `JwksDocument PublicJwks { get; }` | `PeakPower.Infrastructure.Security` |
-| `FileSigningKeyStore` | `sealed class FileSigningKeyStore(string filePath) : ISigningKeyStore, IDisposable` | `PeakPower.Infrastructure.Security` |
-| `JwksDocument` | `sealed record JwksDocument(IReadOnlyList<JwkDocument> Keys)` | `PeakPower.Infrastructure.Security` |
-| `JwkDocument` | `sealed record JwkDocument(string Kty, string Crv, string Use, string Alg, string Kid, string X, string Y)` | `PeakPower.Infrastructure.Security` |
-| `JwtTokenIssuer` | `sealed class JwtTokenIssuer(ISigningKeyStore, IMarketCalendar) : ITokenIssuer` · `const string Issuer = "https://peakpower.local/customer"` · `const string Audience = "peakpower-customer-api"` | `PeakPower.Infrastructure.Security` |
-| `CustomerTokenValidation` | `static TokenValidationParameters Parameters(ISigningKeyStore keys)` | `PeakPower.Infrastructure.Security` |
-| `OpaqueToken` | `static string Create()` · `static string HashOf(string token)` · `static bool Matches(string token, string hash)` · `const int Bytes = 32` | `PeakPower.Infrastructure.Security` |
+| `Argon2idPasswordHasher` | `sealed class Argon2idPasswordHasher : IPasswordHasher` | `PeakPower.Infrastructure.Identity` |
+| `ISigningKeyStore` | `string KeyId { get; }` · `ECDsaSecurityKey SigningKey { get; }` · `ECDsaSecurityKey PublicKey { get; }` · `JwksDocument PublicJwks { get; }` | `PeakPower.Infrastructure.Identity` |
+| `FileSigningKeyStore` | `sealed class FileSigningKeyStore(string filePath) : ISigningKeyStore, IDisposable` | `PeakPower.Infrastructure.Identity` |
+| `JwksDocument` | `sealed record JwksDocument(IReadOnlyList<JwkDocument> Keys)` | `PeakPower.Infrastructure.Identity` |
+| `JwkDocument` | `sealed record JwkDocument(string Kty, string Crv, string Use, string Alg, string Kid, string X, string Y)` | `PeakPower.Infrastructure.Identity` |
+| `JwtTokenIssuer` | `sealed class JwtTokenIssuer(ISigningKeyStore, IMarketCalendar) : ITokenIssuer` · `const string Issuer = "https://peakpower.local/customer"` · `const string Audience = "peakpower-customer-api"` | `PeakPower.Infrastructure.Identity` |
+| `CustomerTokenValidation` | `static TokenValidationParameters Parameters(ISigningKeyStore keys)` | `PeakPower.Infrastructure.Identity` |
+| `OpaqueToken` | `static string Create()` · `static string HashOf(string token)` · `static bool Matches(string token, string hash)` · `const int Bytes = 32` | `PeakPower.Infrastructure.Identity` |
 | `ConsoleEmailSender` | `sealed class ConsoleEmailSender(ILogger<ConsoleEmailSender>) : IEmailSender` | `PeakPower.Infrastructure.Email` |
 | `RefreshToken` | `sealed class` · `static RefreshToken Issue(Guid accountId, string tokenHash, DateTimeOffset issuedAt, DateTimeOffset expiresAt)` · `bool IsUsable(DateTimeOffset at)` · `void MarkUsed(DateTimeOffset at, Guid replacedByTokenId)` · `void Revoke(DateTimeOffset at)` | `PeakPower.Domain.Customers` |
 | `PasswordResetToken` | `sealed class` · `static PasswordResetToken Issue(Guid accountId, string tokenHash, DateTimeOffset issuedAt, DateTimeOffset expiresAt)` · `bool IsUsable(DateTimeOffset at)` · `void MarkUsed(DateTimeOffset at)` | `PeakPower.Domain.Customers` |
-| `Wallet` | `sealed class` · `static Wallet CreateFor(Guid customerId)` · `Guid Id` · `Guid CustomerId` · `string Currency` · `decimal Balance` | `PeakPower.Domain.Wallets` |
 | `OnboardingStatus` | `enum { Draft, AwaitingSignature, Signed }` — db `DRAFT \| AWAITING_SIGNATURE \| SIGNED` | `PeakPower.Domain.Onboarding` |
 | `LegalEntityType` | `enum { BV, NV, Eenmanszaak, VOF, Maatschap, CV, Stichting, Vereniging, Cooperatie }` | `PeakPower.Domain.Onboarding` |
 | `FlowDirection` | `enum { Consumption, Production, Both }` | `PeakPower.Domain.Onboarding` |
@@ -6452,8 +6386,8 @@ check these against the other five plans.
 | `OnboardingReferenceData` | `static IReadOnlyList<string> Industries` · `const string NotSpecified` · `static string DisplayName(LegalEntityType)` · `static string DisplayName(VolumeBand)` · `static string DisplayName(SigningAuthority)` · `static string Note(SigningAuthority)` · `static int MinimumSignatories(SigningAuthority)` | `PeakPower.Domain.Onboarding` |
 | `OnboardingSignatory` | `sealed record OnboardingSignatory(string FirstName, string LastName, string Email, bool IsApplicant)` | `PeakPower.Domain.Onboarding` |
 | `OnboardingApplication` | `sealed class` — full member list in Tasks 15–17 | `PeakPower.Domain.Onboarding` |
-| `JwtCustomerContext` | `sealed class JwtCustomerContext(IHttpContextAccessor) : ICustomerContext` | `PeakPower.Api.Customer.Tenancy` |
-| `CustomerSessionMiddleware` | `sealed class CustomerSessionMiddleware(RequestDelegate)` · `IApplicationBuilder UseCustomerSession(this IApplicationBuilder)` | `PeakPower.Api.Customer.Tenancy` |
+| `JwtCustomerContext` | `sealed class JwtCustomerContext(IHttpContextAccessor) : ICustomerContext` | `PeakPower.Infrastructure.Web.Tenancy` |
+| `CustomerSessionMiddleware` | `sealed class CustomerSessionMiddleware(RequestDelegate)` · `IApplicationBuilder UseCustomerSession(this IApplicationBuilder)` | `PeakPower.Infrastructure.Web.Tenancy` |
 | `ISignInThrottle` | `TimeSpan DelayFor(string username, string source)` · `void RecordFailure(string username, string source)` · `void RecordSuccess(string username, string source)` | `PeakPower.Api.Customer.Auth` |
 | `InMemorySignInThrottle` | `sealed class InMemorySignInThrottle(IMarketCalendar) : ISignInThrottle` · `static readonly TimeSpan Window` · `static readonly IReadOnlyList<TimeSpan> Curve` | `PeakPower.Api.Customer.Auth` |
 | `RefreshCookie` | `const string Name = "pp_refresh"` · `const string Path = "/api/v1/auth/refresh"` · `static void Write(HttpResponse, string, DateTimeOffset)` · `static void Clear(HttpResponse)` | `PeakPower.Api.Customer.Auth` |
@@ -6461,7 +6395,7 @@ check these against the other five plans.
 | `OnboardingService` | `sealed class OnboardingService(PeakPowerDbContext, IPasswordHasher, IEmailSender, IMarketCalendar)` · `static readonly TimeSpan SignCodeLifetime` · `static string NewSignCode()` · the three async methods in Task 17 | `PeakPower.Api.Customer.Onboarding` |
 | `SignedOnboardingResult` | `sealed record SignedOnboardingResult(Guid CustomerId, Guid AccountId, Guid WalletId, string Username, string CustomerStatus)` | `PeakPower.Api.Customer.Onboarding` |
 | `OnboardingEndpoints` | `static IEndpointRouteBuilder MapOnboardingEndpoints(this IEndpointRouteBuilder)` | `PeakPower.Api.Customer.Onboarding` |
-| `CustomerApiFactory` | `sealed class CustomerApiFactory : WebApplicationFactory<Program>, IAsyncLifetime` · `CreateAnonymousClient()` · `CreateOwnerDbContext()` · `SeedCustomerWithAccountAsync(...)` · `ConnectionString` | `PeakPower.Integration.Tests` |
+| `CustomerApiFactory` | `sealed class CustomerApiFactory : WebApplicationFactory<CustomerApiEntryPoint>, IAsyncLifetime` · `CreateAnonymousClient()` · `CreateOwnerDbContext()` · `SeedCustomerWithAccountAsync(...)` · `ConnectionString` | `PeakPower.Integration.Tests` |
 
 ### Contracts (`PeakPower.Contracts`)
 
@@ -6480,13 +6414,13 @@ check these against the other five plans.
 | `SubmitSignatoriesRequest` | `(IReadOnlyList<SignatoryDto> Signatories)` |
 | `SignOnboardingRequest` | `(string Code, bool AgreedDocuments)` |
 | `OnboardingApplicationResponse` | `(Guid Id, string Reference, string Status)` |
-| `SignedOnboardingResponse` | `(Guid CustomerId, Guid AccountId, string Username, string CustomerStatus)` |
+| `SignedOnboardingResponse` | `(Guid CustomerId, Guid AccountId, string Username, string CustomerStatus)` — `CustomerStatus` carries the database spelling, `ACTIVE` / `PROSPECT` |
 
 ### Members added to types the shared contract defines
 
-| Type | Added |
-| --- | --- |
-| `CustomerAccount` | `static CustomerAccount CreateWithPassword(Guid customerId, string username, string firstName, string lastName, string email, string? phone, string passwordHash, bool isAdmin, Guid? id = null, Guid? securityStamp = null)` · `void SetPassword(string passwordHash)` · `void BumpSecurityStamp()` · `void RecordSuccessfulSignIn(DateTimeOffset at)`; `PasswordHash`, `SecurityStamp`, `LastLoginAt`, `Status` and `IsAdmin` gain private setters |
+None. Shared contract §5.1 makes plan 1 the only plan that declares an aggregate's members, so
+everything this plan needs on `Customer`, `CustomerAccount` and `Wallet` is listed under
+**Names assumed from other plans** instead.
 
 ### Names assumed from other plans
 
@@ -6496,8 +6430,18 @@ confirm the spelling.
 | Name | Assumed signature | Assumed owner |
 | --- | --- | --- |
 | `PeakPowerDbContext` | `PeakPower.Persistence.PeakPowerDbContext` with `DbSet<Customer> Customers`, `DbSet<CustomerAccount> CustomerAccounts` | Plan 1 |
-| `Customer.Create` | `static Customer Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, ContactPerson primaryContact, string? internalReference)` | Plan 1 |
-| `Customer.SetStatus` | `void SetStatus(CustomerStatus status)` | Plan 1 |
+| `Customer.Create` | `static Result<Customer> Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)` — contract §5.1 | Plan 1 |
+| `Customer.ChangeStatus` | `Result<Customer> ChangeStatus(CustomerStatus status)` — contract §5.1 | Plan 1 |
+| `CustomerAccount.Create` | `static Result<CustomerAccount> Create(Guid customerId, string username, string firstName, string lastName, string? jobTitle, string email, string? phone, AccountStatus status, bool isAdmin)` — contract §5.1 | Plan 1 |
+| `CustomerAccount.SetPassword` | `void SetPassword(string passwordHash)` — bumps `SecurityStamp`; contract §5.1 | Plan 1 |
+| `CustomerAccount.BumpSecurityStamp` | `void BumpSecurityStamp()` — contract §5.1 | Plan 1 |
+| `CustomerAccount.RecordSuccessfulSignIn` | `void RecordSuccessfulSignIn(DateTimeOffset at)` — contract §5.1 | Plan 1 |
+| `Wallet` | `PeakPower.Domain.Wallets.Wallet` with `static Result<Wallet> CreateEuroWallet(Guid customerId)`, its `WalletConfiguration` and `PeakPowerDbContext.Wallets` — contract §3.2, §5.1 | Plan 1 |
+| `CustomerApiEntryPoint` | `public sealed class CustomerApiEntryPoint;` in `PeakPower.Api.Customer` — the type `WebApplicationFactory<T>` binds to; contract §5.1 | Plan 1 |
+| `IPasswordHasher` · `ITokenIssuer` · `AccessToken` · `IEmailSender` | declared in `PeakPower.Application.Abstractions`; contract §6 | Plan 1 |
+| `PeakPower.Infrastructure.Identity` · `PeakPower.Infrastructure.Email` · `PeakPower.Infrastructure.Web` | the three infrastructure projects this plan fills; contract §3.1 | Plans 1 and 2 |
+| `EnumWireFormat` | `PeakPower.Infrastructure.Web.Http.EnumWireFormat` — `JsonStringEnumConverter Converter`, `string ToWire<TEnum>(TEnum)`; contract §5.2 | Plan 2 |
+| `InitialSchema` · `TenancyRowLevelSecurity` | migrations 1 and 2, which migration 3 lands on top of; contract §3.2 | Plans 1 and 2 |
 | `app_customer_role` | PostgreSQL role, member of the API's login role, with the tenant policies on `customer.*` | Plan 2 |
 | `app.customer_id` | The `SET LOCAL` setting the RLS policies read | Plan 2 |
 | `PeakPower.ServiceDefaults` | `IHostApplicationBuilder.AddServiceDefaults()` · `WebApplication.MapDefaultEndpoints()` | Plan 1 |

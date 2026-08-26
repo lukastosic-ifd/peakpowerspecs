@@ -37,6 +37,41 @@ Commit locally and often.
 - Database: snake_case, singular, schema-qualified — `customer.metering_point`
 - C#: PascalCase; EF Core maps to snake_case via a naming convention, not per-property attributes
 
+## 3.1 Projects — fifteen, not thirteen
+
+Design §4.2 lists thirteen. Four infrastructure projects are implied by this contract but
+missing from that list, and one of them (`Infrastructure.Time`) is named by architecture fact 5.
+
+```
+src/Hosts/          AppHost · ServiceDefaults · Api.Customer · Api.Employee · Migrator
+src/Core/           Domain · Application · Contracts
+src/Infrastructure/ Persistence · Time · Web · Identity · Email
+tests/              Domain.Tests · Application.Tests · Integration.Tests · Architecture.Tests
+```
+
+Eleven source projects, four test projects. Design §10 proposes the correction upstream.
+
+## 3.2 Migrations — migration 1 does not create every table
+
+Design §5.1 lists nine tables under "migration 1", but three of them —
+`onboarding_application`, `refresh_token`, `password_reset_token` — have column sets only plan 5
+can specify. Guessing them in plan 1 would be inventing plan 5's work.
+
+| Migration | Creates | Written by |
+| --- | --- | --- |
+| 1 | extensions, schemas, `customer`, `customer_account`, `metering_point`, `brp`, `wallet`, `audit_record` | plan 1 |
+| 2 | RLS roles and policies | plan 2 |
+| 3 | `onboarding_application`, `refresh_token`, `password_reset_token`, and their policies | plan 5 |
+| 4 | the shared EAN pool | plan 6 |
+
+⚠ **RLS needs database roles the design never mentions.** A superuser or table owner *bypasses*
+RLS silently, so running the APIs on Aspire's default connection would disable the whole
+mechanism while every test still passed. Migration 2 creates `app_customer_role` and
+`app_employee_role` plus two non-owner **login** roles, and each host rewrites its connection
+string onto its own role. Slice 1 is local-only with no deployment, so those two passwords are
+literals in the migration with a comment saying exactly that — **this needs an owner before
+anything is deployed anywhere.** Registered as `[OQ-102]`.
+
 ## 4. Enums — the database spelling is normative
 
 The specification defines three of these twice, differently. These are the values to use.
@@ -172,9 +207,25 @@ public sealed record ContactPerson(
 
 ## 6. Application ports
 
+**Where each port is declared and implemented.** Every interface below is *declared* in
+`PeakPower.Application.Abstractions`. They are *implemented* in:
+
+| Port | Implementation lives in | Written by |
+| --- | --- | --- |
+| `ICustomerContext` | `PeakPower.Infrastructure.Web` | plan 2 (dev), plan 5 (token-backed) |
+| `IEmployeeContext` | `PeakPower.Infrastructure.Web` | plan 2 |
+| `IMarketCalendar` | `PeakPower.Infrastructure.Time` | plan 1 |
+| `IEmailSender` | `PeakPower.Infrastructure.Email` (console sink) | plan 5 |
+| `IPasswordHasher` | `PeakPower.Infrastructure.Identity` | plan 5 |
+| `ITokenIssuer` | `PeakPower.Infrastructure.Identity` | plan 5 |
+
 ```csharp
 namespace PeakPower.Application.Abstractions;
 
+// Declared in PeakPower.Application.Abstractions. IMPLEMENTED in
+// PeakPower.Infrastructure.Web — the ONE context-provider assembly, allow-listed by
+// architecture fact 6. Both the development provider (plan 2) and the token-backed provider
+// (plan 5) live there. Do NOT put a provider inside an API host.
 public interface ICustomerContext                // THE tenancy seam  [F13-R30]
 {
     Guid CustomerId { get; }
@@ -342,7 +393,7 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + FluentAssertions (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** + NSubstitute — see the licence note below |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
@@ -358,15 +409,40 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 | `Konscious.Security.Cryptography.Argon2` | **1.3.1** | the Argon2id hasher `[DEC-113]` |
 | `NetArchTest.Rules` | **1.3.2** | the six architecture facts |
 | `Testcontainers.PostgreSql` | **4.14.0** | real PostgreSQL 17 in tests |
+| `FluentAssertions` | **7.2.0** | ⚠ **pin 7.x — do not take 8.x** |
+| `Mono.Cecil` | **0.11.6** | IL scanning for architecture facts 3-6 |
 
-**Architecture facts that must exist from week 1:**
+> ⚠ **FluentAssertions 8.x may not be used.** Verified 2026-08-26 by reading the licence file
+> inside the package: 8.10.0 ships an **Xceed Software Community License Agreement, "for
+> Non-Commercial Use"**, where non-commercial means use whose primary objective is not
+> commercial advantage. PeakPower is a commercial trading platform, so 8.x would need a paid
+> Xceed licence. **7.2.0 is the last `Apache-2.0` release** (confirmed from its `.nuspec`) and is
+> what every plan pins. The specification's testing table names FluentAssertions without a
+> version because it was written when the library was still open source; design §10 proposes the
+> correction. If 7.x going unmaintained becomes a problem, `Shouldly` 4.3.0 is the closest
+> free alternative — that choice is `[OQ-101]`, not something a plan decides.
 
-1. `PeakPower.Domain` references no other project
-2. `PeakPower.Application` references only `PeakPower.Domain`
-3. `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter
-4. No type calls `IgnoreQueryFilters()`
-5. No type outside `PeakPower.Infrastructure.Time` uses `DateTime.Now` / `DateTime.UtcNow`
-6. No type outside the context-provider assembly reads a customer identifier from `HttpContext`
+
+**Architecture facts.** Six of them, and they are not all NetArchTest — its model is
+type-level dependency, and facts 3-6 are about *call sites*. `System.DateTime` is referenced
+legitimately almost everywhere; only the `get_UtcNow` **call** is forbidden. Facts 3-6 therefore
+use **Mono.Cecil** IL scanning.
+
+| # | Fact | Tool | Owned by |
+| --- | --- | --- | --- |
+| 1 | `PeakPower.Domain` references no other project | NetArchTest | Plan 1 |
+| 2 | `PeakPower.Application` references only `PeakPower.Domain` | NetArchTest | Plan 1 |
+| 3 | `PeakPower.Ingestion` (when it exists) references no `Brp.*` adapter | Cecil | Plan 1 |
+| 4 | No type calls `IgnoreQueryFilters()` | Cecil | **Plan 2** |
+| 5 | No type outside `PeakPower.Infrastructure.Time` calls `DateTime.Now`, `DateTime.UtcNow`, `DateTime.Today`, `DateTimeOffset.Now` or `DateTimeOffset.UtcNow` | Cecil | Plan 1 |
+| 6 | No type outside `PeakPower.Infrastructure.Web` uses `IHttpContextAccessor` or reads a claim off `ClaimsPrincipal` / `ClaimsIdentity` | Cecil | **Plan 2** |
+
+Facts 4 and 6 belong to plan 2 because neither can be written before query filters and the
+context-provider assembly exist. Plan 1 writes facts 1, 2, 3 and 5.
+
+⚠ **Fact 6 is stated as its two mechanisms, not as intent.** "Reads a customer identifier from
+`HttpContext`" is unenforceable — minimal-API handlers legitimately take `HttpContext`. Banning
+the two ways a customer identifier can actually arrive is enforceable, and has the same effect.
 
 ## 14. Plan map
 

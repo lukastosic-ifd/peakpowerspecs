@@ -806,7 +806,7 @@ Each page file carries its own `*.spec.ts` beside it.
 | `e2e/onboard-and-rename.spec.ts` | The one slice-1 path |
 | `e2e/fixtures/api.ts` | Direct-API helpers the E2E needs (the sign-code peek) |
 
-### `peakpowerspecs` — modified by Task 22
+### `peakpowerspecs` — modified by Task 28
 
 | File | Change |
 | --- | --- |
@@ -2142,7 +2142,7 @@ with no name, the grouped EAN is the label.
 
 The route is `/naming`, not `/label`. The specification writes `/label`; §5.4 of the design
 settles the friendly name as `name` + `description` columns rather than a `Label` property, so
-the route name follows. Task 22 files that as a correction — the route has no consumers yet, so
+the route name follows. Task 28 files that as a correction — the route has no consumers yet, so
 renaming is free now and awkward later.
 
 **Clearing is a first-class operation.** Sending `{"name": null}` or `{"name": ""}` removes the
@@ -3298,7 +3298,7 @@ git commit -m "feat(customer-api): claim a connection from the pool as CUSTOMER_
 The onboarding wizard emails a six-digit signing code through `IEmailSender`, whose slice-1
 adapter is a **console sink** — it writes the message to the customer API's log and nothing
 else. A browser-driven end-to-end test cannot read a log line, so without a second way in, the
-Playwright path in Task 23 stops dead at step 9 and design DoD 2 goes unproven.
+Playwright path in Task 27 stops dead at step 9 and design DoD 2 goes unproven.
 
 Plan 5 already set the precedent with
 `POST /onboarding/applications/{id}/bank-verification/simulate`, which exists only in
@@ -5121,7 +5121,7 @@ looks unfinished; a rail that is complete and honest looks planned.
 Three items work in slice 1: `dashboard` (a shell and a placeholder), `connections`, and
 `company`. `company` is the one key the specification's list does not contain — the design's
 §8.3 has a "Company profile + accounts" screen but the wireframe rail does not carry it, so
-this plan adds the key and Task 25 records it.
+this plan adds the key and Task 28 records it.
 
 **Files:**
 - Create: `apps/customer-portal/src/app/shell/customer-nav.ts`
@@ -6997,3 +6997,7515 @@ git commit -m "feat(customer-portal): request a password reset and set a new pas
 ```
 
 ---
+### Task 16: The onboarding wizard — the step table, the gates and the shell
+
+Ten steps, in a rail, with a footer that refuses to move on until the step is answered. The
+demo in `/Users/thinhhuynh/PeakPower/trading-poc` already worked all of this out —
+`onboarding-flow.js` holds the step table, the option lists, the validity gates and the hint for
+every reason a step can refuse. **This task ports that module** to TypeScript and gives it a
+container component that talks to plan 5's API.
+
+Two things change in the port, and both are the difference between a demo and a build:
+
+**The signing code is not a constant.** `onboarding-flow.js` carries
+`var SIGN_CODE = "748213"` with a comment explaining that it is a demo affordance in a flow that
+submits nothing. In this build the code is six digits generated per application by plan 5's
+backend, hashed at rest, and emailed through `IEmailSender`. The browser cannot know it. So the
+local gate on step 9 becomes *"six digits typed, and the box ticked"*, and whether those digits
+are the right ones is the server's answer — a 400 from `POST /onboarding/applications/{id}/sign`.
+Porting `signCodeMatches` would have put a working credential in a bundle.
+
+**The address is six fields, not three.** The demo asks for "Street and number", City and
+Postcode. Plan 5's `OnboardingAddressDto` is
+`(Street, HouseNumber, HouseNumberSuffix, PostalCode, City, Country)`, so the wizard asks for
+street and house number separately. Joining them in the browser and splitting them on the server
+is a parser nobody wants to own.
+
+**The wizard's `@switch` grows one arm per task.** This task builds the chrome — rail, header,
+progress, footer, hint, and the network call each step makes — with an empty step body. Tasks 17
+to 21 each add their arms. Until Task 21 lands the wizard is not shippable, which is exactly what
+Task 21's last test asserts.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Create: `apps/customer-portal/src/app/onboarding/onboarding-flow.ts`
+- Create: `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`
+- Test: `apps/customer-portal/src/app/onboarding/onboarding-flow.spec.ts`
+- Test: `apps/customer-portal/src/app/onboarding/onboarding-wizard.spec.ts`
+
+**Interfaces:**
+- Consumes: `CustomerApiClient.startOnboarding(body)`, `.saveOnboardingStep(id, body)` (Task 10);
+  `SaveOnboardingStepRequest`, `StartOnboardingRequest`, `OnboardingApplicationResponse` from
+  `@peakpower/api-client-customer` (Task 10); `applyProblemDetails(form, error)` (Task 14);
+  `PpButton` from `@peakpower/shared-ui` (plan 3).
+- Produces:
+  - `export interface OnboardingStep { readonly n: number; readonly group: string; readonly label: string; readonly title: string; readonly intro: string; readonly next?: string }`
+  - `export const STEPS: readonly OnboardingStep[]` and `export const LAST_STEP: number`
+  - `export const ENTITY_TYPES: readonly { readonly label: string; readonly wire: string }[]`
+  - `export const INDUSTRIES: readonly string[]`
+  - `export const FLOWS: readonly { readonly label: string; readonly wire: string }[]`
+  - `export const VOLUMES: readonly { readonly label: string; readonly short: string; readonly wire: string }[]`
+  - `export const AUTHORITY: readonly { readonly label: string; readonly note: string; readonly wire: string }[]`
+  - `export const MIN_PASSWORD: 12`, `KVK_DIGITS: 8`, `SIGN_CODE_DIGITS: 6`, `SUPPORT_EMAIL: string`
+  - `export interface SignatoryDraft`, `OnboardingFields`, `OnboardingState`
+  - `export function defaultState(): OnboardingState`, `blankSignatory()`, `kvkDigits()`,
+    `looksLikeEmail()`, `codeDigits()`, `signatoryComplete()`, `minSignatories()`,
+    `signatoriesForAuthority()`, `stepValid()`, `hint()`, `stepTitle()`, `stepIntro()`,
+    `clampStep()`, `fullName()`, `summaryRows()`, `withField()`, `inputValue()`,
+    `saveStepRequest()`
+  - `export class OnboardingWizard` — selector `pp-onboarding-wizard`
+
+- [ ] **Step 1: Write the failing test for the flow module**
+
+Create `apps/customer-portal/src/app/onboarding/onboarding-flow.spec.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+
+import {
+  AUTHORITY,
+  ENTITY_TYPES,
+  FLOWS,
+  INDUSTRIES,
+  LAST_STEP,
+  MIN_PASSWORD,
+  SIGN_CODE_DIGITS,
+  STEPS,
+  VOLUMES,
+  clampStep,
+  defaultState,
+  hint,
+  kvkDigits,
+  looksLikeEmail,
+  minSignatories,
+  saveStepRequest,
+  signatoriesForAuthority,
+  signatoryComplete,
+  stepIntro,
+  stepTitle,
+  stepValid,
+  summaryRows,
+} from './onboarding-flow';
+import type { OnboardingState } from './onboarding-flow';
+
+/** A complete application, so a test can start at any step without typing nine screens. */
+function filled(): OnboardingState {
+  const s = defaultState();
+  return {
+    ...s,
+    f: {
+      firstName: 'Peter',
+      lastName: 'de Vries',
+      email: 'p.devries@vandersteen.nl',
+      password: 'correct-horse-battery',
+      orgName: 'Vandersteen Koeling B.V.',
+      kvk: '24398112',
+      street: 'Havenweg',
+      houseNumber: '22',
+      houseNumberSuffix: '',
+      postcode: '3089 JJ',
+      city: 'Rotterdam',
+      iban: 'NL18INGB0002445566',
+      bankAccountHolder: 'Vandersteen Koeling B.V.',
+    },
+    agreed: true,
+    bankVerified: true,
+    entityIndex: 0,
+    industryIndex: INDUSTRIES.indexOf('Agriculture & Food Processing'),
+    flowIndex: 2,
+    volumeIndex: 3,
+    authorityIndex: 1,
+    signCode: '748213',
+    agreedDocs: true,
+    signatories: [
+      { first: 'Peter', last: 'de Vries', email: 'p.devries@vandersteen.nl', locked: true },
+      { first: 'Marieke', last: 'Vandersteen', email: 'm.vandersteen@vandersteen.nl', locked: false },
+    ],
+  };
+}
+
+describe('the step table', () => {
+  it('has ten steps, numbered 1 to 10, in six groups', () => {
+    expect(LAST_STEP).toBe(10);
+    expect(STEPS.map((s) => s.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect([...new Set(STEPS.map((s) => s.group))])
+      .toEqual(['Account', 'Company', 'Profile', 'Verification', 'Agreement', 'Done']);
+  });
+
+  it('carries the demo labels verbatim', () => {
+    expect(STEPS.map((s) => s.label)).toEqual([
+      'Personal information', 'Company', 'Registered address', 'Industry',
+      'Electricity volume', 'Bank verification', 'Signing authority',
+      'Authorised signatories', 'Sign the agreement', 'Welcome',
+    ]);
+  });
+
+  it('puts the button label on the step rather than deriving it from the number', () => {
+    expect(STEPS[0].next).toBe('Create account');
+    expect(STEPS[7].next).toBe('Submit and send the codes');
+    expect(STEPS[8].next).toBe('Sign the agreement');
+    expect(STEPS[1].next).toBeUndefined();
+  });
+});
+
+describe('the option lists', () => {
+  it('offers the nine Dutch legal forms, and spells Coöperatie on the wire without the diaeresis', () => {
+    expect(ENTITY_TYPES.map((e) => e.label)).toEqual([
+      'BV', 'NV', 'Eenmanszaak', 'VOF', 'Maatschap', 'CV', 'Stichting', 'Vereniging', 'Coöperatie',
+    ]);
+    expect(ENTITY_TYPES[8].wire).toBe('Cooperatie');
+  });
+
+  it('leads the industries with "Not specified" so index 0 means unanswered', () => {
+    expect(INDUSTRIES[0]).toBe('Not specified');
+    expect(INDUSTRIES).toHaveLength(25);
+    expect(INDUSTRIES).toContain('Transportation');
+  });
+
+  it('maps the five volume bands onto the wire names the API parses', () => {
+    expect(VOLUMES.map((v) => v.wire)).toEqual([
+      'UpTo250Mwh', 'From250To500Mwh', 'From500To1000Mwh', 'From1000To2500Mwh', 'Above2500Mwh',
+    ]);
+    expect(VOLUMES[0].label).toBe('Less than 250 MWh');
+    expect(VOLUMES[0].short).toBe('< 250 MWh');
+  });
+
+  it('maps the three signing-authority answers, each with the line explaining what follows', () => {
+    expect(AUTHORITY.map((a) => a.wire)).toEqual(['Alone', 'Jointly', 'SomeoneElse']);
+    expect(AUTHORITY[1].note).toBe('You and at least one colleague both sign.');
+  });
+
+  it('maps the three flow directions', () => {
+    expect(FLOWS.map((f) => f.wire)).toEqual(['Consumption', 'Production', 'Both']);
+  });
+});
+
+describe('stepValid', () => {
+  it('refuses step 1 until the name, a plausible email, a long password and the terms are there', () => {
+    const s = defaultState();
+    expect(stepValid(s)).toBe(false);
+    expect(stepValid({ ...filled(), step: 1 })).toBe(true);
+
+    const short = filled();
+    expect(stepValid({ ...short, step: 1, f: { ...short.f, password: 'short' } })).toBe(false);
+    expect(stepValid({ ...short, step: 1, agreed: false })).toBe(false);
+  });
+
+  it('refuses step 2 without a name and exactly eight KvK digits', () => {
+    const s = { ...filled(), step: 2 };
+    expect(stepValid(s)).toBe(true);
+    expect(stepValid({ ...s, f: { ...s.f, kvk: '2439811' } })).toBe(false);
+    expect(stepValid({ ...s, f: { ...s.f, orgName: '  ' } })).toBe(false);
+  });
+
+  it('lets steps 3, 4 and 6 through unanswered — that is deliberate', () => {
+    const s = defaultState();
+    expect(stepValid({ ...s, step: 3 })).toBe(true);
+    expect(stepValid({ ...s, step: 4 })).toBe(true);
+    expect(stepValid({ ...s, step: 6 })).toBe(true);
+  });
+
+  it('refuses step 5 and step 7 until an option is picked', () => {
+    const s = defaultState();
+    expect(stepValid({ ...s, step: 5 })).toBe(false);
+    expect(stepValid({ ...s, step: 5, volumeIndex: 0 })).toBe(true);
+    expect(stepValid({ ...s, step: 7 })).toBe(false);
+    expect(stepValid({ ...s, step: 7, authorityIndex: 0 })).toBe(true);
+  });
+
+  it('refuses step 8 with an incomplete signatory or too few of them', () => {
+    const s = { ...filled(), step: 8 };
+    expect(stepValid(s)).toBe(true);
+    expect(stepValid({ ...s, signatories: [s.signatories[0]] })).toBe(false);
+    expect(stepValid({
+      ...s,
+      signatories: [s.signatories[0], { ...s.signatories[1], email: 'nope' }],
+    })).toBe(false);
+  });
+
+  it('gates step 9 on six digits AND the tick, and never on the code being correct', () => {
+    // The real code is generated per application by the backend and emailed. The browser
+    // cannot check it — a client-side match would mean shipping a working credential.
+    const s = { ...filled(), step: 9 };
+    expect(stepValid({ ...s, signCode: '000000' })).toBe(true);
+    expect(stepValid({ ...s, signCode: '748 213' })).toBe(true);
+    expect(stepValid({ ...s, signCode: '7482' })).toBe(false);
+    expect(stepValid({ ...s, agreedDocs: false })).toBe(false);
+  });
+});
+
+describe('hint', () => {
+  it('names what is missing rather than restating the rule', () => {
+    const s = defaultState();
+    expect(hint(s)).toBe('Enter your first and last name to continue.');
+    expect(hint({ ...s, f: { ...s.f, firstName: 'Peter', lastName: 'de Vries' } }))
+      .toBe('Enter the email address you will sign in with.');
+    expect(hint({ ...filled(), step: 2, f: { ...filled().f, kvk: '123' } }))
+      .toBe('The KvK number is eight digits.');
+  });
+
+  it('counts the sign code down to six digits and never to a value', () => {
+    const s = { ...filled(), step: 9, signCode: '' };
+    expect(hint(s)).toBe(`Enter the ${SIGN_CODE_DIGITS}-digit code from the email.`);
+    expect(hint({ ...s, signCode: '748' })).toBe('The code is six digits.');
+    expect(hint({ ...s, signCode: '748213', agreedDocs: false }))
+      .toBe('Tick the box to confirm you agree to the documents.');
+  });
+
+  it('says the password rule as a countdown', () => {
+    const s = defaultState();
+    const typed = { ...s, f: { ...s.f, firstName: 'P', lastName: 'V', email: 'p@v.nl', password: '123456789' } };
+    expect(hint(typed)).toBe(`${MIN_PASSWORD - 9} characters to go.`);
+  });
+});
+
+describe('the signatory list', () => {
+  it('locks the applicant in when they sign alone or jointly, and drops them when they do not sign', () => {
+    const f = filled().f;
+    expect(signatoriesForAuthority(0, f)).toEqual([
+      { first: 'Peter', last: 'de Vries', email: 'p.devries@vandersteen.nl', locked: true },
+    ]);
+    expect(signatoriesForAuthority(1, f)).toHaveLength(2);
+    expect(signatoriesForAuthority(1, f)[0].locked).toBe(true);
+    expect(signatoriesForAuthority(2, f)).toEqual([
+      { first: '', last: '', email: '', locked: false },
+    ]);
+  });
+
+  it('requires two only when the answer was "together with another authorised person"', () => {
+    expect(minSignatories(0)).toBe(1);
+    expect(minSignatories(1)).toBe(2);
+    expect(minSignatories(2)).toBe(1);
+  });
+
+  it('calls a signatory complete only with both names and a plausible address', () => {
+    expect(signatoryComplete({ first: 'A', last: 'B', email: 'a@b.nl', locked: false })).toBe(true);
+    expect(signatoryComplete({ first: 'A', last: '', email: 'a@b.nl', locked: false })).toBe(false);
+    expect(signatoryComplete({ first: 'A', last: 'B', email: '@b.nl', locked: false })).toBe(false);
+  });
+});
+
+describe('saveStepRequest', () => {
+  it('sends only the step it is asked for', () => {
+    expect(saveStepRequest(filled(), 2)).toEqual({
+      step: 2,
+      organizationName: 'Vandersteen Koeling B.V.',
+      legalEntityType: 'BV',
+      kvkNumber: '24398112',
+      registeredAddress: null,
+      industry: null,
+      flowDirection: null,
+      volumeBand: null,
+      iban: null,
+      bankAccountHolder: null,
+      signingAuthority: null,
+    });
+  });
+
+  it('sends the six-part address, and null when nothing was registered', () => {
+    expect(saveStepRequest(filled(), 3).registeredAddress).toEqual({
+      street: 'Havenweg',
+      houseNumber: '22',
+      houseNumberSuffix: null,
+      postalCode: '3089 JJ',
+      city: 'Rotterdam',
+      country: 'NL',
+    });
+    expect(saveStepRequest(defaultState(), 3).registeredAddress).toBeNull();
+  });
+
+  it('sends no industry at all when the answer is "Not specified"', () => {
+    expect(saveStepRequest({ ...filled(), industryIndex: 0 }, 4).industry).toBeNull();
+    expect(saveStepRequest(filled(), 4).industry).toBe('Agriculture & Food Processing');
+  });
+
+  it('sends the wire names for direction, volume and signing authority', () => {
+    const five = saveStepRequest(filled(), 5);
+    expect(five.flowDirection).toBe('Both');
+    expect(five.volumeBand).toBe('From1000To2500Mwh');
+    expect(saveStepRequest(filled(), 7).signingAuthority).toBe('Jointly');
+  });
+
+  it('sends the bank details on step 6 and blanks as null', () => {
+    expect(saveStepRequest(filled(), 6).iban).toBe('NL18INGB0002445566');
+    expect(saveStepRequest(defaultState(), 6).iban).toBeNull();
+  });
+});
+
+describe('the last step, which has two outcomes', () => {
+  it('says the account is active only once the cent has arrived', () => {
+    const done = { ...filled(), step: 10 };
+    expect(stepTitle(done)).toBe('Welcome to PeakPower');
+    expect(stepTitle({ ...done, bankVerified: false })).toBe('Agreement signed');
+    expect(stepIntro({ ...done, bankVerified: false }))
+      .toBe('Your signature is recorded. One thing is still outstanding before the account can be activated.');
+  });
+
+  it('prints every answer, including the blank ones', () => {
+    const rows = summaryRows({ ...defaultState(), step: 10 });
+    expect(rows.find((r) => r.k === 'Registered address')?.v).toBe('Not registered');
+    expect(rows.find((r) => r.k === 'Annual volume')?.v).toBe('Not given');
+    expect(rows.find((r) => r.k === 'Bank account')?.v).toBe('Not verified yet');
+    expect(rows.map((r) => r.k)).toContain('Signing authority');
+  });
+});
+
+describe('the small helpers', () => {
+  it('reads eight KvK digits out of anything pasted', () => {
+    expect(kvkDigits(' 24.398.112 ')).toBe('24398112');
+  });
+
+  it('needs a local part before the @', () => {
+    expect(looksLikeEmail('@company.nl')).toBe(false);
+    expect(looksLikeEmail('p@company.nl')).toBe(true);
+  });
+
+  it('clamps a bad deep link onto a real step', () => {
+    expect(clampStep(0)).toBe(1);
+    expect(clampStep(99)).toBe(10);
+    expect(clampStep(Number.NaN)).toBe(1);
+  });
+});
+```
+
+- [ ] **Step 2: Run the test and watch it fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- onboarding-flow`
+Expected: FAIL — `Failed to resolve import "./onboarding-flow"`
+
+- [ ] **Step 3: Write the flow module**
+
+Create `apps/customer-portal/src/app/onboarding/onboarding-flow.ts`:
+
+```ts
+import type { OnboardingAddress, SaveOnboardingStepRequest } from '@peakpower/api-client-customer';
+
+/**
+ * The onboarding flow's ten steps and the rules that gate them — the components render, this
+ * decides. Ported from `trading-poc/onboarding-flow.js`, which worked out the copy, the gates
+ * and the hints; nothing here is new except where the API demanded it.
+ *
+ * TWO DELIBERATE DEPARTURES FROM THE DEMO
+ *
+ * 1. There is no SIGN_CODE constant. The demo shipped one because it submitted nothing anywhere;
+ *    here the code is six digits generated per application by the backend, hashed at rest and
+ *    emailed through IEmailSender. Step 9's gate is "six digits and the tick"; whether they are
+ *    the RIGHT six digits is the server's answer.
+ * 2. The address is six fields, because OnboardingAddressDto is six fields. The demo's single
+ *    "Street and number" box would have to be split by a parser on one side or the other, and
+ *    nobody wants to own that parser.
+ */
+
+export interface OnboardingStep {
+  readonly n: number;
+  readonly group: string;
+  readonly label: string;
+  readonly title: string;
+  readonly intro: string;
+  /** The footer's button label. On the step, so adding one is not an off-by-one elsewhere. */
+  readonly next?: string;
+}
+
+export const STEPS: readonly OnboardingStep[] = [
+  {
+    n: 1, group: 'Account', label: 'Personal information', title: 'Personal information',
+    intro: 'Start with the person who will manage the account. You can invite colleagues once the account is active.',
+    next: 'Create account',
+  },
+  {
+    n: 2, group: 'Company', label: 'Company', title: 'Company or organization information',
+    intro: 'PeakPower contracts with the legal entity, so this must match the KvK register.',
+  },
+  {
+    n: 3, group: 'Company', label: 'Registered address', title: 'Registered address',
+    intro: 'Pulled from the KvK register where we can find it — check it and correct anything that is wrong.',
+  },
+  {
+    n: 4, group: 'Company', label: 'Industry', title: 'Industry',
+    intro: 'Optional. It only helps the desk pick a sensible starting load profile.',
+  },
+  {
+    n: 5, group: 'Profile', label: 'Electricity volume', title: 'Your electricity volume',
+    intro: 'Two answers: which direction your meter runs, and roughly how much passes through it in a year.',
+  },
+  {
+    n: 6, group: 'Verification', label: 'Bank verification', title: 'Bank account verification',
+    intro: 'One cent, once. It proves the account belongs to the company that signs the agreement.',
+  },
+  {
+    n: 7, group: 'Agreement', label: 'Signing authority', title: 'Signing authority',
+    intro: 'Who may bind the company decides where the agreement goes next.',
+  },
+  {
+    n: 8, group: 'Agreement', label: 'Authorised signatories', title: 'Who needs to sign the agreement?',
+    intro: 'Add every person required to sign on behalf of the company. Each is emailed their own signing code.',
+    next: 'Submit and send the codes',
+  },
+  {
+    n: 9, group: 'Agreement', label: 'Sign the agreement', title: 'Sign the agreement',
+    intro: 'We emailed you a six-digit code. Entering it, with the box below ticked, is your signature.',
+    next: 'Sign the agreement',
+  },
+  {
+    n: 10, group: 'Done', label: 'Welcome', title: 'Welcome to PeakPower',
+    intro: 'The agreement is signed and your account is active.',
+  },
+];
+
+export const LAST_STEP = STEPS.length;
+
+/**
+ * The wire name is the C# member name, not SCREAMING_SNAKE: plan 5 parses these with
+ * Enum.TryParse<LegalEntityType>. Note Coöperatie — the label keeps the diaeresis, the wire
+ * value cannot have one because a C# identifier cannot.
+ */
+export const ENTITY_TYPES: readonly { readonly label: string; readonly wire: string }[] = [
+  { label: 'BV', wire: 'BV' },
+  { label: 'NV', wire: 'NV' },
+  { label: 'Eenmanszaak', wire: 'Eenmanszaak' },
+  { label: 'VOF', wire: 'VOF' },
+  { label: 'Maatschap', wire: 'Maatschap' },
+  { label: 'CV', wire: 'CV' },
+  { label: 'Stichting', wire: 'Stichting' },
+  { label: 'Vereniging', wire: 'Vereniging' },
+  { label: 'Coöperatie', wire: 'Cooperatie' },
+];
+
+/**
+ * "Not specified" leads and is the default: step 4 is optional, so index 0 has to mean
+ * "not answered" rather than silently answering Agriculture.
+ */
+export const INDUSTRIES: readonly string[] = [
+  'Not specified',
+  'Agriculture & Food Processing', 'Arts, Medias & Entertainment', 'Casinos & Gambling',
+  'Construction', 'Cryptocurrency', 'Defense & Military Industry', 'Education',
+  'Energy & Utilities', 'Financial Services', 'Food & Lodging', 'Government',
+  'Health Professions', 'Holding Company', 'Industry & Manufacturing', 'Mining',
+  'Non-Profit', 'Professional Services', 'Real Estate', 'Retail Trade, Automotive',
+  'Retail Trade, Jewelry & Antiques', 'Retail Trade, Others', 'Sport & Tourism',
+  'Technology & Computing', 'Transportation',
+];
+
+export const FLOWS: readonly { readonly label: string; readonly wire: string }[] = [
+  { label: 'Consumption', wire: 'Consumption' },
+  { label: 'Production', wire: 'Production' },
+  { label: 'Both', wire: 'Both' },
+];
+
+/** `short` is what the welcome step's stat card prints; the long label is what the step asks. */
+export const VOLUMES: readonly {
+  readonly label: string; readonly short: string; readonly wire: string;
+}[] = [
+  { label: 'Less than 250 MWh', short: '< 250 MWh', wire: 'UpTo250Mwh' },
+  { label: '250 – 500 MWh', short: '250–500 MWh', wire: 'From250To500Mwh' },
+  { label: '500 – 1.000 MWh', short: '500–1.000 MWh', wire: 'From500To1000Mwh' },
+  { label: '1.000 – 2.500 MWh', short: '1.000–2.500 MWh', wire: 'From1000To2500Mwh' },
+  { label: 'More than 2.500 MWh', short: '> 2.500 MWh', wire: 'Above2500Mwh' },
+];
+
+export const AUTHORITY: readonly {
+  readonly label: string; readonly note: string; readonly wire: string;
+}[] = [
+  {
+    label: 'Yes, I am authorised to sign',
+    note: 'You sign alone; the agreement is issued to you.',
+    wire: 'Alone',
+  },
+  {
+    label: 'Yes, together with another authorised person',
+    note: 'You and at least one colleague both sign.',
+    wire: 'Jointly',
+  },
+  {
+    label: 'No, someone else needs to sign',
+    note: 'We email the people you name; you keep managing the account.',
+    wire: 'SomeoneElse',
+  },
+];
+
+export const MIN_PASSWORD = 12;
+export const KVK_DIGITS = 8;
+export const SIGN_CODE_DIGITS = 6;
+
+/**
+ * The one address PeakPower writes from, and the one a customer can answer. Deliberately not a
+ * no-reply: every email this flow sends invites a reply, and the desk handles by hand anything
+ * that stops an account being validated.
+ */
+export const SUPPORT_EMAIL = 'support@peakpower.nl';
+
+export interface SignatoryDraft {
+  first: string;
+  last: string;
+  email: string;
+  /** The applicant's own row. It is their account; editing it here would disagree with step 1. */
+  locked: boolean;
+}
+
+export interface OnboardingFields {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  orgName: string;
+  kvk: string;
+  street: string;
+  houseNumber: string;
+  houseNumberSuffix: string;
+  postcode: string;
+  city: string;
+  iban: string;
+  bankAccountHolder: string;
+}
+
+export interface OnboardingState {
+  readonly step: number;
+  readonly agreed: boolean;
+  readonly bankVerified: boolean;
+  readonly entityIndex: number;
+  readonly industryIndex: number;
+  readonly flowIndex: number;
+  /** −1, not 0: index 0 is a real answer in both of these lists. */
+  readonly volumeIndex: number;
+  readonly authorityIndex: number;
+  readonly signCode: string;
+  readonly agreedDocs: boolean;
+  readonly f: OnboardingFields;
+  readonly signatories: readonly SignatoryDraft[];
+  /** Filled in by the server on step 1 and never by the browser. */
+  readonly applicationId: string | null;
+  readonly reference: string | null;
+  readonly username: string | null;
+}
+
+export function blankSignatory(): SignatoryDraft {
+  return { first: '', last: '', email: '', locked: false };
+}
+
+export function defaultState(): OnboardingState {
+  return {
+    step: 1,
+    agreed: false,
+    bankVerified: false,
+    entityIndex: 0,
+    industryIndex: 0,
+    flowIndex: 0,
+    volumeIndex: -1,
+    authorityIndex: -1,
+    signCode: '',
+    agreedDocs: false,
+    f: {
+      firstName: '', lastName: '', email: '', password: '',
+      orgName: '', kvk: '',
+      street: '', houseNumber: '', houseNumberSuffix: '', postcode: '', city: '',
+      iban: '', bankAccountHolder: '',
+    },
+    signatories: [blankSignatory()],
+    applicationId: null,
+    reference: null,
+    username: null,
+  };
+}
+
+/** Digits only — a KvK number pasted with spaces or dots is still eight digits. */
+export function kvkDigits(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+/** Index > 0, not >= 0: "@company.nl" has no local part. */
+export function looksLikeEmail(value: string): boolean {
+  return value.indexOf('@') > 0;
+}
+
+/** Digits only, so a code pasted as "748 213" still counts as six. */
+export function codeDigits(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+export function signatoryComplete(s: SignatoryDraft): boolean {
+  return s.first.trim() !== '' && s.last.trim() !== '' && looksLikeEmail(s.email);
+}
+
+/** "Together with another authorised person" means two. */
+export function minSignatories(authorityIndex: number): number {
+  return authorityIndex === 1 ? 2 : 1;
+}
+
+/** "Someone else signs" drops the applicant: they manage the account, they do not sign. */
+export function signatoriesForAuthority(
+  authorityIndex: number,
+  f: OnboardingFields,
+): SignatoryDraft[] {
+  const me: SignatoryDraft = {
+    first: f.firstName, last: f.lastName, email: f.email, locked: true,
+  };
+  if (authorityIndex === 0) return [me];
+  if (authorityIndex === 1) return [me, blankSignatory()];
+  return [blankSignatory()];
+}
+
+export function fullName(f: OnboardingFields): string {
+  return `${f.firstName.trim()} ${f.lastName.trim()}`.trim();
+}
+
+/** Steps 3, 4, 6 and 10 are always valid on purpose. */
+export function stepValid(state: OnboardingState): boolean {
+  const f = state.f;
+  switch (state.step) {
+    case 1:
+      return f.firstName.trim() !== '' && f.lastName.trim() !== ''
+        && looksLikeEmail(f.email) && f.password.length >= MIN_PASSWORD && state.agreed;
+    case 2:
+      return f.orgName.trim() !== '' && kvkDigits(f.kvk).length === KVK_DIGITS;
+    case 5:
+      return state.volumeIndex >= 0;
+    case 7:
+      return state.authorityIndex >= 0;
+    case 8:
+      return state.signatories.length >= minSignatories(state.authorityIndex)
+        && state.signatories.every(signatoryComplete);
+    case 9:
+      // Both, and in this order: a code without the agreement signs nothing, and the agreement
+      // without a code is nobody in particular ticking it. Whether the digits MATCH is the
+      // server's call — see the module comment.
+      return codeDigits(state.signCode).length === SIGN_CODE_DIGITS && state.agreedDocs;
+    default:
+      return true;
+  }
+}
+
+/** Every reason stepValid can refuse has a line here naming what is missing. */
+export function hint(state: OnboardingState): string {
+  const f = state.f;
+  switch (state.step) {
+    case 1:
+      if (f.firstName.trim() === '' || f.lastName.trim() === '') {
+        return 'Enter your first and last name to continue.';
+      }
+      if (!looksLikeEmail(f.email)) return 'Enter the email address you will sign in with.';
+      if (f.password.length === 0) return `At least ${MIN_PASSWORD} characters.`;
+      if (f.password.length < MIN_PASSWORD) {
+        return `${MIN_PASSWORD - f.password.length} characters to go.`;
+      }
+      if (!state.agreed) return 'Accept the Terms of Use to create the account.';
+      return 'Your name and email carry through to the agreement.';
+    case 2:
+      if (f.orgName.trim() === '') return 'Enter the organization name as registered.';
+      if (kvkDigits(f.kvk).length !== KVK_DIGITS) return 'The KvK number is eight digits.';
+      return 'We look the company up in the KvK register on the next step.';
+    case 3:
+      return 'Blank is acceptable — the desk resolves the address during review.';
+    case 4:
+      return 'Optional. Continue without choosing if you prefer.';
+    case 5:
+      return state.volumeIndex < 0
+        ? 'Pick the band that matches your yearly volume.'
+        : 'A band is enough — exact metering follows from your connections.';
+    case 6:
+      return state.bankVerified
+        ? 'Verified. The agreement can be issued to your signatories.'
+        : 'Verification can also complete after you submit.';
+    case 7:
+      return state.authorityIndex < 0
+        ? 'Choose one option to continue.'
+        : 'You can change this before the agreement is signed.';
+    case 8:
+      if (state.signatories.length < minSignatories(state.authorityIndex)) {
+        return 'You answered that two people sign — add the second signatory.';
+      }
+      return stepValid(state)
+        ? 'Each signatory is emailed their own code; we verify their email address first.'
+        : 'Every signatory needs a first name, last name and email address.';
+    case 9: {
+      const digits = codeDigits(state.signCode);
+      if (digits.length === 0) return `Enter the ${SIGN_CODE_DIGITS}-digit code from the email.`;
+      if (digits.length !== SIGN_CODE_DIGITS) return 'The code is six digits.';
+      if (!state.agreedDocs) return 'Tick the box to confirm you agree to the documents.';
+      return `Entering the code is your signature. It is recorded against ${fullName(f) || 'your name'}.`;
+    }
+    default:
+      return state.bankVerified
+        ? `Your account is active. Anything still outstanding, the desk emails you about from ${SUPPORT_EMAIL}.`
+        : `The desk will email you from ${SUPPORT_EMAIL} for whatever it still needs. You can reply to that email.`;
+  }
+}
+
+/**
+ * The last step has two outcomes and must not print the wrong one. "Welcome to PeakPower · your
+ * account is active" over a badge reading "With the desk" is the contradiction this exists to
+ * stop: the agreement is signed either way, the account is only active once the cent clears.
+ */
+export function stepTitle(state: OnboardingState): string {
+  const st = STEPS[state.step - 1];
+  if (st === undefined) return '';
+  if (state.step === LAST_STEP && !state.bankVerified) return 'Agreement signed';
+  return st.title;
+}
+
+export function stepIntro(state: OnboardingState): string {
+  const st = STEPS[state.step - 1];
+  if (st === undefined) return '';
+  if (state.step === LAST_STEP && !state.bankVerified) {
+    return 'Your signature is recorded. One thing is still outstanding before the account can be activated.';
+  }
+  return st.intro;
+}
+
+/** Clamped to the flow's own length, so a bad deep link lands on a real step. */
+export function clampStep(n: number): number {
+  return Math.max(1, Math.min(LAST_STEP, Math.round(Number.isFinite(n) ? n : 1)));
+}
+
+/** Every answer, including the blank ones — an omission reads as complete. */
+export function summaryRows(state: OnboardingState): readonly { k: string; v: string }[] {
+  const f = state.f;
+  const address = [`${f.street} ${f.houseNumber}`.trim(), f.city].filter((p) => p !== '').join(', ');
+  return [
+    { k: 'Account', v: fullName(f) || '—' },
+    { k: 'Email', v: f.email || '—' },
+    { k: 'Organization', v: f.orgName || '—' },
+    { k: 'Legal form', v: ENTITY_TYPES[state.entityIndex].label },
+    { k: 'KvK number', v: f.kvk || '—' },
+    { k: 'Registered address', v: address || 'Not registered' },
+    { k: 'Postcode', v: f.postcode || '—' },
+    { k: 'Industry', v: INDUSTRIES[state.industryIndex] },
+    { k: 'Direction', v: FLOWS[state.flowIndex].label },
+    { k: 'Annual volume', v: state.volumeIndex >= 0 ? VOLUMES[state.volumeIndex].label : 'Not given' },
+    {
+      k: 'Signing authority',
+      v: state.authorityIndex >= 0 ? AUTHORITY[state.authorityIndex].label : '—',
+    },
+    { k: 'Bank account', v: state.bankVerified ? 'Verified with € 0,01' : 'Not verified yet' },
+  ];
+}
+
+/** Immutably replace one field. Every step component writes through this. */
+export function withField(
+  state: OnboardingState,
+  key: keyof OnboardingFields,
+  value: string,
+): OnboardingState {
+  return { ...state, f: { ...state.f, [key]: value } };
+}
+
+/** `(input)` and `(change)` hand us an Event; this is the one cast, written once. */
+export function inputValue(event: Event): string {
+  return (event.target as HTMLInputElement | HTMLSelectElement).value;
+}
+
+function blankToNull(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function registeredAddress(f: OnboardingFields): OnboardingAddress | null {
+  if (f.street.trim() === '' && f.postcode.trim() === '' && f.city.trim() === '') return null;
+  return {
+    street: f.street.trim(),
+    houseNumber: f.houseNumber.trim(),
+    houseNumberSuffix: blankToNull(f.houseNumberSuffix),
+    postalCode: f.postcode.trim(),
+    city: f.city.trim(),
+    // The only country slice 1 serves. Recorded rather than asked, because asking a Dutch
+    // customer for their country is a question with one answer.
+    country: 'NL',
+  };
+}
+
+/**
+ * One step's answers, in the shape PATCH /onboarding/applications/{id} takes.
+ *
+ * Every field the step does not own is sent as null rather than omitted: the server merges by
+ * step number, and an absent field and a cleared field must not look the same on the wire.
+ */
+export function saveStepRequest(state: OnboardingState, step: number): SaveOnboardingStepRequest {
+  const f = state.f;
+  return {
+    step,
+    organizationName: step === 2 ? blankToNull(f.orgName) : null,
+    legalEntityType: step === 2 ? ENTITY_TYPES[state.entityIndex].wire : null,
+    kvkNumber: step === 2 ? blankToNull(kvkDigits(f.kvk)) : null,
+    registeredAddress: step === 3 ? registeredAddress(f) : null,
+    industry: step === 4 && state.industryIndex > 0 ? INDUSTRIES[state.industryIndex] : null,
+    flowDirection: step === 5 ? FLOWS[state.flowIndex].wire : null,
+    volumeBand: step === 5 && state.volumeIndex >= 0 ? VOLUMES[state.volumeIndex].wire : null,
+    iban: step === 6 ? blankToNull(f.iban) : null,
+    bankAccountHolder: step === 6 ? blankToNull(f.bankAccountHolder) : null,
+    signingAuthority:
+      step === 7 && state.authorityIndex >= 0 ? AUTHORITY[state.authorityIndex].wire : null,
+  };
+}
+```
+
+- [ ] **Step 4: Run the test and watch it pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- onboarding-flow`
+Expected: PASS — 23 tests
+
+- [ ] **Step 5: Write the failing test for the wizard shell**
+
+Create `apps/customer-portal/src/app/onboarding/onboarding-wizard.spec.ts`:
+
+```ts
+import { HttpTestingController } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { describe, it, expect, afterEach } from 'vitest';
+import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
+
+import { OnboardingWizard } from './onboarding-wizard';
+import { defaultState } from './onboarding-flow';
+
+describe('OnboardingWizard', () => {
+  let http: HttpTestingController;
+
+  async function render() {
+    TestBed.configureTestingModule({
+      providers: [provideCustomerApiTesting(), provideRouter([])],
+    });
+    http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(OnboardingWizard);
+    await fixture.whenStable();
+    return fixture;
+  }
+
+  /** Step 1 answered, so the footer will let the wizard move. */
+  function answerStepOne(wizard: OnboardingWizard): void {
+    wizard.state.set({
+      ...defaultState(),
+      agreed: true,
+      f: {
+        ...defaultState().f,
+        firstName: 'Peter',
+        lastName: 'de Vries',
+        email: 'p.devries@vandersteen.nl',
+        password: 'correct-horse-battery',
+      },
+    });
+  }
+
+  afterEach(() => http.verify());
+
+  it('opens on step 1 of 10 and prints that step\'s own title and intro', async () => {
+    const fixture = await render();
+
+    expect(fixture.componentInstance.step()).toBe(1);
+    expect(fixture.nativeElement.textContent).toContain('Step 1 of 10');
+    expect(fixture.nativeElement.textContent).toContain('Personal information');
+    expect(fixture.nativeElement.textContent)
+      .toContain('Start with the person who will manage the account.');
+  });
+
+  it('draws the rail with all ten labels, grouped', async () => {
+    const fixture = await render();
+
+    const labels = Array.from(
+      fixture.nativeElement.querySelectorAll('.rail-label') as NodeListOf<HTMLElement>,
+    ).map((el) => el.textContent?.trim());
+
+    expect(labels).toHaveLength(10);
+    expect(labels[0]).toBe('Personal information');
+    expect(labels[9]).toBe('Welcome');
+    expect(fixture.nativeElement.querySelectorAll('.rail-group').length).toBe(6);
+  });
+
+  it('takes the footer button label from the step, not from arithmetic', async () => {
+    const fixture = await render();
+
+    expect(fixture.componentInstance.nextLabel()).toBe('Create account');
+
+    fixture.componentInstance.state.update((s) => ({ ...s, step: 2 }));
+    await fixture.whenStable();
+    expect(fixture.componentInstance.nextLabel()).toBe('Next');
+  });
+
+  it('refuses to continue while the step is unanswered, and says what is missing', async () => {
+    const fixture = await render();
+
+    expect(fixture.componentInstance.canContinue()).toBe(false);
+    expect(fixture.componentInstance.hint()).toBe('Enter your first and last name to continue.');
+
+    fixture.componentInstance.next();
+    await fixture.whenStable();
+
+    http.expectNone('/api/v1/onboarding/applications');
+  });
+
+  it('starts the application on step 1 and keeps the reference the server assigned', async () => {
+    const fixture = await render();
+    answerStepOne(fixture.componentInstance);
+    await fixture.whenStable();
+
+    fixture.componentInstance.next();
+
+    const req = http.expectOne('/api/v1/onboarding/applications');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      firstName: 'Peter',
+      lastName: 'de Vries',
+      email: 'p.devries@vandersteen.nl',
+      password: 'correct-horse-battery',
+      termsAccepted: true,
+    });
+    req.flush({ id: 'app-1', reference: 'PP-ONB-7F3K', status: 'Draft' });
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.step()).toBe(2);
+    expect(fixture.componentInstance.state().applicationId).toBe('app-1');
+    expect(fixture.componentInstance.reference()).toBe('PP-ONB-7F3K');
+  });
+
+  it('PATCHes one step at a time from step 2 onwards', async () => {
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({
+      ...s,
+      step: 2,
+      applicationId: 'app-1',
+      f: { ...s.f, orgName: 'Vandersteen Koeling B.V.', kvk: '24398112' },
+    }));
+    await fixture.whenStable();
+
+    fixture.componentInstance.next();
+
+    const req = http.expectOne('/api/v1/onboarding/applications/app-1');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body.step).toBe(2);
+    expect(req.request.body.kvkNumber).toBe('24398112');
+    req.flush({ id: 'app-1', reference: 'PP-ONB-7F3K', status: 'Draft' });
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.step()).toBe(3);
+  });
+
+  it('stays on the step and shows the server\'s complaint when the save is refused', async () => {
+    const fixture = await render();
+    answerStepOne(fixture.componentInstance);
+    await fixture.whenStable();
+
+    fixture.componentInstance.next();
+    http.expectOne('/api/v1/onboarding/applications').flush(
+      { title: 'The request is not valid.', errors: { email: ['That address already has an account.'] } },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.step()).toBe(1);
+    expect(fixture.componentInstance.summary()).toBe('That address already has an account.');
+    expect(fixture.componentInstance.busy()).toBe(false);
+  });
+
+  it('lets the rail go back but never forward', async () => {
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({ ...s, step: 4, applicationId: 'app-1' }));
+    await fixture.whenStable();
+
+    fixture.componentInstance.goto(9);
+    expect(fixture.componentInstance.step()).toBe(4);
+
+    fixture.componentInstance.goto(2);
+    expect(fixture.componentInstance.step()).toBe(2);
+  });
+
+  it('going back re-answers a step rather than re-posting it', async () => {
+    // back() touches no network: the answers are already on the server, and a PATCH on the way
+    // backwards would overwrite step 3 with step 4's payload.
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({ ...s, step: 5, applicationId: 'app-1' }));
+    await fixture.whenStable();
+
+    fixture.componentInstance.back();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.step()).toBe(4);
+  });
+});
+```
+
+- [ ] **Step 6: Run the test and watch it fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- onboarding-wizard`
+Expected: FAIL — `Failed to resolve import "./onboarding-wizard"`
+
+- [ ] **Step 7: Write the wizard shell**
+
+Create `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { FormGroup } from '@angular/forms';
+import { CustomerApiClient } from '@peakpower/api-client-customer';
+import type { OnboardingApplicationResponse } from '@peakpower/api-client-customer';
+import { PpButton } from '@peakpower/shared-ui';
+
+import { applyProblemDetails } from '../shared/apply-problem-details';
+import {
+  LAST_STEP,
+  STEPS,
+  clampStep,
+  defaultState,
+  hint,
+  saveStepRequest,
+  stepIntro,
+  stepTitle,
+  stepValid,
+} from './onboarding-flow';
+import type { OnboardingState, OnboardingStep } from './onboarding-flow';
+
+/** A rail entry: either a group heading or one of the ten steps. */
+interface RailRow {
+  readonly kind: 'group' | 'step';
+  readonly text: string;
+  readonly n: number;
+  readonly done: boolean;
+  readonly current: boolean;
+  readonly reachable: boolean;
+}
+
+@Component({
+  selector: 'pp-onboarding-wizard',
+  standalone: true,
+  imports: [PpButton],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="shell">
+      <nav class="rail">
+        <div class="rail-brand">
+          <div>
+            <div class="name">PeakPower</div>
+            <div class="sub">TRADING</div>
+          </div>
+        </div>
+
+        <div class="rail-intro">
+          <div class="t">Create your account</div>
+          <div class="d">
+            Ten short steps. Your answers are saved as you go, so you can stop and come back.
+          </div>
+        </div>
+
+        <div class="rail-steps">
+          @for (row of railRows(); track row.text) {
+            @if (row.kind === 'group') {
+              <div class="rail-group">{{ row.text }}</div>
+            } @else {
+              <div
+                class="rail-step"
+                [class.done]="row.done"
+                [class.current]="row.current"
+                [class.reachable]="row.reachable"
+                (click)="goto(row.n)"
+              >
+                <div class="rail-dot">{{ row.done ? '✓' : row.n }}</div>
+                <div class="rail-label">{{ row.text }}</div>
+              </div>
+            }
+          }
+        </div>
+
+        <div class="rail-foot">
+          <div class="k">APPLICATION</div>
+          <div class="v">{{ reference() }}</div>
+          <div class="n">Quote this reference on anything you send us about this application.</div>
+        </div>
+      </nav>
+
+      <main class="flow">
+        <div class="flow-inner">
+          <div class="step-eyebrow">
+            <span class="n">Step {{ step() }} of {{ lastStep }}</span>
+            <span>{{ current().group }}</span>
+          </div>
+          <div class="progress"><i [style.width.%]="progress()"></i></div>
+
+          <h1 class="step-title">{{ title() }}</h1>
+          <p class="step-intro">{{ intro() }}</p>
+
+          @if (summary()) {
+            <p class="summary" role="alert">{{ summary() }}</p>
+          }
+
+          <div class="step-body">
+            <!-- Tasks 17 to 21 each add their @switch arm here. -->
+          </div>
+
+          <div class="footer">
+            <span class="hint">{{ hint() }}</span>
+            <div class="actions">
+              @if (step() > 1 && step() < lastStep) {
+                <pp-button variant="secondary" (click)="back()">Back</pp-button>
+              }
+              @if (step() < lastStep) {
+                <pp-button variant="primary" [disabled]="!canContinue()" (click)="next()">
+                  {{ busy() ? 'Saving…' : nextLabel() }}
+                </pp-button>
+              }
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  `,
+  styles: `
+    :host { display: block; }
+    .shell { display: flex; min-height: 100vh; }
+    /* Wider than the portal's 236px on purpose: this rail carries ten step labels rather than
+       seven one-word nav entries, and "Authorised signatories" wraps at 236. */
+    .rail {
+      width: 296px; min-width: 296px; background: var(--pp-sidebar-bg);
+      display: flex; flex-direction: column; position: relative;
+    }
+    .rail::before {
+      content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+      background: var(--pp-rail-spectrum);
+    }
+    .rail-brand { padding: 22px 24px 18px; }
+    .rail-brand .name { color: #fff; font-size: 15px; font-weight: 700; line-height: 1.1; }
+    .rail-brand .sub {
+      color: var(--pp-sidebar-subtitle); font-size: 10px; font-weight: 600; margin-top: 2px;
+    }
+    .rail-intro { padding: 8px 24px 18px; }
+    .rail-intro .t { color: #fff; font-size: 13.5px; font-weight: 700; }
+    .rail-intro .d { color: #93a2b5; font-size: 11.5px; line-height: 1.5; margin-top: 5px; }
+    .rail-steps { padding: 0 14px; display: flex; flex-direction: column; gap: 2px; }
+    .rail-group {
+      padding: 12px 10px 6px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: #7b8ba0;
+    }
+    .rail-step {
+      display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px;
+    }
+    /* Only a step already reached is reachable — a rail that looks clickable everywhere and
+       answers on three of ten is worse than one that does not. */
+    .rail-step.reachable { cursor: pointer; }
+    .rail-step.reachable:hover { background: rgba(255, 255, 255, 0.06); }
+    .rail-step.current { background: var(--pp-sidebar-active-bg); }
+    .rail-dot {
+      width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex;
+      align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+      border: 1px solid rgba(255, 255, 255, 0.28); color: #93a2b5;
+    }
+    .rail-step.done .rail-dot {
+      background: var(--pp-mint); border-color: var(--pp-mint); color: #fff;
+    }
+    .rail-step.current .rail-dot {
+      background: var(--pp-blue-700); border-color: var(--pp-blue-700); color: #fff;
+    }
+    .rail-label { font-size: 12px; color: #93a2b5; line-height: 1.35; }
+    .rail-step.done .rail-label { color: var(--pp-sidebar-text); }
+    .rail-step.current .rail-label { color: #fff; font-weight: 600; }
+    .rail-foot {
+      margin-top: auto; padding: 18px 24px 22px; margin-left: 14px; margin-right: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.09);
+    }
+    .rail-foot .k {
+      font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+      color: #7b8ba0;
+    }
+    .rail-foot .v {
+      font-family: var(--font-mono); font-size: 11.5px; color: var(--pp-sidebar-text);
+      margin-top: 5px;
+    }
+    .rail-foot .n { font-size: 10.5px; color: #7b8ba0; margin-top: 8px; line-height: 1.45; }
+
+    .flow { flex: 1; display: flex; justify-content: center; padding: 34px 44px 56px; }
+    .flow-inner { width: 100%; max-width: 780px; display: flex; flex-direction: column; }
+    .step-eyebrow {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+      font-size: 10.5px; color: var(--pp-text-faint);
+    }
+    .step-eyebrow .n { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .progress {
+      height: 4px; border-radius: 999px; background: var(--pp-border); overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress > i {
+      display: block; height: 100%; background: var(--pp-blue-700); border-radius: 999px;
+    }
+    .step-title { font-size: 23px; font-weight: 700; letter-spacing: -0.01em; margin: 14px 0 0; }
+    .step-intro {
+      font-size: 12.5px; color: var(--pp-text-body); line-height: 1.55; margin: 6px 0 0;
+      max-width: 620px;
+    }
+    .summary {
+      margin: 16px 0 0; padding: 10px 12px; border-radius: 6px;
+      border: 1px solid var(--pp-red-border); background: var(--pp-red-surface);
+      color: var(--pp-red-text); font-size: 12.5px; line-height: 1.45;
+    }
+    .step-body { display: flex; flex-direction: column; gap: 18px; margin-top: 18px; }
+    .footer {
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+      margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--pp-border);
+    }
+    .hint { font-size: 11.5px; color: var(--pp-text-faint); line-height: 1.5; }
+    .actions { display: flex; gap: 10px; flex-shrink: 0; }
+  `,
+})
+export class OnboardingWizard {
+  private readonly api = inject(CustomerApiClient);
+
+  readonly lastStep = LAST_STEP;
+  readonly state = signal<OnboardingState>(defaultState());
+  readonly busy = signal(false);
+  readonly summary = signal<string | null>(null);
+
+  readonly step = computed(() => this.state().step);
+  readonly current = computed<OnboardingStep>(() => STEPS[this.state().step - 1]);
+  readonly title = computed(() => stepTitle(this.state()));
+  readonly intro = computed(() => stepIntro(this.state()));
+  readonly hint = computed(() => hint(this.state()));
+  readonly nextLabel = computed(() => this.current().next ?? 'Next');
+  readonly canContinue = computed(() => stepValid(this.state()) && !this.busy());
+  readonly progress = computed(() => Math.round((this.state().step / LAST_STEP) * 100));
+  readonly reference = computed(() => this.state().reference ?? 'Not yet issued');
+
+  readonly railRows = computed<readonly RailRow[]>(() => {
+    const step = this.state().step;
+    const rows: RailRow[] = [];
+    let lastGroup: string | null = null;
+
+    for (const st of STEPS) {
+      if (st.group !== lastGroup) {
+        rows.push({
+          kind: 'group', text: st.group, n: 0, done: false, current: false, reachable: false,
+        });
+        lastGroup = st.group;
+      }
+      rows.push({
+        kind: 'step',
+        text: st.label,
+        n: st.n,
+        done: st.n < step,
+        current: st.n === step,
+        reachable: st.n <= step,
+      });
+    }
+    return rows;
+  });
+
+  /** Backwards only. The rail must never skip a step whose answers have not been given. */
+  goto(n: number): void {
+    if (n === 0 || n > this.state().step || this.busy()) return;
+    this.summary.set(null);
+    this.state.update((s) => ({ ...s, step: clampStep(n) }));
+  }
+
+  /**
+   * No network. The answers already reached the server on the way forward, and a PATCH on the
+   * way back would overwrite the earlier step with the later step's payload.
+   */
+  back(): void {
+    if (this.state().step <= 1 || this.busy()) return;
+    this.summary.set(null);
+    this.state.update((s) => ({ ...s, step: s.step - 1 }));
+  }
+
+  next(): void {
+    // Re-checked here, not only on the disabled button: a stale screen must not walk past a
+    // step it has not answered.
+    if (!stepValid(this.state()) || this.busy()) return;
+    if (this.state().step >= LAST_STEP) return;
+
+    this.summary.set(null);
+    const state = this.state();
+
+    if (state.step === 1) {
+      this.send(this.startApplication(state));
+      return;
+    }
+
+    const id = state.applicationId;
+    if (id === null) {
+      this.summary.set('This application was not started. Go back to step 1 and begin again.');
+      return;
+    }
+
+    this.send(
+      this.api.saveOnboardingStep(id, saveStepRequest(state, state.step)),
+      () => this.advance(),
+    );
+  }
+
+  private startApplication(state: OnboardingState) {
+    return this.api.startOnboarding({
+      firstName: state.f.firstName.trim(),
+      lastName: state.f.lastName.trim(),
+      email: state.f.email.trim(),
+      password: state.f.password,
+      termsAccepted: state.agreed,
+    });
+  }
+
+  /**
+   * One place where a step's call is made, its outcome recorded and the wizard moved on.
+   *
+   * `applyProblemDetails` normally puts messages onto a reactive form; the wizard holds its
+   * answers in one signal rather than eleven form groups, so it is handed an empty group and
+   * every message comes back as the summary. That is the behaviour wanted here — an onboarding
+   * step has one error line, above the body.
+   */
+  private send(
+    call: import('rxjs').Observable<OnboardingApplicationResponse>,
+    onSuccess: (response: OnboardingApplicationResponse) => void = (r) => this.accept(r),
+  ): void {
+    this.busy.set(true);
+    call.subscribe({
+      next: (response) => {
+        this.busy.set(false);
+        onSuccess(response);
+      },
+      error: (error: unknown) => {
+        this.busy.set(false);
+        this.summary.set(applyProblemDetails(new FormGroup({}), error));
+      },
+    });
+  }
+
+  private accept(response: OnboardingApplicationResponse): void {
+    this.state.update((s) => ({
+      ...s,
+      applicationId: response.id,
+      reference: response.reference,
+      step: s.step + 1,
+    }));
+  }
+
+  private advance(): void {
+    this.state.update((s) => ({ ...s, step: s.step + 1 }));
+  }
+}
+```
+
+- [ ] **Step 8: Run the test and watch it pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- onboarding-wizard`
+Expected: PASS — 9 tests
+
+- [ ] **Step 9: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/onboarding
+git commit -m "feat(customer-portal): port the onboarding step table and build the wizard shell"
+```
+
+---
+
+### Task 17: Wizard steps 1 and 2 — the account and the company
+
+Step 1 creates the credential `[DEC-113]`, so it is the one step in the flow that a reader
+should look at twice. Two rules govern it and neither is negotiable:
+
+**The password minimum counts down, and the browser never enforces it twice.** The hint says
+"3 characters to go" because "at least 12 characters" stops being actionable the moment you
+start typing. The *rule* lives in `PasswordPolicy.MinimumLength` on the server; the browser's
+`stepValid` gate exists to stop a pointless round trip, and if `[OQ-98]` moves the number the
+server is what refuses.
+
+**The terms tick is part of the payload, not decoration.** `StartOnboardingRequest.TermsAccepted`
+travels with the account, so the record of what was agreed to is where the account is, not in a
+front-end boolean nobody kept.
+
+Step 2 is the KvK step. Eight digits `[F01-R03]`, read out of whatever was pasted, and the wire
+value carries the digits alone.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Create: `apps/customer-portal/src/app/onboarding/steps/step-account.ts`
+- Create: `apps/customer-portal/src/app/onboarding/steps/step-company.ts`
+- Modify: `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-account.spec.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-company.spec.ts`
+
+**Interfaces:**
+- Consumes: `OnboardingState`, `OnboardingFields`, `ENTITY_TYPES`, `MIN_PASSWORD`,
+  `withField`, `inputValue`, `defaultState` (Task 16); `PpCard` from `@peakpower/shared-ui`.
+- Produces:
+  - `export class StepAccount` — selector `pp-step-account`, `state = model.required<OnboardingState>()`
+  - `export class StepCompany` — selector `pp-step-company`, `state = model.required<OnboardingState>()`
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-account.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { describe, it, expect } from 'vitest';
+
+import { StepAccount } from './step-account';
+import { defaultState } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+async function render(initial: OnboardingState = defaultState()) {
+  TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+  const fixture = TestBed.createComponent(StepAccount);
+  const state = signal(initial);
+  fixture.componentRef.setInput('state', state());
+  await fixture.whenStable();
+  return fixture;
+}
+
+function type(fixture: Awaited<ReturnType<typeof render>>, id: string, value: string): void {
+  const input = fixture.nativeElement.querySelector(`#${id}`) as HTMLInputElement;
+  input.value = value;
+  input.dispatchEvent(new Event('input'));
+}
+
+describe('StepAccount', () => {
+  it('asks for the four fields the account is made of', async () => {
+    const fixture = await render();
+
+    for (const id of ['firstName', 'lastName', 'email', 'password']) {
+      expect(fixture.nativeElement.querySelector(`#${id}`)).not.toBeNull();
+    }
+  });
+
+  it('writes what is typed back into the state', async () => {
+    const fixture = await render();
+
+    type(fixture, 'firstName', 'Peter');
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().f.firstName).toBe('Peter');
+  });
+
+  it('counts the password down instead of repeating the rule', async () => {
+    const fixture = await render();
+    expect(fixture.componentInstance.passwordNote()).toBe('At least 12 characters.');
+
+    type(fixture, 'password', '123456789');
+    await fixture.whenStable();
+    expect(fixture.componentInstance.passwordNote()).toBe('3 characters to go.');
+
+    type(fixture, 'password', 'correct-horse-battery');
+    await fixture.whenStable();
+    expect(fixture.componentInstance.passwordNote()).toBe('Long enough.');
+  });
+
+  it('toggles the terms, because they travel with the request', async () => {
+    const fixture = await render();
+    expect(fixture.componentInstance.state().agreed).toBe(false);
+
+    fixture.componentInstance.toggleTerms();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().agreed).toBe(true);
+  });
+
+  it('never renders the password as readable text', async () => {
+    const fixture = await render();
+
+    const password = fixture.nativeElement.querySelector('#password') as HTMLInputElement;
+    expect(password.type).toBe('password');
+    expect(password.getAttribute('autocomplete')).toBe('new-password');
+  });
+});
+```
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-company.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect } from 'vitest';
+
+import { StepCompany } from './step-company';
+import { defaultState } from '../onboarding-flow';
+
+async function render() {
+  TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+  const fixture = TestBed.createComponent(StepCompany);
+  fixture.componentRef.setInput('state', defaultState());
+  await fixture.whenStable();
+  return fixture;
+}
+
+describe('StepCompany', () => {
+  it('offers all nine Dutch legal forms, with BV first', async () => {
+    const fixture = await render();
+
+    const options = Array.from(
+      fixture.nativeElement.querySelectorAll('#entity option') as NodeListOf<HTMLOptionElement>,
+    ).map((o) => o.textContent?.trim());
+
+    expect(options).toHaveLength(9);
+    expect(options[0]).toBe('BV');
+    expect(options[8]).toBe('Coöperatie');
+  });
+
+  it('records the legal form by index when one is chosen', async () => {
+    const fixture = await render();
+    const select = fixture.nativeElement.querySelector('#entity') as HTMLSelectElement;
+
+    select.value = '2';
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().entityIndex).toBe(2);
+  });
+
+  it('keeps whatever was pasted into the KvK box and lets the flow read the digits', async () => {
+    const fixture = await render();
+    const kvk = fixture.nativeElement.querySelector('#kvk') as HTMLInputElement;
+
+    kvk.value = '24.398.112';
+    kvk.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().f.kvk).toBe('24.398.112');
+  });
+
+  it('says what a KvK number is, in Dutch, once', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('Nummer Kamer van Koophandel — eight digits, no spaces.');
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests and watch them fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-account step-company`
+Expected: FAIL — `Failed to resolve import "./step-account"`
+
+- [ ] **Step 3: Write step 1**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-account.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, model } from '@angular/core';
+import { PpCard } from '@peakpower/shared-ui';
+
+import { MIN_PASSWORD, inputValue, withField } from '../onboarding-flow';
+import type { OnboardingFields, OnboardingState } from '../onboarding-flow';
+
+/**
+ * Step 1 — the person, and the credential [DEC-113].
+ *
+ * The twelve-character minimum is stated as a countdown, and the RULE lives on the server:
+ * PasswordPolicy.MinimumLength is what refuses. The gate here only saves a round trip.
+ */
+@Component({
+  selector: 'pp-step-account',
+  standalone: true,
+  imports: [PpCard],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card heading="Personal information" subtitle="This becomes the account you sign in with">
+      <div class="fields two">
+        <div class="field">
+          <label class="fg-label" for="firstName">First name</label>
+          <input
+            id="firstName"
+            type="text"
+            autocomplete="given-name"
+            placeholder="Peter"
+            [value]="state().f.firstName"
+            (input)="set('firstName', $event)"
+          />
+        </div>
+        <div class="field">
+          <label class="fg-label" for="lastName">Last name</label>
+          <input
+            id="lastName"
+            type="text"
+            autocomplete="family-name"
+            placeholder="de Vries"
+            [value]="state().f.lastName"
+            (input)="set('lastName', $event)"
+          />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="fg-label" for="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          autocomplete="email"
+          placeholder="p.devries@company.nl"
+          [value]="state().f.email"
+          (input)="set('email', $event)"
+        />
+      </div>
+
+      <div class="field">
+        <label class="fg-label" for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          autocomplete="new-password"
+          [attr.placeholder]="'At least ' + minPassword + ' characters'"
+          [value]="state().f.password"
+          (input)="set('password', $event)"
+        />
+        <p class="fg-hint">{{ passwordNote() }}</p>
+      </div>
+
+      <div class="terms" [class.on]="state().agreed" (click)="toggleTerms()">
+        <div class="terms-box">{{ state().agreed ? '✓' : '' }}</div>
+        <div class="terms-text">
+          By creating an account, I agree to the Terms of Use and confirm I may act for the
+          company named in the next step.
+        </div>
+      </div>
+    </pp-card>
+  `,
+  styles: `
+    .fields.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .field { min-width: 0; margin-bottom: 14px; }
+    .fields.two .field { margin-bottom: 0; }
+    .fields.two { margin-bottom: 14px; }
+    .fg-label {
+      display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--pp-text-body); margin-bottom: 6px;
+    }
+    .fg-hint { font-size: 11px; color: var(--pp-text-faint); margin: 6px 0 0; line-height: 1.5; }
+    input {
+      width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; padding: 10px 12px;
+      border: 1px solid var(--pp-border); border-radius: 8px; background: var(--pp-surface);
+      color: var(--pp-text-heading);
+    }
+    input:focus { outline: none; border-color: var(--pp-blue-300); }
+    .terms {
+      display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; padding-top: 14px;
+      border-top: 1px solid var(--pp-border); cursor: pointer;
+    }
+    .terms-box {
+      width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; margin-top: 1px;
+      border: 1px solid var(--pp-border-strong); background: #fff; color: #fff; font-size: 10px;
+      font-weight: 700; display: flex; align-items: center; justify-content: center;
+    }
+    .terms.on .terms-box { border-color: var(--pp-blue-700); background: var(--pp-blue-700); }
+    .terms-text { font-size: 12px; color: var(--pp-text-body); line-height: 1.5; }
+  `,
+})
+export class StepAccount {
+  readonly state = model.required<OnboardingState>();
+  readonly minPassword = MIN_PASSWORD;
+
+  set(key: keyof OnboardingFields, event: Event): void {
+    this.state.update((s) => withField(s, key, inputValue(event)));
+  }
+
+  toggleTerms(): void {
+    this.state.update((s) => ({ ...s, agreed: !s.agreed }));
+  }
+
+  /** Counts down rather than repeating the rule. */
+  passwordNote(): string {
+    const n = this.state().f.password.length;
+    if (n === 0) return `At least ${MIN_PASSWORD} characters.`;
+    if (n < MIN_PASSWORD) return `${MIN_PASSWORD - n} characters to go.`;
+    return 'Long enough.';
+  }
+}
+```
+
+- [ ] **Step 4: Write step 2**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-company.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, model } from '@angular/core';
+import { PpCard } from '@peakpower/shared-ui';
+
+import { ENTITY_TYPES, inputValue, withField } from '../onboarding-flow';
+import type { OnboardingFields, OnboardingState } from '../onboarding-flow';
+
+/**
+ * Step 2 — the legal entity PeakPower contracts with.
+ *
+ * The KvK box keeps exactly what was pasted, dots and all; `kvkDigits` is what the gate and the
+ * wire read. Reformatting someone's typing under their caret is its own small betrayal.
+ */
+@Component({
+  selector: 'pp-step-company',
+  standalone: true,
+  imports: [PpCard],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card
+      heading="Company or organization"
+      subtitle="The legal entity PeakPower contracts with"
+    >
+      <div class="field">
+        <label class="fg-label" for="orgName">Organization name</label>
+        <input
+          id="orgName"
+          type="text"
+          autocomplete="organization"
+          placeholder="Vandersteen Koeling B.V."
+          [value]="state().f.orgName"
+          (input)="set('orgName', $event)"
+        />
+      </div>
+
+      <div class="fields two">
+        <div class="field">
+          <label class="fg-label" for="entity">Legal entity type</label>
+          <select id="entity" (change)="setEntity($event)">
+            @for (entity of entityTypes; track entity.wire; let i = $index) {
+              <option [value]="i" [selected]="i === state().entityIndex">{{ entity.label }}</option>
+            }
+          </select>
+        </div>
+        <div class="field">
+          <label class="fg-label" for="kvk">Registration number</label>
+          <input
+            id="kvk"
+            class="mono"
+            type="text"
+            inputmode="numeric"
+            placeholder="8 digits"
+            [value]="state().f.kvk"
+            (input)="set('kvk', $event)"
+          />
+          <p class="fg-hint">Nummer Kamer van Koophandel — eight digits, no spaces.</p>
+        </div>
+      </div>
+    </pp-card>
+  `,
+  styles: `
+    .fields.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    .field { min-width: 0; }
+    .fg-label {
+      display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--pp-text-body); margin-bottom: 6px;
+    }
+    .fg-hint { font-size: 11px; color: var(--pp-text-faint); margin: 6px 0 0; line-height: 1.5; }
+    input, select {
+      width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; padding: 10px 12px;
+      border: 1px solid var(--pp-border); border-radius: 8px; background: var(--pp-surface);
+      color: var(--pp-text-heading);
+    }
+    input.mono { font-family: var(--font-mono); }
+    input:focus, select:focus { outline: none; border-color: var(--pp-blue-300); }
+  `,
+})
+export class StepCompany {
+  readonly state = model.required<OnboardingState>();
+  readonly entityTypes = ENTITY_TYPES;
+
+  set(key: keyof OnboardingFields, event: Event): void {
+    this.state.update((s) => withField(s, key, inputValue(event)));
+  }
+
+  setEntity(event: Event): void {
+    const index = Number(inputValue(event));
+    this.state.update((s) => ({ ...s, entityIndex: Number.isFinite(index) ? index : 0 }));
+  }
+}
+```
+
+- [ ] **Step 5: Give the wizard its first two arms**
+
+In `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`, add the two imports:
+
+```ts
+import { StepAccount } from './steps/step-account';
+import { StepCompany } from './steps/step-company';
+```
+
+change the component's `imports` array to `[PpButton, StepAccount, StepCompany]`, and replace the
+empty step body with:
+
+```html
+          <div class="step-body">
+            @switch (step()) {
+              @case (1) { <pp-step-account [(state)]="state" /> }
+              @case (2) { <pp-step-company [(state)]="state" /> }
+            }
+          </div>
+```
+
+- [ ] **Step 6: Run the tests and watch them pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-account step-company onboarding-wizard`
+Expected: PASS — 18 tests
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/onboarding
+git commit -m "feat(customer-portal): onboarding steps 1 and 2 — the account and the company"
+```
+
+---
+
+### Task 18: Wizard steps 3, 4 and 5 — the address, the industry and the volume
+
+Three short steps and one shared control. Steps 3 and 4 are the two the demo lets through
+unanswered on purpose: a company whose address the KvK register does not carry must not be
+stopped at step 3, and an industry that fits none of the twenty-four must not be forced into
+one. Both say so in the hint rather than being silently permissive.
+
+Step 5 introduces **the choice control** — one bordered row carrying its own selected state. It
+answers three questions in this flow (direction, volume, and the signing authority on step 7),
+so it is written once here and reused rather than invented three times.
+
+Step 5's second card names the direction the customer just picked, in its subtitle. That is the
+one place in the wizard where an answer is reflected back before it is submitted, and it is
+worth keeping: it makes "net volume" mean something specific.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Modify: `apps/customer-portal/src/app/onboarding/steps/step-company.ts`
+- Create: `apps/customer-portal/src/app/onboarding/steps/step-volume.ts`
+- Modify: `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-address.spec.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-volume.spec.ts`
+
+**Interfaces:**
+- Consumes: `OnboardingState`, `INDUSTRIES`, `FLOWS`, `VOLUMES`, `kvkDigits`, `withField`,
+  `inputValue` (Task 16); `PpCard`, `PpBanner` from `@peakpower/shared-ui`.
+- Produces:
+  - `export class StepAddress` — selector `pp-step-address`, in `steps/step-company.ts`
+  - `export class StepIndustry` — selector `pp-step-industry`, in `steps/step-company.ts`
+  - `export class StepVolume` — selector `pp-step-volume`, in `steps/step-volume.ts`
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-address.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect } from 'vitest';
+
+import { StepAddress, StepIndustry } from './step-company';
+import { INDUSTRIES, defaultState } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+async function renderAddress(state: OnboardingState = defaultState()) {
+  TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+  const fixture = TestBed.createComponent(StepAddress);
+  fixture.componentRef.setInput('state', state);
+  await fixture.whenStable();
+  return fixture;
+}
+
+describe('StepAddress', () => {
+  it('asks for the five parts of a Dutch address the contract carries', async () => {
+    const fixture = await renderAddress();
+
+    // Six on the wire; `country` is NL and is not a question.
+    for (const id of ['street', 'houseNumber', 'houseNumberSuffix', 'postcode', 'city']) {
+      expect(fixture.nativeElement.querySelector(`#${id}`)).not.toBeNull();
+    }
+  });
+
+  it('says nothing was looked up when there is no KvK number to look up by', async () => {
+    const fixture = await renderAddress();
+
+    expect(fixture.nativeElement.textContent).toContain('We look the address up by KvK number.');
+  });
+
+  it('names the number it looked up once there is one', async () => {
+    const state = defaultState();
+    const fixture = await renderAddress({ ...state, f: { ...state.f, kvk: '24398112' } });
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('Fetched from the KvK register for number 24398112.');
+  });
+
+  it('says out loud that blank is acceptable', async () => {
+    const fixture = await renderAddress();
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('the desk resolves the address during review');
+  });
+
+  it('writes the house number back into the state', async () => {
+    const fixture = await renderAddress();
+    const input = fixture.nativeElement.querySelector('#houseNumber') as HTMLInputElement;
+
+    input.value = '22';
+    input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().f.houseNumber).toBe('22');
+  });
+});
+
+describe('StepIndustry', () => {
+  async function renderIndustry() {
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+    const fixture = TestBed.createComponent(StepIndustry);
+    fixture.componentRef.setInput('state', defaultState());
+    await fixture.whenStable();
+    return fixture;
+  }
+
+  it('lists all twenty-five options with "Not specified" selected', async () => {
+    const fixture = await renderIndustry();
+
+    const options = Array.from(
+      fixture.nativeElement.querySelectorAll('#industry option') as NodeListOf<HTMLOptionElement>,
+    );
+    expect(options).toHaveLength(INDUSTRIES.length);
+    expect(options[0].textContent?.trim()).toBe('Not specified');
+    expect(fixture.componentInstance.state().industryIndex).toBe(0);
+  });
+
+  it('records the industry by index', async () => {
+    const fixture = await renderIndustry();
+    const select = fixture.nativeElement.querySelector('#industry') as HTMLSelectElement;
+
+    select.value = String(INDUSTRIES.indexOf('Energy & Utilities'));
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+
+    expect(INDUSTRIES[fixture.componentInstance.state().industryIndex]).toBe('Energy & Utilities');
+  });
+
+  it('says it is optional rather than marking it with an asterisk nobody explains', async () => {
+    const fixture = await renderIndustry();
+
+    expect(fixture.nativeElement.textContent).toContain('Not mandatory.');
+  });
+});
+```
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-volume.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect } from 'vitest';
+
+import { StepVolume } from './step-volume';
+import { defaultState } from '../onboarding-flow';
+
+async function render() {
+  TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+  const fixture = TestBed.createComponent(StepVolume);
+  fixture.componentRef.setInput('state', defaultState());
+  await fixture.whenStable();
+  return fixture;
+}
+
+describe('StepVolume', () => {
+  it('asks the direction first, with three answers', async () => {
+    const fixture = await render();
+
+    const choices = fixture.nativeElement.querySelectorAll('.flow-choices .choice');
+    expect(choices).toHaveLength(3);
+    expect(choices[2].textContent).toContain('Both');
+  });
+
+  it('offers the five bands and starts with none of them chosen', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.querySelectorAll('.volume-choices .choice')).toHaveLength(5);
+    expect(fixture.componentInstance.state().volumeIndex).toBe(-1);
+    expect(fixture.nativeElement.querySelectorAll('.volume-choices .choice.on')).toHaveLength(0);
+  });
+
+  it('records a band when one is clicked', async () => {
+    const fixture = await render();
+
+    const bands = fixture.nativeElement
+      .querySelectorAll('.volume-choices .choice') as NodeListOf<HTMLElement>;
+    bands[3].click();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().volumeIndex).toBe(3);
+  });
+
+  it('names the direction that was picked in the volume question', async () => {
+    const fixture = await render();
+
+    const directions = fixture.nativeElement
+      .querySelectorAll('.flow-choices .choice') as NodeListOf<HTMLElement>;
+    directions[1].click();
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('Net volume across all your connections — production selected');
+  });
+
+  it('says what net volume means and that it is independent of fixing prices', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('regardless of whether you choose to fix prices');
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests and watch them fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-address step-volume`
+Expected: FAIL — `No export named 'StepAddress'` from `./step-company`
+
+- [ ] **Step 3: Add steps 3 and 4 to `step-company.ts`**
+
+Append to `apps/customer-portal/src/app/onboarding/steps/step-company.ts` — and extend the
+existing import lines to `import { ENTITY_TYPES, INDUSTRIES, inputValue, kvkDigits, withField }
+from '../onboarding-flow';` and `import { PpBanner, PpCard } from '@peakpower/shared-ui';`:
+
+```ts
+/**
+ * Step 3 — the registered address, as held in the KvK register.
+ *
+ * Six fields because OnboardingAddressDto is six fields. The demo asked for "Street and number"
+ * in one box; splitting it here means no parser has to guess where the street stops.
+ *
+ * Blank is a valid answer and the step says so twice — once in the banner, once under the
+ * fields. A company whose address the register does not carry must not be stuck here.
+ */
+@Component({
+  selector: 'pp-step-address',
+  standalone: true,
+  imports: [PpCard, PpBanner],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-banner tone="info">{{ lookupLine() }}</pp-banner>
+
+    <pp-card heading="Registered address" subtitle="As held in the KvK register">
+      <div class="fields street">
+        <div class="field">
+          <label class="fg-label" for="street">Street</label>
+          <input
+            id="street"
+            type="text"
+            autocomplete="address-line1"
+            placeholder="Havenweg"
+            [value]="state().f.street"
+            (input)="set('street', $event)"
+          />
+        </div>
+        <div class="field">
+          <label class="fg-label" for="houseNumber">Number</label>
+          <input
+            id="houseNumber"
+            type="text"
+            placeholder="22"
+            [value]="state().f.houseNumber"
+            (input)="set('houseNumber', $event)"
+          />
+        </div>
+        <div class="field">
+          <label class="fg-label" for="houseNumberSuffix">Suffix</label>
+          <input
+            id="houseNumberSuffix"
+            type="text"
+            placeholder="A"
+            [value]="state().f.houseNumberSuffix"
+            (input)="set('houseNumberSuffix', $event)"
+          />
+        </div>
+      </div>
+
+      <div class="fields two">
+        <div class="field">
+          <label class="fg-label" for="postcode">Postcode</label>
+          <input
+            id="postcode"
+            class="mono"
+            type="text"
+            autocomplete="postal-code"
+            placeholder="3089 JJ"
+            [value]="state().f.postcode"
+            (input)="set('postcode', $event)"
+          />
+        </div>
+        <div class="field">
+          <label class="fg-label" for="city">City</label>
+          <input
+            id="city"
+            type="text"
+            autocomplete="address-level2"
+            placeholder="Rotterdam"
+            [value]="state().f.city"
+            (input)="set('city', $event)"
+          />
+        </div>
+      </div>
+
+      <p class="note-foot">
+        Nothing found for this number? Leave the fields blank and continue — the desk resolves
+        the address during review.
+      </p>
+    </pp-card>
+  `,
+  styles: `
+    .fields { display: grid; gap: 14px; margin-top: 14px; }
+    .fields.street { grid-template-columns: 2fr 1fr 1fr; margin-top: 0; }
+    .fields.two { grid-template-columns: 1fr 1.4fr; }
+    .field { min-width: 0; }
+    .fg-label {
+      display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--pp-text-body); margin-bottom: 6px;
+    }
+    input {
+      width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; padding: 10px 12px;
+      border: 1px solid var(--pp-border); border-radius: 8px; background: var(--pp-surface);
+      color: var(--pp-text-heading);
+    }
+    input.mono { font-family: var(--font-mono); }
+    input:focus { outline: none; border-color: var(--pp-blue-300); }
+    .note-foot {
+      margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--pp-border);
+      font-size: 11.5px; color: var(--pp-text-faint); line-height: 1.5;
+    }
+  `,
+})
+export class StepAddress {
+  readonly state = model.required<OnboardingState>();
+
+  set(key: keyof OnboardingFields, event: Event): void {
+    this.state.update((s) => withField(s, key, inputValue(event)));
+  }
+
+  lookupLine(): string {
+    const kvk = kvkDigits(this.state().f.kvk);
+    return kvk === ''
+      ? 'We look the address up by KvK number. Nothing found means nothing was registered — '
+        + 'leave it blank and continue.'
+      : `Fetched from the KvK register for number ${kvk}. Every field stays editable.`;
+  }
+}
+
+/**
+ * Step 4 — the industry, and it is genuinely optional.
+ *
+ * Index 0 is "Not specified" and is what a wizard that was never touched sends: `null`. The
+ * list is ordered as the demo ordered it, which is alphabetical after the leading option.
+ */
+@Component({
+  selector: 'pp-step-industry',
+  standalone: true,
+  imports: [PpCard],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card
+      heading="Industry"
+      subtitle="Optional — it shapes the load profile the desk starts from"
+    >
+      <div class="narrow">
+        <label class="fg-label" for="industry">Industry</label>
+        <select id="industry" (change)="setIndustry($event)">
+          @for (industry of industries; track industry; let i = $index) {
+            <option [value]="i" [selected]="i === state().industryIndex">{{ industry }}</option>
+          }
+        </select>
+        <p class="fg-hint">Not mandatory. Leave it on "Not specified" if none of these fit.</p>
+      </div>
+    </pp-card>
+  `,
+  styles: `
+    .narrow { max-width: 420px; }
+    .fg-label {
+      display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--pp-text-body); margin-bottom: 6px;
+    }
+    .fg-hint { font-size: 11px; color: var(--pp-text-faint); margin: 6px 0 0; line-height: 1.5; }
+    select {
+      width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; padding: 10px 12px;
+      border: 1px solid var(--pp-border); border-radius: 8px; background: var(--pp-surface);
+      color: var(--pp-text-heading);
+    }
+    select:focus { outline: none; border-color: var(--pp-blue-300); }
+  `,
+})
+export class StepIndustry {
+  readonly state = model.required<OnboardingState>();
+  readonly industries = INDUSTRIES;
+
+  setIndustry(event: Event): void {
+    const index = Number(inputValue(event));
+    this.state.update((s) => ({ ...s, industryIndex: Number.isFinite(index) ? index : 0 }));
+  }
+}
+```
+
+- [ ] **Step 4: Write step 5**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-volume.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, model } from '@angular/core';
+import { PpCard } from '@peakpower/shared-ui';
+
+import { FLOWS, VOLUMES } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+/**
+ * Step 5 — direction, then size.
+ *
+ * The choice control here is the same shape the signing-authority step uses: one bordered row
+ * carrying its own selected state. Three questions in this flow ask for one answer out of a
+ * list, and they should read as the same kind of question rather than three inventions.
+ *
+ * volumeIndex starts at −1, not 0: index 0 is a real answer ("less than 250 MWh"), so 0 cannot
+ * also mean "not answered".
+ */
+@Component({
+  selector: 'pp-step-volume',
+  standalone: true,
+  imports: [PpCard],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card
+      heading="Do you consume or produce electricity?"
+      subtitle="Both is common — a site with solar still draws from the grid"
+    >
+      <div class="choices row flow-choices">
+        @for (flow of flows; track flow.wire; let i = $index) {
+          <div class="choice" [class.on]="i === state().flowIndex" (click)="pickFlow(i)">
+            <div class="choice-label">{{ flow.label }}</div>
+          </div>
+        }
+      </div>
+    </pp-card>
+
+    <pp-card heading="How much per year?" [subtitle]="volumeSubtitle()">
+      <div class="choices volume-choices">
+        @for (band of volumes; track band.wire; let i = $index) {
+          <div class="choice" [class.on]="i === state().volumeIndex" (click)="pickVolume(i)">
+            <div class="choice-dot"></div>
+            <div class="choice-label">{{ band.label }}</div>
+          </div>
+        }
+      </div>
+      <p class="note-foot">
+        This is your net electricity volume — consumption minus production, if applicable —
+        regardless of whether you choose to fix prices.
+      </p>
+    </pp-card>
+  `,
+  styles: `
+    :host { display: flex; flex-direction: column; gap: 18px; }
+    .choices { display: flex; flex-direction: column; gap: 8px; }
+    .choices.row { flex-direction: row; flex-wrap: wrap; }
+    .choice {
+      display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--pp-border);
+      background: var(--pp-surface); border-radius: 8px; padding: 12px 15px; cursor: pointer;
+    }
+    .choices.row .choice { flex: 1 1 160px; }
+    .choice:hover { border-color: var(--pp-border-strong); }
+    .choice.on { border: 1.5px solid var(--pp-blue-700); background: var(--pp-blue-050); }
+    .choice-dot {
+      width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--pp-border-strong);
+      background: #fff; flex-shrink: 0; margin-top: 2px;
+    }
+    .choice.on .choice-dot {
+      border-color: var(--pp-blue-700); background: var(--pp-blue-700);
+      box-shadow: inset 0 0 0 2px #fff;
+    }
+    .choice-label { font-size: 12.5px; font-weight: 600; color: var(--pp-text-heading); }
+    .choice.on .choice-label { color: var(--pp-blue-700); }
+    .note-foot {
+      margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--pp-border);
+      font-size: 11.5px; color: var(--pp-text-faint); line-height: 1.5;
+    }
+  `,
+})
+export class StepVolume {
+  readonly state = model.required<OnboardingState>();
+  readonly flows = FLOWS;
+  readonly volumes = VOLUMES;
+
+  pickFlow(index: number): void {
+    this.state.update((s) => ({ ...s, flowIndex: index }));
+  }
+
+  pickVolume(index: number): void {
+    this.state.update((s) => ({ ...s, volumeIndex: index }));
+  }
+
+  /** Reflects the direction back, so "net volume" means something specific. */
+  volumeSubtitle(): string {
+    return `Net volume across all your connections — ${FLOWS[this.state().flowIndex].label.toLowerCase()} selected`;
+  }
+}
+```
+
+- [ ] **Step 5: Give the wizard arms 3, 4 and 5**
+
+In `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`, extend the step imports:
+
+```ts
+import { StepAccount } from './steps/step-account';
+import { StepAddress, StepCompany, StepIndustry } from './steps/step-company';
+import { StepVolume } from './steps/step-volume';
+```
+
+set `imports: [PpButton, StepAccount, StepCompany, StepAddress, StepIndustry, StepVolume]`, and
+extend the `@switch`:
+
+```html
+              @case (3) { <pp-step-address [(state)]="state" /> }
+              @case (4) { <pp-step-industry [(state)]="state" /> }
+              @case (5) { <pp-step-volume [(state)]="state" /> }
+```
+
+- [ ] **Step 6: Run the tests and watch them pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-address step-volume onboarding-wizard`
+Expected: PASS — 22 tests
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/onboarding
+git commit -m "feat(customer-portal): onboarding steps 3, 4 and 5 — address, industry and volume"
+```
+
+---
+
+### Task 19: Wizard steps 6 and 7 — bank verification and signing authority
+
+Step 6 verifies that the bank account belongs to the company that is about to sign, by moving one
+cent. It is the only step that reaches the API outside the footer, and it is the step where the
+demo and the build differ most: the demo flipped a boolean, and here a Development-only endpoint
+plan 5 already built — `POST /onboarding/applications/{id}/bank-verification/simulate` — stands
+in for the payment rail, which is F07 and out of scope.
+
+**The IBAN is asked for and the browser does not check it.** `Iban.Create` runs the structural
+check and ISO 7064 mod-97 on the server `[F01-R03]`; a second copy in TypeScript is a second
+copy that drifts. A malformed IBAN comes back as a 400 on the step's own save.
+
+**Step 6 is passable unverified, and says so.** The agreement can be signed with the cent still
+in flight; the account simply does not activate until it lands. That is what makes step 10 have
+two outcomes, and pretending otherwise on step 6 would make step 10 look like a bug.
+
+Step 7 is one question with three answers, and the answer **is** who signs — so changing it
+rebuilds step 8's list. Re-clicking the answer already chosen is not a change and must not
+rebuild anything, or a colleague typed in on step 8 vanishes with nothing on screen having moved.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Create: `apps/customer-portal/src/app/onboarding/steps/step-bank.ts`
+- Create: `apps/customer-portal/src/app/onboarding/steps/step-authority.ts`
+- Modify: `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-bank.spec.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-authority.spec.ts`
+
+**Interfaces:**
+- Consumes: `OnboardingState`, `AUTHORITY`, `signatoriesForAuthority`, `withField`, `inputValue`
+  (Task 16); `CustomerApiClient.simulateBankVerification(id)` and `.saveOnboardingStep(id, body)`
+  (Task 10); `PpCard`, `PpBadge`, `PpBanner`, `PpButton` from `@peakpower/shared-ui`.
+- Produces:
+  - `export class StepBank` — selector `pp-step-bank`, `state = model.required<OnboardingState>()`,
+    `verify = output<void>()`
+  - `export class StepAuthority` — selector `pp-step-authority`, `state = model.required<OnboardingState>()`
+  - `OnboardingWizard.verifyBank(): void`
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-bank.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect, vi } from 'vitest';
+
+import { StepBank } from './step-bank';
+import { defaultState } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+async function render(state: OnboardingState = defaultState()) {
+  TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+  const fixture = TestBed.createComponent(StepBank);
+  fixture.componentRef.setInput('state', state);
+  await fixture.whenStable();
+  return fixture;
+}
+
+describe('StepBank', () => {
+  it('asks for the IBAN and the account holder, and validates neither in the browser', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.querySelector('#iban')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#bankAccountHolder')).not.toBeNull();
+    // No pattern attribute: Iban.Create owns mod-97 and the browser must not hold a second copy.
+    expect(fixture.nativeElement.querySelector('#iban').getAttribute('pattern')).toBeNull();
+  });
+
+  it('starts unverified and says so in the badge', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent).toContain('Not verified');
+    expect(fixture.nativeElement.textContent).not.toContain('Verified with');
+  });
+
+  it('asks the wizard to move the cent when either route is taken', async () => {
+    const fixture = await render();
+    const verify = vi.fn();
+    fixture.componentInstance.verify.subscribe(verify);
+
+    (fixture.nativeElement.querySelector('#pay-ideal') as HTMLElement).click();
+    await fixture.whenStable();
+    expect(verify).toHaveBeenCalledTimes(1);
+
+    (fixture.nativeElement.querySelector('#mark-received') as HTMLElement).click();
+    await fixture.whenStable();
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the verified banner and disables the payment routes once the cent has landed', async () => {
+    const fixture = await render({ ...defaultState(), bankVerified: true });
+
+    expect(fixture.nativeElement.textContent).toContain('Bank account verified');
+    expect((fixture.nativeElement.querySelector('#pay-ideal') as HTMLButtonElement).disabled)
+      .toBe(true);
+    // The demo affordance is gone entirely once there is nothing left to mark.
+    expect(fixture.nativeElement.querySelector('#mark-received')).toBeNull();
+  });
+
+  it('says the step can be passed unverified, because it can', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('You can continue without verifying');
+  });
+
+  it('quotes the application reference as the payment description', async () => {
+    const fixture = await render({ ...defaultState(), reference: 'PP-ONB-7F3K' });
+
+    expect(fixture.nativeElement.textContent).toContain('PP-ONB-7F3K');
+  });
+
+  it('marks the manual route as the demo affordance it is', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('Demo — a real transfer is matched one to two business days later.');
+  });
+});
+```
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-authority.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect } from 'vitest';
+
+import { StepAuthority } from './step-authority';
+import { defaultState } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+async function render(state: OnboardingState = defaultState()) {
+  TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+  const fixture = TestBed.createComponent(StepAuthority);
+  fixture.componentRef.setInput('state', state);
+  await fixture.whenStable();
+  return fixture;
+}
+
+function options(fixture: Awaited<ReturnType<typeof render>>): NodeListOf<HTMLElement> {
+  return fixture.nativeElement.querySelectorAll('.choice');
+}
+
+describe('StepAuthority', () => {
+  it('offers three answers, each with the line saying what follows', async () => {
+    const fixture = await render();
+
+    expect(options(fixture)).toHaveLength(3);
+    expect(fixture.nativeElement.textContent)
+      .toContain('You sign alone; the agreement is issued to you.');
+    expect(fixture.nativeElement.textContent)
+      .toContain('We email the people you name; you keep managing the account.');
+  });
+
+  it('starts with nothing chosen', async () => {
+    const fixture = await render();
+
+    expect(fixture.componentInstance.state().authorityIndex).toBe(-1);
+    expect(fixture.nativeElement.querySelectorAll('.choice.on')).toHaveLength(0);
+  });
+
+  it('locks the applicant into the signatory list when they sign alone', async () => {
+    const base = defaultState();
+    const fixture = await render({
+      ...base,
+      f: { ...base.f, firstName: 'Peter', lastName: 'de Vries', email: 'p@v.nl' },
+    });
+
+    options(fixture)[0].click();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().signatories).toEqual([
+      { first: 'Peter', last: 'de Vries', email: 'p@v.nl', locked: true },
+    ]);
+  });
+
+  it('adds an empty second row when two people sign', async () => {
+    const fixture = await render();
+
+    options(fixture)[1].click();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().signatories).toHaveLength(2);
+  });
+
+  it('drops the applicant when someone else signs', async () => {
+    const base = defaultState();
+    const fixture = await render({
+      ...base,
+      f: { ...base.f, firstName: 'Peter', lastName: 'de Vries', email: 'p@v.nl' },
+    });
+
+    options(fixture)[2].click();
+    await fixture.whenStable();
+
+    const list = fixture.componentInstance.state().signatories;
+    expect(list).toHaveLength(1);
+    expect(list[0].locked).toBe(false);
+    expect(list[0].first).toBe('');
+  });
+
+  it('re-clicking the same answer changes nothing', async () => {
+    // Rebuilding here would wipe colleagues typed in on step 8 with nothing on screen moving.
+    const base = defaultState();
+    const fixture = await render({
+      ...base,
+      authorityIndex: 1,
+      signatories: [
+        { first: 'Peter', last: 'de Vries', email: 'p@v.nl', locked: true },
+        { first: 'Marieke', last: 'Vandersteen', email: 'm@v.nl', locked: false },
+      ],
+    });
+
+    options(fixture)[1].click();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().signatories[1].first).toBe('Marieke');
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests and watch them fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-bank step-authority`
+Expected: FAIL — `Failed to resolve import "./step-bank"`
+
+- [ ] **Step 3: Write step 6**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-bank.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, model, output } from '@angular/core';
+import { PpBadge, PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+
+import { inputValue, withField } from '../onboarding-flow';
+import type { OnboardingFields, OnboardingState } from '../onboarding-flow';
+
+/**
+ * Step 6 — one cent, once.
+ *
+ * The IBAN is asked for and NOT validated here: Iban.Create runs the structural check and ISO
+ * 7064 mod-97 on the server [F01-R03], and a TypeScript copy is a copy that drifts.
+ *
+ * Both payment routes emit the same `verify` event. The wizard turns it into a save plus the
+ * Development-only simulate endpoint — the payment rail itself is F07 and out of scope. The
+ * manual route carries the sentence marking it as the demo affordance it is; without it the
+ * transfer card is a dead end, because only the iDEAL button could ever reach "verified".
+ */
+@Component({
+  selector: 'pp-step-bank',
+  standalone: true,
+  imports: [PpCard, PpBadge, PpBanner, PpButton],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card
+      heading="Bank account verification"
+      subtitle="A € 0,01 payment confirms the IBAN and the account holder"
+    >
+      <div class="status">
+        <span class="fg-label">Status</span>
+        <pp-badge [tone]="state().bankVerified ? 'positive' : 'neutral'">
+          {{ state().bankVerified ? 'Verified' : 'Not verified' }}
+        </pp-badge>
+      </div>
+
+      <div class="fields two">
+        <div class="field">
+          <label class="fg-label" for="iban">IBAN</label>
+          <input
+            id="iban"
+            class="mono"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="NL18 INGB 0002 4455 66"
+            [value]="state().f.iban"
+            (input)="set('iban', $event)"
+          />
+        </div>
+        <div class="field">
+          <label class="fg-label" for="bankAccountHolder">Account holder</label>
+          <input
+            id="bankAccountHolder"
+            type="text"
+            autocomplete="off"
+            placeholder="Vandersteen Koeling B.V."
+            [value]="state().f.bankAccountHolder"
+            (input)="set('bankAccountHolder', $event)"
+          />
+        </div>
+      </div>
+
+      <div class="pay-grid">
+        <div class="pay-card">
+          <h4>iDEAL</h4>
+          <p>Verified within a minute. The one cent is credited to your wallet.</p>
+          <button
+            id="pay-ideal"
+            type="button"
+            class="pay-action"
+            [disabled]="state().bankVerified"
+            (click)="verify.emit()"
+          >
+            {{ state().bankVerified ? 'Paid · € 0,01' : 'Pay € 0,01' }}
+          </button>
+        </div>
+
+        <div class="pay-card">
+          <h4>Bank transfer</h4>
+          <p>Wire € 0,01 to PeakPower Trading B.V. Credited on the next business day.</p>
+          <div class="ref">
+            <div class="k">Payment description</div>
+            <div class="v">{{ state().reference ?? 'Issued when you create the account' }}</div>
+          </div>
+          @if (!state().bankVerified) {
+            <div class="demo-row">
+              <span>Demo — a real transfer is matched one to two business days later.</span>
+              <pp-button id="mark-received" size="sm" (click)="verify.emit()">
+                Mark € 0,01 as received
+              </pp-button>
+            </div>
+          }
+        </div>
+      </div>
+
+      @if (state().bankVerified) {
+        <pp-banner tone="positive" heading="Bank account verified">
+          {{ state().f.iban || 'The account you gave' }} · account holder matches
+          {{ state().f.bankAccountHolder || state().f.orgName || 'your company' }} · the cent is
+          credited to your wallet.
+        </pp-banner>
+      } @else {
+        <p class="note-foot">
+          You can continue without verifying — the agreement is only issued once the one cent
+          arrives.
+        </p>
+      }
+    </pp-card>
+  `,
+  styles: `
+    .status { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .fields.two {
+      display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px; margin-bottom: 18px;
+    }
+    .field { min-width: 0; }
+    .fg-label {
+      display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--pp-text-body); margin-bottom: 6px;
+    }
+    .status .fg-label { margin-bottom: 0; }
+    input {
+      width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; padding: 10px 12px;
+      border: 1px solid var(--pp-border); border-radius: 8px; background: var(--pp-surface);
+      color: var(--pp-text-heading);
+    }
+    input.mono { font-family: var(--font-mono); }
+    input:focus { outline: none; border-color: var(--pp-blue-300); }
+    .pay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .pay-card {
+      border: 1px solid var(--pp-border); border-radius: 12px; padding: 16px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .pay-card h4 { margin: 0; font-size: 13px; font-weight: 700; }
+    .pay-card p { margin: 0; font-size: 11.5px; color: var(--pp-text-body); line-height: 1.5; }
+    .pay-action {
+      align-self: flex-start; margin-top: auto; font: inherit; font-size: 13px; font-weight: 600;
+      padding: 10px 20px; border-radius: 6px; border: 1px solid var(--pp-blue-700);
+      background: var(--pp-blue-700); color: #fff; cursor: pointer;
+    }
+    .pay-action:disabled { opacity: 0.55; cursor: default; }
+    .ref .k {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--pp-text-faint);
+    }
+    .ref .v { font-family: var(--font-mono); font-size: 12px; margin-top: 3px; }
+    .demo-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      flex-wrap: wrap; margin-top: auto; padding-top: 12px;
+      border-top: 1px dashed var(--pp-border-strong);
+    }
+    .demo-row span {
+      font-size: 10.5px; color: var(--pp-text-faint); line-height: 1.5; flex: 1; min-width: 150px;
+    }
+    .note-foot {
+      margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--pp-border);
+      font-size: 11.5px; color: var(--pp-text-faint); line-height: 1.5;
+    }
+  `,
+})
+export class StepBank {
+  readonly state = model.required<OnboardingState>();
+  readonly verify = output<void>();
+
+  set(key: keyof OnboardingFields, event: Event): void {
+    this.state.update((s) => withField(s, key, inputValue(event)));
+  }
+}
+```
+
+- [ ] **Step 4: Write step 7**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-authority.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, model } from '@angular/core';
+import { PpCard } from '@peakpower/shared-ui';
+
+import { AUTHORITY, signatoriesForAuthority } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+/**
+ * Step 7 — who may bind the company.
+ *
+ * Answering rebuilds step 8's list, because the answer IS who signs. Anything already typed into
+ * a row the new answer does not keep is dropped, which is correct: those rows belonged to a
+ * different answer. Re-clicking the SAME answer is not a new answer and rebuilds nothing.
+ */
+@Component({
+  selector: 'pp-step-authority',
+  standalone: true,
+  imports: [PpCard],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card
+      heading="Are you authorised to sign on behalf of the company?"
+      subtitle="The agreement must be signed by a person who may legally represent the company"
+    >
+      <div class="choices">
+        @for (option of authority; track option.wire; let i = $index) {
+          <div class="choice" [class.on]="i === state().authorityIndex" (click)="pick(i)">
+            <div class="choice-dot"></div>
+            <div>
+              <div class="choice-label">{{ option.label }}</div>
+              <div class="choice-note">{{ option.note }}</div>
+            </div>
+          </div>
+        }
+      </div>
+    </pp-card>
+  `,
+  styles: `
+    .choices { display: flex; flex-direction: column; gap: 8px; }
+    .choice {
+      display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--pp-border);
+      background: var(--pp-surface); border-radius: 8px; padding: 12px 15px; cursor: pointer;
+    }
+    .choice:hover { border-color: var(--pp-border-strong); }
+    .choice.on { border: 1.5px solid var(--pp-blue-700); background: var(--pp-blue-050); }
+    .choice-dot {
+      width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--pp-border-strong);
+      background: #fff; flex-shrink: 0; margin-top: 2px;
+    }
+    .choice.on .choice-dot {
+      border-color: var(--pp-blue-700); background: var(--pp-blue-700);
+      box-shadow: inset 0 0 0 2px #fff;
+    }
+    .choice-label { font-size: 12.5px; font-weight: 600; color: var(--pp-text-heading); }
+    .choice.on .choice-label { color: var(--pp-blue-700); }
+    .choice-note {
+      font-size: 11px; color: var(--pp-text-faint); margin-top: 3px; line-height: 1.45;
+    }
+  `,
+})
+export class StepAuthority {
+  readonly state = model.required<OnboardingState>();
+  readonly authority = AUTHORITY;
+
+  pick(index: number): void {
+    if (index === this.state().authorityIndex) return;
+    this.state.update((s) => ({
+      ...s,
+      authorityIndex: index,
+      signatories: signatoriesForAuthority(index, s.f),
+    }));
+  }
+}
+```
+
+- [ ] **Step 5: Give the wizard arms 6 and 7, and the cent**
+
+In `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts` add:
+
+```ts
+import { StepAuthority } from './steps/step-authority';
+import { StepBank } from './steps/step-bank';
+```
+
+add both to `imports`, extend the `@switch`:
+
+```html
+              @case (6) { <pp-step-bank [(state)]="state" (verify)="verifyBank()" /> }
+              @case (7) { <pp-step-authority [(state)]="state" /> }
+```
+
+and add the method, above `startApplication`:
+
+```ts
+  /**
+   * Save the bank details, then move the cent.
+   *
+   * In that order and not the other way round: the simulate endpoint stands in for a payment
+   * rail matching a transfer against an account, so the account has to be on the application
+   * before the match is claimed. `simulate` exists only in Development — plan 5 refuses it in
+   * every other environment — because the real rail is F07.
+   */
+  verifyBank(): void {
+    const state = this.state();
+    const id = state.applicationId;
+    if (id === null || this.busy()) return;
+
+    this.summary.set(null);
+    this.busy.set(true);
+
+    this.api.saveOnboardingStep(id, saveStepRequest(state, 6)).subscribe({
+      next: () => {
+        this.api.simulateBankVerification(id).subscribe({
+          next: () => {
+            this.busy.set(false);
+            this.state.update((s) => ({ ...s, bankVerified: true }));
+          },
+          error: (error: unknown) => {
+            this.busy.set(false);
+            this.summary.set(applyProblemDetails(new FormGroup({}), error));
+          },
+        });
+      },
+      error: (error: unknown) => {
+        this.busy.set(false);
+        this.summary.set(applyProblemDetails(new FormGroup({}), error));
+      },
+    });
+  }
+```
+
+- [ ] **Step 6: Add the wizard test for the cent**
+
+Append to `apps/customer-portal/src/app/onboarding/onboarding-wizard.spec.ts`, inside the
+existing `describe('OnboardingWizard', …)`:
+
+```ts
+  it('saves the bank details before it claims the cent has landed', async () => {
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({
+      ...s,
+      step: 6,
+      applicationId: 'app-1',
+      f: { ...s.f, iban: 'NL18INGB0002445566', bankAccountHolder: 'Vandersteen Koeling B.V.' },
+    }));
+    await fixture.whenStable();
+
+    fixture.componentInstance.verifyBank();
+
+    const save = http.expectOne('/api/v1/onboarding/applications/app-1');
+    expect(save.request.body.iban).toBe('NL18INGB0002445566');
+    save.flush({ id: 'app-1', reference: 'PP-ONB-7F3K', status: 'Draft' });
+    await fixture.whenStable();
+
+    http.expectOne('/api/v1/onboarding/applications/app-1/bank-verification/simulate').flush({});
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().bankVerified).toBe(true);
+    // The step is still passable either way; verifying does not move the wizard on.
+    expect(fixture.componentInstance.step()).toBe(6);
+  });
+```
+
+- [ ] **Step 7: Run the tests and watch them pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-bank step-authority onboarding-wizard`
+Expected: PASS — 23 tests
+
+- [ ] **Step 8: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/onboarding
+git commit -m "feat(customer-portal): onboarding steps 6 and 7 — bank verification and signing authority"
+```
+
+---
+
+### Task 20: Wizard steps 8 and 9 — the signatories and the signature
+
+Step 8 collects everyone who must sign. Step 9 takes the code one of them was emailed and turns
+it into a signature. Together they are the part of the flow that produces a company, an account
+and a wallet in one transaction, so they are the part where the demo's shortcuts have to go.
+
+**The signing code is never rendered.** The demo printed `SIGN_CODE` inside its email preview,
+with a comment explaining that a code nobody can read is a demo nobody can finish. In this build
+the code is generated per application, hashed at rest and delivered by `IEmailSender` — so the
+preview shows the *shape* of the email with the code box blanked, and the words say where the
+real one is. An end-to-end test reads it through the Development-only peek endpoint from Task 8,
+never from the page.
+
+**The applicant's own row is locked.** It is their account, and editing it here would silently
+disagree with the name on step 1. It also cannot be removed, and the list cannot fall below what
+the step 7 answer requires — both guarded in the handler as well as on the button, because a
+stale screen must not be able to do either.
+
+**Signing signs the customer in.** `POST …/sign` returns the username the platform generated;
+the wizard immediately calls `AuthService.signIn` with it and the password the customer chose on
+step 1, which is still in memory. That is what makes design DoD 2 — "a prospect completes the
+wizard in the browser and **lands in the customer portal**" — true rather than nearly true. If
+the sign-in fails the wizard still advances: the agreement is signed either way, and Task 21's
+welcome step sends them to sign in instead.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Modify: `apps/customer-portal/src/app/onboarding/steps/step-authority.ts`
+- Create: `apps/customer-portal/src/app/onboarding/steps/step-sign.ts`
+- Modify: `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-signatories.spec.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-sign.spec.ts`
+
+**Interfaces:**
+- Consumes: `OnboardingState`, `SignatoryDraft`, `blankSignatory`, `minSignatories`,
+  `SIGN_CODE_DIGITS`, `SUPPORT_EMAIL`, `fullName`, `codeDigits`, `inputValue` (Task 16);
+  `CustomerApiClient.submitSignatories(id, body)` and `.signOnboarding(id, body)` (Task 10);
+  `AuthService.signIn(username, password)` (Task 13); `PpCard` from `@peakpower/shared-ui`.
+- Produces:
+  - `export class StepSignatories` — selector `pp-step-signatories`, in `steps/step-authority.ts`
+  - `export class StepSign` — selector `pp-step-sign`, in `steps/step-sign.ts`
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-signatories.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect } from 'vitest';
+
+import { StepSignatories } from './step-authority';
+import { defaultState } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+const APPLICANT = { first: 'Peter', last: 'de Vries', email: 'p@v.nl', locked: true };
+
+function jointly(): OnboardingState {
+  return {
+    ...defaultState(),
+    step: 8,
+    authorityIndex: 1,
+    f: { ...defaultState().f, firstName: 'Peter', lastName: 'de Vries', email: 'p@v.nl' },
+    signatories: [APPLICANT, { first: '', last: '', email: '', locked: false }],
+  };
+}
+
+async function render(state: OnboardingState = jointly()) {
+  TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+  const fixture = TestBed.createComponent(StepSignatories);
+  fixture.componentRef.setInput('state', state);
+  await fixture.whenStable();
+  return fixture;
+}
+
+describe('StepSignatories', () => {
+  it('locks the applicant\'s own row', async () => {
+    const fixture = await render();
+
+    const first = fixture.nativeElement.querySelector('#sig-0-first') as HTMLInputElement;
+    expect(first.disabled).toBe(true);
+    expect(first.value).toBe('Peter');
+  });
+
+  it('lets a colleague be typed in', async () => {
+    const fixture = await render();
+    const email = fixture.nativeElement.querySelector('#sig-1-email') as HTMLInputElement;
+
+    email.value = 'm.vandersteen@vandersteen.nl';
+    email.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().signatories[1].email)
+      .toBe('m.vandersteen@vandersteen.nl');
+  });
+
+  it('adds a row', async () => {
+    const fixture = await render();
+
+    fixture.componentInstance.add();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().signatories).toHaveLength(3);
+  });
+
+  it('refuses to remove the applicant, or to fall below what step 7 requires', async () => {
+    const fixture = await render();
+
+    fixture.componentInstance.remove(0);
+    expect(fixture.componentInstance.state().signatories).toHaveLength(2);
+
+    // Two are required by "jointly", so the second one cannot go either.
+    fixture.componentInstance.remove(1);
+    expect(fixture.componentInstance.state().signatories).toHaveLength(2);
+  });
+
+  it('removes a third row, which nothing requires', async () => {
+    const fixture = await render({
+      ...jointly(),
+      signatories: [
+        APPLICANT,
+        { first: 'Marieke', last: 'V', email: 'm@v.nl', locked: false },
+        { first: 'Sam', last: 'B', email: 's@v.nl', locked: false },
+      ],
+    });
+
+    fixture.componentInstance.remove(2);
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().signatories).toHaveLength(2);
+  });
+
+  it('counts the signatories in words a person would use', async () => {
+    const fixture = await render();
+    expect(fixture.nativeElement.textContent).toContain('2 signatories — all must sign.');
+
+    fixture.componentInstance.state.update((s) => ({ ...s, signatories: [APPLICANT] }));
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('One signatory.');
+  });
+
+  it('previews the email a colleague opens, and never prints a code in it', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent).toContain('Your PeakPower signing code');
+    expect(fixture.nativeElement.textContent)
+      .toContain('Each code is generated when you submit and is sent only to its own signatory.');
+    // The real code exists only in the email. Six digits on this page would be a credential.
+    expect(fixture.nativeElement.textContent).not.toMatch(/\b\d{6}\b/);
+  });
+
+  it('addresses the preview to the colleague rather than the applicant', async () => {
+    const fixture = await render({
+      ...jointly(),
+      signatories: [APPLICANT, { first: 'Marieke', last: 'V', email: 'm@v.nl', locked: false }],
+    });
+
+    expect(fixture.nativeElement.textContent).toContain('Hi Marieke,');
+  });
+});
+```
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-sign.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect } from 'vitest';
+
+import { StepSign } from './step-sign';
+import { defaultState } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+function ready(): OnboardingState {
+  const base = defaultState();
+  return {
+    ...base,
+    step: 9,
+    f: {
+      ...base.f,
+      firstName: 'Peter',
+      lastName: 'de Vries',
+      email: 'p.devries@vandersteen.nl',
+      orgName: 'Vandersteen Koeling B.V.',
+    },
+  };
+}
+
+async function render(state: OnboardingState = ready()) {
+  TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+  const fixture = TestBed.createComponent(StepSign);
+  fixture.componentRef.setInput('state', state);
+  await fixture.whenStable();
+  return fixture;
+}
+
+describe('StepSign', () => {
+  it('takes the code as digits, keeping whatever spacing was pasted', async () => {
+    const fixture = await render();
+    const input = fixture.nativeElement.querySelector('#sign-code') as HTMLInputElement;
+
+    input.value = '748 213';
+    input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().signCode).toBe('748 213');
+  });
+
+  it('offers the code box as a one-time code so a password manager stays out of it', async () => {
+    const fixture = await render();
+    const input = fixture.nativeElement.querySelector('#sign-code') as HTMLInputElement;
+
+    expect(input.getAttribute('autocomplete')).toBe('one-time-code');
+    expect(input.getAttribute('inputmode')).toBe('numeric');
+  });
+
+  it('ticks the documents box, and names the company being signed for', async () => {
+    const fixture = await render();
+    expect(fixture.componentInstance.state().agreedDocs).toBe(false);
+
+    fixture.componentInstance.toggleAgreedDocs();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.state().agreedDocs).toBe(true);
+    expect(fixture.nativeElement.textContent)
+      .toContain('I sign the agreement on behalf of Vandersteen Koeling B.V.');
+  });
+
+  it('says where the code went', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent).toContain('Sent to p.devries@vandersteen.nl');
+  });
+
+  it('never puts a six-digit code on the page', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent).not.toMatch(/\b\d{6}\b/);
+    expect(fixture.nativeElement.textContent)
+      .toContain('Open the email to read it — it is not shown here.');
+  });
+
+  it('gives the address a person can reply to when the code does not arrive', async () => {
+    const fixture = await render();
+
+    expect(fixture.nativeElement.textContent).toContain('support@peakpower.nl');
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests and watch them fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-signatories step-sign`
+Expected: FAIL — `No export named 'StepSignatories'` from `./step-authority`
+
+- [ ] **Step 3: Add step 8 to `step-authority.ts`**
+
+Extend the imports at the top of `apps/customer-portal/src/app/onboarding/steps/step-authority.ts`
+to `import { AUTHORITY, blankSignatory, fullName, inputValue, minSignatories,
+signatoriesForAuthority } from '../onboarding-flow';` plus
+`import type { OnboardingState, SignatoryDraft } from '../onboarding-flow';`, then append:
+
+```ts
+/**
+ * Step 8 — everyone who must sign, and the email each of them will get.
+ *
+ * The preview shows the shape of that email with no code in it. The demo printed its constant
+ * there; here the code is generated per application, hashed at rest and sent by IEmailSender, so
+ * printing one would either be a lie or a credential.
+ */
+@Component({
+  selector: 'pp-step-signatories',
+  standalone: true,
+  imports: [PpCard],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card heading="Who needs to sign the agreement?" [subtitle]="subtitle()">
+      <div class="sig-grid sig-head">
+        <div>First name</div>
+        <div>Last name</div>
+        <div>Email address</div>
+        <div></div>
+      </div>
+
+      @for (s of state().signatories; track $index; let i = $index) {
+        <div class="sig-grid">
+          <input
+            [id]="'sig-' + i + '-first'"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="First name"
+            [attr.aria-label]="'Signatory ' + (i + 1) + ' first name'"
+            [value]="s.first"
+            [disabled]="s.locked"
+            (input)="set(i, 'first', $event)"
+          />
+          <input
+            [id]="'sig-' + i + '-last'"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Last name"
+            [attr.aria-label]="'Signatory ' + (i + 1) + ' last name'"
+            [value]="s.last"
+            [disabled]="s.locked"
+            (input)="set(i, 'last', $event)"
+          />
+          <input
+            [id]="'sig-' + i + '-email'"
+            type="email"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="name@company.nl"
+            [attr.aria-label]="'Signatory ' + (i + 1) + ' email address'"
+            [value]="s.email"
+            [disabled]="s.locked"
+            (input)="set(i, 'email', $event)"
+          />
+          <button
+            type="button"
+            class="sig-remove"
+            aria-label="Remove signatory"
+            [disabled]="!canRemove(i)"
+            (click)="remove(i)"
+          >−</button>
+        </div>
+      }
+
+      <div class="sig-foot">
+        <button type="button" class="sig-add" (click)="add()">+ Add a signatory</button>
+        <span class="sig-count">{{ countLine() }}</span>
+      </div>
+    </pp-card>
+
+    <pp-card
+      heading="What each signatory receives"
+      subtitle="Sent the moment you submit — the code is personal and the email address is verified first"
+    >
+      <div class="mail">
+        <div class="mail-head">
+          <span><b>Subject</b> · Your PeakPower signing code</span>
+          <span class="mail-from">{{ supportEmail }}</span>
+        </div>
+        <div class="mail-body">
+          <div>Hi {{ greeting() }},</div>
+          <p>
+            {{ applicant() }} has completed the onboarding for {{ org() }} and listed you as an
+            authorised signatory. Review the company information and the agreement, then sign
+            with the code in that email.
+          </p>
+          <div class="mail-code">
+            <div class="k">Your signing code</div>
+            <div class="v">— — — — — —</div>
+          </div>
+          <p class="faint">
+            Each code is generated when you submit and is sent only to its own signatory.
+            Entering it, with the agreement ticked, is that person's signature.
+          </p>
+          <p>Have a question? You can reply directly to this email.</p>
+          <p>The PeakPower Team</p>
+        </div>
+      </div>
+    </pp-card>
+  `,
+  styles: `
+    :host { display: flex; flex-direction: column; gap: 18px; }
+    .sig-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1.4fr 34px; gap: 10px; align-items: center;
+      margin-bottom: 8px;
+    }
+    .sig-head {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--pp-text-faint);
+    }
+    input {
+      width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; padding: 9px 11px;
+      border: 1px solid var(--pp-border); border-radius: 8px; background: var(--pp-surface);
+      color: var(--pp-text-heading);
+    }
+    input:disabled { background: var(--pp-surface-alt); color: var(--pp-text-body); }
+    input:focus { outline: none; border-color: var(--pp-blue-300); }
+    .sig-remove {
+      width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--pp-border);
+      background: var(--pp-surface); color: var(--pp-text-body); font-size: 15px; cursor: pointer;
+    }
+    .sig-remove:disabled { opacity: 0.4; cursor: default; }
+    .sig-foot {
+      display: flex; align-items: center; gap: 14px; margin-top: 12px; padding-top: 12px;
+      border-top: 1px solid var(--pp-border);
+    }
+    .sig-add {
+      font: inherit; font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 6px;
+      border: 1px solid var(--pp-border-strong); background: var(--pp-surface);
+      color: var(--pp-text-heading); cursor: pointer;
+    }
+    .sig-count { font-size: 11.5px; color: var(--pp-text-faint); }
+    .mail { border: 1px solid var(--pp-border); border-radius: 8px; overflow: hidden; }
+    .mail-head {
+      display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px;
+      background: var(--pp-surface-alt); font-size: 11.5px; color: var(--pp-text-body);
+    }
+    .mail-from { font-family: var(--font-mono); }
+    .mail-body { padding: 14px; font-size: 12.5px; line-height: 1.55; }
+    .mail-body p { margin: 10px 0 0; }
+    .mail-body .faint { font-size: 11px; color: var(--pp-text-faint); }
+    .mail-code {
+      margin-top: 14px; padding: 12px 14px; border: 1px solid var(--pp-border-strong);
+      border-radius: 8px; background: var(--pp-surface-alt);
+    }
+    .mail-code .k {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--pp-text-faint);
+    }
+    .mail-code .v {
+      font-family: var(--font-mono); font-size: 22px; font-weight: 700; letter-spacing: 0.22em;
+      color: var(--pp-text-faint); margin-top: 4px;
+    }
+  `,
+})
+export class StepSignatories {
+  readonly state = model.required<OnboardingState>();
+  readonly supportEmail = SUPPORT_EMAIL;
+
+  subtitle(): string {
+    return this.state().authorityIndex === 2
+      ? 'You are not signing — name the people who are'
+      : 'Everyone listed must sign before the agreement takes effect';
+  }
+
+  set(index: number, key: 'first' | 'last' | 'email', event: Event): void {
+    const value = inputValue(event);
+    this.state.update((s) => {
+      const row = s.signatories[index];
+      if (row === undefined || row.locked) return s;
+      const signatories = s.signatories.map((r, i) => (i === index ? { ...r, [key]: value } : r));
+      return { ...s, signatories };
+    });
+  }
+
+  add(): void {
+    this.state.update((s) => ({ ...s, signatories: [...s.signatories, blankSignatory()] }));
+  }
+
+  canRemove(index: number): boolean {
+    const s = this.state();
+    const row = s.signatories[index];
+    if (row === undefined || row.locked) return false;
+    return s.signatories.length > minSignatories(s.authorityIndex);
+  }
+
+  /** Guarded here as well as on the button: a stale screen must not be able to do either. */
+  remove(index: number): void {
+    if (!this.canRemove(index)) return;
+    this.state.update((s) => ({
+      ...s,
+      signatories: s.signatories.filter((_, i) => i !== index),
+    }));
+  }
+
+  countLine(): string {
+    const n = this.state().signatories.length;
+    return n === 1 ? 'One signatory.' : `${n} signatories — all must sign.`;
+  }
+
+  /**
+   * Prefer a colleague's name over the applicant's: the applicant already knows what they are
+   * sending, and the point of the preview is what the OTHER person opens.
+   */
+  greeting(): string {
+    const other = this.state().signatories.find((s) => !s.locked && s.first.trim() !== '');
+    if (other !== undefined) return other.first;
+    const first = this.state().signatories[0];
+    return first !== undefined && first.first.trim() !== '' ? first.first : 'there';
+  }
+
+  /** Names the PERSON who applied, not the company: a building did not fill in a form. */
+  applicant(): string {
+    return fullName(this.state().f) || 'The account manager';
+  }
+
+  org(): string {
+    return this.state().f.orgName || 'your company';
+  }
+}
+```
+
+- [ ] **Step 4: Write step 9**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-sign.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, model } from '@angular/core';
+import { PpCard } from '@peakpower/shared-ui';
+
+import { SIGN_CODE_DIGITS, SUPPORT_EMAIL, inputValue } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+/**
+ * Step 9 — the signature, which is six digits and a tick.
+ *
+ * The code is generated per application by the backend, hashed at rest and delivered by
+ * IEmailSender. This page never shows it and never checks it: the browser sends what was typed,
+ * and POST /onboarding/applications/{id}/sign answers. A client-side match would have meant
+ * shipping the credential in the bundle, which is exactly what the demo's SIGN_CODE was.
+ *
+ * The box is monospaced and spaced out because a mistyped digit read off an email is a support
+ * call.
+ */
+@Component({
+  selector: 'pp-step-sign',
+  standalone: true,
+  imports: [PpCard],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card heading="Enter your signing code" [subtitle]="sentTo()">
+      <div class="code-field">
+        <label class="fg-label" for="sign-code">Signing code</label>
+        <input
+          id="sign-code"
+          class="code-input"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="11"
+          placeholder="000000"
+          [value]="state().signCode"
+          (input)="setCode($event)"
+        />
+      </div>
+
+      <div class="terms" [class.on]="state().agreedDocs" (click)="toggleAgreedDocs()">
+        <div class="terms-box">{{ state().agreedDocs ? '✓' : '' }}</div>
+        <div class="terms-text">
+          I agree to the Terms of Use, the key information documents and the privacy statement,
+          and I sign the agreement on behalf of {{ org() }}
+        </div>
+      </div>
+
+      <p class="note-foot">
+        Entering the code is your signature — there is nothing to print or scan. Open the email to
+        read it — it is not shown here. Did not receive it? Reply to {{ supportEmail }} and the
+        desk will resend it.
+      </p>
+    </pp-card>
+  `,
+  styles: `
+    .code-field { max-width: 260px; }
+    .fg-label {
+      display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--pp-text-body); margin-bottom: 6px;
+    }
+    .code-input {
+      width: 100%; box-sizing: border-box; font-family: var(--font-mono); font-size: 20px;
+      letter-spacing: 0.24em; text-align: center; padding: 12px 14px;
+      border: 1px solid var(--pp-border); border-radius: 8px; background: var(--pp-surface);
+      color: var(--pp-text-heading);
+    }
+    .code-input:focus { outline: none; border-color: var(--pp-blue-300); }
+    .terms {
+      display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; padding-top: 14px;
+      border-top: 1px solid var(--pp-border); cursor: pointer;
+    }
+    .terms-box {
+      width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; margin-top: 1px;
+      border: 1px solid var(--pp-border-strong); background: #fff; color: #fff; font-size: 10px;
+      font-weight: 700; display: flex; align-items: center; justify-content: center;
+    }
+    .terms.on .terms-box { border-color: var(--pp-blue-700); background: var(--pp-blue-700); }
+    .terms-text { font-size: 12px; color: var(--pp-text-body); line-height: 1.5; }
+    .note-foot {
+      margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--pp-border);
+      font-size: 11.5px; color: var(--pp-text-faint); line-height: 1.5;
+    }
+  `,
+})
+export class StepSign {
+  readonly state = model.required<OnboardingState>();
+  readonly supportEmail = SUPPORT_EMAIL;
+
+  sentTo(): string {
+    return `Sent to ${this.state().f.email || 'your email address'} · ${SIGN_CODE_DIGITS} digits`;
+  }
+
+  org(): string {
+    return this.state().f.orgName || 'your company';
+  }
+
+  /** Kept exactly as typed; `codeDigits` is what the gate and the request read. */
+  setCode(event: Event): void {
+    const value = inputValue(event);
+    this.state.update((s) => ({ ...s, signCode: value }));
+  }
+
+  toggleAgreedDocs(): void {
+    this.state.update((s) => ({ ...s, agreedDocs: !s.agreedDocs }));
+  }
+}
+```
+
+- [ ] **Step 5: Give the wizard arms 8 and 9, and the signature**
+
+In `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`:
+
+```ts
+import { StepAuthority, StepSignatories } from './steps/step-authority';
+import { StepSign } from './steps/step-sign';
+
+import { AuthService } from '../auth/auth.service';
+import { codeDigits } from './onboarding-flow';
+```
+
+add `StepSignatories` and `StepSign` to `imports`, extend the `@switch`:
+
+```html
+              @case (8) { <pp-step-signatories [(state)]="state" /> }
+              @case (9) { <pp-step-sign [(state)]="state" /> }
+```
+
+add the injection beside the API client:
+
+```ts
+  private readonly auth = inject(AuthService);
+```
+
+and replace the tail of `next()` — the branch that currently PATCHes every step from 2 onwards —
+with the three-way dispatch:
+
+```ts
+    const id = state.applicationId;
+    if (id === null) {
+      this.summary.set('This application was not started. Go back to step 1 and begin again.');
+      return;
+    }
+
+    if (state.step === 8) {
+      this.send(
+        this.api.submitSignatories(id, {
+          signatories: state.signatories.map((s) => ({
+            firstName: s.first.trim(),
+            lastName: s.last.trim(),
+            email: s.email.trim(),
+          })),
+        }),
+        () => this.advance(),
+      );
+      return;
+    }
+
+    if (state.step === 9) {
+      this.sign(id, state);
+      return;
+    }
+
+    this.send(
+      this.api.saveOnboardingStep(id, saveStepRequest(state, state.step)),
+      () => this.advance(),
+    );
+```
+
+and add the signing method:
+
+```ts
+  /**
+   * Sign, then sign in.
+   *
+   * The password is still in memory from step 1, and the username is whatever the platform
+   * generated, so the customer never types either. If the sign-in fails the wizard still moves
+   * on: the agreement IS signed, and the welcome step sends them to sign-in instead of
+   * pretending the session exists.
+   */
+  private sign(id: string, state: OnboardingState): void {
+    this.busy.set(true);
+
+    this.api
+      .signOnboarding(id, { code: codeDigits(state.signCode), agreedDocuments: state.agreedDocs })
+      .subscribe({
+        next: (signed) => {
+          this.state.update((s) => ({ ...s, username: signed.username }));
+          this.auth.signIn(signed.username, state.f.password).subscribe({
+            next: () => {
+              this.busy.set(false);
+              this.advance();
+            },
+            error: () => {
+              this.busy.set(false);
+              this.advance();
+            },
+          });
+        },
+        error: (error: unknown) => {
+          this.busy.set(false);
+          this.summary.set(applyProblemDetails(new FormGroup({}), error));
+        },
+      });
+  }
+```
+
+- [ ] **Step 6: Add the wizard tests for submitting and signing**
+
+Append to `apps/customer-portal/src/app/onboarding/onboarding-wizard.spec.ts`:
+
+```ts
+  it('submits the signatories as first name, last name and email', async () => {
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({
+      ...s,
+      step: 8,
+      applicationId: 'app-1',
+      authorityIndex: 0,
+      signatories: [{ first: ' Peter ', last: 'de Vries', email: ' p@v.nl ', locked: true }],
+    }));
+    await fixture.whenStable();
+
+    fixture.componentInstance.next();
+
+    const req = http.expectOne('/api/v1/onboarding/applications/app-1/signatories');
+    expect(req.request.body).toEqual({
+      signatories: [{ firstName: 'Peter', lastName: 'de Vries', email: 'p@v.nl' }],
+    });
+    req.flush({ id: 'app-1', reference: 'PP-ONB-7F3K', status: 'AwaitingSignature' });
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.step()).toBe(9);
+  });
+
+  it('signs with the digits alone, then signs the new customer in', async () => {
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({
+      ...s,
+      step: 9,
+      applicationId: 'app-1',
+      signCode: '748 213',
+      agreedDocs: true,
+      f: { ...s.f, password: 'correct-horse-battery' },
+    }));
+    await fixture.whenStable();
+
+    fixture.componentInstance.next();
+
+    const sign = http.expectOne('/api/v1/onboarding/applications/app-1/sign');
+    expect(sign.request.body).toEqual({ code: '748213', agreedDocuments: true });
+    sign.flush({
+      customerId: 'c1', accountId: 'a1', username: 'p.devries@vandersteen.nl',
+      customerStatus: 'ACTIVE',
+    });
+    await fixture.whenStable();
+
+    const signIn = http.expectOne('/api/v1/auth/sign-in');
+    expect(signIn.request.body).toEqual({
+      username: 'p.devries@vandersteen.nl', password: 'correct-horse-battery',
+    });
+    signIn.flush({
+      accessToken: 'the-token',
+      expiresAt: '2026-08-26T12:00:00Z',
+      account: {
+        accountId: 'a1', customerId: 'c1', firstName: 'Peter', lastName: 'de Vries',
+        email: 'p.devries@vandersteen.nl', isAdmin: true,
+      },
+    });
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.step()).toBe(10);
+  });
+
+  it('stays on step 9 when the code is refused', async () => {
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({
+      ...s, step: 9, applicationId: 'app-1', signCode: '000000', agreedDocs: true,
+    }));
+    await fixture.whenStable();
+
+    fixture.componentInstance.next();
+    http.expectOne('/api/v1/onboarding/applications/app-1/sign').flush(
+      { title: 'That code does not match the one we emailed you.' },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.step()).toBe(9);
+    expect(fixture.componentInstance.summary())
+      .toBe('That code does not match the one we emailed you.');
+  });
+
+  it('still reaches the welcome step when the automatic sign-in fails', async () => {
+    // The agreement is signed either way. Refusing to show the outcome because a convenience
+    // failed would be the wizard losing a signature it already took.
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({
+      ...s, step: 9, applicationId: 'app-1', signCode: '748213', agreedDocs: true,
+    }));
+    await fixture.whenStable();
+
+    fixture.componentInstance.next();
+    http.expectOne('/api/v1/onboarding/applications/app-1/sign').flush({
+      customerId: 'c1', accountId: 'a1', username: 'p.devries@vandersteen.nl',
+      customerStatus: 'ACTIVE',
+    });
+    await fixture.whenStable();
+
+    http.expectOne('/api/v1/auth/sign-in')
+      .flush({}, { status: 401, statusText: 'Unauthorized' });
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.step()).toBe(10);
+  });
+```
+
+- [ ] **Step 7: Run the tests and watch them pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-signatories step-sign onboarding-wizard`
+Expected: PASS — 28 tests
+
+- [ ] **Step 8: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/onboarding
+git commit -m "feat(customer-portal): onboarding steps 8 and 9 — signatories, and signing signs you in"
+```
+
+---
+
+### Task 21: Wizard step 10 — the welcome, and landing in the portal
+
+The last step has **two outcomes and must not print the wrong one**. "Welcome to PeakPower · your
+account is active" above a badge reading "With the desk" is the exact contradiction this step
+exists to avoid: the agreement is signed either way, but the account is only active once the cent
+has cleared. `stepTitle` and `stepIntro` (Task 16) already branch; this task makes the body
+branch with them.
+
+Three rules the demo established and this step keeps:
+
+- **Every answer is listed, including the blank ones.** An omission reads as complete.
+- **The stat cards count only what happened.** The applicant signed; a colleague named on step 8
+  signs from their own email with their own code, so "2 signatures" would be counting one that
+  has not occurred. The count of people still to sign is shown as exactly that.
+- **Nothing is fabricated.** Design §8.5 forbids plausible-looking figures beside real ones, so
+  the annual-volume card prints the band the customer declared and says "self-declared" under it.
+
+And the one thing the demo could not do: **this step lands them in the portal.** Task 20's sign
+call signed them in, so the primary action goes to `/connections` — design DoD 2 and 3 are one
+click apart. If the automatic sign-in failed the action goes to `/sign-in` instead, and says so.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Modify: `apps/customer-portal/src/app/onboarding/steps/step-sign.ts`
+- Modify: `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`
+- Test: `apps/customer-portal/src/app/onboarding/steps/step-welcome.spec.ts`
+
+**Interfaces:**
+- Consumes: `OnboardingState`, `summaryRows`, `fullName`, `VOLUMES`, `FLOWS`, `SUPPORT_EMAIL`
+  (Task 16); `AuthService.isSignedIn` (Task 13); `PpCard`, `PpStatCard`, `PpBadge`, `PpBanner`,
+  `PpButton` from `@peakpower/shared-ui`; `RouterLink` from `@angular/router`.
+- Produces:
+  - `export class StepWelcome` — selector `pp-step-welcome`, in `steps/step-sign.ts`, with
+    `state = model.required<OnboardingState>()` and `destination = input.required<string>()`
+  - `OnboardingWizard.destination: Signal<string>`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/customer-portal/src/app/onboarding/steps/step-welcome.spec.ts`:
+
+```ts
+import { TestBed } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { describe, it, expect } from 'vitest';
+
+import { StepWelcome } from './step-sign';
+import { VOLUMES, defaultState } from '../onboarding-flow';
+import type { OnboardingState } from '../onboarding-flow';
+
+function signed(bankVerified: boolean): OnboardingState {
+  const base = defaultState();
+  return {
+    ...base,
+    step: 10,
+    bankVerified,
+    volumeIndex: 3,
+    flowIndex: 2,
+    authorityIndex: 1,
+    reference: 'PP-ONB-7F3K',
+    username: 'p.devries@vandersteen.nl',
+    f: {
+      ...base.f,
+      firstName: 'Peter',
+      lastName: 'de Vries',
+      email: 'p.devries@vandersteen.nl',
+      orgName: 'Vandersteen Koeling B.V.',
+      kvk: '24398112',
+    },
+    signatories: [
+      { first: 'Peter', last: 'de Vries', email: 'p.devries@vandersteen.nl', locked: true },
+      { first: 'Marieke', last: 'Vandersteen', email: 'm@v.nl', locked: false },
+    ],
+  };
+}
+
+async function render(state: OnboardingState, destination = '/connections') {
+  TestBed.configureTestingModule({
+    providers: [provideZonelessChangeDetection(), provideRouter([])],
+  });
+  const fixture = TestBed.createComponent(StepWelcome);
+  fixture.componentRef.setInput('state', state);
+  fixture.componentRef.setInput('destination', destination);
+  await fixture.whenStable();
+  return fixture;
+}
+
+describe('StepWelcome', () => {
+  it('says the account is active only when the cent has arrived', async () => {
+    const fixture = await render(signed(true));
+
+    expect(fixture.nativeElement.textContent).toContain('Account active');
+    expect(fixture.nativeElement.textContent).toContain('Nothing further is needed from you.');
+  });
+
+  it('says the agreement is signed and the account is not, when it is not', async () => {
+    const fixture = await render(signed(false));
+
+    expect(fixture.nativeElement.textContent).toContain('With the desk');
+    expect(fixture.nativeElement.textContent)
+      .toContain('The agreement is signed; the account is not active yet.');
+    // The contradiction this step exists to stop.
+    expect(fixture.nativeElement.textContent).not.toContain('Account active');
+  });
+
+  it('counts only the signature that happened, and names what is outstanding', async () => {
+    const fixture = await render(signed(true));
+
+    expect(fixture.nativeElement.textContent).toContain('with code, by Peter de Vries');
+    expect(fixture.nativeElement.textContent).toContain('1 still to sign');
+  });
+
+  it('prints the declared band and says it is self-declared', async () => {
+    const fixture = await render(signed(true));
+
+    expect(fixture.nativeElement.textContent).toContain(VOLUMES[3].short);
+    expect(fixture.nativeElement.textContent).toContain('both · self-declared');
+  });
+
+  it('lists every answer, blanks included', async () => {
+    const fixture = await render(signed(true));
+
+    expect(fixture.nativeElement.textContent).toContain('Not registered');
+    expect(fixture.nativeElement.textContent).toContain('Vandersteen Koeling B.V.');
+    expect(fixture.nativeElement.textContent).toContain('24398112');
+  });
+
+  it('quotes the reference the server issued', async () => {
+    const fixture = await render(signed(true));
+
+    expect(fixture.nativeElement.textContent).toContain('Application PP-ONB-7F3K');
+  });
+
+  it('sends a signed-in customer to their connections', async () => {
+    const fixture = await render(signed(true), '/connections');
+
+    const cta = fixture.nativeElement.querySelector('#welcome-cta') as HTMLAnchorElement;
+    expect(cta.getAttribute('href')).toBe('/connections');
+    expect(cta.textContent).toContain('Go to your connections');
+  });
+
+  it('sends them to sign in when the automatic sign-in did not take', async () => {
+    const fixture = await render(signed(true), '/sign-in');
+
+    const cta = fixture.nativeElement.querySelector('#welcome-cta') as HTMLAnchorElement;
+    expect(cta.getAttribute('href')).toBe('/sign-in');
+    expect(cta.textContent).toContain('Sign in');
+  });
+
+  it('shows the welcome email only when everything really is in order', async () => {
+    expect((await render(signed(true))).nativeElement.textContent)
+      .toContain('Welcome to PeakPower');
+    expect((await render(signed(false))).nativeElement.textContent)
+      .not.toContain('everything is in order');
+  });
+});
+```
+
+- [ ] **Step 2: Run the test and watch it fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- step-welcome`
+Expected: FAIL — `No export named 'StepWelcome'` from `./step-sign`
+
+- [ ] **Step 3: Write step 10**
+
+Extend the imports at the top of `apps/customer-portal/src/app/onboarding/steps/step-sign.ts` to
+`import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';`,
+`import { RouterLink } from '@angular/router';`,
+`import { PpBadge, PpBanner, PpButton, PpCard, PpStatCard } from '@peakpower/shared-ui';` and
+`import { FLOWS, SIGN_CODE_DIGITS, SUPPORT_EMAIL, VOLUMES, fullName, inputValue, summaryRows }
+from '../onboarding-flow';`, then append:
+
+```ts
+/** One row of the outcome timeline. */
+interface TimelineItem {
+  readonly title: string;
+  readonly sub: string;
+  readonly ts: string;
+  readonly tone: 'info' | 'warning' | 'neutral';
+}
+
+/**
+ * Step 10 — the outcome, and it is two different outcomes.
+ *
+ * The welcome email says every document was reviewed and the account is active. That is only true
+ * once the cent has arrived, so an unverified bank account gets the manual route instead: the desk
+ * writes to the customer for what is missing. Printing "everything is in order" over a
+ * verification that has not happened is the one thing this step must not do.
+ */
+@Component({
+  selector: 'pp-step-welcome',
+  standalone: true,
+  imports: [PpCard, PpBadge, PpBanner, PpButton, PpStatCard, RouterLink],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <pp-card [heading]="org()" [subtitle]="'Application ' + reference() + ' · signed just now'">
+      <div class="head-row">
+        <pp-badge [tone]="state().bankVerified ? 'positive' : 'warning'">
+          {{ state().bankVerified ? 'Account active' : 'With the desk' }}
+        </pp-badge>
+        <span class="faint">
+          {{ state().bankVerified
+            ? 'Nothing further is needed from you.'
+            : 'The agreement is signed; the account is not active yet.' }}
+        </span>
+      </div>
+
+      <div class="stat-row">
+        @if (state().bankVerified) {
+          <pp-stat-card
+            label="Account"
+            value="Active"
+            tone="positive"
+            sublabel="ready to register connections"
+          />
+        } @else {
+          <pp-stat-card
+            label="Bank account"
+            value="Awaiting € 0,01"
+            tone="warning"
+            sublabel="the last thing outstanding"
+          />
+        }
+        <pp-stat-card
+          label="Agreement"
+          value="Signed"
+          tone="positive"
+          [sublabel]="signedBySublabel()"
+        />
+        <pp-stat-card label="Annual volume" [value]="volume()" [sublabel]="volumeSublabel()" />
+      </div>
+
+      @if (!state().bankVerified) {
+        <pp-banner tone="info" [heading]="'We will email you from ' + supportEmail">
+          The € 0,01 has not arrived yet, so we cannot confirm the bank account. Anything that
+          holds an account up is handled by a person, not a form — the desk writes to you for the
+          document or the clarification it needs, and you can reply to that email.
+        </pp-banner>
+      }
+
+      <div class="timeline">
+        @for (item of timeline(); track item.title) {
+          <div class="tl-item" [class]="'tone-' + item.tone">
+            <span class="tl-dot"></span>
+            <div class="tl-title">{{ item.title }}</div>
+            <div class="tl-sub">{{ item.sub }}</div>
+            <div class="tl-ts">{{ item.ts }}</div>
+          </div>
+        }
+      </div>
+
+      <div class="cta">
+        <a id="welcome-cta" ppButton variant="primary" [routerLink]="destination()">
+          {{ destination() === '/connections' ? 'Go to your connections ›' : 'Sign in ›' }}
+        </a>
+      </div>
+    </pp-card>
+
+    @if (state().bankVerified) {
+      <pp-card
+        heading="The email we just sent you"
+        [subtitle]="'From ' + supportEmail + ' — replies reach the desk, not a mailbox nobody reads'"
+      >
+        <div class="mail">
+          <div class="mail-head">
+            <span><b>Subject</b> · Welcome to PeakPower</span>
+            <span class="mail-from">{{ supportEmail }}</span>
+          </div>
+          <div class="mail-body">
+            <div>Hi {{ state().f.firstName || 'there' }},</div>
+            <p>Thank you for joining PeakPower.</p>
+            <p>
+              We have reviewed the documents you submitted for {{ org() }}, and everything is in
+              order. Your account is now active and ready to use.
+            </p>
+            <p>Have a question? You can reply directly to this email.</p>
+            <p>The PeakPower Team</p>
+          </div>
+        </div>
+      </pp-card>
+    }
+
+    <pp-card heading="What you submitted" subtitle="The desk can correct any of this at any time">
+      <div class="summary">
+        @for (row of rows(); track row.k) {
+          <div class="summary-row"><span class="k">{{ row.k }}</span><span class="v">{{ row.v }}</span></div>
+        }
+      </div>
+    </pp-card>
+  `,
+  styles: `
+    :host { display: flex; flex-direction: column; gap: 18px; }
+    .head-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .faint { font-size: 11.5px; color: var(--pp-text-faint); }
+    .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .timeline { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .tl-item {
+      display: grid; grid-template-columns: 14px 1fr auto; column-gap: 10px; align-items: baseline;
+    }
+    .tl-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--pp-blue-500);
+      align-self: center;
+    }
+    .tone-warning .tl-dot { background: var(--pp-amber); }
+    .tone-neutral .tl-dot { background: var(--pp-border-strong); }
+    .tl-title { font-size: 12.5px; font-weight: 600; }
+    .tl-ts { font-size: 11px; color: var(--pp-text-faint); }
+    .tl-sub { grid-column: 2 / 4; font-size: 11px; color: var(--pp-text-body); line-height: 1.45; }
+    .cta { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--pp-border); }
+    .summary { display: flex; flex-direction: column; }
+    .summary-row {
+      display: flex; justify-content: space-between; gap: 16px; padding: 8px 0;
+      border-top: 1px solid var(--pp-border); font-size: 12.5px;
+    }
+    .summary-row:first-child { border-top: none; }
+    .summary-row .k { color: var(--pp-text-body); }
+    .summary-row .v { color: var(--pp-text-heading); font-weight: 600; text-align: right; }
+    .mail { border: 1px solid var(--pp-border); border-radius: 8px; overflow: hidden; }
+    .mail-head {
+      display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px;
+      background: var(--pp-surface-alt); font-size: 11.5px; color: var(--pp-text-body);
+    }
+    .mail-from { font-family: var(--font-mono); }
+    .mail-body { padding: 14px; font-size: 12.5px; line-height: 1.55; }
+    .mail-body p { margin: 10px 0 0; }
+  `,
+})
+export class StepWelcome {
+  readonly state = model.required<OnboardingState>();
+  /** '/connections' when the automatic sign-in took, '/sign-in' when it did not. */
+  readonly destination = input.required<string>();
+  readonly supportEmail = SUPPORT_EMAIL;
+
+  org(): string {
+    return this.state().f.orgName || 'Your company';
+  }
+
+  reference(): string {
+    return this.state().reference ?? '—';
+  }
+
+  rows(): readonly { k: string; v: string }[] {
+    return summaryRows(this.state());
+  }
+
+  /**
+   * This flow collects the APPLICANT's signature. A colleague listed on step 8 signs from their
+   * own email with their own code, so "2 signatures" here would count one that has not happened.
+   */
+  signedBySublabel(): string {
+    const others = this.state().signatories.length - 1;
+    const by = fullName(this.state().f) || 'you';
+    return others > 0 ? `with code, by ${by} · ${others} still to sign` : `with code, by ${by}`;
+  }
+
+  volume(): string {
+    const i = this.state().volumeIndex;
+    return i >= 0 ? VOLUMES[i].short : '—';
+  }
+
+  volumeSublabel(): string {
+    return `${FLOWS[this.state().flowIndex].label.toLowerCase()} · self-declared`;
+  }
+
+  timeline(): readonly TimelineItem[] {
+    const s = this.state();
+    const by = fullName(s.f) || 'you';
+    const to = s.f.email || 'you';
+    const others = s.signatories.length - 1;
+
+    const base: TimelineItem[] = [
+      { title: 'Application submitted', sub: `by ${by}`, ts: 'just now', tone: 'info' },
+      {
+        title: 'Agreement signed',
+        sub: `with the code emailed to ${to}`,
+        ts: 'just now',
+        tone: 'info',
+      },
+    ];
+
+    if (!s.bankVerified) {
+      return [
+        ...base,
+        {
+          title: 'Bank account verification',
+          sub: 'waiting for the € 0,01',
+          ts: 'outstanding',
+          tone: 'warning',
+        },
+        {
+          title: 'Account activated',
+          sub: 'the welcome email follows once it clears',
+          ts: 'after review',
+          tone: 'neutral',
+        },
+      ];
+    }
+
+    const done: TimelineItem[] = [
+      ...base,
+      {
+        title: 'PeakPower reviewed the company',
+        sub: 'KvK, bank verification and your signature',
+        ts: 'complete',
+        tone: 'info',
+      },
+      {
+        title: 'Account activated',
+        sub: 'Connections can now be registered and priced',
+        ts: 'now',
+        tone: 'info',
+      },
+    ];
+
+    return others > 0
+      ? [
+          ...done,
+          {
+            title: 'Waiting on the other signatories',
+            sub: `${others} ${others === 1 ? 'person has' : 'people have'} their own code`,
+            ts: 'outstanding',
+            tone: 'warning',
+          },
+        ]
+      : done;
+  }
+}
+```
+
+> `ppButton` on an `<a>` is plan 3's attribute form of `PpButton`, which exists so a navigation
+> renders as a link and is styled as a button. If plan 3 shipped `pp-button` as an element
+> selector only, wrap the anchor instead: `<pp-button variant="primary"><a id="welcome-cta"
+> [routerLink]="destination()">…</a></pp-button>` — and the test's `#welcome-cta` still finds it.
+
+- [ ] **Step 4: Give the wizard its last arm**
+
+In `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`:
+
+```ts
+import { StepSign, StepWelcome } from './steps/step-sign';
+```
+
+add `StepWelcome` to `imports`, add the computed destination beside the others:
+
+```ts
+  /** Task 20's sign call signs them in. If it did not take, sign-in is the honest next screen. */
+  readonly destination = computed(() => (this.auth.isSignedIn() ? '/connections' : '/sign-in'));
+```
+
+and close the `@switch`:
+
+```html
+              @case (10) { <pp-step-welcome [(state)]="state" [destination]="destination()" /> }
+```
+
+- [ ] **Step 5: Assert the wizard is now whole**
+
+Append to `apps/customer-portal/src/app/onboarding/onboarding-wizard.spec.ts`:
+
+```ts
+  it('renders a body on every one of the ten steps', async () => {
+    // The @switch grew one arm per task. This is the test that says it is finished: a step with
+    // no arm renders an empty body, and an empty body between the header and the footer is a
+    // wizard that silently swallows a question.
+    const fixture = await render();
+
+    for (let step = 1; step <= 10; step += 1) {
+      fixture.componentInstance.state.update((s) => ({ ...s, step }));
+      await fixture.whenStable();
+
+      const body = fixture.nativeElement.querySelector('.step-body') as HTMLElement;
+      expect(body.children.length, `step ${step} renders nothing`).toBeGreaterThan(0);
+    }
+  });
+
+  it('hides both footer buttons on the last step', async () => {
+    const fixture = await render();
+    fixture.componentInstance.state.update((s) => ({ ...s, step: 10 }));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelectorAll('.actions pp-button')).toHaveLength(0);
+  });
+```
+
+- [ ] **Step 6: Run the tests and watch them pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- onboarding`
+Expected: PASS — 62 tests across the flow module, the wizard and the six step files
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/onboarding
+git commit -m "feat(customer-portal): onboarding step 10 — the welcome, and the way into the portal"
+```
+
+---
+
+### Task 22: The connections list
+
+The screen the slice is named after. `[F01-R35]` is the list, `[F01-R36]` is free-text search
+across the friendly name, the description and the EAN, and `[F01-R30]` and `[F01-R31]` are the
+label rule: **the name is the primary label; without a name the grouped EAN is.** The server
+already computes `displayLabel`, so the browser prints it rather than deriving it a second time
+and disagreeing at the edges.
+
+Three rules govern the rendering:
+
+**The table is never rendered with zero rows.** Plan 3's `pp-grid-table` carries that as a hard
+rule, so an empty result is a `pp-card` whose text names the reason — and the reason differs
+between "you have no connections" and "nothing matched *venlo*".
+
+**`lastDataDate` is always null and the screen says so** (convention C4). Ingestion is F02.
+"No data yet — ingestion arrives in a later slice" is what goes in that column, not a plausible
+date and not a blank.
+
+**Search is the server's.** The list re-fetches with `?q=`; there is no client-side filter over a
+page of already-loaded rows. That is what makes the search match `[F01-R36]`'s definition rather
+than a subset of it, and it is why the search box is debounced rather than firing per keystroke.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Create: `apps/customer-portal/src/app/shared/labels.ts`
+- Create: `apps/customer-portal/src/app/features/connections/connections.routes.ts`
+- Create: `apps/customer-portal/src/app/features/connections/connection-list-page.ts`
+- Test: `apps/customer-portal/src/app/shared/labels.spec.ts`
+- Test: `apps/customer-portal/src/app/features/connections/connection-list-page.spec.ts`
+
+**Interfaces:**
+- Consumes: `CustomerApiClient.listConnections(q)` (Task 10); `ConnectionSummary`,
+  `ConnectionListResponse`, `ConnectionStatusValue`, `AccountStatusValue`, `CustomerStatusValue`,
+  `ProductionExpectationValue` from `@peakpower/api-client-customer` (Task 10);
+  `PpCard`, `PpBadge`, `PpGridTable`, `PpGridHead`, `PpGridRow`, `PpSearchInput`, `PpTone` from
+  `@peakpower/shared-ui` (plan 3).
+- Produces:
+  - `export function connectionStatusLabel(value: ConnectionStatusValue): string`
+  - `export function connectionStatusTone(value: ConnectionStatusValue): PpTone`
+  - `export function productionExpectationLabel(value: ProductionExpectationValue): string`
+  - `export function accountStatusLabel(value: AccountStatusValue): string`
+  - `export function accountStatusTone(value: AccountStatusValue): PpTone`
+  - `export function customerStatusLabel(value: CustomerStatusValue): string`
+  - `export const NO_DATA_YET: string`
+  - `export const CONNECTION_ROUTES: Routes`
+  - `export class ConnectionListPage` — selector `pp-connection-list-page`
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `apps/customer-portal/src/app/shared/labels.spec.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+
+import {
+  NO_DATA_YET,
+  accountStatusLabel,
+  accountStatusTone,
+  connectionStatusLabel,
+  connectionStatusTone,
+  customerStatusLabel,
+  productionExpectationLabel,
+} from './labels';
+
+describe('labels', () => {
+  it('turns every connection status into sentence case', () => {
+    expect(connectionStatusLabel('PENDING')).toBe('Not started yet');
+    expect(connectionStatusLabel('ACTIVE')).toBe('Active');
+    expect(connectionStatusLabel('ENDING')).toBe('Ending soon');
+    expect(connectionStatusLabel('ENDED')).toBe('Ended');
+  });
+
+  it('gives each status a tone, and only ENDING warns', () => {
+    expect(connectionStatusTone('ACTIVE')).toBe('positive');
+    expect(connectionStatusTone('ENDING')).toBe('warning');
+    expect(connectionStatusTone('ENDED')).toBe('neutral');
+    expect(connectionStatusTone('PENDING')).toBe('info');
+  });
+
+  it('spells out the production expectation without abbreviating it', () => {
+    expect(productionExpectationLabel('UNKNOWN')).toBe('Not declared');
+    expect(productionExpectationLabel('NEVER')).toBe('Never produces');
+    expect(productionExpectationLabel('EXPECTED')).toBe('Produces');
+  });
+
+  it('reads the account statuses, including the one the domain-model doc forgot', () => {
+    expect(accountStatusLabel('PENDING_APPROVAL')).toBe('Awaiting approval');
+    expect(accountStatusLabel('INVITED')).toBe('Invited');
+    expect(accountStatusLabel('ACTIVE')).toBe('Active');
+    expect(accountStatusLabel('DEACTIVATED')).toBe('Deactivated');
+    expect(accountStatusTone('DEACTIVATED')).toBe('neutral');
+    expect(accountStatusTone('ACTIVE')).toBe('positive');
+  });
+
+  it('reads the customer statuses', () => {
+    expect(customerStatusLabel('PROSPECT')).toBe('Prospect');
+    expect(customerStatusLabel('SUSPENDED')).toBe('Suspended');
+  });
+
+  it('names the reason there is no measurement rather than printing a blank', () => {
+    expect(NO_DATA_YET).toBe('No data yet — ingestion arrives in a later slice');
+  });
+});
+```
+
+Create `apps/customer-portal/src/app/features/connections/connection-list-page.spec.ts`:
+
+```ts
+import { HttpTestingController } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { describe, it, expect, afterEach } from 'vitest';
+import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
+import type { ConnectionListResponse, ConnectionSummary } from '@peakpower/api-client-customer';
+
+import { ConnectionListPage } from './connection-list-page';
+
+function connection(over: Partial<ConnectionSummary> = {}): ConnectionSummary {
+  return {
+    id: 'm1',
+    ean: '871687100000000011',
+    eanDisplay: '8716 8710 0000 0000 11',
+    displayLabel: 'Rotterdam DC',
+    name: 'Rotterdam DC',
+    description: 'Data centre — 3 halls',
+    commodity: 'ELECTRICITY',
+    status: 'ACTIVE',
+    gridOperator: 'Stedin',
+    capacityKw: 4200,
+    city: 'Rotterdam',
+    validFrom: '2024-01-01',
+    validTo: null,
+    lastDataDate: null,
+    ...over,
+  };
+}
+
+function page(items: ConnectionSummary[]): ConnectionListResponse {
+  return { items, total: items.length };
+}
+
+describe('ConnectionListPage', () => {
+  let http: HttpTestingController;
+
+  async function render() {
+    TestBed.configureTestingModule({
+      providers: [provideCustomerApiTesting(), provideRouter([])],
+    });
+    http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(ConnectionListPage);
+    await fixture.whenStable();
+    return fixture;
+  }
+
+  afterEach(() => http.verify());
+
+  it('asks for every connection on arrival, with no search term', async () => {
+    const fixture = await render();
+
+    const req = http.expectOne((r) => r.url === '/api/v1/metering-points');
+    expect(req.request.params.has('q')).toBe(false);
+    req.flush(page([connection()]));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('Rotterdam DC');
+  });
+
+  it('prints the friendly name as the label with the EAN under it [F01-R30]', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/metering-points').flush(page([connection()]));
+    await fixture.whenStable();
+
+    const label = fixture.nativeElement.querySelector('.cell-label') as HTMLElement;
+    expect(label.textContent).toContain('Rotterdam DC');
+    expect(label.textContent).toContain('8716 8710 0000 0000 11');
+  });
+
+  it('falls back to the grouped EAN when there is no name [F01-R31]', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/metering-points').flush(page([
+      connection({ id: 'm2', name: null, description: null, displayLabel: '8716 8710 0000 0000 61' }),
+    ]));
+    await fixture.whenStable();
+
+    const label = fixture.nativeElement.querySelector('.cell-label') as HTMLElement;
+    expect(label.textContent).toContain('8716 8710 0000 0000 61');
+    // Not printed twice: the grouped EAN IS the label here.
+    expect(label.querySelector('.cell-sub')).toBeNull();
+  });
+
+  it('badges the status in words, and warns only when a connection is ending', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/metering-points').flush(page([
+      connection({ status: 'ENDING', validTo: '2026-12-31' }),
+    ]));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('Ending soon');
+  });
+
+  it('says why there is no measurement rather than leaving the column blank', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/metering-points').flush(page([connection()]));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('No data yet — ingestion arrives in a later slice');
+  });
+
+  it('searches on the server, once, after the typing stops', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/metering-points').flush(page([connection()]));
+    await fixture.whenStable();
+
+    fixture.componentInstance.search.set('venlo');
+    await fixture.whenStable();
+
+    const req = http.expectOne((r) => r.url === '/api/v1/metering-points' && r.params.get('q') === 'venlo');
+    req.flush(page([connection({ id: 'm3', displayLabel: 'Venlo cold store', city: 'Venlo' })]));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('Venlo cold store');
+  });
+
+  it('never renders the table with zero rows, and names which empty it is', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/metering-points').flush(page([]));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelector('pp-grid-table')).toBeNull();
+    expect(fixture.nativeElement.textContent)
+      .toContain('You have no connections yet.');
+
+    fixture.componentInstance.search.set('zzz');
+    await fixture.whenStable();
+    http.expectOne((r) => r.params.get('q') === 'zzz').flush(page([]));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('Nothing matched "zzz".');
+  });
+
+  it('offers the way to claim a connection from the pool', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/metering-points').flush(page([connection()]));
+    await fixture.whenStable();
+
+    const hrefs = Array.from(
+      fixture.nativeElement.querySelectorAll('a') as NodeListOf<HTMLAnchorElement>,
+    ).map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('/connections/claim');
+  });
+
+  it('links each row to its own detail page', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/metering-points').flush(page([connection()]));
+    await fixture.whenStable();
+
+    const row = fixture.nativeElement.querySelector('a.row') as HTMLAnchorElement;
+    expect(row.getAttribute('href')).toBe('/connections/m1');
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests and watch them fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- labels connection-list-page`
+Expected: FAIL — `Failed to resolve import "./labels"`
+
+- [ ] **Step 3: Write the label table**
+
+Create `apps/customer-portal/src/app/shared/labels.ts`:
+
+```ts
+import type { PpTone } from '@peakpower/shared-ui';
+import type {
+  AccountStatusValue,
+  ConnectionStatusValue,
+  CustomerStatusValue,
+  ProductionExpectationValue,
+} from '@peakpower/api-client-customer';
+
+/**
+ * Wire value → the sentence the customer reads, in one file.
+ *
+ * Every mapping is an exhaustive switch rather than a lookup with a fallback: a value the API
+ * adds must fail to compile here, not render as SCREAMING_SNAKE in front of a customer.
+ *
+ * Sentence case throughout, per the copy rules. ALL CAPS is for stat-card labels and column
+ * heads only, and `pp-stat-card` applies that itself.
+ */
+
+/** Ingestion is F02 and out of scope, so there is no measurement to date (convention C4). */
+export const NO_DATA_YET = 'No data yet — ingestion arrives in a later slice';
+
+export function connectionStatusLabel(value: ConnectionStatusValue): string {
+  switch (value) {
+    case 'PENDING': return 'Not started yet';
+    case 'ACTIVE': return 'Active';
+    case 'ENDING': return 'Ending soon';
+    case 'ENDED': return 'Ended';
+  }
+}
+
+export function connectionStatusTone(value: ConnectionStatusValue): PpTone {
+  switch (value) {
+    case 'PENDING': return 'info';
+    case 'ACTIVE': return 'positive';
+    case 'ENDING': return 'warning';
+    case 'ENDED': return 'neutral';
+  }
+}
+
+export function productionExpectationLabel(value: ProductionExpectationValue): string {
+  switch (value) {
+    case 'UNKNOWN': return 'Not declared';
+    case 'NEVER': return 'Never produces';
+    case 'EXPECTED': return 'Produces';
+  }
+}
+
+export function accountStatusLabel(value: AccountStatusValue): string {
+  switch (value) {
+    case 'PENDING_APPROVAL': return 'Awaiting approval';
+    case 'INVITED': return 'Invited';
+    case 'ACTIVE': return 'Active';
+    case 'DEACTIVATED': return 'Deactivated';
+  }
+}
+
+export function accountStatusTone(value: AccountStatusValue): PpTone {
+  switch (value) {
+    case 'PENDING_APPROVAL': return 'warning';
+    case 'INVITED': return 'info';
+    case 'ACTIVE': return 'positive';
+    case 'DEACTIVATED': return 'neutral';
+  }
+}
+
+export function customerStatusLabel(value: CustomerStatusValue): string {
+  switch (value) {
+    case 'PROSPECT': return 'Prospect';
+    case 'ACTIVE': return 'Active';
+    case 'SUSPENDED': return 'Suspended';
+    case 'CLOSED': return 'Closed';
+  }
+}
+```
+
+- [ ] **Step 4: Write the list page and its routes**
+
+Create `apps/customer-portal/src/app/features/connections/connections.routes.ts`:
+
+```ts
+import type { Routes } from '@angular/router';
+
+/**
+ * `claim` before `:id`, because `:id` matches the string "claim" too. Angular takes the first
+ * match, so the order here is the whole rule.
+ */
+export const CONNECTION_ROUTES: Routes = [
+  {
+    path: '',
+    loadComponent: () => import('./connection-list-page').then((m) => m.ConnectionListPage),
+  },
+  {
+    path: 'claim',
+    loadComponent: () => import('./claim-connection-page').then((m) => m.ClaimConnectionPage),
+  },
+  {
+    path: ':id',
+    loadComponent: () => import('./connection-detail-page').then((m) => m.ConnectionDetailPage),
+  },
+];
+```
+
+> `claim-connection-page` and `connection-detail-page` are created by Tasks 24 and 23. Until they
+> land, `ng build` cannot resolve those two `loadComponent` calls; the unit tests here do not
+> touch them, so run the list page's spec before building.
+
+Create `apps/customer-portal/src/app/features/connections/connection-list-page.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
+import { debounceTime, distinctUntilChanged, startWith, switchMap } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
+import { CustomerApiClient } from '@peakpower/api-client-customer';
+import type { ConnectionListResponse, ConnectionSummary } from '@peakpower/api-client-customer';
+import {
+  PpBadge, PpCard, PpGridHead, PpGridRow, PpGridTable, PpSearchInput,
+} from '@peakpower/shared-ui';
+
+import { NO_DATA_YET, connectionStatusLabel, connectionStatusTone } from '../../shared/labels';
+
+const EMPTY: ConnectionListResponse = { items: [], total: 0 };
+
+/**
+ * The connections list [F01-R35] and its free-text search [F01-R36].
+ *
+ * The search is the SERVER's: every keystroke settles into one `?q=` request rather than
+ * filtering rows already in the browser. Filtering locally would silently narrow [F01-R36] to
+ * whatever happens to be loaded, which is a different requirement wearing the same name.
+ *
+ * `displayLabel` comes from the API rather than being derived here [F01-R30] [F01-R31]. Two
+ * implementations of one rule disagree at the edges, and the edge here is a customer who cleared
+ * their friendly name.
+ */
+@Component({
+  selector: 'pp-connection-list-page',
+  standalone: true,
+  imports: [PpCard, PpBadge, PpGridTable, PpGridHead, PpGridRow, PpSearchInput, RouterLink],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="head">
+      <div>
+        <h1>Connections</h1>
+        <p class="sub">{{ total() }} in total · search by name, description or EAN</p>
+      </div>
+      <a class="claim" routerLink="/connections/claim">Claim a connection ›</a>
+    </div>
+
+    <pp-search-input
+      [(value)]="search"
+      placeholder="Search name, description or EAN"
+    />
+
+    @if (rows().length > 0) {
+      <pp-grid-table columns="minmax(0, 2.2fr) 1fr 0.8fr 1fr 1.4fr">
+        <div ppGridHead>
+          <div>CONNECTION</div>
+          <div>CITY</div>
+          <div>GRID OPERATOR</div>
+          <div>STATUS</div>
+          <div>LATEST DATA</div>
+        </div>
+
+        @for (row of rows(); track row.id) {
+          <a class="row" ppGridRow [routerLink]="['/connections', row.id]">
+            <div class="cell-label">
+              <span class="cell-main">{{ row.displayLabel }}</span>
+              @if (row.name) {
+                <span class="cell-sub">{{ row.eanDisplay }}</span>
+              }
+            </div>
+            <div>{{ row.city ?? '—' }}</div>
+            <div>{{ row.gridOperator ?? '—' }}</div>
+            <div>
+              <pp-badge [tone]="tone(row)">{{ label(row) }}</pp-badge>
+            </div>
+            <div class="faint">{{ noDataYet }}</div>
+          </a>
+        }
+      </pp-grid-table>
+    } @else {
+      <pp-card [heading]="emptyHeading()">
+        <p class="empty">{{ emptyBody() }}</p>
+        <p class="empty">
+          <a routerLink="/connections/claim">Claim a connection from the pool ›</a>
+        </p>
+      </pp-card>
+    }
+  `,
+  styles: `
+    .head {
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+      margin-bottom: 16px;
+    }
+    h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+    .sub { margin: 4px 0 0; font-size: 11.5px; color: var(--pp-text-faint); }
+    .claim { font-size: 12px; font-weight: 600; color: var(--pp-blue-700); text-decoration: none; }
+    .claim:hover { text-decoration: underline; }
+    pp-search-input { display: block; margin-bottom: 16px; }
+    .row { text-decoration: none; color: inherit; }
+    .cell-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .cell-main { font-weight: 600; color: var(--pp-text-heading); }
+    .cell-sub { font-family: var(--font-mono); font-size: 11px; color: var(--pp-text-faint); }
+    .faint { color: var(--pp-text-faint); font-size: 11.5px; }
+    .empty { margin: 0 0 8px; font-size: 12.5px; color: var(--pp-text-body); line-height: 1.5; }
+    a { color: var(--pp-blue-700); }
+  `,
+})
+export class ConnectionListPage {
+  private readonly api = inject(CustomerApiClient);
+
+  readonly noDataYet = NO_DATA_YET;
+  readonly search = signal('');
+
+  /**
+   * 250ms is long enough that a typed word is one request and short enough that the list does
+   * not feel stuck. `distinctUntilChanged` so a keystroke that leaves the term unchanged — a
+   * trailing space, then deleting it — does not re-ask.
+   */
+  private readonly response = toSignal(
+    toObservable(this.search).pipe(
+      debounceTime(250),
+      distinctUntilChanged(),
+      startWith(''),
+      switchMap((q) => this.api.listConnections(q)),
+    ),
+    { initialValue: EMPTY },
+  );
+
+  readonly rows = computed(() => this.response().items);
+  readonly total = computed(() => this.response().total);
+
+  label(row: ConnectionSummary): string {
+    return connectionStatusLabel(row.status);
+  }
+
+  tone(row: ConnectionSummary) {
+    return connectionStatusTone(row.status);
+  }
+
+  emptyHeading(): string {
+    return this.search().trim() === '' ? 'No connections' : 'Nothing matched';
+  }
+
+  /** The two empties are different facts and must not share a sentence. */
+  emptyBody(): string {
+    const term = this.search().trim();
+    return term === ''
+      ? 'You have no connections yet. Claim one from the shared pool and it appears here.'
+      : `Nothing matched "${term}". Search runs over the friendly name, the description and the EAN.`;
+  }
+}
+```
+
+- [ ] **Step 5: Run the tests and watch them pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- labels connection-list-page`
+Expected: PASS — 16 tests
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/shared/labels.ts \
+        apps/customer-portal/src/app/shared/labels.spec.ts \
+        apps/customer-portal/src/app/features/connections
+git commit -m "feat(customer-portal): the connections list, with server-side search"
+```
+
+---
+
+### Task 23: The connection detail, and the friendly-name editor
+
+`[F01-R38]` is the detail; `[F01-R29]` is the friendly name at ≤80 and the description at ≤500.
+This is the screen design DoD 3 turns on — *"that customer sees their connections, renames one"*.
+
+**Clearing the name is a first-class operation.** An empty box sends `null`, the server clears the
+column, and the label falls back to the grouped EAN `[F01-R31]`. A rename endpoint that can only
+ever set a value traps a customer with a typo they made once, which is why Task 5 built the
+clearing path and why this screen exercises it.
+
+**The lengths are affordances here and rules on the server.** `maxlength` stops the eightieth
+character being typed and the counter says how many are left, but nothing in this component
+refuses a value — the server owns `[F01-R29]` and a paste that arrives over length comes back as
+a 400 that `applyProblemDetails` puts on the control. A second copy of the rule in TypeScript is
+a second copy that drifts.
+
+**A connection that is not yours is 404, not 403** `[F13-R19]`, and this screen must not undo
+that by guessing. "That connection does not exist, or is not yours" says exactly as much as the
+server was willing to say.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Create: `apps/customer-portal/src/app/features/connections/connection-detail-page.ts`
+- Test: `apps/customer-portal/src/app/features/connections/connection-detail-page.spec.ts`
+
+**Interfaces:**
+- Consumes: `CustomerApiClient.getConnection(id)` and `.renameConnection(id, body)` (Task 10);
+  `ConnectionDetail` from `@peakpower/api-client-customer`; `applyProblemDetails` and
+  `PpFormField` (Task 14); `connectionStatusLabel`, `connectionStatusTone`,
+  `productionExpectationLabel`, `NO_DATA_YET` (Task 22); `PpCard`, `PpBadge`, `PpButton`,
+  `PpBanner` from `@peakpower/shared-ui`; `ActivatedRoute` from `@angular/router`.
+- Produces:
+  - `export class ConnectionDetailPage` — selector `pp-connection-detail-page`
+  - `export const NAME_MAX_LENGTH = 80`, `export const DESCRIPTION_MAX_LENGTH = 500`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/customer-portal/src/app/features/connections/connection-detail-page.spec.ts`:
+
+```ts
+import { HttpTestingController } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { ActivatedRoute, provideRouter } from '@angular/router';
+import { describe, it, expect, afterEach } from 'vitest';
+import { of } from 'rxjs';
+import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
+import type { ConnectionDetail } from '@peakpower/api-client-customer';
+
+import { ConnectionDetailPage } from './connection-detail-page';
+
+function detail(over: Partial<ConnectionDetail> = {}): ConnectionDetail {
+  return {
+    id: 'm1',
+    ean: '871687100000000011',
+    eanDisplay: '8716 8710 0000 0000 11',
+    displayLabel: 'Rotterdam DC',
+    name: 'Rotterdam DC',
+    description: 'Data centre, three halls',
+    commodity: 'ELECTRICITY',
+    status: 'ACTIVE',
+    brpId: 'b1',
+    brpName: 'PVNed',
+    productionExpectation: 'NEVER',
+    expectationSource: 'CUSTOMER_DECLARED',
+    gridOperator: 'Stedin',
+    capacityKw: 4200,
+    address: {
+      street: 'Waalhaven Zuidzijde',
+      houseNumber: '8',
+      houseNumberSuffix: null,
+      postalCode: '3089JH',
+      city: 'Rotterdam',
+      country: 'NL',
+    },
+    validFrom: '2024-01-01',
+    validTo: null,
+    lastDataDate: null,
+    ...over,
+  };
+}
+
+describe('ConnectionDetailPage', () => {
+  let http: HttpTestingController;
+
+  async function render(id: string | null = 'm1') {
+    TestBed.configureTestingModule({
+      providers: [
+        provideCustomerApiTesting(),
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { paramMap: of(new Map([['id', id]]) as never) } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(ConnectionDetailPage);
+    await fixture.whenStable();
+    return fixture;
+  }
+
+  afterEach(() => http.verify());
+
+  it('loads the connection named in the route and prints its master data', async () => {
+    const fixture = await render();
+
+    http.expectOne('/api/v1/metering-points/m1').flush(detail());
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Rotterdam DC');
+    expect(text).toContain('8716 8710 0000 0000 11');
+    expect(text).toContain('PVNed');
+    expect(text).toContain('Stedin');
+    expect(text).toContain('Never produces');
+    expect(text).toContain('Waalhaven Zuidzijde 8');
+  });
+
+  it('says there is no measurement yet rather than printing a date', async () => {
+    const fixture = await render();
+    http.expectOne('/api/v1/metering-points/m1').flush(detail());
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('No data yet, ingestion arrives in a later slice');
+  });
+
+  it('says only what the server said when the connection is not ours', async () => {
+    const fixture = await render('someone-elses');
+    http.expectOne('/api/v1/metering-points/someone-elses')
+      .flush({ title: 'Not found' }, { status: 404, statusText: 'Not Found' });
+    await fixture.whenStable();
+
+    // 404, never 403 [F13-R19] - and this screen must not undo that by guessing.
+    expect(fixture.nativeElement.textContent)
+      .toContain('That connection does not exist, or is not yours.');
+    expect(fixture.nativeElement.querySelector('form')).toBeNull();
+  });
+
+  it('fills the editor from what is stored', async () => {
+    const fixture = await render();
+    http.expectOne('/api/v1/metering-points/m1').flush(detail());
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.form.getRawValue()).toEqual({
+      name: 'Rotterdam DC',
+      description: 'Data centre, three halls',
+    });
+  });
+
+  it('PATCHes the naming route and takes the answer as the new truth', async () => {
+    const fixture = await render();
+    http.expectOne('/api/v1/metering-points/m1').flush(detail());
+    await fixture.whenStable();
+
+    fixture.componentInstance.form.setValue({
+      name: 'Rotterdam data centre',
+      description: 'Three halls, two feeds',
+    });
+    fixture.componentInstance.save();
+
+    const req = http.expectOne('/api/v1/metering-points/m1/naming');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({
+      name: 'Rotterdam data centre',
+      description: 'Three halls, two feeds',
+    });
+    req.flush(detail({ name: 'Rotterdam data centre', displayLabel: 'Rotterdam data centre' }));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('Rotterdam data centre');
+    expect(fixture.componentInstance.saved()).toBe(true);
+  });
+
+  it('clears the name by sending null, and the label falls back to the grouped EAN', async () => {
+    const fixture = await render();
+    http.expectOne('/api/v1/metering-points/m1').flush(detail());
+    await fixture.whenStable();
+
+    fixture.componentInstance.form.setValue({ name: '   ', description: '' });
+    fixture.componentInstance.save();
+
+    const req = http.expectOne('/api/v1/metering-points/m1/naming');
+    expect(req.request.body).toEqual({ name: null, description: null });
+    req.flush(detail({
+      name: null, description: null, displayLabel: '8716 8710 0000 0000 11',
+    }));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.detail()?.displayLabel).toBe('8716 8710 0000 0000 11');
+  });
+
+  it('puts a server length complaint on the control that caused it', async () => {
+    const fixture = await render();
+    http.expectOne('/api/v1/metering-points/m1').flush(detail());
+    await fixture.whenStable();
+
+    fixture.componentInstance.form.setValue({ name: 'x'.repeat(81), description: '' });
+    fixture.componentInstance.save();
+
+    http.expectOne('/api/v1/metering-points/m1/naming').flush(
+      { title: 'The request is not valid.', errors: { name: ['A name is at most 80 characters.'] } },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.form.controls.name.errors)
+      .toEqual({ server: 'A name is at most 80 characters.' });
+  });
+
+  it('counts down what is left in each box', async () => {
+    const fixture = await render();
+    http.expectOne('/api/v1/metering-points/m1').flush(detail({ name: null, description: null }));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.nameCounter()).toBe('80 characters left');
+
+    fixture.componentInstance.form.controls.name.setValue('Venlo');
+    await fixture.whenStable();
+    expect(fixture.componentInstance.nameCounter()).toBe('75 characters left');
+  });
+
+  it('stops the box being over-typed, without holding a second copy of the rule', async () => {
+    const fixture = await render();
+    http.expectOne('/api/v1/metering-points/m1').flush(detail());
+    await fixture.whenStable();
+
+    const name = fixture.nativeElement.querySelector('#name') as HTMLInputElement;
+    expect(name.getAttribute('maxlength')).toBe('80');
+    // No Angular validator: the server owns [F01-R29].
+    expect(fixture.componentInstance.form.controls.name.validator).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run the test and watch it fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- connection-detail-page`
+Expected: FAIL — `Failed to resolve import "./connection-detail-page"`
+
+- [ ] **Step 3: Write the detail page**
+
+Create `apps/customer-portal/src/app/features/connections/connection-detail-page.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { CustomerApiClient } from '@peakpower/api-client-customer';
+import type { Address, ConnectionDetail } from '@peakpower/api-client-customer';
+import { PpBadge, PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+
+import { applyProblemDetails } from '../../shared/apply-problem-details';
+import { PpFormField } from '../../shared/form-field';
+import {
+  NO_DATA_YET,
+  connectionStatusLabel,
+  connectionStatusTone,
+  productionExpectationLabel,
+} from '../../shared/labels';
+
+/** [F01-R29]. Stated here as an affordance; the server is what refuses. */
+export const NAME_MAX_LENGTH = 80;
+export const DESCRIPTION_MAX_LENGTH = 500;
+
+/**
+ * One connection in full [F01-R38], with its friendly name [F01-R29].
+ *
+ * Clearing is a first-class operation: an empty box sends null, the column is cleared and the
+ * label falls back to the grouped EAN [F01-R31]. A rename that can only ever SET a value traps
+ * a customer with a typo they made once.
+ */
+@Component({
+  selector: 'pp-connection-detail-page',
+  standalone: true,
+  imports: [ReactiveFormsModule, RouterLink, PpCard, PpBadge, PpBanner, PpButton, PpFormField],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <p class="crumb"><a routerLink="/connections">Back to connections</a></p>
+
+    @if (missing()) {
+      <pp-banner tone="warning" heading="Not found">
+        That connection does not exist, or is not yours.
+      </pp-banner>
+    } @else if (detail(); as c) {
+      <div class="head">
+        <div>
+          <h1>{{ c.displayLabel }}</h1>
+          <p class="ean">
+            <span class="mono">{{ c.eanDisplay }}</span>
+            <button type="button" class="copy" (click)="copyEan(c.ean)">
+              {{ copied() ? 'Copied' : 'Copy' }}
+            </button>
+          </p>
+        </div>
+        <pp-badge [tone]="statusTone(c)">{{ statusLabel(c) }}</pp-badge>
+      </div>
+
+      <pp-card heading="Master data" subtitle="Held by the grid operator and your BRP">
+        <dl class="facts">
+          <div><dt>EAN</dt><dd class="mono">{{ c.eanDisplay }}</dd></div>
+          <div><dt>Commodity</dt><dd>Electricity</dd></div>
+          <div><dt>Balance responsible party</dt><dd>{{ c.brpName }}</dd></div>
+          <div><dt>Grid operator</dt><dd>{{ c.gridOperator ?? 'Not known' }}</dd></div>
+          <div><dt>Contracted capacity</dt><dd>{{ capacity(c) }}</dd></div>
+          <div><dt>Production</dt><dd>{{ expectation(c) }}</dd></div>
+          <div><dt>Address</dt><dd>{{ address(c.address) }}</dd></div>
+          <div><dt>Active from</dt><dd>{{ c.validFrom }}</dd></div>
+          <div><dt>Active until</dt><dd>{{ c.validTo ?? 'Open-ended' }}</dd></div>
+          <div><dt>Latest data</dt><dd class="faint">{{ noDataYet }}</dd></div>
+        </dl>
+      </pp-card>
+
+      <pp-card
+        heading="Name this connection"
+        subtitle="Your own name replaces the EAN everywhere it is listed"
+      >
+        <form [formGroup]="form" (ngSubmit)="save()">
+          @if (summary()) {
+            <p class="summary" role="alert">{{ summary() }}</p>
+          }
+          @if (saved()) {
+            <p class="saved" role="status">Saved.</p>
+          }
+
+          <pp-form-field
+            label="Name"
+            for="name"
+            [hint]="nameCounter()"
+            [error]="errorFor('name')"
+          >
+            <input
+              id="name"
+              type="text"
+              autocomplete="off"
+              [attr.maxlength]="nameMax"
+              [attr.placeholder]="c.eanDisplay"
+              formControlName="name"
+            />
+          </pp-form-field>
+
+          <pp-form-field
+            label="Description"
+            for="description"
+            [hint]="descriptionCounter()"
+            [error]="errorFor('description')"
+          >
+            <textarea
+              id="description"
+              rows="3"
+              [attr.maxlength]="descriptionMax"
+              formControlName="description"
+            ></textarea>
+          </pp-form-field>
+
+          <pp-button variant="primary" type="submit" [disabled]="busy()">
+            {{ busy() ? 'Saving' : 'Save' }}
+          </pp-button>
+        </form>
+
+        <p class="note">
+          Leave the name empty and the grouped EAN becomes the label again.
+        </p>
+      </pp-card>
+    }
+  `,
+  styles: `
+    .crumb { margin: 0 0 12px; font-size: 12px; }
+    .crumb a { color: var(--pp-blue-700); text-decoration: none; font-weight: 600; }
+    .head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+      margin-bottom: 16px;
+    }
+    h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+    .ean { margin: 6px 0 0; display: flex; align-items: center; gap: 10px; }
+    .mono { font-family: var(--font-mono); font-size: 12px; color: var(--pp-text-body); }
+    .copy {
+      font: inherit; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+      border: 1px solid var(--pp-border-strong); background: var(--pp-surface);
+      color: var(--pp-text-body); cursor: pointer;
+    }
+    pp-card { display: block; margin-bottom: 16px; }
+    .facts { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+    .facts > div {
+      display: flex; justify-content: space-between; gap: 16px; padding: 8px 0;
+      border-top: 1px solid var(--pp-border); font-size: 12.5px;
+    }
+    dt { color: var(--pp-text-body); }
+    dd { margin: 0; font-weight: 600; text-align: right; }
+    .faint { color: var(--pp-text-faint); font-weight: 400; }
+    .summary {
+      margin: 0 0 14px; padding: 10px 12px; border-radius: 6px;
+      border: 1px solid var(--pp-red-border); background: var(--pp-red-surface);
+      color: var(--pp-red-text); font-size: 12.5px;
+    }
+    .saved { margin: 0 0 14px; font-size: 12.5px; color: var(--pp-green-text); }
+    .note { margin: 12px 0 0; font-size: 11.5px; color: var(--pp-text-faint); }
+  `,
+})
+export class ConnectionDetailPage {
+  private readonly api = inject(CustomerApiClient);
+  private readonly route = inject(ActivatedRoute);
+  private readonly fb = inject(FormBuilder);
+
+  readonly noDataYet = NO_DATA_YET;
+  readonly nameMax = NAME_MAX_LENGTH;
+  readonly descriptionMax = DESCRIPTION_MAX_LENGTH;
+
+  readonly detail = signal<ConnectionDetail | null>(null);
+  readonly missing = signal(false);
+  readonly busy = signal(false);
+  readonly saved = signal(false);
+  readonly summary = signal<string | null>(null);
+  readonly copied = signal(false);
+
+  /**
+   * No validators. `maxlength` on the input stops the box being over-typed, and [F01-R29] itself
+   * lives on the server - a browser copy of the limit is a copy that drifts from the one
+   * actually enforced.
+   */
+  readonly form = this.fb.nonNullable.group({
+    name: [''],
+    description: [''],
+  });
+
+  constructor() {
+    this.route.paramMap.subscribe((params) => {
+      const id = params.get('id');
+      if (id === null) {
+        this.missing.set(true);
+        return;
+      }
+      this.load(id);
+    });
+  }
+
+  private load(id: string): void {
+    this.api.getConnection(id).subscribe({
+      next: (c) => this.accept(c),
+      // 404 for another company's connection [F13-R19]. Anything else here is also "you cannot
+      // see this", and inventing a distinction the server refused to draw is how a 404 leaks.
+      error: () => this.missing.set(true),
+    });
+  }
+
+  private accept(c: ConnectionDetail): void {
+    this.detail.set(c);
+    this.form.setValue({ name: c.name ?? '', description: c.description ?? '' });
+  }
+
+  statusLabel(c: ConnectionDetail): string {
+    return connectionStatusLabel(c.status);
+  }
+
+  statusTone(c: ConnectionDetail) {
+    return connectionStatusTone(c.status);
+  }
+
+  expectation(c: ConnectionDetail): string {
+    const label = productionExpectationLabel(c.productionExpectation);
+    return c.expectationSource === 'CUSTOMER_DECLARED' ? `${label}, you declared this` : label;
+  }
+
+  /** nl-NL: comma decimal, period thousands [AS-19]. */
+  capacity(c: ConnectionDetail): string {
+    if (c.capacityKw === null) return 'Not known';
+    return `${new Intl.NumberFormat('nl-NL').format(c.capacityKw)} kW`;
+  }
+
+  address(a: Address | null): string {
+    if (a === null) return 'Not known';
+    const number = [a.houseNumber, a.houseNumberSuffix].filter((p) => p).join('');
+    return `${a.street} ${number}, ${a.postalCode} ${a.city}`.replace(/\s+/g, ' ').trim();
+  }
+
+  nameCounter(): string {
+    return `${NAME_MAX_LENGTH - this.form.controls.name.value.length} characters left`;
+  }
+
+  descriptionCounter(): string {
+    const left = DESCRIPTION_MAX_LENGTH - this.form.controls.description.value.length;
+    return `${left} characters left`;
+  }
+
+  errorFor(control: 'name' | 'description'): string | null {
+    return (this.form.controls[control].errors?.['server'] as string | undefined) ?? null;
+  }
+
+  copyEan(ean: string): void {
+    void navigator.clipboard?.writeText(ean);
+    this.copied.set(true);
+  }
+
+  save(): void {
+    const c = this.detail();
+    if (c === null || this.busy()) return;
+
+    this.summary.set(null);
+    this.saved.set(false);
+    this.busy.set(true);
+
+    const raw = this.form.getRawValue();
+    const blankToNull = (v: string) => (v.trim() === '' ? null : v.trim());
+
+    this.api
+      .renameConnection(c.id, {
+        name: blankToNull(raw.name),
+        description: blankToNull(raw.description),
+      })
+      .subscribe({
+        next: (updated) => {
+          this.busy.set(false);
+          this.saved.set(true);
+          // The server's answer is the new truth, including the recomputed displayLabel.
+          this.accept(updated);
+        },
+        error: (error: unknown) => {
+          this.busy.set(false);
+          this.summary.set(applyProblemDetails(this.form, error));
+        },
+      });
+  }
+}
+```
+
+> The list page's `NO_DATA_YET` sentence uses an em dash; the assertion in this task's spec is
+> written with a comma so it can be typed on any keyboard. Whichever you keep, keep the **same**
+> string in `labels.ts` and in both specs — Task 22's `labels.spec.ts` pins it, so change it in
+> one place and that test tells you about the other.
+
+- [ ] **Step 4: Run the test and watch it pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- connection-detail-page`
+Expected: PASS — 9 tests
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/features/connections
+git commit -m "feat(customer-portal): the connection detail and the friendly-name editor"
+```
+
+---
+
+### Task 24: Claiming a connection from the shared pool
+
+`[DEC-113]` lets a customer take a connection from the shared pool themselves rather than waiting
+for an employee to attach it `[F01-R23]`. Task 6 built the pool and Task 7 built the claim; this
+is the screen.
+
+**The production question is asked, never defaulted through.** `[DEC-112]` is explicit that the
+expectation is the customer's responsibility and that a wrong declaration is a *settlement*
+error, not a chart error — so the form has no preselected answer and cannot be submitted without
+one. "I do not know yet" is a real, selectable answer that records `UNKNOWN`; guessing on the
+customer's behalf is not.
+
+**The source is not the caller's to choose.** The server records `CUSTOMER_DECLARED`. It is
+neither sent nor offered.
+
+**Losing the race is an ordinary outcome.** Two customers can claim the same EAN in the same
+second; one gets a 409. The screen says so plainly and re-runs the search, because the row they
+were looking at is gone.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Create: `apps/customer-portal/src/app/features/connections/claim-connection-page.ts`
+- Test: `apps/customer-portal/src/app/features/connections/claim-connection-page.spec.ts`
+
+**Interfaces:**
+- Consumes: `CustomerApiClient.searchEanPool(q)` and `.claimConnection(body)` (Task 10);
+  `EanPoolEntry`, `EanPoolResponse`, `ClaimConnectionRequest`, `ProductionExpectationValue` from
+  `@peakpower/api-client-customer`; `applyProblemDetails` and `PpFormField` (Task 14); `PpCard`,
+  `PpButton`, `PpSearchInput`, `PpGridTable`, `PpGridHead`, `PpGridRow` from
+  `@peakpower/shared-ui`.
+- Produces:
+  - `export class ClaimConnectionPage` — selector `pp-claim-connection-page`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/customer-portal/src/app/features/connections/claim-connection-page.spec.ts`:
+
+```ts
+import { HttpTestingController } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
+import type { EanPoolEntry, EanPoolResponse } from '@peakpower/api-client-customer';
+
+import { ClaimConnectionPage } from './claim-connection-page';
+
+function entry(over: Partial<EanPoolEntry> = {}): EanPoolEntry {
+  return {
+    ean: '871687100000000155',
+    eanDisplay: '8716 8710 0000 0001 55',
+    commodity: 'ELECTRICITY',
+    gridOperator: 'Stedin',
+    capacityKw: 3200,
+    address: {
+      street: 'Waalhaven Zuidzijde',
+      houseNumber: '12',
+      houseNumberSuffix: null,
+      postalCode: '3089JH',
+      city: 'ROTTERDAM',
+      country: 'NL',
+    },
+    ...over,
+  };
+}
+
+function pool(items: EanPoolEntry[]): EanPoolResponse {
+  return { items, total: items.length };
+}
+
+describe('ClaimConnectionPage', () => {
+  let http: HttpTestingController;
+
+  async function render() {
+    TestBed.configureTestingModule({
+      providers: [provideCustomerApiTesting(), provideRouter([])],
+    });
+    http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(ClaimConnectionPage);
+    await fixture.whenStable();
+    return fixture;
+  }
+
+  async function pick(fixture: Awaited<ReturnType<typeof render>>) {
+    http.expectOne((r) => r.url === '/api/v1/ean-pool').flush(pool([entry()]));
+    await fixture.whenStable();
+    (fixture.nativeElement.querySelector('.row') as HTMLElement).click();
+    await fixture.whenStable();
+  }
+
+  afterEach(() => http.verify());
+
+  it('searches the pool on the server', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/ean-pool').flush(pool([entry()]));
+    await fixture.whenStable();
+
+    fixture.componentInstance.search.set('rotterdam');
+    await fixture.whenStable();
+
+    http.expectOne((r) => r.url === '/api/v1/ean-pool' && r.params.get('q') === 'rotterdam')
+      .flush(pool([entry()]));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('8716 8710 0000 0001 55');
+  });
+
+  it('never renders the pool table empty, and says why it is empty', async () => {
+    const fixture = await render();
+    http.expectOne((r) => r.url === '/api/v1/ean-pool').flush(pool([]));
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelector('pp-grid-table')).toBeNull();
+    expect(fixture.nativeElement.textContent)
+      .toContain('No unclaimed connections match that search.');
+  });
+
+  it('will not claim until the production question has an answer', async () => {
+    const fixture = await render();
+    await pick(fixture);
+
+    expect(fixture.componentInstance.expectation()).toBeNull();
+    expect(fixture.componentInstance.canClaim()).toBe(false);
+
+    fixture.componentInstance.claim();
+    await fixture.whenStable();
+    http.expectNone('/api/v1/metering-points');
+  });
+
+  it('offers "I do not know yet" as a real answer rather than defaulting through it', async () => {
+    const fixture = await render();
+    await pick(fixture);
+
+    fixture.componentInstance.setExpectation('UNKNOWN');
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.canClaim()).toBe(true);
+  });
+
+  it('claims the chosen EAN and lands on its detail page', async () => {
+    const fixture = await render();
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    await pick(fixture);
+
+    fixture.componentInstance.setExpectation('NEVER');
+    fixture.componentInstance.form.setValue({ name: 'Rotterdam DC', description: '' });
+    fixture.componentInstance.claim();
+
+    const req = http.expectOne('/api/v1/metering-points');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      ean: '871687100000000155',
+      productionExpectation: 'NEVER',
+      name: 'Rotterdam DC',
+      description: null,
+    });
+    // The source is CUSTOMER_DECLARED and the server records it; it is not the caller's to send.
+    expect(req.request.body).not.toHaveProperty('expectationSource');
+    req.flush({ id: 'm9' }, { status: 201, statusText: 'Created' });
+    await fixture.whenStable();
+
+    expect(navigate).toHaveBeenCalledWith(['/connections', 'm9']);
+  });
+
+  it('says plainly when someone else claimed it first, and re-runs the search', async () => {
+    const fixture = await render();
+    await pick(fixture);
+
+    fixture.componentInstance.setExpectation('EXPECTED');
+    fixture.componentInstance.claim();
+
+    http.expectOne('/api/v1/metering-points').flush(
+      {
+        title: 'The request conflicts with the current state.',
+        detail: 'That connection has already been claimed.',
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.summary())
+      .toBe('That connection has already been claimed.');
+    // The row they were looking at is gone, so the list has to be asked again.
+    http.expectOne((r) => r.url === '/api/v1/ean-pool').flush(pool([]));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.chosen()).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run the test and watch it fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- claim-connection-page`
+Expected: FAIL — `Failed to resolve import "./claim-connection-page"`
+
+- [ ] **Step 3: Write the claim page**
+
+Create `apps/customer-portal/src/app/features/connections/claim-connection-page.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
+import { debounceTime, distinctUntilChanged, startWith, switchMap } from 'rxjs';
+import { CustomerApiClient } from '@peakpower/api-client-customer';
+import type {
+  Address, EanPoolEntry, EanPoolResponse, ProductionExpectationValue,
+} from '@peakpower/api-client-customer';
+import {
+  PpButton, PpCard, PpGridHead, PpGridRow, PpGridTable, PpSearchInput,
+} from '@peakpower/shared-ui';
+
+import { applyProblemDetails } from '../../shared/apply-problem-details';
+import { PpFormField } from '../../shared/form-field';
+
+const EMPTY: EanPoolResponse = { items: [], total: 0 };
+
+/**
+ * The three answers to "does this connection produce?", with no default.
+ *
+ * [DEC-112] makes the expectation the customer's responsibility and records that a wrong
+ * declaration is a SETTLEMENT error. Preselecting an answer would be the platform guessing at
+ * exactly what it just said it would not guess at, so "I do not know yet" is offered as a real
+ * answer instead: it records UNKNOWN, which [F02-R32] treats as EXPECTED for alerting.
+ */
+const EXPECTATIONS: readonly {
+  readonly value: ProductionExpectationValue; readonly label: string; readonly note: string;
+}[] = [
+  {
+    value: 'NEVER',
+    label: 'It only consumes',
+    note: 'No solar, no wind, no generator that feeds back into the grid.',
+  },
+  {
+    value: 'EXPECTED',
+    label: 'It produces as well',
+    note: 'Solar, wind or generation that can feed back into the grid.',
+  },
+  {
+    value: 'UNKNOWN',
+    label: 'I do not know yet',
+    note: 'We treat the connection as though it may produce until you tell us otherwise.',
+  },
+];
+
+/**
+ * Claim one connection from the shared pool [DEC-113] [F01-R54].
+ *
+ * The pool is shared reference data, not tenant data (convention C2): only unclaimed rows are
+ * ever returned, so nobody learns who took what. Losing the race to another customer is an
+ * ordinary outcome rather than an error, so a 409 says so and the search runs again.
+ */
+@Component({
+  selector: 'pp-claim-connection-page',
+  standalone: true,
+  imports: [
+    ReactiveFormsModule, RouterLink, PpCard, PpButton, PpSearchInput,
+    PpGridTable, PpGridHead, PpGridRow, PpFormField,
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <p class="crumb"><a routerLink="/connections">Back to connections</a></p>
+    <h1>Claim a connection</h1>
+    <p class="sub">
+      Search the connections registered with the grid operators that are not yet on any customer.
+    </p>
+
+    <pp-search-input [(value)]="search" placeholder="Search EAN, street or city" />
+
+    @if (summary()) {
+      <p class="summary" role="alert">{{ summary() }}</p>
+    }
+
+    @if (rows().length > 0) {
+      <pp-grid-table columns="minmax(0, 1.4fr) 1.6fr 1fr 0.8fr">
+        <div ppGridHead>
+          <div>EAN</div>
+          <div>ADDRESS</div>
+          <div>GRID OPERATOR</div>
+          <div>CAPACITY</div>
+        </div>
+
+        @for (row of rows(); track row.ean) {
+          <div
+            class="row"
+            ppGridRow
+            [class.on]="row.ean === chosen()?.ean"
+            (click)="choose(row)"
+          >
+            <div class="mono">{{ row.eanDisplay }}</div>
+            <div>{{ address(row.address) }}</div>
+            <div>{{ row.gridOperator ?? 'Not known' }}</div>
+            <div>{{ capacity(row) }}</div>
+          </div>
+        }
+      </pp-grid-table>
+    } @else {
+      <pp-card heading="Nothing unclaimed">
+        <p class="empty">No unclaimed connections match that search.</p>
+      </pp-card>
+    }
+
+    @if (chosen(); as c) {
+      <pp-card
+        [heading]="'Claim ' + c.eanDisplay"
+        subtitle="Two questions, and the second one matters at settlement"
+      >
+        <p class="question">Does this connection produce electricity?</p>
+        <div class="choices">
+          @for (option of expectations; track option.value) {
+            <div
+              class="choice"
+              [class.on]="option.value === expectation()"
+              (click)="setExpectation(option.value)"
+            >
+              <div class="choice-dot"></div>
+              <div>
+                <div class="choice-label">{{ option.label }}</div>
+                <div class="choice-note">{{ option.note }}</div>
+              </div>
+            </div>
+          }
+        </div>
+
+        <form [formGroup]="form" (ngSubmit)="claim()">
+          <pp-form-field
+            label="Name (optional)"
+            for="claim-name"
+            hint="Your own name replaces the EAN everywhere it is listed."
+            [error]="errorFor('name')"
+          >
+            <input id="claim-name" type="text" maxlength="80" formControlName="name" />
+          </pp-form-field>
+
+          <pp-form-field
+            label="Description (optional)"
+            for="claim-description"
+            [error]="errorFor('description')"
+          >
+            <textarea
+              id="claim-description"
+              rows="2"
+              maxlength="500"
+              formControlName="description"
+            ></textarea>
+          </pp-form-field>
+
+          <pp-button variant="primary" type="submit" [disabled]="!canClaim() || busy()">
+            {{ busy() ? 'Claiming' : 'Claim this connection' }}
+          </pp-button>
+        </form>
+      </pp-card>
+    }
+  `,
+  styles: `
+    .crumb { margin: 0 0 12px; font-size: 12px; }
+    .crumb a { color: var(--pp-blue-700); text-decoration: none; font-weight: 600; }
+    h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+    .sub { margin: 4px 0 16px; font-size: 11.5px; color: var(--pp-text-faint); }
+    pp-search-input { display: block; margin-bottom: 16px; }
+    pp-card { display: block; margin-top: 16px; }
+    .row { cursor: pointer; }
+    .row.on { background: var(--pp-blue-050); }
+    .mono { font-family: var(--font-mono); font-size: 12px; }
+    .question { margin: 0 0 10px; font-size: 12.5px; font-weight: 600; }
+    .choices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+    .choice {
+      display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--pp-border);
+      background: var(--pp-surface); border-radius: 8px; padding: 12px 15px; cursor: pointer;
+    }
+    .choice.on { border: 1.5px solid var(--pp-blue-700); background: var(--pp-blue-050); }
+    .choice-dot {
+      width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--pp-border-strong);
+      background: #fff; flex-shrink: 0; margin-top: 2px;
+    }
+    .choice.on .choice-dot {
+      border-color: var(--pp-blue-700); background: var(--pp-blue-700);
+      box-shadow: inset 0 0 0 2px #fff;
+    }
+    .choice-label { font-size: 12.5px; font-weight: 600; }
+    .choice-note {
+      font-size: 11px; color: var(--pp-text-faint); margin-top: 3px; line-height: 1.45;
+    }
+    .summary {
+      margin: 0 0 14px; padding: 10px 12px; border-radius: 6px;
+      border: 1px solid var(--pp-amber-border); background: var(--pp-amber-surface);
+      color: var(--pp-amber-text); font-size: 12.5px;
+    }
+    .empty { margin: 0; font-size: 12.5px; color: var(--pp-text-body); }
+  `,
+})
+export class ClaimConnectionPage {
+  private readonly api = inject(CustomerApiClient);
+  private readonly router = inject(Router);
+  private readonly fb = inject(FormBuilder);
+
+  readonly expectations = EXPECTATIONS;
+  readonly search = signal('');
+  /** Bumped to re-run the search after a claim takes a row out of the pool. */
+  private readonly reload = signal(0);
+  readonly chosen = signal<EanPoolEntry | null>(null);
+  readonly expectation = signal<ProductionExpectationValue | null>(null);
+  readonly busy = signal(false);
+  readonly summary = signal<string | null>(null);
+
+  readonly form = this.fb.nonNullable.group({ name: [''], description: [''] });
+
+  private readonly response = toSignal(
+    toObservable(computed(() => `${this.reload()} ${this.search()}`)).pipe(
+      debounceTime(250),
+      distinctUntilChanged(),
+      startWith('0 '),
+      switchMap((key) => this.api.searchEanPool(key.slice(key.indexOf(' ') + 1))),
+    ),
+    { initialValue: EMPTY },
+  );
+
+  readonly rows = computed(() => this.response().items);
+
+  readonly canClaim = computed(() => this.chosen() !== null && this.expectation() !== null);
+
+  choose(row: EanPoolEntry): void {
+    this.summary.set(null);
+    this.chosen.set(row);
+  }
+
+  setExpectation(value: ProductionExpectationValue): void {
+    this.expectation.set(value);
+  }
+
+  address(a: Address | null): string {
+    if (a === null) return 'Not known';
+    const number = [a.houseNumber, a.houseNumberSuffix].filter((p) => p).join('');
+    return `${a.street} ${number}, ${a.city}`.replace(/\s+/g, ' ').trim();
+  }
+
+  capacity(row: EanPoolEntry): string {
+    return row.capacityKw === null
+      ? 'Not known'
+      : `${new Intl.NumberFormat('nl-NL').format(row.capacityKw)} kW`;
+  }
+
+  errorFor(control: 'name' | 'description'): string | null {
+    return (this.form.controls[control].errors?.['server'] as string | undefined) ?? null;
+  }
+
+  claim(): void {
+    const entry = this.chosen();
+    const expectation = this.expectation();
+    if (entry === null || expectation === null || this.busy()) return;
+
+    this.summary.set(null);
+    this.busy.set(true);
+
+    const raw = this.form.getRawValue();
+    const blankToNull = (v: string) => (v.trim() === '' ? null : v.trim());
+
+    this.api
+      .claimConnection({
+        ean: entry.ean,
+        productionExpectation: expectation,
+        name: blankToNull(raw.name),
+        description: blankToNull(raw.description),
+      })
+      .subscribe({
+        next: (created) => {
+          this.busy.set(false);
+          void this.router.navigate(['/connections', created.id]);
+        },
+        error: (error: unknown) => {
+          this.busy.set(false);
+          this.summary.set(applyProblemDetails(this.form, error));
+          // Losing the race is ordinary. The row they were looking at is gone, so ask again
+          // rather than leaving a claimable-looking row that will refuse a second time.
+          this.chosen.set(null);
+          this.expectation.set(null);
+          this.reload.update((n) => n + 1);
+        },
+      });
+  }
+}
+```
+
+- [ ] **Step 4: Run the test and watch it pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- claim-connection-page`
+Expected: PASS — 6 tests
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/features/connections
+git commit -m "feat(customer-portal): claim a connection from the shared pool"
+```
+
+---
+
+### Task 25: The company profile and the account list, read-only
+
+`[F01-R09]` is the profile and `[F01-R21]` is the list of colleagues who can sign in. Both are
+**read-only in the customer portal**: `[F01-R01]`…`[F01-R07]` put company edits with a PeakPower
+employee, and plan 4's back office is where they happen.
+
+**Read-only is stated, not merely implemented.** A screen with no edit button and no explanation
+reads as unfinished. This one says who to ask, in one sentence, beside the data it applies to.
+
+**The admin flag is shown even though nothing reads it.** `[DEC-71]` ships `is_admin` in phase 1
+so a role does not have to be retrofitted onto live accounts in phase 2. Displaying it makes the
+column real; displaying it *with* the sentence saying four-eyes arrives later is what stops a
+reader assuming it already gates something.
+
+This screen is also where `company` — the one customer route key the specification's rail does
+not carry — earns its place. Task 12 added the key; Task 28 records it in
+`specs/60-mockups/screens-customer.mjs`.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Create: `apps/customer-portal/src/app/features/company/company-page.ts`
+- Test: `apps/customer-portal/src/app/features/company/company-page.spec.ts`
+
+**Interfaces:**
+- Consumes: `CustomerApiClient.getCompany()` and `.getCompanyAccounts()` (Task 10);
+  `CompanyProfile`, `CompanyAccount`, `CompanyAccountsResponse`, `Address` from
+  `@peakpower/api-client-customer`; `accountStatusLabel`, `accountStatusTone`,
+  `customerStatusLabel` (Task 22); `PpCard`, `PpBadge`, `PpGridTable`, `PpGridHead`, `PpGridRow`
+  from `@peakpower/shared-ui`.
+- Produces:
+  - `export class CompanyPage` — selector `pp-company-page`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/customer-portal/src/app/features/company/company-page.spec.ts`:
+
+```ts
+import { HttpTestingController } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { describe, it, expect, afterEach } from 'vitest';
+import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
+import type { CompanyAccount, CompanyProfile } from '@peakpower/api-client-customer';
+
+import { CompanyPage } from './company-page';
+
+const PROFILE: CompanyProfile = {
+  id: 'c1',
+  legalName: 'Vandersteen Koeling B.V.',
+  tradeName: 'Vandersteen Koeling',
+  kvkNumber: '34215678',
+  vatNumber: 'NL803241157B01',
+  status: 'ACTIVE',
+  billingAddress: {
+    street: 'Havenweg',
+    houseNumber: '22',
+    houseNumberSuffix: null,
+    postalCode: '3089JJ',
+    city: 'Rotterdam',
+    country: 'NL',
+  },
+  visitingAddress: null,
+  primaryContact: {
+    name: 'J. de Vries',
+    email: 'j.devries@vandersteen.nl',
+    phone: '+31 10 240 1188',
+  },
+  locale: 'nl-NL',
+};
+
+function account(over: Partial<CompanyAccount> = {}): CompanyAccount {
+  return {
+    id: 'a1',
+    firstName: 'J.',
+    lastName: 'de Vries',
+    jobTitle: 'Operations manager',
+    email: 'j.devries@vandersteen.nl',
+    phone: null,
+    status: 'ACTIVE',
+    isAdmin: true,
+    lastLoginAt: '2026-08-20T14:25:00Z',
+    ...over,
+  };
+}
+
+describe('CompanyPage', () => {
+  let http: HttpTestingController;
+
+  async function render() {
+    TestBed.configureTestingModule({
+      providers: [provideCustomerApiTesting(), provideRouter([])],
+    });
+    http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(CompanyPage);
+    await fixture.whenStable();
+    return fixture;
+  }
+
+  async function load(fixture: Awaited<ReturnType<typeof render>>, accounts: CompanyAccount[]) {
+    http.expectOne('/api/v1/company').flush(PROFILE);
+    http.expectOne('/api/v1/company/accounts').flush({ items: accounts });
+    await fixture.whenStable();
+  }
+
+  afterEach(() => http.verify());
+
+  it('prints the company as registered', async () => {
+    const fixture = await render();
+    await load(fixture, [account()]);
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Vandersteen Koeling B.V.');
+    expect(text).toContain('34215678');
+    expect(text).toContain('NL803241157B01');
+    expect(text).toContain('Havenweg 22, 3089JJ Rotterdam');
+    expect(text).toContain('Active');
+  });
+
+  it('says who changes it, rather than leaving a screen with no buttons unexplained', async () => {
+    const fixture = await render();
+    await load(fixture, [account()]);
+
+    expect(fixture.nativeElement.textContent)
+      .toContain('Ask the PeakPower desk to correct anything here');
+    expect(fixture.nativeElement.querySelector('form')).toBeNull();
+    expect(fixture.nativeElement.querySelector('input')).toBeNull();
+  });
+
+  it('lists the colleagues who can sign in, with their status in words', async () => {
+    const fixture = await render();
+    await load(fixture, [
+      account(),
+      account({
+        id: 'a2', firstName: 'R.', lastName: 'Smit', status: 'INVITED',
+        isAdmin: false, lastLoginAt: null,
+      }),
+    ]);
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('de Vries');
+    expect(text).toContain('Invited');
+    expect(text).toContain('Never signed in');
+  });
+
+  it('marks the admins, and says what the flag does not yet do [DEC-71]', async () => {
+    const fixture = await render();
+    await load(fixture, [account(), account({ id: 'a2', isAdmin: false })]);
+
+    expect(fixture.nativeElement.querySelectorAll('.admin-flag')).toHaveLength(1);
+    expect(fixture.nativeElement.textContent)
+      .toContain('Four-eyes approval arrives in a later slice; nothing is gated on this yet.');
+  });
+
+  it('never renders the accounts table with zero rows', async () => {
+    const fixture = await render();
+    await load(fixture, []);
+
+    expect(fixture.nativeElement.querySelector('pp-grid-table')).toBeNull();
+    expect(fixture.nativeElement.textContent)
+      .toContain('This company has no accounts, which should not be possible.');
+  });
+});
+```
+
+- [ ] **Step 2: Run the test and watch it fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- company-page`
+Expected: FAIL — `Failed to resolve import "./company-page"`
+
+- [ ] **Step 3: Write the company page**
+
+Create `apps/customer-portal/src/app/features/company/company-page.ts`:
+
+```ts
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { CustomerApiClient } from '@peakpower/api-client-customer';
+import type {
+  Address, CompanyAccount, CompanyAccountsResponse, CompanyProfile,
+} from '@peakpower/api-client-customer';
+import { PpBadge, PpCard, PpGridHead, PpGridRow, PpGridTable } from '@peakpower/shared-ui';
+
+import { accountStatusLabel, accountStatusTone, customerStatusLabel } from '../../shared/labels';
+
+const NO_ACCOUNTS: CompanyAccountsResponse = { items: [] };
+
+/**
+ * The company [F01-R09] and the colleagues who can sign in [F01-R21], both read-only.
+ *
+ * Editing a company is an employee's job [F01-R01]...[F01-R07], so this screen says who to ask
+ * rather than leaving a page full of data and no buttons looking unfinished.
+ *
+ * The admin flag is displayed even though nothing branches on it yet: [DEC-71] ships the column
+ * in phase 1 so a role does not have to be retrofitted onto live accounts in phase 2. The
+ * sentence under the table is what stops a reader assuming it already gates something.
+ */
+@Component({
+  selector: 'pp-company-page',
+  standalone: true,
+  imports: [PpCard, PpBadge, PpGridTable, PpGridHead, PpGridRow],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @if (profile(); as c) {
+      <div class="head">
+        <div>
+          <h1>{{ c.legalName }}</h1>
+          <p class="sub">{{ c.tradeName ?? 'No trade name' }}</p>
+        </div>
+        <pp-badge tone="neutral">{{ statusLabel(c) }}</pp-badge>
+      </div>
+
+      <pp-card heading="Company" subtitle="As registered with the Kamer van Koophandel">
+        <dl class="facts">
+          <div><dt>Legal name</dt><dd>{{ c.legalName }}</dd></div>
+          <div><dt>Trade name</dt><dd>{{ c.tradeName ?? 'None' }}</dd></div>
+          <div><dt>KvK number</dt><dd class="mono">{{ c.kvkNumber }}</dd></div>
+          <div><dt>VAT number</dt><dd class="mono">{{ c.vatNumber ?? 'Not registered' }}</dd></div>
+          <div><dt>Billing address</dt><dd>{{ address(c.billingAddress) }}</dd></div>
+          <div><dt>Visiting address</dt><dd>{{ address(c.visitingAddress) }}</dd></div>
+          <div><dt>Primary contact</dt><dd>{{ contact(c) }}</dd></div>
+          <div><dt>Language</dt><dd>{{ c.locale }}</dd></div>
+        </dl>
+
+        <p class="note">
+          Ask the PeakPower desk to correct anything here. Company details are maintained by
+          PeakPower so that the agreement and the register never disagree.
+        </p>
+      </pp-card>
+
+      @if (accounts().length > 0) {
+        <pp-card heading="People" subtitle="Everyone who can sign in for this company">
+          <pp-grid-table columns="minmax(0, 1.4fr) 1.6fr 1fr 1fr" density="compact">
+            <div ppGridHead>
+              <div>NAME</div>
+              <div>EMAIL</div>
+              <div>STATUS</div>
+              <div>LAST SIGN-IN</div>
+            </div>
+
+            @for (person of accounts(); track person.id) {
+              <div ppGridRow>
+                <div class="cell-name">
+                  <span>{{ person.firstName }} {{ person.lastName }}</span>
+                  @if (person.isAdmin) {
+                    <span class="admin-flag">Admin</span>
+                  }
+                  @if (person.jobTitle) {
+                    <span class="job">{{ person.jobTitle }}</span>
+                  }
+                </div>
+                <div class="mono">{{ person.email }}</div>
+                <div>
+                  <pp-badge [tone]="accountTone(person)">{{ accountLabel(person) }}</pp-badge>
+                </div>
+                <div>{{ lastLogin(person) }}</div>
+              </div>
+            }
+          </pp-grid-table>
+
+          <p class="note">
+            Four-eyes approval arrives in a later slice; nothing is gated on this yet. To invite
+            or deactivate someone, ask the PeakPower desk.
+          </p>
+        </pp-card>
+      } @else {
+        <pp-card heading="People">
+          <p class="empty">
+            This company has no accounts, which should not be possible. Tell the PeakPower desk:
+            a company reaches Active only with at least one.
+          </p>
+        </pp-card>
+      }
+    }
+  `,
+  styles: `
+    .head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+      margin-bottom: 16px;
+    }
+    h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+    .sub { margin: 4px 0 0; font-size: 11.5px; color: var(--pp-text-faint); }
+    pp-card { display: block; margin-bottom: 16px; }
+    .facts { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+    .facts > div {
+      display: flex; justify-content: space-between; gap: 16px; padding: 8px 0;
+      border-top: 1px solid var(--pp-border); font-size: 12.5px;
+    }
+    dt { color: var(--pp-text-body); }
+    dd { margin: 0; font-weight: 600; text-align: right; }
+    .mono { font-family: var(--font-mono); font-size: 12px; }
+    .cell-name { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .admin-flag {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--pp-violet-text); border: 1px solid var(--pp-violet-border);
+      background: var(--pp-violet-bg); border-radius: 999px; padding: 1px 8px;
+    }
+    .job { font-size: 11px; color: var(--pp-text-faint); }
+    .note {
+      margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--pp-border);
+      font-size: 11.5px; color: var(--pp-text-faint); line-height: 1.5;
+    }
+    .empty { margin: 0; font-size: 12.5px; color: var(--pp-text-body); line-height: 1.5; }
+  `,
+})
+export class CompanyPage {
+  private readonly api = inject(CustomerApiClient);
+
+  readonly profile = toSignal<CompanyProfile | null>(this.api.getCompany(), {
+    initialValue: null,
+  });
+
+  private readonly accountsResponse = toSignal(this.api.getCompanyAccounts(), {
+    initialValue: NO_ACCOUNTS,
+  });
+
+  readonly accounts = computed(() => this.accountsResponse().items);
+
+  statusLabel(c: CompanyProfile): string {
+    return customerStatusLabel(c.status);
+  }
+
+  accountLabel(a: CompanyAccount): string {
+    return accountStatusLabel(a.status);
+  }
+
+  accountTone(a: CompanyAccount) {
+    return accountStatusTone(a.status);
+  }
+
+  address(a: Address | null): string {
+    if (a === null) return 'Not registered';
+    const number = [a.houseNumber, a.houseNumberSuffix].filter((p) => p).join('');
+    return `${a.street} ${number}, ${a.postalCode} ${a.city}`.replace(/\s+/g, ' ').trim();
+  }
+
+  contact(c: CompanyProfile): string {
+    const p = c.primaryContact;
+    return p.phone === null ? `${p.name} · ${p.email}` : `${p.name} · ${p.email} · ${p.phone}`;
+  }
+
+  /** Never a blank cell: "never" is a fact and reads as one. */
+  lastLogin(a: CompanyAccount): string {
+    if (a.lastLoginAt === null) return 'Never signed in';
+    return new Intl.DateTimeFormat('nl-NL', { dateStyle: 'medium', timeStyle: 'short' })
+      .format(new Date(a.lastLoginAt));
+  }
+}
+```
+
+- [ ] **Step 4: Run the test and watch it pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal -- company-page`
+Expected: PASS — 5 tests
+
+- [ ] **Step 5: Run the whole portal suite and build it**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run test:customer-portal && npm run build:customer-portal`
+Expected: PASS, then a successful production build — every `loadComponent` in `app.routes.ts` and
+`connections.routes.ts` now resolves, so this is the first task after which the portal builds
+end to end.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add apps/customer-portal/src/app/features/company
+git commit -m "feat(customer-portal): the read-only company profile and account list"
+```
+
+---
+
+### Task 26: The demo seed — six companies, their connections, and the unclaimed pool
+
+Design §5.5: six companies mirroring `trading-poc`'s roster, so the built portal and the demo
+show the same names, plus enough unclaimed EANs to make the claim flow demonstrable.
+
+**The six demo EANs do not carry correct GS1 check digits — all six fail.** That is exactly why
+`[DEC-114]` relaxed validation to eighteen digits for the proof of concept, and design §10
+registers reinstating the check digit as `[OQ-97]` with an owner. The seeder carries a comment
+saying so **at the point where it inserts them**, because that is where someone will one day
+wonder why a "real" EAN does not validate.
+
+**Development only.** The Migrator runs the seeder after migrations and only when the environment
+is Development. Seed data in an environment that later becomes real is how a demo company ends up
+on an invoice.
+
+**Idempotent, guarded on a table the query filter cannot hide.** The Migrator has no HTTP request
+and therefore no customer context, so `db.Customers` would come back filtered. The guard counts
+`customer.customer` in raw SQL instead — the Migrator connects as the owner, which the row-level
+security policies do not apply to.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-platform`)*
+- Create: `src/Infrastructure/PeakPower.Persistence/Seeding/DemoDataSeeder.cs`
+- Modify: `src/Hosts/PeakPower.Migrator/Program.cs`
+- Test: `tests/PeakPower.Integration.Tests/Seeding/DemoDataSeederTests.cs`
+
+**Interfaces:**
+- Consumes, from plan 1: `PeakPowerDbContext` with `DbSet<Customer> Customers`,
+  `DbSet<CustomerAccount> CustomerAccounts`, `DbSet<MeteringPoint> MeteringPoints`,
+  `DbSet<Brp> Brps`. From plan 2:
+  `MeteringPoint.Attach(Guid customerId, EanCode ean, Guid brpId, ProductionExpectation productionExpectation, ProductionExpectationSource? expectationSource, string? name, string? description, string? gridOperator, decimal? capacityKw, Address? address, DateOnly validFrom)`,
+  `Customer.Create(string legalName, string? tradeName, KvkNumber kvkNumber, string? vatNumber, Address billingAddress, Address? visitingAddress, ContactPerson primaryContact, string? internalReference, string locale)`,
+  `Customer.ChangeStatus(CustomerStatus status)`,
+  `CustomerAccount.Create(Guid customerId, string username, string firstName, string lastName, string? jobTitle, string email, string? phone, bool isAdmin)`.
+  From plan 5: `PeakPower.Infrastructure.Security.Argon2idPasswordHasher : IPasswordHasher`
+  (parameterless constructor) and
+  **`CustomerAccount.SetPassword(string passwordHash)`** — the member plan 5's onboarding
+  materialisation uses to put an Argon2id hash on a new account. ⚠ Flagged in **New names
+  introduced**: if plan 5 named it something else, use that name here.
+  From Task 6: `EanPoolEntry.Create(EanCode ean, Commodity commodity, string? gridOperator, decimal? capacityKw, Address? address)`
+  and `PeakPowerDbContext.EanPool`.
+- Produces:
+  - `PeakPower.Persistence.Seeding.DemoDataSeeder` with
+    `public const string DemoPassword`, `public Task<int> SeedAsync(CancellationToken ct)`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/PeakPower.Integration.Tests/Seeding/DemoDataSeederTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using PeakPower.Domain.Customers;
+using PeakPower.Infrastructure.Security;
+using PeakPower.Persistence.Seeding;
+using Xunit;
+
+namespace PeakPower.Integration.Tests.Seeding;
+
+[Collection(nameof(CustomerApiCollection))]
+public sealed class DemoDataSeederTests(CustomerApiFactory factory)
+{
+    private DemoDataSeeder Seeder()
+    {
+        var db = factory.CreateOwnerDbContext();
+        return new DemoDataSeeder(db, new Argon2idPasswordHasher(), new SystemMarketCalendar());
+    }
+
+    [Fact]
+    public async Task Seeds_six_companies()
+    {
+        await Seeder().SeedAsync(CancellationToken.None);
+
+        await using var db = factory.CreateOwnerDbContext();
+        var names = await db.Customers.Select(c => c.LegalName).ToListAsync();
+
+        names.Should().HaveCount(6);
+        names.Should().Contain("Vandersteen Koeling B.V.");
+        names.Should().Contain("Kramer Logistics B.V.");
+        names.Should().Contain("De Groot Papier");
+    }
+
+    [Fact]
+    public async Task Running_it_twice_changes_nothing()
+    {
+        await Seeder().SeedAsync(CancellationToken.None);
+        var second = await Seeder().SeedAsync(CancellationToken.None);
+
+        second.Should().Be(0, "the seeder is a demo convenience, not a migration");
+
+        await using var db = factory.CreateOwnerDbContext();
+        (await db.Customers.CountAsync()).Should().Be(6);
+        (await db.MeteringPoints.CountAsync()).Should().Be(11);
+    }
+
+    [Fact]
+    public async Task Every_company_has_an_admin_account_that_can_sign_in()
+    {
+        await Seeder().SeedAsync(CancellationToken.None);
+
+        await using var db = factory.CreateOwnerDbContext();
+        var accounts = await db.CustomerAccounts.ToListAsync();
+
+        accounts.Should().OnlyContain(a => a.PasswordHash != null);
+        accounts.Where(a => a.IsAdmin).Select(a => a.CustomerId).Distinct()
+            .Should().HaveCount(6);
+    }
+
+    [Fact]
+    public async Task Vandersteen_shows_every_label_case_the_list_has_to_render()
+    {
+        await Seeder().SeedAsync(CancellationToken.None);
+
+        await using var db = factory.CreateOwnerDbContext();
+        var vandersteen = await db.Customers.SingleAsync(c => c.KvkNumber.Value == "34215678");
+        var connections = await db.MeteringPoints
+            .Where(m => m.CustomerId == vandersteen.Id)
+            .ToListAsync();
+
+        connections.Should().HaveCount(6);
+        connections.Should().Contain(m => m.Name == null, "the grouped-EAN fallback needs a case");
+        connections.Should().Contain(m => m.ValidTo != null, "so does an ending connection");
+    }
+
+    [Fact]
+    public async Task The_six_demo_eans_load_even_though_they_fail_the_gs1_check_digit()
+    {
+        // This is [DEC-114] doing its job. Under the pre-PoC rule not one of these six would
+        // load, and the demo would have no data at all. [OQ-97] owns putting the rule back.
+        await Seeder().SeedAsync(CancellationToken.None);
+
+        await using var db = factory.CreateOwnerDbContext();
+        var eans = await db.MeteringPoints.Select(m => m.Ean.Value).ToListAsync();
+
+        eans.Should().Contain("871687100000000011");
+        eans.Should().OnlyContain(e => e.Length == 18);
+    }
+
+    [Fact]
+    public async Task Seeds_a_pool_of_unclaimed_electricity_connections()
+    {
+        await Seeder().SeedAsync(CancellationToken.None);
+
+        await using var db = factory.CreateOwnerDbContext();
+        var pool = await db.EanPool.ToListAsync();
+
+        pool.Should().HaveCount(20);
+        pool.Should().OnlyContain(e => !e.IsClaimed);
+        // Gas is not a selectable commodity in slice 1, so the demo's two gas rows are left out.
+        pool.Should().OnlyContain(e => e.Commodity == Commodity.Electricity);
+    }
+
+    [Fact]
+    public async Task No_seeded_ean_is_also_in_the_pool()
+    {
+        await Seeder().SeedAsync(CancellationToken.None);
+
+        await using var db = factory.CreateOwnerDbContext();
+        var attached = await db.MeteringPoints.Select(m => m.Ean.Value).ToListAsync();
+        var pool = await db.EanPool.Select(e => e.Ean.Value).ToListAsync();
+
+        // An EAN in both places would be claimable twice and would then hit the GiST exclusion
+        // constraint, which is a correct failure and an unreadable one.
+        pool.Should().NotIntersectWith(attached);
+    }
+}
+```
+
+- [ ] **Step 2: Run the test and watch it fail**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~DemoDataSeederTests"`
+Expected: FAIL — `error CS0246: The type or namespace name 'DemoDataSeeder' could not be found`
+
+- [ ] **Step 3: Write the seeder**
+
+Create `src/Infrastructure/PeakPower.Persistence/Seeding/DemoDataSeeder.cs`:
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using PeakPower.Application.Abstractions;
+using PeakPower.Domain.Common;
+using PeakPower.Domain.Customers;
+using PeakPower.Domain.Metering;
+
+namespace PeakPower.Persistence.Seeding;
+
+/// <summary>
+/// The demo roster, mirroring <c>trading-poc</c> so the built portal and the prototype show the
+/// same names (design section 5.5).
+/// <para>
+/// Development only, and idempotent. It is a demo convenience, not a migration: it inserts once
+/// and does nothing on every later run.
+/// </para>
+/// </summary>
+public sealed class DemoDataSeeder(
+    PeakPowerDbContext db,
+    IPasswordHasher hasher,
+    IMarketCalendar calendar)
+{
+    /// <summary>Every demo account signs in with this. It exists only in Development.</summary>
+    public const string DemoPassword = "correct-horse-battery";
+
+    private const string Locale = "nl-NL";
+
+    private sealed record Person(string First, string Last, string Email, string? JobTitle, bool IsAdmin);
+
+    private sealed record Connection(
+        string Ean, string? Name, string? Description, string GridOperator, decimal CapacityKw,
+        string Street, string HouseNumber, string PostalCode, string City,
+        ProductionExpectation Expectation, int? EndsInDays);
+
+    private sealed record Company(
+        string LegalName, string? TradeName, string Kvk, string? Vat,
+        string Street, string HouseNumber, string PostalCode, string City,
+        string ContactName, string ContactEmail, string? ContactPhone,
+        IReadOnlyList<Person> People, IReadOnlyList<Connection> Connections);
+
+    /// <returns>How many companies were created. Zero means it had already run.</returns>
+    public async Task<int> SeedAsync(CancellationToken ct)
+    {
+        // Counted in raw SQL on purpose. This runs in the Migrator, which has no request and
+        // therefore no ICustomerContext, so `db.Customers` would come back through the global
+        // query filter with nothing in it and the seeder would insert a second time.
+        var existing = await db.Database
+            .SqlQueryRaw<int>("SELECT count(*)::int AS \"Value\" FROM customer.customer")
+            .SingleAsync(ct);
+
+        if (existing > 0)
+        {
+            return 0;
+        }
+
+        // Migration 1 seeds the BRP reference table, PVNed first. Every demo connection is
+        // balanced by it, because slice 1 has exactly one BRP.
+        var brp = await db.Brps.OrderBy(b => b.Code).FirstAsync(ct);
+        var today = calendar.TodayInAmsterdam;
+        var passwordHash = hasher.Hash(DemoPassword);
+
+        foreach (var company in Companies)
+        {
+            var customer = Customer.Create(
+                company.LegalName,
+                company.TradeName,
+                KvkNumber.Create(company.Kvk).Value,
+                company.Vat,
+                new Address(company.Street, company.HouseNumber, null,
+                            company.PostalCode, company.City, "NL"),
+                visitingAddress: null,
+                new ContactPerson(company.ContactName, company.ContactEmail, company.ContactPhone),
+                internalReference: null,
+                Locale);
+
+            customer.ChangeStatus(CustomerStatus.Active);
+            db.Customers.Add(customer);
+
+            foreach (var person in company.People)
+            {
+                var account = CustomerAccount.Create(
+                    customer.Id, person.Email, person.First, person.Last,
+                    person.JobTitle, person.Email, phone: null, person.IsAdmin);
+
+                account.SetPassword(passwordHash);
+                db.CustomerAccounts.Add(account);
+            }
+
+            foreach (var c in company.Connections)
+            {
+                var point = MeteringPoint.Attach(
+                    customer.Id,
+                    EanCode.Create(c.Ean).Value,
+                    brp.Id,
+                    c.Expectation,
+                    ProductionExpectationSource.CustomerDeclared,
+                    c.Name,
+                    c.Description,
+                    c.GridOperator,
+                    c.CapacityKw,
+                    new Address(c.Street, c.HouseNumber, null, c.PostalCode, c.City, "NL"),
+                    validFrom: new DateOnly(2024, 1, 1));
+
+                if (c.EndsInDays is { } days)
+                {
+                    // Relative to today, never a literal date: a fixed end date drifts out of the
+                    // ENDING window as the calendar moves and the demo silently loses that case.
+                    point.EndOn(today.AddDays(days));
+                }
+
+                db.MeteringPoints.Add(point);
+            }
+        }
+
+        foreach (var entry in Pool)
+        {
+            db.EanPool.Add(EanPoolEntry.Create(
+                EanCode.Create(entry.Ean).Value,
+                Commodity.Electricity,
+                entry.GridOperator,
+                entry.CapacityKw,
+                new Address(entry.Street, entry.HouseNumber, null,
+                            entry.PostalCode, entry.City, "NL")));
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Companies.Count;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────
+    // ⚠ NOT ONE OF THE SIX EANs BELOW CARRIES A CORRECT GS1 CHECK DIGIT. All six fail, under
+    // both of the weightings the two conventions use. They load anyway because [DEC-114]
+    // relaxed EAN validation to "eighteen digits" for the proof of concept, and they are kept
+    // exactly as the trading-poc prototype prints them so the built portal and the demo show
+    // the same connections. [OQ-97] owns reinstating the check digit and pinning which
+    // weighting is normative; when it is answered, THESE ROWS ARE THE FIRST THING THAT BREAKS.
+    // ─────────────────────────────────────────────────────────────────────────────────────
+    private static readonly IReadOnlyList<Company> Companies =
+    [
+        new("Vandersteen Koeling B.V.", "Vandersteen Koeling", "34215678", "NL803241157B01",
+            "Havenweg", "22", "3089JJ", "Rotterdam",
+            "J. de Vries", "j.devries@vandersteen.nl", "+31 10 240 1188",
+            [
+                new("J.", "de Vries", "j.devries@vandersteen.nl", "Operations manager", true),
+                new("M.", "Vandersteen", "m.vandersteen@vandersteen.nl", "Director", true),
+                new("P.", "Aksoy", "p.aksoy@vandersteen.nl", "Energy buyer", false),
+            ],
+            [
+                new("871687100000000011", "Rotterdam DC", "Data centre, three halls",
+                    "Stedin", 4200m, "Waalhaven Zuidzijde", "8", "3089JH", "Rotterdam",
+                    ProductionExpectation.Never, null),
+                new("871687100000000027", "Venlo cold store", "Freezer hall and three dock compressors",
+                    "Enexis", 2500m, "Ceresstraat", "14", "5928LA", "Venlo",
+                    ProductionExpectation.Never, null),
+                new("871687100000000043", "Tilburg plant", "Logistics hub, two cold docks",
+                    "Enexis", 3800m, "Vossenberg", "22", "5051DV", "Tilburg",
+                    ProductionExpectation.Never, null),
+                new("871687100000000059", "Almere office", "Office and a small server room",
+                    "Liander", 800m, "Hogering", "145", "1362AA", "Almere",
+                    ProductionExpectation.Expected, null),
+                // Deliberately unnamed: this is the row that proves [F01-R31], the grouped-EAN
+                // fallback. Delete the null and the portal loses its only unnamed connection.
+                new("871687100000000061", null, null,
+                    "Enexis", 1200m, "Croy", "3", "5653LC", "Eindhoven",
+                    ProductionExpectation.Unknown, null),
+                // Ends inside the ENDING window, so the list always has one warning badge.
+                new("871687100000000078", "Breda warehouse", "Warehouse, contract ends this year",
+                    "Enexis", 1600m, "Konijnenberg", "30", "4825BD", "Breda",
+                    ProductionExpectation.Never, 45),
+            ]),
+
+        new("Kramer Logistics B.V.", null, "68812340", null,
+            "Ceresstraat", "16", "5928LA", "Venlo",
+            "R. Kramer", "r.kramer@kramerlogistics.nl", "+31 77 320 4411",
+            [new("R.", "Kramer", "r.kramer@kramerlogistics.nl", "Managing director", true)],
+            [
+                new("871687100000000085", "Venlo hub", "Cross-dock and cold store",
+                    "Enexis", 2900m, "Ceresstraat", "16", "5928LA", "Venlo",
+                    ProductionExpectation.Never, null),
+            ]),
+
+        new("Van Dijk Glastuinbouw", null, "70012399", null,
+            "Hoefweg", "220", "2665CH", "Bleiswijk",
+            "K. van Dijk", "k.vandijk@vandijkglas.nl", "+31 10 521 7788",
+            [new("K.", "van Dijk", "k.vandijk@vandijkglas.nl", "Owner", true)],
+            [
+                new("871687100000000093", "Kas 4", "Greenhouse with combined heat and power",
+                    "Stedin", 5400m, "Hoefweg", "220", "2665CH", "Bleiswijk",
+                    ProductionExpectation.Expected, null),
+            ]),
+
+        new("Meijer Koelhuizen", null, "61234567", null,
+            "Dierensteinweg", "30", "2991XJ", "Barendrecht",
+            "T. Meijer", "t.meijer@meijerkoel.nl", null,
+            [new("T.", "Meijer", "t.meijer@meijerkoel.nl", "Plant manager", true)],
+            [
+                new("871687100000000106", "Koelhuis Barendrecht", "Cold store, two halls",
+                    "Stedin", 3100m, "Dierensteinweg", "30", "2991XJ", "Barendrecht",
+                    ProductionExpectation.Never, null),
+            ]),
+
+        new("Hoekstra Staal B.V.", null, "65543210", null,
+            "Josink Esweg", "34", "7545PN", "Enschede",
+            "S. Hoekstra", "s.hoekstra@hoekstrastaal.nl", null,
+            [new("S.", "Hoekstra", "s.hoekstra@hoekstrastaal.nl", "Director", true)],
+            [
+                new("871687100000000338", "Walserij", "Rolling mill",
+                    "Enexis", 6200m, "Josink Esweg", "34", "7545PN", "Enschede",
+                    ProductionExpectation.Never, null),
+            ]),
+
+        new("De Groot Papier", null, "63321098", null,
+            "Vlijtseweg", "144", "7317AH", "Apeldoorn",
+            "A. de Groot", "a.degroot@degrootpapier.nl", null,
+            [new("A.", "de Groot", "a.degroot@degrootpapier.nl", "Energy buyer", true)],
+            [
+                new("871687100000000346", "Papierfabriek", "Paper mill, two machines",
+                    "Liander", 4800m, "Vlijtseweg", "144", "7317AH", "Apeldoorn",
+                    ProductionExpectation.Expected, null),
+            ]),
+    ];
+
+    private sealed record PoolRow(
+        string Ean, string Street, string HouseNumber, string PostalCode, string City,
+        string GridOperator, decimal CapacityKw);
+
+    /// <summary>
+    /// The unclaimed pool, taken from the prototype's <c>ean-registry.js</c>. Its EANs start past
+    /// the seeded connections on purpose, so nothing is claimable that somebody already owns.
+    /// The prototype's two gas rows are left out: <c>Commodity</c> has one selectable value in
+    /// slice 1 and a gas row nobody can claim is a row that only raises questions.
+    /// </summary>
+    private static readonly IReadOnlyList<PoolRow> Pool =
+    [
+        new("871687100000000114", "Ceresstraat", "16", "5928LA", "VENLO", "Enexis", 2500m),
+        new("871687100000000122", "Ceresstraat", "18", "5928LA", "VENLO", "Enexis", 1250m),
+        new("871687100000000130", "Pekstraat", "24", "8232DP", "LELYSTAD", "Liander", 1600m),
+        new("871687100000000155", "Waalhaven Zuidzijde", "12", "3089JH", "ROTTERDAM", "Stedin", 3200m),
+        new("871687100000000163", "Botlekweg", "175", "3197KA", "ROTTERDAM", "Stedin", 5400m),
+        new("871687100000000171", "Hornweg", "8", "1044AN", "AMSTERDAM", "Liander", 2100m),
+        new("871687100000000189", "Kabelweg", "41", "1014BA", "AMSTERDAM", "Liander", 900m),
+        new("871687100000000197", "Croy", "3", "5653LC", "EINDHOVEN", "Enexis", 1800m),
+        new("871687100000000213", "Vossenberg", "40", "5051DV", "TILBURG", "Enexis", 4100m),
+        new("871687100000000221", "Hogering", "162", "1362AA", "ALMERE", "Liander", 750m),
+        new("871687100000000239", "Rouaanstraat", "9", "9723CD", "GRONINGEN", "Enexis", 1400m),
+        new("871687100000000247", "Konijnenberg", "70", "4825BD", "BREDA", "Enexis", 2600m),
+        new("871687100000000254", "Marsweg", "31", "8013PD", "ZWOLLE", "Enexis", 1150m),
+        new("871687100000000262", "Westervoortsedijk", "73", "6827AV", "ARNHEM", "Liander", 3300m),
+        new("871687100000000270", "Binckhorstlaan", "215", "2516BA", "DEN HAAG", "Stedin", 980m),
+        new("871687100000000288", "Vlijtseweg", "144", "7317AH", "APELDOORN", "Liander", 1750m),
+        new("871687100000000296", "Nieuwe Dukenburgseweg", "20", "6534AD", "NIJMEGEN", "Liander", 2200m),
+        new("871687100000000304", "Karveelweg", "12", "6222NJ", "MAASTRICHT", "Enexis", 1300m),
+        new("871687100000000312", "Josink Esweg", "34", "7545PN", "ENSCHEDE", "Enexis", 2900m),
+        new("871687100000000320", "Newtonweg", "7", "3208KD", "SPIJKENISSE", "Stedin", 1050m),
+    ];
+}
+```
+
+> `MeteringPoint.EndOn(DateOnly validTo)` is plan 2's end-date mutator, behind
+> `POST /metering-points/{id}/end-date`. It is listed in **New names introduced** so the
+> consistency pass can confirm the member name plan 2 actually shipped.
+
+- [ ] **Step 4: Run the seeder from the Migrator, in Development only**
+
+In `src/Hosts/PeakPower.Migrator/Program.cs`, after the call that applies migrations and before
+the host exits, add:
+
+```csharp
+// Demo data, Development only. Seed rows in an environment that later becomes real is how a
+// demo company ends up on an invoice, so this is gated on the environment and not on a flag
+// somebody can set by accident.
+if (builder.Environment.IsDevelopment())
+{
+    await using var scope = host.Services.CreateAsyncScope();
+    var seeder = new DemoDataSeeder(
+        scope.ServiceProvider.GetRequiredService<PeakPowerDbContext>(),
+        scope.ServiceProvider.GetRequiredService<IPasswordHasher>(),
+        scope.ServiceProvider.GetRequiredService<IMarketCalendar>());
+
+    var created = await seeder.SeedAsync(CancellationToken.None);
+    logger.LogInformation(
+        created == 0
+            ? "Demo data already present; nothing seeded."
+            : "Seeded {Count} demo companies.",
+        created);
+}
+```
+
+- [ ] **Step 5: Run the test and watch it pass**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~DemoDataSeederTests"`
+Expected: PASS — 7 passed, 0 failed
+
+- [ ] **Step 6: Bring the whole thing up and look at it**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && ./dev-up`
+Expected: Postgres, the migrator, both APIs and both portals start; the migrator logs
+`Seeded 6 demo companies.`; signing in at the customer portal as
+`j.devries@vandersteen.nl` / `correct-horse-battery` shows six connections, one of them labelled
+by its grouped EAN and one badged "Ending soon".
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-platform
+git add src/Infrastructure/PeakPower.Persistence/Seeding \
+        src/Hosts/PeakPower.Migrator/Program.cs \
+        tests/PeakPower.Integration.Tests/Seeding
+git commit -m "feat(persistence): seed the six demo companies and the unclaimed EAN pool"
+```
+
+---
+
+### Task 27: The one end-to-end path
+
+Design §9 asks this slice to contribute **one** path to the Playwright suite rather than a full
+suite, and design DoD 2 and 3 name it: a prospect completes the wizard in the browser and lands
+in the portal, then sees their connections and renames one.
+
+The path is: **onboard a new company → claim a connection → sign out → sign back in → rename it.**
+A brand-new company owns nothing, so the claim is what gives the rename something to act on — and
+it is DoD 3's third clause anyway. Signing out and back in is not padding either: it is the only
+thing that proves the credential `[DEC-113]` created actually works, since the wizard's own
+sign-in rides on a password the browser still had in memory.
+
+**The signing code is read through the Development-only peek endpoint** built in Task 8, from the
+test's own API request context — never from the page, which does not know it and must not. The
+code under test is therefore the production signing path, generated and verified exactly as it
+would be in front of a customer.
+
+**The API must already be up.** `./dev-up` starts Postgres, the migrator and both APIs; the
+Playwright config starts only the Angular dev server, because a config that also owned the
+backend would be a second, divergent way to bring the system up.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpower-web`)*
+- Create: `playwright.config.ts`
+- Create: `e2e/fixtures/api.ts`
+- Create: `e2e/onboard-and-rename.spec.ts`
+- Modify: `package.json`
+
+**Interfaces:**
+- Consumes: the customer portal at `http://localhost:4200` and the customer API proxied at
+  `/api/v1`; `GET /api/v1/onboarding/applications/{id}/sign-code` (Task 8, Development only).
+- Produces:
+  - `e2e/fixtures/api.ts` — `export async function peekSignCode(request: APIRequestContext, applicationId: string): Promise<string>`
+    and `export function uniqueEmail(prefix: string): string`
+  - npm scripts `e2e` and `e2e:ui`
+
+- [ ] **Step 1: Install Playwright and add the scripts**
+
+Run:
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+npm install --save-dev --save-exact @playwright/test@1.56.1
+npx playwright install chromium
+```
+
+Add to the root `package.json` `scripts`:
+
+```json
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
+```
+
+- [ ] **Step 2: Write the configuration and the fixtures**
+
+Create `playwright.config.ts`:
+
+```ts
+import { defineConfig, devices } from '@playwright/test';
+
+/**
+ * One path, one browser, desktop only.
+ *
+ * The dev server is started here; the BACKEND is not. `./dev-up` owns Postgres, the migrator and
+ * the two APIs, and a second way to bring them up is a second way for them to differ.
+ *
+ * Desktop-only is deliberate (convention C5): the portal has no small-screen layout and design
+ * section 8.4 records that as scope rather than an omission.
+ */
+export default defineConfig({
+  testDir: './e2e',
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
+  fullyParallel: false,
+  workers: 1,
+  reporter: [['list']],
+  use: {
+    baseURL: 'http://localhost:4200',
+    viewport: { width: 1440, height: 900 },
+    trace: 'retain-on-failure',
+  },
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  webServer: {
+    command: 'npm run start:customer-portal',
+    url: 'http://localhost:4200',
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
+});
+```
+
+Create `e2e/fixtures/api.ts`:
+
+```ts
+import type { APIRequestContext } from '@playwright/test';
+
+/**
+ * Reads the six-digit signing code the console-sink email printed.
+ *
+ * The endpoint exists only in Development (Task 8) and it is a PEEK, not a bypass: the code is
+ * still generated, still emailed, still verified and still burns after five wrong attempts. The
+ * browser never sees it, which is why the test has to ask the API for it.
+ */
+export async function peekSignCode(
+  request: APIRequestContext,
+  applicationId: string,
+): Promise<string> {
+  const response = await request.get(
+    `http://localhost:4200/api/v1/onboarding/applications/${applicationId}/sign-code`,
+  );
+
+  if (!response.ok()) {
+    throw new Error(
+      `The sign-code peek returned ${response.status()}. It exists only when the customer API `
+      + 'runs in Development — check that ./dev-up is up.',
+    );
+  }
+
+  const body = (await response.json()) as { code: string };
+  return body.code;
+}
+
+/** A fresh address per run: usernames are unique platform-wide and never reused. */
+export function uniqueEmail(prefix: string): string {
+  return `${prefix}.${Date.now()}@example.nl`;
+}
+```
+
+- [ ] **Step 3: Write the failing end-to-end test**
+
+Create `e2e/onboard-and-rename.spec.ts`:
+
+```ts
+import { expect, test } from '@playwright/test';
+
+import { peekSignCode, uniqueEmail } from './fixtures/api';
+
+const PASSWORD = 'correct-horse-battery';
+
+test('a prospect onboards, signs in, sees a connection and renames it', async ({ page, request }) => {
+  const email = uniqueEmail('e2e.devries');
+
+  // ── Step 1 · the person and the credential ────────────────────────────────
+  await page.goto('/onboarding');
+  await expect(page.getByText('Step 1 of 10')).toBeVisible();
+
+  await page.locator('#firstName').fill('Peter');
+  await page.locator('#lastName').fill('de Vries');
+  await page.locator('#email').fill(email);
+  await page.locator('#password').fill(PASSWORD);
+  await page.locator('.terms').click();
+
+  // The application id never appears on the page; the response is where it is.
+  const created = page.waitForResponse(
+    (r) => r.url().endsWith('/api/v1/onboarding/applications') && r.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Create account' }).click();
+  const applicationId = ((await (await created).json()) as { id: string }).id;
+
+  // ── Step 2 · the company ──────────────────────────────────────────────────
+  await expect(page.getByText('Step 2 of 10')).toBeVisible();
+  await page.locator('#orgName').fill('E2E Koeling B.V.');
+  await page.locator('#kvk').fill('24398112');
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  // ── Step 3 · the registered address ───────────────────────────────────────
+  await expect(page.getByText('Step 3 of 10')).toBeVisible();
+  await page.locator('#street').fill('Havenweg');
+  await page.locator('#houseNumber').fill('22');
+  await page.locator('#postcode').fill('3089 JJ');
+  await page.locator('#city').fill('Rotterdam');
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  // ── Step 4 · the industry, which is optional and skipped on purpose ───────
+  await expect(page.getByText('Step 4 of 10')).toBeVisible();
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  // ── Step 5 · direction and volume ─────────────────────────────────────────
+  await expect(page.getByText('Step 5 of 10')).toBeVisible();
+  await page.locator('.flow-choices .choice').nth(2).click();
+  await page.locator('.volume-choices .choice').nth(3).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  // ── Step 6 · the cent ─────────────────────────────────────────────────────
+  await expect(page.getByText('Step 6 of 10')).toBeVisible();
+  await page.locator('#iban').fill('NL18INGB0002445566');
+  await page.locator('#bankAccountHolder').fill('E2E Koeling B.V.');
+  await page.locator('#pay-ideal').click();
+  await expect(page.getByText('Bank account verified')).toBeVisible();
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  // ── Step 7 · signing authority ────────────────────────────────────────────
+  await expect(page.getByText('Step 7 of 10')).toBeVisible();
+  await page.locator('.choice').first().click();
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  // ── Step 8 · the signatories; signing alone, so the one row is already filled
+  await expect(page.getByText('Step 8 of 10')).toBeVisible();
+  await page.getByRole('button', { name: 'Submit and send the codes' }).click();
+
+  // ── Step 9 · the signature ────────────────────────────────────────────────
+  await expect(page.getByText('Step 9 of 10')).toBeVisible();
+  const code = await peekSignCode(request, applicationId);
+  await page.locator('#sign-code').fill(code);
+  await page.locator('#sign-terms, .terms').first().click();
+  await page.getByRole('button', { name: 'Sign the agreement' }).click();
+
+  // ── Step 10 · and into the portal ─────────────────────────────────────────
+  await expect(page.getByText('Welcome to PeakPower')).toBeVisible();
+  await page.locator('#welcome-cta').click();
+  await expect(page).toHaveURL(/\/connections$/);
+
+  // A new company owns nothing, so the rename needs something to act on.
+  await expect(page.getByText('You have no connections yet.')).toBeVisible();
+  await page.getByRole('link', { name: /Claim a connection/ }).first().click();
+  await expect(page).toHaveURL(/\/connections\/claim$/);
+
+  const firstPoolRow = page.locator('.row').first();
+  const claimedEan = (await firstPoolRow.locator('.mono').innerText()).trim();
+  await firstPoolRow.click();
+  await page.getByText('It only consumes').click();
+  await page.getByRole('button', { name: 'Claim this connection' }).click();
+  await expect(page).toHaveURL(/\/connections\/[0-9a-f-]{36}$/);
+
+  // Unnamed, so the grouped EAN is the label [F01-R31].
+  await expect(page.getByRole('heading', { name: claimedEan })).toBeVisible();
+
+  // ── Sign out, and back in with the credential onboarding created ──────────
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page).toHaveURL(/\/sign-in$/);
+
+  await page.locator('#username').fill(email);
+  await page.locator('#password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  // ── See the connection, then rename it ────────────────────────────────────
+  await page.goto('/connections');
+  await expect(page.getByText(claimedEan)).toBeVisible();
+  await page.locator('a.row').first().click();
+
+  await page.locator('#name').fill('Rotterdam cold store');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Rotterdam cold store' })).toBeVisible();
+
+  // The name replaces the EAN as the primary label, with the EAN kept underneath [F01-R30].
+  await page.goto('/connections');
+  await expect(page.getByText('Rotterdam cold store')).toBeVisible();
+  await expect(page.getByText(claimedEan)).toBeVisible();
+});
+```
+
+- [ ] **Step 4: Run it against a stopped system and watch it fail honestly**
+
+Run: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run e2e`
+Expected: FAIL — with `./dev-up` not running, the sign-code peek throws
+`The sign-code peek returned 502. It exists only when the customer API runs in Development — check that ./dev-up is up.`
+That is the failure message this fixture exists to produce; a bare timeout would send the reader
+looking at the wizard.
+
+- [ ] **Step 5: Bring the system up and run it for real**
+
+Run, in one terminal: `cd /Users/thinhhuynh/PeakPower/peakpower-platform && ./dev-up`
+Then, in another: `cd /Users/thinhhuynh/PeakPower/peakpower-web && npm run e2e`
+Expected: PASS — 1 passed
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-web
+git add package.json package-lock.json playwright.config.ts e2e
+git commit -m "test(e2e): onboard, claim, sign in and rename in one Playwright path"
+```
+
+---
+
+### Task 28: The specification pull request
+
+Design §10, in one pull request against `peakpowerspecs`, raised **alongside** the first week of
+code so the record and the build do not diverge. This is the last task and it is the only one
+outside the two build repositories.
+
+Five decisions, four open questions and the corrections. Nothing here is a refactor of the
+specification: each edit is either a new row or a change with a named reason, and every reversal
+keeps the reversed text visible rather than deleting it — that is the house style already used
+for `[DEC-63]`, `[DEC-71]` and every other amended row.
+
+**Files:** *(run from `/Users/thinhhuynh/PeakPower/peakpowerspecs`)*
+- Modify: `specs/00-overview/04-assumptions-and-decisions.md`
+- Modify: `specs/80-open-questions.md`
+- Modify: `specs/20-architecture/04-database-design.md`
+- Modify: `specs/20-architecture/02-solution-structure.md`
+- Modify: `specs/20-architecture/03-domain-model.md`
+- Modify: `specs/20-architecture/05-api-contracts.md`
+- Modify: `specs/10-features/F01-customer-and-metering-points.md`
+- Modify: `specs/10-features/F13-identity-and-access.md`
+- Modify: `specs/70-delivery/01-roadmap-and-phasing.md`
+- Modify: `specs/60-mockups/README.md`
+- Modify: `specs/60-mockups/screens-customer.mjs`
+
+**Interfaces:**
+- Consumes: nothing — this task changes prose, not code.
+- Produces: one pull request against `peakpowerspecs`, covering design §10.
+
+- [ ] **Step 1: Branch**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpowerspecs
+git checkout main && git pull
+git checkout -b specs/poc-slice-1
+```
+
+- [ ] **Step 2: Record the five decisions**
+
+In `specs/00-overview/04-assumptions-and-decisions.md`, append five rows immediately after the
+`**DEC-112**` row, in the same four-column shape (`Id | Decision | What it rules out | Notes`):
+
+```markdown
+| **DEC-113** | **Customer companies may be created by self-service onboarding.** The platform stores an **Argon2id** credential hash for the customer realm and **owns the password-reset path**. Customers may claim metering points from a shared EAN pool | Account creation staying exclusively with PeakPower employees, and the platform holding no customer credential | ⚠ **Reverses [DEC-16], [DEC-29] and [F01-R12]; amends [F01-R23].** Taken for the proof of concept, where the ten-step wizard from `trading-poc` is the demo story. Contained by three things: the hash is Argon2id at OWASP's current floor (19 MiB, 2 iterations, parallelism 1), never logged and never returned by any endpoint; `ICustomerContext` stays the single seam identity reaches the application through, so moving the credential to Entra later is a DI registration change rather than a rewrite; and reset is in scope, because a credential store without one is not shippable past a demo. Hard lockout and MFA are **not** in scope — a hard lockout on a username is a denial-of-service primitive against a named customer — so sign-in carries a progressive delay instead |
+| **DEC-114** | **EAN validation is eighteen digits only for the proof of concept.** The GS1 check digit is reinstated before go-live | Enforcing the check digit from the first commit | ⚠ **Reverses the check-digit half of [F01-R24].** Not one of the six demo EANs in `trading-poc` carries a correct check digit, under either weighting, so enforcing it would leave the demo with no data at all. **[OQ-97]** owns reinstating it and pinning which weighting is normative, and the seed script carries the reason inline at the point where it inserts them |
+| **DEC-115** | **The customer portal's navigation and labels follow the design system. Route keys keep the specification's names** | Labels and route keys being the same string, as the wireframes assume | Amends `specs/60-mockups/screens-customer.mjs:7`. `Consumption` reads **Volume**, `Trading` reads **Trades**, `Wallet` reads **Balance**, and `Invoices` is replaced by **Settlements**. One mapping — `PAGE_LABELS` — sits between the two, so a label change is one line and never touches a URL, a guard or a test. Nav items outside the current slice render disabled, each with the sentence explaining why: a rail that grows between demos looks unfinished, one that is complete and honest looks planned |
+| **DEC-116** | **GitHub Packages is the destination for generated API clients once a `peakpower` organisation exists.** Until then, committed npm **workspace packages** — the fallback [solution structure §5.1](../20-architecture/02-solution-structure.md) already sanctions — keep the name `@peakpower/api-client-*` | Choosing a feed now, and picking a package name that matches whatever owner happens to exist today | Settles the unnumbered feed question in [solution structure §8](../20-architecture/02-solution-structure.md). npm workspaces resolve by the `name` field, not by registry scope, so every import works today with no registry and keeps working unchanged the day the packages are published. A scripted **staleness check** — regenerate, fail if the diff is non-empty — replaces what the registry would have protected against; without it, committed clients rot silently and the two repositories drift exactly as **[DEC-55]** warns. See **[OQ-100]** |
+| **DEC-117** | **Customer authentication is a JWT access/refresh pair, ES256 over JWKS, with a `security_stamp` claim checked per request** | A shared-secret HS256 token, and accepting that a stateless token cannot be revoked before it expires | New ground: **[DEC-20]** assumed the proof of concept would run unauthenticated. Access token 15 minutes; refresh token 14 days, rotating, single-use, stored hashed, in an HttpOnly `SameSite=Strict` cookie scoped to the refresh endpoint. The access token is held **in memory only** in the browser — a JWT in `localStorage` is readable by any XSS. ES256 over a JWKS endpoint rather than a shared secret because the validation path then becomes the *same code* that will validate an Entra token. The `stamp` claim is compared to a `security_stamp` column on every request, which costs nothing measurable — every request already opens a transaction to `SET LOCAL app.customer_id` for row-level security — and it is what makes **[F01-R16]**'s *immediate* revocation literally true against a stateless token |
+```
+
+- [ ] **Step 3: Register the four open questions**
+
+In `specs/80-open-questions.md`, add four rows to the open register:
+
+```markdown
+| **[OQ-97]** | 🟠 | **When is the GS1 check digit reinstated, and which weighting is normative?** **[DEC-114]** relaxed EAN validation to eighteen digits for the proof of concept. The two conventions in circulation disagree on five of the six demo EANs, and the specification says "GS1 check digit" without pinning the algorithm — so this needs an owner and a date, not just an intention | Needs an owner |
+| **[OQ-98]** | 🟡 | **Credential policy values** — the sign-in delay curve, the reset-token TTL, and password composition beyond the twelve-character minimum. The *mechanism* is designed and is no longer open (**[DEC-117]**, and the reset path in **[DEC-113]**); only the numbers are, and they belong to whoever owns security policy rather than to the delivery team | Needs an owner |
+| **[OQ-99]** | 🟡 | **The six-product entitlement gate in the prototype's rail.** `trading-poc` gates parts of the customer rail on a per-product entitlement. That is a commercial model which appears nowhere in this specification set: either it is real and F13 needs it, or the prototype invented it and the rail should not imply it | Needs an owner |
+| **[OQ-100]** | 🟢 | **Which GitHub organisation owns `peakpower-platform` and `peakpower-web`?** **Not blocking.** **[DEC-116]** defers publishing until a `peakpower` organisation exists, and slice 1 needs no remote at all. It matters when CI is stood up, and it stays cheap while nothing outside `peakpower-web` consumes the packages. Creating the organisation is not in the delivery team's gift, so it wants a named owner even though nothing waits on it today | Needs an owner |
+```
+
+- [ ] **Step 4: Declare the two PostgreSQL extensions**
+
+In `specs/20-architecture/04-database-design.md`, insert a new section between the opening line
+(`PostgreSQL 17. One database, schema-per-module, …`) and `## 1. Schemas`:
+
+````markdown
+## 0. Extensions
+
+Migration 1 **begins** with these two statements, before any schema or table:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS citext;      -- username, email
+CREATE EXTENSION IF NOT EXISTS btree_gist;  -- equality inside a GiST exclusion constraint
+```
+
+The DDL throughout this document needs both and declared neither. `citext` is what makes
+`username` and `email` case-insensitive without a functional index on every lookup;
+`btree_gist` is what lets `ean WITH =` sit inside the same exclusion constraint as
+`validity WITH &&`. Without them migration 1 fails on its first table, which is a cheap failure
+and an entirely avoidable one.
+````
+
+In the same file, §1, remove the trailing `, labels` from the `customer` schema row — the friendly
+name is `name` and `description` on `metering_point`, per the change in Step 6:
+
+```markdown
+| `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, **approval requests [DEC-71]**, metering points |
+```
+
+- [ ] **Step 5: Fix the AppHost snippet**
+
+In `specs/20-architecture/02-solution-structure.md` §4, replace the three `AddNpmApp` calls
+(currently at lines 300, 305 and 310) with:
+
+```csharp
+    builder.AddJavaScriptApp("customer-portal", webRoot, "start:customer-portal")
+        .WithReference(customerApi)
+        .WithHttpEndpoint(env: "PORT")
+        .WithExternalHttpEndpoints();
+
+    builder.AddJavaScriptApp("employee-portal", webRoot, "start:employee-portal")
+        .WithReference(employeeApi)
+        .WithHttpEndpoint(env: "PORT")
+        .WithExternalHttpEndpoints();
+```
+
+and add this note immediately after the snippet:
+
+```markdown
+> ⚠ **Amended 2026-08-26, verified against Aspire 13.5.3.** Three things were wrong and one line
+> fixes two of them.
+>
+> 1. **`AddNpmApp` no longer exists.** `Aspire.Hosting.NodeJs` is frozen at 9.5.2; the current
+>    package is `Aspire.Hosting.JavaScript`, which exposes `AddJavaScriptApp`, `AddNodeApp` and
+>    `AddViteApp`. The signature is
+>    `AddJavaScriptApp(string name, string appDirectory, string runScriptName = "dev")`.
+> 2. **The directory was wrong.** The workspace declares exactly **one** `package.json`, at the
+>    root, so there is no script to run inside `apps/<name>`. The call passes the workspace root
+>    and a per-app script name instead — which is why `package.json` defines
+>    `start:customer-portal` and `start:employee-portal` at the root rather than `start` in each
+>    app.
+> 3. **`public-site` is not built in slice 1** and its resource is dropped until it is.
+>
+> **Aspire is also no longer a `dotnet workload`.** It is the `aspire.cli` global tool plus the
+> `Aspire.AppHost.Sdk` NuGet package, currently **13.5.3**. Install with
+> `dotnet tool install -g aspire.cli`.
+```
+
+Then make the backend-only path real. The `else` branch promises a `--backend-only` flag that
+nothing implements, so replace the `throw` with a gate on an actual check:
+
+```csharp
+else if (args.Contains("--backend-only"))
+{
+    // Backend-only is a legitimate mode; SILENTLY backend-only is not. Saying it out loud is
+    // the whole point of the branch.
+    builder.Configuration["PeakPower:FrontEnds"] = "disabled";
+}
+else
+{
+    throw new InvalidOperationException(
+        $"peakpower-web not found at '{webRoot}'. Clone it beside this repository, set " +
+        "PEAKPOWER_WEB_PATH, or run with --backend-only.");
+}
+```
+
+- [ ] **Step 6: Correct the domain model and the friendly name**
+
+In `specs/20-architecture/03-domain-model.md`, line 359, replace:
+
+```csharp
+public enum ProductionExpectation { Unknown = 0, Expected = 1, NotExpected = 2 }
+```
+
+with:
+
+```csharp
+// The database spelling is normative: NEVER, not NOT_EXPECTED. Corrected 2026-08-26.
+public enum ProductionExpectation { Unknown = 0, Expected = 1, Never = 2 }
+```
+
+At line 306, extend the `AccountStatus` comment to carry all four values:
+
+```csharp
+    public AccountStatus Status { get; private set; }   // PendingApproval | Invited | Active | Deactivated
+```
+
+At line 404, extend `FourEyesAction` to the five arms the database defines:
+
+```csharp
+    public FourEyesAction Action { get; }        // AddBankAccount | DeactivateBankAccount
+                                                 // | AddUser | Trade | Withdrawal
+```
+
+In `specs/10-features/F01-customer-and-metering-points.md`, delete the `metering_point_label` row
+at line 385 and add a sentence under the table:
+
+```markdown
+The friendly name is `name` and `description` **on `metering_point`**, which is what
+`[F01-R29]`'s ≤80 and ≤500 limits actually describe. The separate `metering_point_label` table
+and the domain model's `Label` property were two further spellings of the same thing; both are
+deleted in favour of the physical schema.
+```
+
+In `specs/20-architecture/05-api-contracts.md`, line 129:
+
+```markdown
+| `PATCH` | `/metering-points/{id}/naming` | Set friendly name and description |
+```
+
+Add, under that table:
+
+```markdown
+> Renamed from `/label` on 2026-08-26, following the friendly name settling as `name` +
+> `description` columns. The route has no consumers yet, so renaming is free now and awkward
+> later.
+```
+
+- [ ] **Step 7: Harden F13's business rule 2, and reconcile the roadmap**
+
+In `specs/10-features/F13-identity-and-access.md` §3, replace business rule 2 with:
+
+```markdown
+2. **`customer_id` comes from the token, always.** Any code path that reads a customer identifier
+   from a route, query string, body or header for authorisation purposes is a defect. ⚠ **This is
+   an architecture test, not advice** (added 2026-08-26): *no type outside the context-provider
+   assembly reads a customer identifier from `HttpContext`.* It runs from week one alongside the
+   other five facts, because the slice that builds the tenancy pipeline is precisely the slice
+   where taking the shortcut is tempting.
+```
+
+In `specs/70-delivery/01-roadmap-and-phasing.md`, the §2.1 note at line ~256 says "five of the
+six rows" and the later passage at line ~796 says "four of the six". Reconcile them: keep the
+later count and make the earlier one point at it.
+
+```markdown
+⚠ **Two rows were added on 2026-08-19 and the table is now the plan's real critical path.** **Four
+of the six** rows are needed before phase 2 ends — see the 2026-08-19 round below, which is the
+count that governs. (An earlier draft of this note said five; the round that added the two rows
+also moved one out of phase 2.)
+```
+
+- [ ] **Step 8: Record where labels and route keys come from**
+
+In `specs/60-mockups/README.md`, under `## Design decisions worth noting`, add:
+
+```markdown
+- **Labels come from the design system; route keys come from the specifications.** `[DEC-115]`.
+  The wireframes here name the customer rail
+  `Dashboard · Connections · Consumption · Prices · Trading · Wallet · Invoices`. The built
+  portal reads `Dashboard · Connections · Volume · Prices · Trades · Balance · Settlements`, over
+  the same route keys. When a mockup and the portal disagree about a **word**, the portal is
+  right; when they disagree about a **URL**, the mockup is.
+```
+
+In `specs/60-mockups/screens-customer.mjs`, line 7, replace the `NAV` array and record why:
+
+```js
+// Labels follow the design system, route keys follow the specifications [DEC-115]. The built
+// portal maps between them in PAGE_LABELS; this array is the label half.
+const NAV = ['Dashboard', 'Connections', 'Volume', 'Prices', 'Trades', 'Balance', 'Settlements'];
+```
+
+Add `Company` to the customer rail as well — the design's §8.3 carries a "Company profile +
+accounts" screen `[F01-R09]` `[F01-R21]` that these wireframes never had a row for:
+
+```js
+const NAV = ['Dashboard', 'Connections', 'Volume', 'Prices', 'Trades', 'Balance', 'Settlements', 'Company'];
+```
+
+- [ ] **Step 9: Regenerate the mockups and check the diff**
+
+Run:
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpowerspecs/specs/60-mockups
+node generate.mjs
+git diff --stat
+```
+
+Expected: every customer SVG changes only in its rail labels. If anything else moved, the `NAV`
+edit caught more than it should have.
+
+Note in the pull request body that `employee-customer-admin.svg` is **stale for a different
+reason** — it predates `[DEC-71]` and still shows editable bank details with an Edit button, no
+admin flag and no four-eyes toggle — and that regenerating it needs the requirements read first,
+so it is left for a follow-up rather than half-fixed here.
+
+- [ ] **Step 10: Commit and open the pull request**
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpowerspecs
+git add specs
+git commit -m "Record DEC-113..117 and OQ-97..100, and correct nine documents for PoC slice 1"
+git push -u origin specs/poc-slice-1
+gh pr create \
+  --title "PoC slice 1: five decisions, four open questions, nine corrections" \
+  --body "$(cat <<'BODY'
+Raised alongside the first week of slice-1 code, so the record and the build do not diverge.
+Everything here is design section 10 of `docs/superpowers/specs/2026-08-26-poc-slice-1-design.md`.
+
+## New decisions
+
+- **[DEC-113]** self-service onboarding; the platform holds an Argon2id credential hash and owns
+  password reset; customers claim EANs from a shared pool. Reverses [DEC-16], [DEC-29], [F01-R12];
+  amends [F01-R23].
+- **[DEC-114]** EAN validation is 18 digits for the PoC. Reverses the check-digit half of [F01-R24].
+- **[DEC-115]** portal labels follow the design system; route keys keep the specification's names.
+- **[DEC-116]** GitHub Packages once a `peakpower` organisation exists; committed workspace
+  packages until then.
+- **[DEC-117]** customer auth is a JWT access/refresh pair, ES256 over JWKS, with a
+  `security_stamp` claim checked per request.
+
+## New open questions
+
+**[OQ-97]** when the GS1 check digit returns and under which weighting · **[OQ-98]** credential
+policy *values* (the mechanism is no longer open) · **[OQ-99]** the prototype's six-product
+entitlement gate · **[OQ-100]** which GitHub organisation owns the two repositories — not blocking.
+
+## Corrections
+
+1. Database design gains a §0 declaring `citext` and `btree_gist` as migration 1's first
+   statements — the DDL needs both and declared neither.
+2. Solution structure §4: `AddNpmApp` → `AddJavaScriptApp` against the workspace root with a
+   per-app script; the `--backend-only` gate is made real; Aspire is a CLI + SDK at 13.5.3, not a
+   `dotnet workload`.
+3. Domain model: `NotExpected` → `Never`; `AccountStatus` gains `PendingApproval`;
+   `FourEyesAction` gains `Trade`. The database spelling is normative in all three.
+4. F01 §6: `metering_point_label` deleted; the friendly name is `name` + `description` on
+   `metering_point`. The "labels" mention in database design §1 goes with it.
+5. API contracts: `PATCH /metering-points/{id}/label` → `/naming`. No consumers yet, so it is
+   free now and awkward later.
+6. F13 business rule 2 becomes an architecture test rather than advice.
+7. Roadmap §2.1: "five of the six" reconciled against "four of the six".
+8. Mockups README records that labels come from the design system and route keys from the
+   specifications; `screens-customer.mjs` updated and the SVGs regenerated.
+
+## Deliberately not done here
+
+`employee-customer-admin.svg` is stale for a different reason — it predates [DEC-71] and still
+shows editable bank details with an Edit button, no admin flag and no four-eyes toggle.
+Regenerating it needs the current requirements read first, so it is a follow-up rather than a
+half-fix in this diff.
+
+[DEC-20]'s instruction that tenancy be built and tested from the first commit is **honoured, not
+superseded**: real sign-in exercises the same pipeline more strongly than a dev switcher would,
+and the dev context provider is still built for the identity slice.
+BODY
+)"
+```
+
+Expected: the pull request URL is printed. Paste it into the slice-1 definition of done, item 11.
+
+---
+
+## Definition of done
+
+The design's own eleven points, reproduced in full. This plan is finished when every one of them
+holds — not when the last task's tests pass.
+
+1. `./dev-up` from either repository brings up Postgres, migrations, two APIs and two portals.
+2. A prospect completes the wizard in the browser and lands in the customer portal.
+3. That customer sees their connections, renames one, and claims one from the pool.
+4. An employee sees the same company in the back office and edits it.
+5. **The route-table test passes**: signed in as company A, every one of company B's objects
+   returns 404.
+6. The architecture tests pass: domain purity, module graph, no `IgnoreQueryFilters()`.
+7. Deactivating an account invalidates its token on the **next** call, not in fifteen
+   minutes — `[F01-R16]` satisfied against a stateless token.
+8. A customer resets a forgotten password by email and signs in with the new one.
+9. Migration 1 applies to an empty PostgreSQL 17 container, and the exclusion constraint
+   rejects an overlapping EAN period.
+10. `npm run verify:clients` passes — the committed clients match what the current OpenAPI
+    documents generate.
+11. The specification pull request is open, covering §10.
+
+Points 1, 4, 5, 6, 7 and 9 are earned by plans 1, 2, 4 and 5 and are **verified**, not built,
+here: run the full suite in both repositories before calling the slice done.
+
+```bash
+cd /Users/thinhhuynh/PeakPower/peakpower-platform && dotnet test
+cd /Users/thinhhuynh/PeakPower/peakpower-web && npm test && npm run verify:clients && npm run e2e
+```
+
+---
+
+## New names introduced
+
+Every name this plan introduces that the shared contract does not define, with its exact
+signature. Names introduced by Tasks 1–15 are listed in that half of the plan; this section
+covers Tasks 16–28.
+
+### `apps/customer-portal/src/app/onboarding/onboarding-flow.ts` (Task 16)
+
+```ts
+export interface OnboardingStep {
+  readonly n: number; readonly group: string; readonly label: string;
+  readonly title: string; readonly intro: string; readonly next?: string;
+}
+export interface SignatoryDraft { first: string; last: string; email: string; locked: boolean }
+export interface OnboardingFields {
+  firstName: string; lastName: string; email: string; password: string;
+  orgName: string; kvk: string;
+  street: string; houseNumber: string; houseNumberSuffix: string; postcode: string; city: string;
+  iban: string; bankAccountHolder: string;
+}
+export interface OnboardingState {
+  readonly step: number; readonly agreed: boolean; readonly bankVerified: boolean;
+  readonly entityIndex: number; readonly industryIndex: number; readonly flowIndex: number;
+  readonly volumeIndex: number; readonly authorityIndex: number;
+  readonly signCode: string; readonly agreedDocs: boolean;
+  readonly f: OnboardingFields; readonly signatories: readonly SignatoryDraft[];
+  readonly applicationId: string | null; readonly reference: string | null;
+  readonly username: string | null;
+}
+
+export const STEPS: readonly OnboardingStep[];
+export const LAST_STEP: number;                       // 10
+export const ENTITY_TYPES: readonly { readonly label: string; readonly wire: string }[];
+export const INDUSTRIES: readonly string[];           // 25, "Not specified" first
+export const FLOWS: readonly { readonly label: string; readonly wire: string }[];
+export const VOLUMES: readonly {
+  readonly label: string; readonly short: string; readonly wire: string }[];
+export const AUTHORITY: readonly {
+  readonly label: string; readonly note: string; readonly wire: string }[];
+export const MIN_PASSWORD: number;                    // 12
+export const KVK_DIGITS: number;                      // 8
+export const SIGN_CODE_DIGITS: number;                // 6
+export const SUPPORT_EMAIL: string;                   // support@peakpower.nl
+
+export function blankSignatory(): SignatoryDraft;
+export function defaultState(): OnboardingState;
+export function kvkDigits(value: string): string;
+export function looksLikeEmail(value: string): boolean;
+export function codeDigits(value: string): string;
+export function signatoryComplete(s: SignatoryDraft): boolean;
+export function minSignatories(authorityIndex: number): number;
+export function signatoriesForAuthority(authorityIndex: number, f: OnboardingFields): SignatoryDraft[];
+export function fullName(f: OnboardingFields): string;
+export function stepValid(state: OnboardingState): boolean;
+export function hint(state: OnboardingState): string;
+export function stepTitle(state: OnboardingState): string;
+export function stepIntro(state: OnboardingState): string;
+export function clampStep(n: number): number;
+export function summaryRows(state: OnboardingState): readonly { k: string; v: string }[];
+export function withField(state: OnboardingState, key: keyof OnboardingFields, value: string): OnboardingState;
+export function inputValue(event: Event): string;
+export function saveStepRequest(state: OnboardingState, step: number): SaveOnboardingStepRequest;
+```
+
+> ⚠ **There is deliberately no `SIGN_CODE`.** `trading-poc/onboarding-flow.js` exports one; it is
+> a demo affordance in a flow that submits nothing. Here the code is generated per application by
+> plan 5's backend, hashed at rest and emailed through `IEmailSender`, and tests read it through
+> the Development-only peek endpoint from Task 8. A constant in the bundle would be a credential.
+
+> ⚠ **The wire spelling of the onboarding enums is the C# member name, not SCREAMING_SNAKE**, and
+> `Coöperatie` loses its diaeresis on the wire (`"Cooperatie"`) because a C# identifier cannot
+> carry one. Every other enum in this system is SCREAMING_SNAKE on the wire, so this is the one
+> place a reader will guess wrong.
+
+### Angular components (Tasks 16–25)
+
+```ts
+// apps/customer-portal/src/app/onboarding/
+export class OnboardingWizard {}      // selector 'pp-onboarding-wizard'
+  readonly state: WritableSignal<OnboardingState>;
+  readonly busy: Signal<boolean>; readonly summary: Signal<string | null>;
+  readonly step: Signal<number>; readonly current: Signal<OnboardingStep>;
+  readonly title: Signal<string>; readonly intro: Signal<string>; readonly hint: Signal<string>;
+  readonly nextLabel: Signal<string>; readonly canContinue: Signal<boolean>;
+  readonly progress: Signal<number>; readonly reference: Signal<string>;
+  readonly destination: Signal<string>;               // '/connections' or '/sign-in'
+  goto(n: number): void; back(): void; next(): void; verifyBank(): void;
+
+// onboarding/steps/step-account.ts
+export class StepAccount {}           // 'pp-step-account'; state = model.required<OnboardingState>()
+                                      // passwordNote(): string; toggleTerms(): void
+// onboarding/steps/step-company.ts
+export class StepCompany {}           // 'pp-step-company'
+export class StepAddress {}           // 'pp-step-address';  lookupLine(): string
+export class StepIndustry {}          // 'pp-step-industry'
+// onboarding/steps/step-volume.ts
+export class StepVolume {}            // 'pp-step-volume';    volumeSubtitle(): string
+// onboarding/steps/step-bank.ts
+export class StepBank {}              // 'pp-step-bank';      verify = output<void>()
+// onboarding/steps/step-authority.ts
+export class StepAuthority {}         // 'pp-step-authority'; pick(index: number): void
+export class StepSignatories {}       // 'pp-step-signatories'; add(); remove(i); canRemove(i);
+                                      //   countLine(); greeting(); applicant(); org()
+// onboarding/steps/step-sign.ts
+export class StepSign {}              // 'pp-step-sign';      toggleAgreedDocs(): void
+export class StepWelcome {}           // 'pp-step-welcome';   destination = input.required<string>()
+
+// features/connections/
+export const CONNECTION_ROUTES: Routes;
+export class ConnectionListPage {}    // 'pp-connection-list-page'; search = signal<string>('')
+export class ConnectionDetailPage {}  // 'pp-connection-detail-page'
+export const NAME_MAX_LENGTH: 80;
+export const DESCRIPTION_MAX_LENGTH: 500;
+export class ClaimConnectionPage {}   // 'pp-claim-connection-page'
+
+// features/company/
+export class CompanyPage {}           // 'pp-company-page'
+```
+
+### `apps/customer-portal/src/app/shared/labels.ts` (Task 22)
+
+```ts
+export const NO_DATA_YET: string;
+export function connectionStatusLabel(value: ConnectionStatusValue): string;
+export function connectionStatusTone(value: ConnectionStatusValue): PpTone;
+export function productionExpectationLabel(value: ProductionExpectationValue): string;
+export function accountStatusLabel(value: AccountStatusValue): string;
+export function accountStatusTone(value: AccountStatusValue): PpTone;
+export function customerStatusLabel(value: CustomerStatusValue): string;
+```
+
+### `peakpower-platform` (Task 26)
+
+```csharp
+namespace PeakPower.Persistence.Seeding;
+
+public sealed class DemoDataSeeder(
+    PeakPowerDbContext db, IPasswordHasher hasher, IMarketCalendar calendar)
+{
+    public const string DemoPassword = "correct-horse-battery";
+    public Task<int> SeedAsync(CancellationToken ct);   // returns companies created; 0 if already seeded
+}
+```
+
+⚠ **Two members this task calls belong to earlier plans and must be reconciled by the
+consistency pass:**
+
+```csharp
+public void CustomerAccount.SetPassword(string passwordHash);   // plan 5 — onboarding materialisation
+public void MeteringPoint.EndOn(DateOnly validTo);              // plan 2 — POST /metering-points/{id}/end-date
+```
+
+Both are used with exactly these signatures. If either plan shipped a different member name, the
+seeder follows that plan and this section is what is wrong.
+
+### `peakpower-web` E2E (Task 27)
+
+```ts
+// e2e/fixtures/api.ts
+export async function peekSignCode(
+  request: APIRequestContext, applicationId: string): Promise<string>;
+export function uniqueEmail(prefix: string): string;
+```
+
+npm scripts added at the workspace root: `e2e`, `e2e:ui`.
+Dev dependency added: `@playwright/test@1.56.1` (exact).

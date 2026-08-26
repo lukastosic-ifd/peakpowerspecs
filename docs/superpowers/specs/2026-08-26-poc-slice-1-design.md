@@ -135,7 +135,12 @@ column.
 
 ### 4.2 Projects built in this slice
 
-Thirteen of the specification's projects. Everything else waits until something needs it.
+Fifteen projects — eleven source, four test. Everything else waits until something needs it.
+
+> ⚠ **This is two more than the tree below first showed.** Writing the plans surfaced four
+> infrastructure projects the design had left implicit, one of which (`Infrastructure.Time`)
+> architecture fact 5 names directly. They are listed in
+> [shared contract §3.1](../plans/2026-08-26-slice-1-shared-contract.md).
 
 ```
 peakpower-platform/
@@ -154,7 +159,11 @@ peakpower-platform/
 │   │   ├── PeakPower.Application/
 │   │   └── PeakPower.Contracts/
 │   └── Infrastructure/
-│       └── PeakPower.Persistence/
+│       ├── PeakPower.Persistence/
+│       ├── PeakPower.Time/            # IMarketCalendar — the ONLY clock  [arch fact 5]
+│       ├── PeakPower.Web/             # the ONE context-provider assembly [arch fact 6]
+│       ├── PeakPower.Identity/        # Argon2id + the token issuer
+│       └── PeakPower.Email/           # console sink in slice 1
 ├── tests/
 │   ├── PeakPower.Domain.Tests/
 │   ├── PeakPower.Application.Tests/
@@ -208,6 +217,12 @@ Schemas `customer`, `metering`, `wallet`, `audit`. Tables:
 | `metering.brp` | reference data; the PVNed row is seeded **first** |
 | `wallet.wallet` | stub — one EUR wallet per customer `[F01-R05]` |
 | `audit.audit_record` | append-only, actor + before/after `[F01-R06]` |
+
+**Migration 1 does not create all nine.** Three of them — `onboarding_application`,
+`refresh_token`, `password_reset_token` — have column sets only the authentication work can
+specify, so they arrive in migration 3. RLS roles and policies are migration 2, and the EAN
+pool is migration 4. The split is tabulated in
+[shared contract §3.2](../plans/2026-08-26-slice-1-shared-contract.md).
 
 Three things go into migration 1 specifically because retrofitting them is expensive:
 
@@ -598,7 +613,10 @@ record and the build do not diverge.
 | Document | Change |
 | --- | --- |
 | `20-architecture/04-database-design.md` | New §0 declaring `citext` and `btree_gist` as the first statements of migration 1 |
-| `20-architecture/02-solution-structure.md` §4 | `AddNpmApp` targets the workspace root with a per-app script, not `apps/<name>` — there is only one `package.json`. Gate the throw on an actual `--backend-only` check, which the snippet promises and never implements. Note that Aspire is now a CLI + SDK at 13.x, not a workload |
+| `20-architecture/02-solution-structure.md` §4 | ⚠ **`AddNpmApp` no longer exists.** Verified from the package's own XML docs: `Aspire.Hosting.NodeJs` is frozen at 9.5.2, and `Aspire.Hosting.JavaScript` 13.5.3 exposes `AddJavaScriptApp(name, appDirectory, runScriptName)` with `.WithNpm()`. The snippet will not compile. Replace it, point `appDirectory` at the workspace root (there is only one `package.json`), gate the throw on an actual `--backend-only` check, and note that Aspire is a CLI + SDK, not a workload |
+| `20-architecture/02-solution-structure.md` §6 | Pin **FluentAssertions 7.2.0**. 8.x ships an Xceed Community License for **non-commercial use only**; 7.2.0 is the last `Apache-2.0` release. The table names the library with no version because it was written while it was still open source |
+| `20-architecture/07-security.md` §2 | Row-level security needs database **roles**, which the document never mentions. A superuser or table owner bypasses RLS silently, so the APIs must run as non-owner login roles or the mechanism is off while every test still passes |
+| `20-architecture/02-solution-structure.md` §1.1 | Add the four implied infrastructure projects — `Time`, `Web`, `Identity`, `Email` — and reconcile `dev-up`'s location: §8.1 shows `tools/dev-up.*`, §11 shows `./dev-up` |
 | `20-architecture/03-domain-model.md` | Rename `NotExpected` → `Never`; add `PendingApproval` to `AccountStatus`; add `Trade` to `FourEyesAction` |
 | `10-features/F01…` §6 | Delete `metering_point_label`; the friendly name is `name` + `description` on `metering_point`. Delete the "labels" line from database design §1 |
 | `20-architecture/05-api-contracts.md` | Rename `PATCH /metering-points/{id}/label` to `/naming`, following §5.4 — the route has no consumers yet, so this is free now and awkward later |
@@ -614,6 +632,8 @@ record and the build do not diverge.
 | `[OQ-97]` | When is the GS1 check digit reinstated, and which weighting is normative? | Both conventions disagree on five of the six demo EANs; the spec says "GS1 check digit" without pinning the algorithm |
 | `[OQ-98]` | Credential **policy values** — sign-in delay curve, reset-token TTL, password composition beyond twelve characters | The mechanism is designed (§7) and no longer open; only the numbers are, and they belong to whoever owns security policy rather than to the delivery team |
 | `[OQ-99]` | The six-product entitlement gate in the demo's rail | A commercial model that appears nowhere in the specification set |
+| `[OQ-101]` | Assertion library — stay on FluentAssertions 7.x, or move to Shouldly 4.3.0? | 7.2.0 is free and works today, but it is the end of the Apache-2.0 line and will stop getting fixes. Moving later is a mechanical but wide change. Not a decision a plan should take on its own |
+| `[OQ-102]` | Who owns the RLS login-role credentials? | Slice 1 is local-only, so migration 2 carries two literal passwords with a comment saying so. That is fine on one machine and unacceptable anywhere else, and the first deployment is when it bites |
 | `[OQ-100]` | Which GitHub organisation owns `peakpower-platform` and `peakpower-web`? | **Not blocking.** `[DEC-116]` defers publishing until a `peakpower` organisation exists; slice 1 needs no remote at all. It matters only when CI is stood up, and it stays cheap while nothing outside `peakpower-web` consumes the packages. Creating the organisation is not in the delivery team's gift, so it wants a named owner even though nothing waits on it today |
 
 ### Not changed, deliberately

@@ -94,7 +94,8 @@ values are the narrowed `[OQ-98]`.
 - Migrations run to completion before any API starts
 - Tenancy: context pipeline, query filter, row-level security, 404-not-403, and the tests
   that prove all four
-- OpenAPI emitted at build; typed clients published to GitHub Packages `[DEC-116]`
+- OpenAPI emitted at build; typed clients as committed workspace packages `[DEC-116]`
+- No CI, no remotes, no registry — slice 1 runs entirely on a developer machine
 
 ### Out
 
@@ -408,35 +409,48 @@ twelve-character minimum — are the narrowed `[OQ-98]`; the mechanism is not op
 
 ### Cross-repository clients
 
-The two OpenAPI documents are emitted at build, generated into typed npm packages, and
-**published to GitHub Packages** on merge to `main`, versioned `<api-version>-<build>` with
-semver enforced: a breaking OpenAPI diff is a major. `peakpower-web` consumes them from the
-lockfile, and a version bump is a normal reviewable pull request that either compiles or does
-not. What is explicitly not acceptable is each developer generating clients locally — that is a
-build that differs per machine.
+**Slice 1 uses no package registry at all.** The two OpenAPI documents are emitted at build and
+generated into two npm **workspace packages** inside `peakpower-web`, which are **committed**:
 
-> ⚠ **The package scope is constrained by the repository owner, and the spec's name does not
-> currently work.** GitHub Packages requires an npm package's scope to match the GitHub account
-> or organisation that owns it. The specification writes `@peakpower/api-client-*`
-> ([solution structure §1.1, §5.1](../../../specs/20-architecture/02-solution-structure.md)),
-> which requires a GitHub organisation literally named `peakpower`. As at 2026-08-26 the
-> available owners are the user `thinhtanhuynh` and the organisation `Kikker-Energie`; no
-> `peakpower` organisation exists. Three ways forward, in preference order:
->
-> 1. **Create a `peakpower` organisation** to own both repositories — keeps the specification's
->    package names exactly as written, and is the right home for the code regardless.
-> 2. Host both under `Kikker-Energie` and rename the scope to `@kikker-energie/api-client-*`,
->    amending the specification.
-> 3. Host under `thinhtanhuynh` — works, but ties team infrastructure to one person's account.
->
-> This must be settled before the first CI pipeline is written; it decides an `.npmrc`, a
-> package name and a workflow permission in both repositories.
+```
+peakpower-web/libs/api-client-customer/    name: @peakpower/api-client-customer
+peakpower-web/libs/api-client-employee/    name: @peakpower/api-client-employee
+```
 
-`peakpower-web/.npmrc` maps the scope to `https://npm.pkg.github.com`; CI authenticates with the
-workflow's `GITHUB_TOKEN` and developers with a `read:packages` personal access token. The
-committed-generated-PR route the specification describes as the fallback is **not** used, and
-the three restoring mechanisms it pairs with the feed still are: enforced semver, a nightly
-build of `peakpower-web` against the latest published client, and the E2E suite as backstop.
+npm workspaces resolve a dependency by the `name` field in its `package.json`, not by registry
+scope, so `import { … } from '@peakpower/api-client-customer'` works locally today and keeps
+working unchanged the day the packages are published — provided the organisation is eventually
+named `peakpower`. That is the reason to keep the specification's name rather than pick one
+that matches an owner we happen to have now: **the migration is then a publish step and an
+`.npmrc`, with not one import touched.**
+
+This is the specification's own sanctioned fallback, not an invention:
+
+> *"generate the clients in platform CI and open an automated pull request that commits them
+> into `peakpower-web`. It is uglier and it works — the generated code is reviewable in the
+> diff."* — [solution structure §5.1](../../../specs/20-architecture/02-solution-structure.md)
+
+**What still has to hold.** The specification's real objection is to *each developer generating
+clients locally*, because that is a build that differs per machine. Committing the output does
+not by itself fix that; one more thing does:
+
+| Mechanism | Slice 1 | Later |
+| --- | --- | --- |
+| Generation is a single scripted step, pinned generator version | `npm run generate:clients` | unchanged, moved into CI |
+| **Staleness check** — regenerate and fail if the diff is non-empty | a `verify:clients` script, run by `dev-up` and before commit | a required CI check |
+| Semver on a breaking OpenAPI diff | not applicable — no versions yet | enforced at publish |
+| Contract snapshot test fails the build on an unreviewed change | ✅ in slice 1 | ✅ |
+| Nightly build against the latest published client | not applicable | ✅ |
+
+The staleness check is what replaces the registry. Without it, committed clients rot silently
+and the two repositories drift exactly as `[DEC-55]` warns.
+
+**Migration, when the organisation exists.** Add `.npmrc` mapping `@peakpower` to
+`https://npm.pkg.github.com`, add a publish step to platform CI, replace the two workspace
+entries with versioned dependencies, delete the committed source. Imports do not change. If the
+organisation ends up named something other than `peakpower`, one find-and-replace across
+`peakpower-web` does change them — which is the cost of `[OQ-100]` staying open, and it is
+small and bounded.
 
 ---
 
@@ -576,7 +590,7 @@ record and the build do not diverge.
 | `[DEC-113]` | Customer companies may be created by **self-service onboarding**. The platform stores an Argon2id credential hash for the customer realm **and owns the password-reset path**. Customers may claim metering points from a shared EAN pool. | `[DEC-16]`, `[DEC-29]`, `[F01-R12]`, `[F01-R23]` |
 | `[DEC-114]` | EAN validation is **18 digits only** for the proof of concept. The GS1 check digit is reinstated before go-live. | the check-digit half of `[F01-R24]` |
 | `[DEC-115]` | The customer portal's navigation and labels follow the design system. Route keys keep the specification's names. | `screens-customer.mjs:7` |
-| `[DEC-116]` | Generated API clients are published to **GitHub Packages**. The committed-generated-PR fallback is not used. The npm scope must match the owning GitHub organisation, so naming that owner is part of this decision. | settles the unnumbered feed question in [solution structure §8](../../../specs/20-architecture/02-solution-structure.md) |
+| `[DEC-116]` | **GitHub Packages** is the destination for generated API clients **once a `peakpower` organisation exists**. Until then slice 1 uses committed npm **workspace packages** — the specification's own §5.1 fallback — keeping the name `@peakpower/api-client-*` so the migration costs a publish step and an `.npmrc` and changes no imports. A scripted staleness check replaces the registry's drift protection. | settles the unnumbered feed question in [solution structure §8](../../../specs/20-architecture/02-solution-structure.md) |
 | `[DEC-117]` | Customer authentication is a **JWT** access/refresh pair, ES256 over JWKS, with a `security_stamp` claim checked per request so `[F01-R16]`'s immediate revocation holds against a stateless token. | new ground — `[DEC-20]` assumed no authentication at all |
 
 ### Corrections
@@ -600,7 +614,7 @@ record and the build do not diverge.
 | `[OQ-97]` | When is the GS1 check digit reinstated, and which weighting is normative? | Both conventions disagree on five of the six demo EANs; the spec says "GS1 check digit" without pinning the algorithm |
 | `[OQ-98]` | Credential **policy values** — sign-in delay curve, reset-token TTL, password composition beyond twelve characters | The mechanism is designed (§7) and no longer open; only the numbers are, and they belong to whoever owns security policy rather than to the delivery team |
 | `[OQ-99]` | The six-product entitlement gate in the demo's rail | A commercial model that appears nowhere in the specification set |
-| `[OQ-100]` | Which GitHub organisation owns `peakpower-platform` and `peakpower-web`? | `[DEC-116]` chose GitHub Packages, whose npm scope **must** match the owner. No `peakpower` organisation existed as at 2026-08-26, so `@peakpower/api-client-*` as the specification writes it cannot be published anywhere yet. Decides an `.npmrc`, a package name and a workflow permission in both repositories |
+| `[OQ-100]` | Which GitHub organisation owns `peakpower-platform` and `peakpower-web`? | **Not blocking.** `[DEC-116]` defers publishing until a `peakpower` organisation exists; slice 1 needs no remote at all. It matters only when CI is stood up, and it stays cheap while nothing outside `peakpower-web` consumes the packages. Creating the organisation is not in the delivery team's gift, so it wants a named owner even though nothing waits on it today |
 
 ### Not changed, deliberately
 
@@ -620,8 +634,18 @@ dotnet tool install -g aspire.cli
 ```
 
 Verified present on 2026-08-26: .NET SDK 10.0.400 (default), Node 24.15.0, npm 11.12.1,
-Docker 29.7.2 with the daemon running. Both target repositories are empty and **not yet
-git-initialised**; `git init` is step one.
+Docker 29.7.2 with the daemon running.
+
+**Slice 1 is local-only.** Both target repositories are empty and not yet git-initialised;
+`git init` is step one and **no remote is added**. There is no CI, no package registry and no
+deployment in this slice. Nothing in the design depends on a GitHub organisation existing, and
+the two things that eventually will — publishing clients `[DEC-116]` and the `deploy/`
+pipelines — are both out of scope. Pushing to remotes is a later, separate step whose only
+prerequisite is `[OQ-100]`.
+
+The corporate Entra tenant access request (§13) is the exception worth repeating: it is a
+non-code item, it has the longest lead time in Phase 1, and running locally is precisely the
+condition under which it gets forgotten.
 
 ### One command, from either repository
 
@@ -644,7 +668,7 @@ third — naming the path it looked in and the two ways to fix it. Your existing
 
 | # | Step | Depends on |
 | --- | --- | --- |
-| 1 | `git init` both repos; solution and workspace skeletons; `Directory.*.props`; architecture tests | — |
+| 1 | `git init` both repos, no remotes; solution and workspace skeletons; `Directory.*.props`; architecture tests | — |
 | 2 | Migration 1 — extensions, schemas, tables, exclusion constraint, BRP seed | 1 |
 | 3 | Domain: `Customer`, `CustomerAccount`, `MeteringPoint`, `Ean`, `KvkNumber`, `Iban` + tests | 1 |
 | 4 | Tenancy: `ICustomerContext`, query filters, RLS, 404-not-403, **the route-table test** | 2, 3 |
@@ -670,7 +694,8 @@ because both write the same tables.
 | --- | --- |
 | The Aspire 13 API differs from the spec's 9.x-era snippet | Check `AddNpmApp` and `WaitForCompletion` against 13.5.3 in step 6; the spec amendment records what changed |
 | A stateless JWT cannot satisfy `[F01-R16]`'s *immediate* session revocation | The `security_stamp` check (§7) rides on the transaction RLS already opens, so revocation stays immediate at no measurable cost |
-| The package scope blocks the first CI pipeline | `[OQ-100]` is answered before pipelines are written, not after; renaming the scope is cheap only while nothing consumes the packages |
+| Committed clients rot silently, and the two repositories drift — the exact failure `[DEC-55]` warns about | The `verify:clients` staleness check runs in `dev-up` and before commit, and becomes a required CI check the day CI exists. Without it, committing the client is strictly worse than a registry |
+| The organisation is eventually named something other than `peakpower`, so imports must change | One bounded find-and-replace across `peakpower-web`, while nothing external consumes the packages. Keeping the specification's name is the bet that costs nothing if it wins |
 | The relaxed EAN rule outlives the PoC | `[OQ-97]` registered with an owner and a date; the seed script carries the reason inline |
 | The component library `[OQ-49]` is chosen later and conflicts with nine hand-built primitives | Nine primitives against a fully specified token set is a small surface to own; spike `[OQ-49]` alongside `[OQ-22]` during this slice, decide before the chart slice |
 | Corporate Entra tenant access is unowned, and running with our own credential removes the pressure to chase it | Name an owner and raise the request in week 1 as a non-code definition-of-done item. `[DEC-67]` forbids proving the claim mapping against a developer tenant, so there is no substitute and the lead time is real |
@@ -692,6 +717,6 @@ because both write the same tables.
 8. A customer resets a forgotten password by email and signs in with the new one.
 9. Migration 1 applies to an empty PostgreSQL 17 container, and the exclusion constraint
    rejects an overlapping EAN period.
-10. Both client packages publish to GitHub Packages and `peakpower-web` builds from the
-    lockfile.
+10. `npm run verify:clients` passes — the committed clients match what the current OpenAPI
+    documents generate.
 11. The specification pull request is open, covering §10.

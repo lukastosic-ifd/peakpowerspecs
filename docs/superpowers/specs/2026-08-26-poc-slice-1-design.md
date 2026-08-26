@@ -55,9 +55,10 @@ employee attaching them, which amends `[F01-R23]`.
 iterations 2, parallelism 1 — OWASP's current floor), never logged, never returned by any
 endpoint. `ICustomerContext` stays the single seam through which identity reaches the
 application layer, so replacing the platform credential with an Entra token later is a change
-of DI registration, not a change to the wizard, the portal or any query. Password reset and
-lockout are **out of scope for this slice** and are registered as an open question — a
-credential store without a reset path is not shippable beyond a PoC.
+of DI registration, not a change to the wizard, the portal or any query. **Password reset is in
+scope** (§7) — a credential store without a reset path is not shippable beyond a PoC. Hard
+account lockout and MFA are not; sign-in carries a progressive delay instead, and the policy
+values are the narrowed `[OQ-98]`.
 
 ---
 
@@ -73,7 +74,8 @@ credential store without a reset path is not shippable beyond a PoC.
 - On signing: `customer` + `customer_account` + `wallet` materialised in one transaction
 
 **Customer portal**
-- Sign in / sign out / session
+- Sign in / sign out; JWT access + refresh tokens, ES256 with a JWKS endpoint
+- Password reset by emailed single-use token, with sign-in rate limiting
 - Connections: list `[F01-R35]`, free-text search `[F01-R36]`, detail `[F01-R38]`
 - Friendly name ≤80 and description ≤500 `[F01-R29]`; name replaces the EAN as the primary
   label with the EAN secondary and copyable `[F01-R30]`; grouped-EAN fallback `[F01-R31]`
@@ -92,7 +94,7 @@ credential store without a reset path is not shippable beyond a PoC.
 - Migrations run to completion before any API starts
 - Tenancy: context pipeline, query filter, row-level security, 404-not-403, and the tests
   that prove all four
-- OpenAPI emitted at build; typed clients delivered to `peakpower-web` by automated PR
+- OpenAPI emitted at build; typed clients published to GitHub Packages `[DEC-116]`
 
 ### Out
 
@@ -100,7 +102,7 @@ Ingestion and the BRP adapter (F02) · charts (F03) · prices (F04, F08) · trad
 wallet movements and the ledger (F06) · payments (F07) · surcharges, invoicing, settlement
 (F09, F10) · notifications beyond the signing code (F11) · four-eyes **behaviour** (F01-R42…R50)
 · the public site (F14) · Hangfire, Redis, blob storage, SendGrid, Montel, PVNed, the
-bookkeeping program · mobile and tablet layouts · password reset and lockout.
+bookkeeping program · mobile and tablet layouts · hard account lockout · MFA.
 
 Four-eyes **columns** are in scope; four-eyes **behaviour** is not. `[DEC-71]` and the roadmap
 both say to ship `is_admin` and `four_eyes_enabled` in Phase 1 even though nothing reads them
@@ -199,6 +201,8 @@ Schemas `customer`, `metering`, `wallet`, `audit`. Tables:
 | `customer.customer` | the company — `[F01-R01]`…`[F01-R07]`, incl. `four_eyes_enabled` |
 | `customer.customer_account` | one person's login — incl. `is_admin`, `password_hash` (D3) |
 | `customer.onboarding_application` | the wizard's accumulating answers |
+| `customer.refresh_token` | rotating, single-use, revocable — hashed at rest |
+| `customer.password_reset_token` | single-use, one-hour TTL — hashed at rest |
 | `customer.metering_point` | EAN, BRP, production expectation, validity, `name`, `description` |
 | `metering.brp` | reference data; the PVNed row is seeded **first** |
 | `wallet.wallet` | stub — one EUR wallet per customer `[F01-R05]` |
@@ -304,14 +308,18 @@ POST   /onboarding/applications                 start — person + credential
 PATCH  /onboarding/applications/{id}            save one step's answers
 POST   /onboarding/applications/{id}/signatories
 POST   /onboarding/applications/{id}/sign       verify code, materialise company
-POST   /auth/sign-in
-POST   /auth/sign-out
+POST   /auth/sign-in                            → access token + refresh cookie
+POST   /auth/refresh                            rotate; refresh cookie only
+POST   /auth/sign-out                           revoke the refresh token
 GET    /auth/me
+GET    /.well-known/jwks.json                   public keys for ES256 validation
+POST   /auth/password-reset/requests            always 202
+POST   /auth/password-reset/completions         token + new password
 GET    /company                                 read-only profile        [F01-R09]
 GET    /company/accounts                        read-only account list   [F01-R21]
 GET    /metering-points                         list + search            [F01-R35] [F01-R36]
 GET    /metering-points/{id}                    detail                   [F01-R38]
-PATCH  /metering-points/{id}/naming              name + description       [F01-R29]
+PATCH  /metering-points/{id}/naming             name + description       [F01-R29]
 GET    /ean-pool?q=                             unclaimed connections
 POST   /metering-points                         claim one, declare expectation [F01-R54]
 ```
@@ -328,21 +336,107 @@ POST   /metering-points/{id}/end-date
 GET    /reference-data/brps
 ```
 
-### Session
+### Authentication — JWT
 
-HTTP-only, `SameSite=Strict`, `Secure` cookie carrying an opaque session id; the session row
-holds `customer_id` and `account_id`, and `ICustomerContext` reads from it. No JWT in this
-slice — a token format is a decision the identity slice should make against Entra, not one
-this slice should pre-empt.
+A short-lived **access token** (15 minutes) and a rotating, single-use, revocable **refresh
+token** (14 days).
+
+**Signed ES256 against a JWKS endpoint, not a shared secret.** This is the choice that pays
+off later: `Api.Customer`'s token-validation path becomes the *same code* that will validate an
+Entra token, and migrating means changing an issuer and a JWKS URL rather than replacing the
+pipeline. HS256 would be simpler to stand up and would have to be thrown away.
+
+**Claims mirror what Entra is expected to supply**, so the claim contract is rehearsed here
+rather than invented during the identity slice:
+
+| Claim | Holds | Later supplied by |
+| --- | --- | --- |
+| `sub` | account id | Entra `sub` |
+| `customer_id` | the company | the claim mapping `[F13-R32]` |
+| `is_admin` | the `[DEC-71]` flag | an app role or mapped claim |
+| `amr` | how the person authenticated | Conditional Access `[DEC-92]` |
+| `stamp` | credential version | PoC only — see revocation |
+
+`ICustomerContext` reads `customer_id` from the validated token and from nowhere else.
+`[F13]` business rule 2 makes reading it from a route, query, body or header a defect.
+
+**Browser storage.** The access token lives **in memory only** — an Angular signal, never
+`localStorage`, never `sessionStorage`. The refresh token is an HttpOnly, Secure,
+`SameSite=Strict` cookie scoped to the refresh endpoint alone. This is the one part of the
+design where getting it wrong is silently exploitable rather than visibly broken: a JWT in
+`localStorage` is readable by any XSS, and §8.5 already records that the prototype builds all
+its markup by string concatenation.
+
+**Revocation, and a real conflict with `[F01-R16]`.** That requirement says deactivating an
+account "revokes its sessions immediately". A stateless bearer token cannot be revoked before
+it expires, so the honest reading is that a 15-minute access token leaves a 15-minute window.
+Three ways out:
+
+| | Approach | Verdict |
+| --- | --- | --- |
+| a | Accept the window, document it | Cheapest, and wrong for a requirement that says *immediately* |
+| b | A denylist checked per request | Reintroduces exactly the state JWT was chosen to avoid |
+| c | **A `stamp` claim compared to a `security_stamp` column on the account, per request** | **Chosen** |
+
+(c) costs nothing measurable here, because every request already opens a transaction to
+`SET LOCAL app.customer_id` for row-level security — the stamp check rides along on a row
+already being touched. Deactivating an account, completing a password reset, or an employee
+editing the account bumps the stamp, and every outstanding token for that account dies on its
+next call. It satisfies `[F01-R16]` literally, and it makes refresh tokens revocable for free.
+
+### Password reset
+
+`[DEC-113]` puts a credential in the platform, so the reset path comes with it. A credential
+store without one is not shippable past a demo.
+
+```
+POST /auth/password-reset/requests      { email }                 → always 202
+POST /auth/password-reset/completions   { token, newPassword }
+```
+
+- The request endpoint **always** returns 202, whether or not the address exists. Anything else
+  is an account-enumeration oracle.
+- The token is 32 bytes from a CSPRNG, stored **hashed**, single-use, one-hour TTL.
+- Completion bumps `security_stamp`, so every outstanding access and refresh token for that
+  account dies immediately — the same mechanism the revocation design above already needs.
+- Sign-in and reset requests are rate-limited per address **and** per source. Progressive delay
+  rather than hard lockout: a hard lockout on a username is a denial-of-service primitive
+  against a named customer.
+
+The *policy values* — delay curve, token TTL, password composition beyond the wizard's
+twelve-character minimum — are the narrowed `[OQ-98]`; the mechanism is not open.
 
 ### Cross-repository clients
 
-`@peakpower/api-client-customer` and `@peakpower/api-client-employee` are generated in platform
-CI and delivered to `peakpower-web` as an **automated pull request committing the generated
-code**. The specification sanctions this as the fallback where a private feed is unavailable,
-and the feed is unchosen — [solution structure §8](../../../specs/20-architecture/02-solution-structure.md)
-carries the question as *"(new, from `[DEC-55]`)"* with **no `[OQ-nn]` id**, which §10 proposes
-numbering. What is explicitly not acceptable is each developer generating clients locally.
+The two OpenAPI documents are emitted at build, generated into typed npm packages, and
+**published to GitHub Packages** on merge to `main`, versioned `<api-version>-<build>` with
+semver enforced: a breaking OpenAPI diff is a major. `peakpower-web` consumes them from the
+lockfile, and a version bump is a normal reviewable pull request that either compiles or does
+not. What is explicitly not acceptable is each developer generating clients locally — that is a
+build that differs per machine.
+
+> ⚠ **The package scope is constrained by the repository owner, and the spec's name does not
+> currently work.** GitHub Packages requires an npm package's scope to match the GitHub account
+> or organisation that owns it. The specification writes `@peakpower/api-client-*`
+> ([solution structure §1.1, §5.1](../../../specs/20-architecture/02-solution-structure.md)),
+> which requires a GitHub organisation literally named `peakpower`. As at 2026-08-26 the
+> available owners are the user `thinhtanhuynh` and the organisation `Kikker-Energie`; no
+> `peakpower` organisation exists. Three ways forward, in preference order:
+>
+> 1. **Create a `peakpower` organisation** to own both repositories — keeps the specification's
+>    package names exactly as written, and is the right home for the code regardless.
+> 2. Host both under `Kikker-Energie` and rename the scope to `@kikker-energie/api-client-*`,
+>    amending the specification.
+> 3. Host under `thinhtanhuynh` — works, but ties team infrastructure to one person's account.
+>
+> This must be settled before the first CI pipeline is written; it decides an `.npmrc`, a
+> package name and a workflow permission in both repositories.
+
+`peakpower-web/.npmrc` maps the scope to `https://npm.pkg.github.com`; CI authenticates with the
+workflow's `GITHUB_TOKEN` and developers with a `read:packages` personal access token. The
+committed-generated-PR route the specification describes as the fallback is **not** used, and
+the three restoring mechanisms it pairs with the feed still are: enforced semver, a nightly
+build of `peakpower-web` against the latest published client, and the E2E suite as backstop.
 
 ---
 
@@ -456,6 +550,7 @@ tool. Recorded as explicit scope, not an omission.
 | Persistence | Real Postgres 17, real migrations, constraint behaviour | Testcontainers |
 | **Tenancy** | **Route-table: sign in as A, 404 on every one of B's objects** | Testcontainers |
 | Integration | Onboarding application → signed → company materialised, idempotent | Testcontainers |
+| **Auth** | **Token bumped by `security_stamp` is rejected on the next call; refresh rotation is single-use; reset completion kills every outstanding token; reset request is 202 for a non-existent address** | Testcontainers |
 | Architecture | Module graph, domain purity, no `IgnoreQueryFilters()`, no `DateTime.Now` | NetArchTest |
 | API contract | OpenAPI snapshot | Verify |
 | Frontend unit | Components, pipes, signal stores | Vitest |
@@ -478,9 +573,11 @@ record and the build do not diverge.
 
 | Id | Decision | Reverses |
 | --- | --- | --- |
-| `[DEC-113]` | Customer companies may be created by **self-service onboarding**. The platform stores an Argon2id credential hash for the customer realm. Customers may claim metering points from a shared EAN pool. | `[DEC-16]`, `[DEC-29]`, `[F01-R12]`, `[F01-R23]` |
+| `[DEC-113]` | Customer companies may be created by **self-service onboarding**. The platform stores an Argon2id credential hash for the customer realm **and owns the password-reset path**. Customers may claim metering points from a shared EAN pool. | `[DEC-16]`, `[DEC-29]`, `[F01-R12]`, `[F01-R23]` |
 | `[DEC-114]` | EAN validation is **18 digits only** for the proof of concept. The GS1 check digit is reinstated before go-live. | the check-digit half of `[F01-R24]` |
 | `[DEC-115]` | The customer portal's navigation and labels follow the design system. Route keys keep the specification's names. | `screens-customer.mjs:7` |
+| `[DEC-116]` | Generated API clients are published to **GitHub Packages**. The committed-generated-PR fallback is not used. The npm scope must match the owning GitHub organisation, so naming that owner is part of this decision. | settles the unnumbered feed question in [solution structure §8](../../../specs/20-architecture/02-solution-structure.md) |
+| `[DEC-117]` | Customer authentication is a **JWT** access/refresh pair, ES256 over JWKS, with a `security_stamp` claim checked per request so `[F01-R16]`'s immediate revocation holds against a stateless token. | new ground — `[DEC-20]` assumed no authentication at all |
 
 ### Corrections
 
@@ -501,9 +598,9 @@ record and the build do not diverge.
 | Id | Question | Why it must have an owner |
 | --- | --- | --- |
 | `[OQ-97]` | When is the GS1 check digit reinstated, and which weighting is normative? | Both conventions disagree on five of the six demo EANs; the spec says "GS1 check digit" without pinning the algorithm |
-| `[OQ-98]` | Password reset, lockout and rotation policy for the customer realm | `[DEC-113]` creates a credential store; a store without a reset path is not shippable beyond a PoC |
+| `[OQ-98]` | Credential **policy values** — sign-in delay curve, reset-token TTL, password composition beyond twelve characters | The mechanism is designed (§7) and no longer open; only the numbers are, and they belong to whoever owns security policy rather than to the delivery team |
 | `[OQ-99]` | The six-product entitlement gate in the demo's rail | A commercial model that appears nowhere in the specification set |
-| `[OQ-100]` | Which private feed hosts `@peakpower/api-client-*` — Azure Artifacts or GitHub Packages? | Already asked in [solution structure §8](../../../specs/20-architecture/02-solution-structure.md) but never numbered, so it is invisible to the register. The committed-PR fallback means it gates the preferred path only |
+| `[OQ-100]` | Which GitHub organisation owns `peakpower-platform` and `peakpower-web`? | `[DEC-116]` chose GitHub Packages, whose npm scope **must** match the owner. No `peakpower` organisation existed as at 2026-08-26, so `@peakpower/api-client-*` as the specification writes it cannot be published anywhere yet. Decides an `.npmrc`, a package name and a workflow permission in both repositories |
 
 ### Not changed, deliberately
 
@@ -572,7 +669,8 @@ because both write the same tables.
 | Risk | Mitigation |
 | --- | --- |
 | The Aspire 13 API differs from the spec's 9.x-era snippet | Check `AddNpmApp` and `WaitForCompletion` against 13.5.3 in step 6; the spec amendment records what changed |
-| D3's credential store grows a reset/lockout requirement mid-slice | `[OQ-98]` registered now with an owner; reset is explicitly out of slice 1 scope |
+| A stateless JWT cannot satisfy `[F01-R16]`'s *immediate* session revocation | The `security_stamp` check (§7) rides on the transaction RLS already opens, so revocation stays immediate at no measurable cost |
+| The package scope blocks the first CI pipeline | `[OQ-100]` is answered before pipelines are written, not after; renaming the scope is cheap only while nothing consumes the packages |
 | The relaxed EAN rule outlives the PoC | `[OQ-97]` registered with an owner and a date; the seed script carries the reason inline |
 | The component library `[OQ-49]` is chosen later and conflicts with nine hand-built primitives | Nine primitives against a fully specified token set is a small surface to own; spike `[OQ-49]` alongside `[OQ-22]` during this slice, decide before the chart slice |
 | Corporate Entra tenant access is unowned, and running with our own credential removes the pressure to chase it | Name an owner and raise the request in week 1 as a non-code definition-of-done item. `[DEC-67]` forbids proving the claim mapping against a developer tenant, so there is no substitute and the lead time is real |
@@ -589,6 +687,11 @@ because both write the same tables.
 5. **The route-table test passes**: signed in as company A, every one of company B's objects
    returns 404.
 6. The architecture tests pass: domain purity, module graph, no `IgnoreQueryFilters()`.
-7. Migration 1 applies to an empty PostgreSQL 17 container, and the exclusion constraint
+7. Deactivating an account invalidates its token on the **next** call, not in fifteen
+   minutes — `[F01-R16]` satisfied against a stateless token.
+8. A customer resets a forgotten password by email and signs in with the new one.
+9. Migration 1 applies to an empty PostgreSQL 17 container, and the exclusion constraint
    rejects an overlapping EAN period.
-8. The specification pull request is open, covering §10.
+10. Both client packages publish to GitHub Packages and `peakpower-web` builds from the
+    lockfile.
+11. The specification pull request is open, covering §10.

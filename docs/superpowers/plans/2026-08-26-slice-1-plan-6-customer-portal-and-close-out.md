@@ -21,7 +21,7 @@ refreshes exactly once against the HttpOnly `pp_refresh` cookie before redirecti
 
 **Tech Stack:** .NET SDK 10.0.400 · EF Core 10.x · PostgreSQL 17 · Aspire 13.5.3 ·
 Angular 22 (`@angular/cli` 22.1.6) · Node 24.15.0 / npm 11.12.1 · Vitest 4.1.11 ·
-Playwright 1.56.1 · openapi-typescript 7.13.0 · xUnit + FluentAssertions 7.2.0 ·
+Playwright 1.56.1 · openapi-typescript 7.13.0 · xUnit + Shouldly 4.3.0 ·
 Testcontainers.PostgreSql 4.14.0 · Verify.Xunit 30.15.0
 
 **Spec:** `docs/superpowers/specs/2026-08-26-poc-slice-1-design.md`
@@ -345,7 +345,7 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** + NSubstitute |
+| Domain / Application unit | xUnit + **Shouldly 4.3.0**|
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest (facts 1-3, 5) and Mono.Cecil IL scanning (facts 4 and 6) |
 | OpenAPI contract | Verify snapshot |
@@ -361,14 +361,13 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 | `Konscious.Security.Cryptography.Argon2` | **1.3.1** | the Argon2id hasher `[DEC-113]` |
 | `NetArchTest.Rules` | **1.3.2** | the six architecture facts |
 | `Testcontainers.PostgreSql` | **4.14.0** | real PostgreSQL 17 in tests |
-| `FluentAssertions` | **7.2.0** | ⚠ **pin 7.x — do not take 8.x** |
+| `Shouldly` | **4.3.0** | ⚠ **not FluentAssertions** — see `[DEC-118]` |
 | `Mono.Cecil` | **0.11.6** | IL scanning for architecture facts 3-6 |
 
-> ⚠ **FluentAssertions 8.x may not be used.** 8.10.0 ships an Xceed Software Community
-> License Agreement "for Non-Commercial Use"; PeakPower is a commercial trading platform, so
-> 8.x would need a paid Xceed licence. **7.2.0 is the last `Apache-2.0` release** and is what
-> every plan pins. Task 29 files the correction against the specification, and `[OQ-101]`
-> records the Shouldly 4.3.0 alternative if 7.x goes unmaintained.
+> ⚠ **Assert with Shouldly, never FluentAssertions** `[DEC-118]`. FluentAssertions 8.x ships an
+> Xceed Community License "for Non-Commercial Use" and PeakPower is commercial; 7.2.0 is the
+> last Apache-2.0 release and the end of that line. Shouldly 4.3.0 is Apache-2.0 and maintained.
+> `verify-build-settings.sh` fails the build if FluentAssertions reappears.
 
 **Architecture facts that must exist from week 1:**
 
@@ -905,7 +904,7 @@ before their planning horizon closes, short enough that it is not permanently am
 Create `tests/PeakPower.Domain.Tests/Customers/ConnectionStatusTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Customers;
 using Xunit;
 
@@ -919,20 +918,20 @@ public sealed class ConnectionStatusTests
     public void A_connection_that_has_not_started_is_pending()
     {
         ConnectionStatusRules.For(Today, new DateOnly(2026, 9, 1), null)
-            .Should().Be(ConnectionStatus.Pending);
+            .ShouldBe(ConnectionStatus.Pending);
     }
 
     [Fact]
     public void A_connection_starting_today_is_active()
     {
-        ConnectionStatusRules.For(Today, Today, null).Should().Be(ConnectionStatus.Active);
+        ConnectionStatusRules.For(Today, Today, null).ShouldBe(ConnectionStatus.Active);
     }
 
     [Fact]
     public void An_open_ended_connection_is_active()
     {
         ConnectionStatusRules.For(Today, new DateOnly(2024, 1, 1), null)
-            .Should().Be(ConnectionStatus.Active);
+            .ShouldBe(ConnectionStatus.Active);
     }
 
     [Fact]
@@ -940,14 +939,14 @@ public sealed class ConnectionStatusTests
     {
         // 2027-06-30 is more than 90 days out, so it is not yet worth an amber badge.
         ConnectionStatusRules.For(Today, new DateOnly(2024, 1, 1), new DateOnly(2027, 6, 30))
-            .Should().Be(ConnectionStatus.Active);
+            .ShouldBe(ConnectionStatus.Active);
     }
 
     [Fact]
     public void A_connection_ending_inside_ninety_days_is_ending()
     {
         ConnectionStatusRules.For(Today, new DateOnly(2024, 1, 1), new DateOnly(2026, 10, 1))
-            .Should().Be(ConnectionStatus.Ending);
+            .ShouldBe(ConnectionStatus.Ending);
     }
 
     [Fact]
@@ -956,9 +955,9 @@ public sealed class ConnectionStatusTests
         var boundary = Today.AddDays(ConnectionStatusRules.EndingWithinDays);
 
         ConnectionStatusRules.For(Today, new DateOnly(2024, 1, 1), boundary)
-            .Should().Be(ConnectionStatus.Ending);
+            .ShouldBe(ConnectionStatus.Ending);
         ConnectionStatusRules.For(Today, new DateOnly(2024, 1, 1), boundary.AddDays(1))
-            .Should().Be(ConnectionStatus.Active);
+            .ShouldBe(ConnectionStatus.Active);
     }
 
     [Fact]
@@ -966,23 +965,23 @@ public sealed class ConnectionStatusTests
     {
         // [valid_from, valid_to) — the customer holds it through the day BEFORE valid_to.
         ConnectionStatusRules.For(Today, new DateOnly(2024, 1, 1), Today)
-            .Should().Be(ConnectionStatus.Ended);
+            .ShouldBe(ConnectionStatus.Ended);
         ConnectionStatusRules.For(Today, new DateOnly(2024, 1, 1), Today.AddDays(1))
-            .Should().Be(ConnectionStatus.Ending);
+            .ShouldBe(ConnectionStatus.Ending);
     }
 
     [Fact]
     public void A_connection_whose_period_has_passed_is_ended()
     {
         ConnectionStatusRules.For(Today, new DateOnly(2024, 1, 1), new DateOnly(2025, 12, 31))
-            .Should().Be(ConnectionStatus.Ended);
+            .ShouldBe(ConnectionStatus.Ended);
     }
 
     [Fact]
     public void Ended_beats_pending_for_a_window_entirely_in_the_past()
     {
         ConnectionStatusRules.For(Today, new DateOnly(2020, 1, 1), new DateOnly(2020, 6, 1))
-            .Should().Be(ConnectionStatus.Ended);
+            .ShouldBe(ConnectionStatus.Ended);
     }
 }
 ```
@@ -1123,7 +1122,7 @@ Create `tests/PeakPower.Integration.Tests/Portal/CompanyEndpointTests.cs`:
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Portal;
 using Xunit;
@@ -1144,7 +1143,7 @@ public sealed class CompanyEndpointTests(CustomerApiFactory factory)
         var client = factory.CreateAnonymousClient();
         var response = await client.PostAsJsonAsync(
             "/api/v1/auth/sign-in", new SignInRequest(email, Password));
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadFromJsonAsync<SignInResponse>();
         client.DefaultRequestHeaders.Authorization =
@@ -1159,12 +1158,12 @@ public sealed class CompanyEndpointTests(CustomerApiFactory factory)
 
         var profile = await client.GetFromJsonAsync<CompanyProfileResponse>("/api/v1/company");
 
-        profile.Should().NotBeNull();
-        profile!.LegalName.Should().Be("Vandersteen Koeling B.V.");
-        profile.KvkNumber.Should().Be("34215678");
-        profile.Status.Should().Be("ACTIVE");
-        profile.Locale.Should().Be("nl-NL");
-        profile.BillingAddress.Country.Should().Be("NL");
+        profile.ShouldNotBeNull();
+        profile!.LegalName.ShouldBe("Vandersteen Koeling B.V.");
+        profile.KvkNumber.ShouldBe("34215678");
+        profile.Status.ShouldBe("ACTIVE");
+        profile.Locale.ShouldBe("nl-NL");
+        profile.BillingAddress.Country.ShouldBe("NL");
     }
 
     [Fact]
@@ -1176,7 +1175,7 @@ public sealed class CompanyEndpointTests(CustomerApiFactory factory)
 
         var response = await client.GetAsync("/api/v1/company/00000000-0000-0000-0000-000000000001");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -1186,7 +1185,7 @@ public sealed class CompanyEndpointTests(CustomerApiFactory factory)
 
         var response = await client.GetAsync("/api/v1/company");
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -1198,9 +1197,9 @@ public sealed class CompanyEndpointTests(CustomerApiFactory factory)
         var accounts = await mine.GetFromJsonAsync<CompanyAccountsResponse>(
             "/api/v1/company/accounts");
 
-        accounts.Should().NotBeNull();
-        accounts!.Items.Should().HaveCount(1);
-        accounts.Items[0].Status.Should().Be("ACTIVE");
+        accounts.ShouldNotBeNull();
+        accounts!.Items.Count().ShouldBe(1);
+        accounts.Items[0].Status.ShouldBe("ACTIVE");
     }
 
     [Fact]
@@ -1210,9 +1209,9 @@ public sealed class CompanyEndpointTests(CustomerApiFactory factory)
 
         var raw = await client.GetStringAsync("/api/v1/company/accounts");
 
-        raw.Should().NotContainEquivalentOf("passwordHash");
-        raw.Should().NotContainEquivalentOf("securityStamp");
-        raw.Should().NotContainEquivalentOf("argon2");
+        raw.ShouldNotContain("passwordHash", Case.Insensitive);
+        raw.ShouldNotContain("securityStamp", Case.Insensitive);
+        raw.ShouldNotContain("argon2", Case.Insensitive);
     }
 }
 ```
@@ -1614,7 +1613,7 @@ Create `tests/PeakPower.Integration.Tests/Portal/ConnectionListTests.cs`:
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Portal;
@@ -1689,9 +1688,9 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
 
         var list = await client.GetFromJsonAsync<ConnectionListResponse>("/api/v1/metering-points");
 
-        list.Should().NotBeNull();
-        list!.Items.Should().BeEmpty();
-        list.Total.Should().Be(0);
+        list.ShouldNotBeNull();
+        list!.Items.ShouldBeEmpty();
+        list.Total.ShouldBe(0);
     }
 
     [Fact]
@@ -1704,19 +1703,19 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
 
         var list = await client.GetFromJsonAsync<ConnectionListResponse>("/api/v1/metering-points");
 
-        list!.Total.Should().Be(2);
+        list!.Total.ShouldBe(2);
 
         var named = list.Items.Single(i => i.Ean == "871687100000000011");
-        named.DisplayLabel.Should().Be("Rotterdam DC");
-        named.EanDisplay.Should().Be("8716 8710 0000 0000 11");
-        named.Status.Should().Be("ACTIVE");
-        named.Commodity.Should().Be("ELECTRICITY");
-        named.City.Should().Be("Rotterdam");
+        named.DisplayLabel.ShouldBe("Rotterdam DC");
+        named.EanDisplay.ShouldBe("8716 8710 0000 0000 11");
+        named.Status.ShouldBe("ACTIVE");
+        named.Commodity.ShouldBe("ELECTRICITY");
+        named.City.ShouldBe("Rotterdam");
 
         // [F01-R31]: with no friendly name the grouped EAN IS the label.
         var unnamed = list.Items.Single(i => i.Ean == "871687100000000061");
-        unnamed.DisplayLabel.Should().Be("8716 8710 0000 0000 61");
-        unnamed.Name.Should().BeNull();
+        unnamed.DisplayLabel.ShouldBe("8716 8710 0000 0000 61");
+        unnamed.Name.ShouldBeNull();
     }
 
     [Fact]
@@ -1728,7 +1727,7 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
 
         var list = await client.GetFromJsonAsync<ConnectionListResponse>("/api/v1/metering-points");
 
-        list!.Items.Single().LastDataDate.Should().BeNull();
+        list!.Items.Single().LastDataDate.ShouldBeNull();
     }
 
     [Fact]
@@ -1740,7 +1739,7 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
 
         var list = await client.GetFromJsonAsync<ConnectionListResponse>("/api/v1/metering-points");
 
-        list!.Items.Single().Status.Should().Be("ENDING");
+        list!.Items.Single().Status.ShouldBe("ENDING");
     }
 
     [Theory]
@@ -1760,7 +1759,7 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
         var list = await client.GetFromJsonAsync<ConnectionListResponse>(
             $"/api/v1/metering-points?q={Uri.EscapeDataString(query)}");
 
-        list!.Items.Should().ContainSingle().Which.Ean.Should().Be(expected);
+        list!.Items.ShouldHaveSingleItem().Ean.ShouldBe(expected);
     }
 
     [Fact]
@@ -1773,8 +1772,8 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
         var list = await client.GetFromJsonAsync<ConnectionListResponse>(
             "/api/v1/metering-points?q=groningen");
 
-        list!.Items.Should().BeEmpty();
-        list.Total.Should().Be(0);
+        list!.Items.ShouldBeEmpty();
+        list.Total.ShouldBe(0);
     }
 
     [Fact]
@@ -1787,7 +1786,7 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
 
         var list = await bClient.GetFromJsonAsync<ConnectionListResponse>("/api/v1/metering-points");
 
-        list!.Items.Should().BeEmpty("company B must not see company A's connections");
+        list!.Items.ShouldBeEmpty("company B must not see company A's connections");
     }
 
     [Fact]
@@ -1796,7 +1795,7 @@ public sealed class ConnectionListTests(CustomerApiFactory factory)
         var client = factory.CreateAnonymousClient();
 
         (await client.GetAsync("/api/v1/metering-points")).StatusCode
-            .Should().Be(HttpStatusCode.Unauthorized);
+            .ShouldBe(HttpStatusCode.Unauthorized);
     }
 }
 ```
@@ -1994,7 +1993,7 @@ Create `tests/PeakPower.Integration.Tests/Portal/ConnectionDetailTests.cs`:
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Portal;
@@ -2060,16 +2059,16 @@ public sealed class ConnectionDetailTests(CustomerApiFactory factory)
         var detail = await client.GetFromJsonAsync<ConnectionDetailDto>(
             $"/api/v1/metering-points/{id}");
 
-        detail.Should().NotBeNull();
-        detail!.DisplayLabel.Should().Be("Venlo cold store");
-        detail.EanDisplay.Should().Be("8716 8710 0000 0000 27");
-        detail.BrpName.Should().NotBeNullOrWhiteSpace();
-        detail.BrpId.Should().NotBeEmpty();
-        detail.ProductionExpectation.Should().Be("EXPECTED");
-        detail.ExpectationSource.Should().Be("CUSTOMER_DECLARED");
-        detail.Address!.PostalCode.Should().Be("5928LA");
-        detail.CapacityKw.Should().Be(2500m);
-        detail.LastDataDate.Should().BeNull();
+        detail.ShouldNotBeNull();
+        detail!.DisplayLabel.ShouldBe("Venlo cold store");
+        detail.EanDisplay.ShouldBe("8716 8710 0000 0000 27");
+        detail.BrpName.ShouldNotBeNullOrWhiteSpace();
+        detail.BrpId.ShouldNotBeEmpty();
+        detail.ProductionExpectation.ShouldBe("EXPECTED");
+        detail.ExpectationSource.ShouldBe("CUSTOMER_DECLARED");
+        detail.Address!.PostalCode.ShouldBe("5928LA");
+        detail.CapacityKw.ShouldBe(2500m);
+        detail.LastDataDate.ShouldBeNull();
     }
 
     [Fact]
@@ -2083,8 +2082,8 @@ public sealed class ConnectionDetailTests(CustomerApiFactory factory)
         var response = await bClient.GetAsync($"/api/v1/metering-points/{theirs}");
 
         // 403 would confirm the row exists. [F13-R19] says 404.
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldNotBe(HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -2094,7 +2093,7 @@ public sealed class ConnectionDetailTests(CustomerApiFactory factory)
 
         var response = await client.GetAsync($"/api/v1/metering-points/{Guid.NewGuid()}");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -2104,7 +2103,7 @@ public sealed class ConnectionDetailTests(CustomerApiFactory factory)
 
         var response = await client.GetAsync($"/api/v1/metering-points/{Guid.NewGuid()}");
 
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
     }
 }
 ```
@@ -2230,7 +2229,7 @@ Create `tests/PeakPower.Integration.Tests/Portal/ConnectionNamingTests.cs`:
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Portal;
@@ -2296,11 +2295,11 @@ public sealed class ConnectionNamingTests(CustomerApiFactory factory)
             $"/api/v1/metering-points/{id}/naming",
             new RenameConnectionRequest("Kabelweg depot", "Roof array and two docks"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var detail = await response.Content.ReadFromJsonAsync<ConnectionDetailDto>();
-        detail!.Name.Should().Be("Kabelweg depot");
-        detail.Description.Should().Be("Roof array and two docks");
-        detail.DisplayLabel.Should().Be("Kabelweg depot");
+        detail!.Name.ShouldBe("Kabelweg depot");
+        detail.Description.ShouldBe("Roof array and two docks");
+        detail.DisplayLabel.ShouldBe("Kabelweg depot");
     }
 
     [Fact]
@@ -2313,8 +2312,8 @@ public sealed class ConnectionNamingTests(CustomerApiFactory factory)
             $"/api/v1/metering-points/{id}/naming", new RenameConnectionRequest(null, null));
 
         var detail = await response.Content.ReadFromJsonAsync<ConnectionDetailDto>();
-        detail!.Name.Should().BeNull();
-        detail.DisplayLabel.Should().Be("8716 8710 0000 0001 97");
+        detail!.Name.ShouldBeNull();
+        detail.DisplayLabel.ShouldBe("8716 8710 0000 0001 97");
     }
 
     [Fact]
@@ -2327,8 +2326,8 @@ public sealed class ConnectionNamingTests(CustomerApiFactory factory)
             $"/api/v1/metering-points/{id}/naming", new RenameConnectionRequest("   ", ""));
 
         var detail = await response.Content.ReadFromJsonAsync<ConnectionDetailDto>();
-        detail!.Name.Should().BeNull();
-        detail.Description.Should().BeNull();
+        detail!.Name.ShouldBeNull();
+        detail.Description.ShouldBeNull();
     }
 
     [Fact]
@@ -2341,7 +2340,7 @@ public sealed class ConnectionNamingTests(CustomerApiFactory factory)
             $"/api/v1/metering-points/{id}/naming",
             new RenameConnectionRequest(new string('x', 80), null));
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -2354,9 +2353,9 @@ public sealed class ConnectionNamingTests(CustomerApiFactory factory)
             $"/api/v1/metering-points/{id}/naming",
             new RenameConnectionRequest(new string('x', 81), null));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
-        (await response.Content.ReadAsStringAsync()).Should().Contain("name");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        (await response.Content.ReadAsStringAsync()).ShouldContain("name");
     }
 
     [Fact]
@@ -2369,8 +2368,8 @@ public sealed class ConnectionNamingTests(CustomerApiFactory factory)
             $"/api/v1/metering-points/{id}/naming",
             new RenameConnectionRequest(null, new string('y', 501)));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("description");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("description");
     }
 
     [Fact]
@@ -2385,11 +2384,11 @@ public sealed class ConnectionNamingTests(CustomerApiFactory factory)
             $"/api/v1/metering-points/{theirs}/naming",
             new RenameConnectionRequest("Mine now", null));
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         await using var db = factory.CreateOwnerDbContext();
         var untouched = await db.MeteringPoints.SingleAsync(p => p.Id == theirs);
-        untouched.Name.Should().Be("Westervoortsedijk");
+        untouched.Name.ShouldBe("Westervoortsedijk");
     }
 }
 ```
@@ -2532,7 +2531,7 @@ Slice 1 has migration 1 `InitialSchema` (plan 1), migration 2 `TenancyRowLevelSe
 Create `tests/PeakPower.Domain.Tests/Metering/EanPoolEntryTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
 using PeakPower.Domain.Metering;
@@ -2557,9 +2556,9 @@ public sealed class EanPoolEntryTests
     {
         var entry = Unclaimed();
 
-        entry.IsClaimed.Should().BeFalse();
-        entry.ClaimedAt.Should().BeNull();
-        entry.ClaimedByCustomerId.Should().BeNull();
+        entry.IsClaimed.ShouldBeFalse();
+        entry.ClaimedAt.ShouldBeNull();
+        entry.ClaimedByCustomerId.ShouldBeNull();
     }
 
     [Fact]
@@ -2570,10 +2569,10 @@ public sealed class EanPoolEntryTests
 
         var result = entry.Claim(customerId, Now);
 
-        result.IsSuccess.Should().BeTrue();
-        entry.IsClaimed.Should().BeTrue();
-        entry.ClaimedByCustomerId.Should().Be(customerId);
-        entry.ClaimedAt.Should().Be(Now);
+        result.IsSuccess.ShouldBeTrue();
+        entry.IsClaimed.ShouldBeTrue();
+        entry.ClaimedByCustomerId.ShouldBe(customerId);
+        entry.ClaimedAt.ShouldBe(Now);
     }
 
     [Fact]
@@ -2585,10 +2584,10 @@ public sealed class EanPoolEntryTests
 
         var result = entry.Claim(Guid.NewGuid(), Now.AddMinutes(1));
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("That connection has already been claimed.");
-        entry.ClaimedByCustomerId.Should().Be(first, "the first claim stands");
-        entry.ClaimedAt.Should().Be(Now);
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("That connection has already been claimed.");
+        entry.ClaimedByCustomerId.ShouldBe(first, "the first claim stands");
+        entry.ClaimedAt.ShouldBe(Now);
     }
 
     [Fact]
@@ -2600,7 +2599,7 @@ public sealed class EanPoolEntryTests
         var customerId = Guid.NewGuid();
         entry.Claim(customerId, Now);
 
-        entry.Claim(customerId, Now.AddMinutes(1)).IsSuccess.Should().BeFalse();
+        entry.Claim(customerId, Now.AddMinutes(1)).IsSuccess.ShouldBeFalse();
     }
 }
 ```
@@ -2787,7 +2786,7 @@ Create `tests/PeakPower.Integration.Tests/Portal/EanPoolTests.cs`:
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Portal;
 using PeakPower.Domain.Common;
@@ -2839,12 +2838,12 @@ public sealed class EanPoolTests(CustomerApiFactory factory) : IClassFixture<Cus
         var pool = await client.GetFromJsonAsync<EanPoolResponse>(
             "/api/v1/ean-pool?q=871687100000000122");
 
-        var entry = pool!.Items.Should().ContainSingle().Subject;
-        entry.Ean.Should().Be("871687100000000122");
-        entry.EanDisplay.Should().Be("8716 8710 0000 0001 22");
-        entry.Commodity.Should().Be("ELECTRICITY");
-        entry.GridOperator.Should().Be("Enexis");
-        entry.Address!.City.Should().Be("VENLO");
+        var entry = pool!.Items.ShouldHaveSingleItem();
+        entry.Ean.ShouldBe("871687100000000122");
+        entry.EanDisplay.ShouldBe("8716 8710 0000 0001 22");
+        entry.Commodity.ShouldBe("ELECTRICITY");
+        entry.GridOperator.ShouldBe("Enexis");
+        entry.Address!.City.ShouldBe("VENLO");
     }
 
     [Fact]
@@ -2854,13 +2853,13 @@ public sealed class EanPoolTests(CustomerApiFactory factory) : IClassFixture<Cus
         await AddToPoolAsync("871687100000000320", "SPIJKENISSE");
 
         (await client.GetFromJsonAsync<EanPoolResponse>("/api/v1/ean-pool?q=spijkenisse"))!
-            .Items.Should().ContainSingle(i => i.Ean == "871687100000000320");
+            .Items.Count(i => i.Ean == "871687100000000320").ShouldBe(1);
 
         (await client.GetFromJsonAsync<EanPoolResponse>("/api/v1/ean-pool?q=0320"))!
-            .Items.Should().ContainSingle(i => i.Ean == "871687100000000320");
+            .Items.Count(i => i.Ean == "871687100000000320").ShouldBe(1);
 
         (await client.GetFromJsonAsync<EanPoolResponse>("/api/v1/ean-pool?q=Ceresstraat"))!
-            .Items.Should().Contain(i => i.Ean == "871687100000000320");
+            .Items.ShouldContain(i => i.Ean == "871687100000000320");
     }
 
     [Fact]
@@ -2879,7 +2878,7 @@ public sealed class EanPoolTests(CustomerApiFactory factory) : IClassFixture<Cus
         var pool = await client.GetFromJsonAsync<EanPoolResponse>(
             "/api/v1/ean-pool?q=871687100000000312");
 
-        pool!.Items.Should().BeEmpty();
+        pool!.Items.ShouldBeEmpty();
     }
 
     [Fact]
@@ -2890,8 +2889,8 @@ public sealed class EanPoolTests(CustomerApiFactory factory) : IClassFixture<Cus
 
         var raw = await client.GetStringAsync("/api/v1/ean-pool?q=maastricht");
 
-        raw.Should().NotContainEquivalentOf("claimedBy");
-        raw.Should().NotContainEquivalentOf("claimedAt");
+        raw.ShouldNotContain("claimedBy", Case.Insensitive);
+        raw.ShouldNotContain("claimedAt", Case.Insensitive);
     }
 
     [Fact]
@@ -2900,7 +2899,7 @@ public sealed class EanPoolTests(CustomerApiFactory factory) : IClassFixture<Cus
         var client = factory.CreateAnonymousClient();
 
         (await client.GetAsync("/api/v1/ean-pool")).StatusCode
-            .Should().Be(HttpStatusCode.Unauthorized);
+            .ShouldBe(HttpStatusCode.Unauthorized);
     }
 }
 ```
@@ -3067,7 +3066,7 @@ Create `tests/PeakPower.Integration.Tests/Portal/ClaimConnectionTests.cs`:
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Portal;
@@ -3118,21 +3117,21 @@ public sealed class ClaimConnectionTests(CustomerApiFactory factory)
             "/api/v1/metering-points",
             new ClaimConnectionRequest("871687100000000155", "EXPECTED", "Waalhaven yard", null));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        response.Headers.Location.Should().NotBeNull();
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        response.Headers.Location.ShouldNotBeNull();
 
         var detail = await response.Content.ReadFromJsonAsync<ConnectionDetailDto>();
-        detail!.Ean.Should().Be("871687100000000155");
-        detail.Name.Should().Be("Waalhaven yard");
-        detail.GridOperator.Should().Be("Stedin");
-        detail.CapacityKw.Should().Be(3200m);
-        detail.Address!.City.Should().Be("ROTTERDAM");
-        detail.Status.Should().Be("ACTIVE");
-        detail.ProductionExpectation.Should().Be("EXPECTED");
+        detail!.Ean.ShouldBe("871687100000000155");
+        detail.Name.ShouldBe("Waalhaven yard");
+        detail.GridOperator.ShouldBe("Stedin");
+        detail.CapacityKw.ShouldBe(3200m);
+        detail.Address!.City.ShouldBe("ROTTERDAM");
+        detail.Status.ShouldBe("ACTIVE");
+        detail.ProductionExpectation.ShouldBe("EXPECTED");
 
         await using var db = factory.CreateOwnerDbContext();
         var stored = await db.MeteringPoints.SingleAsync(p => p.Id == detail.Id);
-        stored.CustomerId.Should().Be(customerId);
+        stored.CustomerId.ShouldBe(customerId);
     }
 
     [Fact]
@@ -3146,7 +3145,7 @@ public sealed class ClaimConnectionTests(CustomerApiFactory factory)
             new ClaimConnectionRequest("871687100000000163", "NEVER", null, null));
 
         var detail = await response.Content.ReadFromJsonAsync<ConnectionDetailDto>();
-        detail!.ExpectationSource.Should().Be("CUSTOMER_DECLARED");
+        detail!.ExpectationSource.ShouldBe("CUSTOMER_DECLARED");
     }
 
     [Fact]
@@ -3161,7 +3160,7 @@ public sealed class ClaimConnectionTests(CustomerApiFactory factory)
 
         var pool = await client.GetFromJsonAsync<EanPoolResponse>(
             "/api/v1/ean-pool?q=871687100000000288");
-        pool!.Items.Should().BeEmpty();
+        pool!.Items.ShouldBeEmpty();
     }
 
     [Fact]
@@ -3173,16 +3172,16 @@ public sealed class ClaimConnectionTests(CustomerApiFactory factory)
 
         var request = new ClaimConnectionRequest("871687100000000296", "UNKNOWN", null, null);
         (await first.PostAsJsonAsync("/api/v1/metering-points", request)).StatusCode
-            .Should().Be(HttpStatusCode.Created);
+            .ShouldBe(HttpStatusCode.Created);
 
         var response = await second.PostAsJsonAsync("/api/v1/metering-points", request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
 
         await using var db = factory.CreateOwnerDbContext();
         (await db.MeteringPoints.CountAsync(p => p.Ean == EanCode.Create("871687100000000296").Value))
-            .Should().Be(1);
+            .ShouldBe(1);
     }
 
     [Fact]
@@ -3194,7 +3193,7 @@ public sealed class ClaimConnectionTests(CustomerApiFactory factory)
             "/api/v1/metering-points",
             new ClaimConnectionRequest("871687199999999999", "UNKNOWN", null, null));
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -3205,8 +3204,8 @@ public sealed class ClaimConnectionTests(CustomerApiFactory factory)
         var response = await client.PostAsJsonAsync(
             "/api/v1/metering-points", new ClaimConnectionRequest("12345", "UNKNOWN", null, null));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("ean");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("ean");
     }
 
     [Fact]
@@ -3219,13 +3218,13 @@ public sealed class ClaimConnectionTests(CustomerApiFactory factory)
             "/api/v1/metering-points",
             new ClaimConnectionRequest("871687100000000270", "MAYBE", null, null));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("productionExpectation");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("productionExpectation");
 
         // Nothing was taken out of the pool on the way to rejecting the request.
         var pool = await client.GetFromJsonAsync<EanPoolResponse>(
             "/api/v1/ean-pool?q=871687100000000270");
-        pool!.Items.Should().ContainSingle();
+        pool!.Items.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -3238,11 +3237,11 @@ public sealed class ClaimConnectionTests(CustomerApiFactory factory)
             "/api/v1/metering-points",
             new ClaimConnectionRequest("871687100000000239", "UNKNOWN", new string('x', 81), null));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         var pool = await client.GetFromJsonAsync<EanPoolResponse>(
             "/api/v1/ean-pool?q=871687100000000239");
-        pool!.Items.Should().ContainSingle();
+        pool!.Items.ShouldHaveSingleItem();
     }
 }
 ```
@@ -3426,7 +3425,7 @@ Create `tests/PeakPower.Integration.Tests/Onboarding/SignCodePeekTests.cs`:
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Customer.Onboarding;
 using Xunit;
 
@@ -3445,7 +3444,7 @@ public sealed class SignCodePeekTests(CustomerApiFactory factory)
         var started = await client.PostAsJsonAsync(
             "/api/v1/onboarding/applications",
             new StartOnboardingRequest("Peter", "de Vries", email, "correct-horse-battery", true));
-        started.StatusCode.Should().Be(HttpStatusCode.Created);
+        started.StatusCode.ShouldBe(HttpStatusCode.Created);
         var application = await started.Content.ReadFromJsonAsync<OnboardingApplicationResponse>();
 
         await client.PatchAsJsonAsync(
@@ -3464,7 +3463,7 @@ public sealed class SignCodePeekTests(CustomerApiFactory factory)
         var signatories = await client.PostAsJsonAsync(
             $"/api/v1/onboarding/applications/{application.Id}/signatories",
             new SubmitSignatoriesRequest([new SignatoryDto("Peter", "de Vries", email)]));
-        signatories.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        signatories.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         return application.Id;
     }
@@ -3477,9 +3476,9 @@ public sealed class SignCodePeekTests(CustomerApiFactory factory)
 
         var response = await client.GetAsync($"/api/v1/onboarding/applications/{id}/sign-code");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var peek = await response.Content.ReadFromJsonAsync<SignCodePeek>();
-        peek!.Code.Should().MatchRegex("^[0-9]{6}$");
+        peek!.Code.ShouldMatch("^[0-9]{6}$");
     }
 
     [Fact]
@@ -3495,7 +3494,7 @@ public sealed class SignCodePeekTests(CustomerApiFactory factory)
             $"/api/v1/onboarding/applications/{id}/sign",
             new SignOnboardingRequest(peek!.Code, true));
 
-        signed.StatusCode.Should().Be(HttpStatusCode.OK);
+        signed.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -3511,7 +3510,7 @@ public sealed class SignCodePeekTests(CustomerApiFactory factory)
         var response = await client.GetAsync(
             $"/api/v1/onboarding/applications/{application!.Id}/sign-code");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -3520,7 +3519,7 @@ public sealed class SignCodePeekTests(CustomerApiFactory factory)
         var client = factory.CreateAnonymousClient();
 
         (await client.GetAsync($"/api/v1/onboarding/applications/{Guid.NewGuid()}/sign-code"))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+            .StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -3534,7 +3533,7 @@ public sealed class SignCodePeekTests(CustomerApiFactory factory)
         var response = await client.GetAsync(
             $"/api/v1/onboarding/applications/{Guid.NewGuid()}/sign-code");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 }
 ```
@@ -3738,7 +3737,7 @@ Create `tests/PeakPower.Integration.Tests/Contract/CustomerOpenApiSnapshotTests.
 
 ```csharp
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using VerifyXunit;
 using Xunit;
 
@@ -3757,7 +3756,7 @@ public sealed class CustomerOpenApiSnapshotTests
     [Fact]
     public void the_document_is_emitted_at_build()
     {
-        File.Exists(DocumentPath).Should().BeTrue(
+        File.Exists(DocumentPath).ShouldBeTrue(
             $"building PeakPower.Api.Customer must write {DocumentPath}; check that "
             + "OpenApiGenerateDocuments is true in the project file");
     }
@@ -3769,9 +3768,9 @@ public sealed class CustomerOpenApiSnapshotTests
 
         // Requests carry `password` and `newPassword`; no RESPONSE may. The cheap proxy for
         // that is that these three names appear nowhere at all.
-        json.Should().NotContainEquivalentOf("passwordHash");
-        json.Should().NotContainEquivalentOf("securityStamp");
-        json.Should().NotContainEquivalentOf("argon2");
+        json.ShouldNotContain("passwordHash", Case.Insensitive);
+        json.ShouldNotContain("securityStamp", Case.Insensitive);
+        json.ShouldNotContain("argon2", Case.Insensitive);
     }
 
     [Fact]
@@ -3962,7 +3961,7 @@ Create `tests/PeakPower.Integration.Tests/Tenancy/CustomerApiRouteTableTests.cs`
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Domain.Common;
@@ -3995,7 +3994,7 @@ public sealed class CustomerApiRouteTableTests(CustomerApiFactory factory)
             .Select(entry => entry.ToString())
             .ToArray();
 
-        undeclared.Should().BeEmpty(
+        undeclared.ShouldBeEmpty(
             "every endpoint on the customer host must call .TenantScoped(kind), " +
             ".BackOffice(reason) or .AnonymousEndpoint(reason) where it is mapped. An endpoint " +
             "that declares nothing is invisible to this test, which is exactly how a " +
@@ -4025,7 +4024,7 @@ public sealed class CustomerApiRouteTableTests(CustomerApiFactory factory)
             }
         }
 
-        problems.Should().BeEmpty();
+        problems.ShouldBeEmpty();
     }
 
     [Fact]
@@ -4063,7 +4062,7 @@ public sealed class CustomerApiRouteTableTests(CustomerApiFactory factory)
             }
         }
 
-        failures.Should().BeEmpty(
+        failures.ShouldBeEmpty(
             "[F13-R19] a cross-tenant read returns 404, never 403 and never 200 — a 403 would " +
             "confirm the row exists");
     }
@@ -4094,7 +4093,7 @@ public sealed class CustomerApiRouteTableTests(CustomerApiFactory factory)
             }
         }
 
-        failures.Should().BeEmpty(
+        failures.ShouldBeEmpty(
             "a collection endpoint that returns another company's identifier has lost its " +
             "query filter, and no per-endpoint test would have noticed");
     }
@@ -13785,7 +13784,7 @@ security policies do not apply to.
 Create `tests/PeakPower.Integration.Tests/Seeding/DemoDataSeederTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Domain.Customers;
 using PeakPower.Infrastructure.Identity;
@@ -13811,10 +13810,10 @@ public sealed class DemoDataSeederTests(CustomerApiFactory factory)
         await using var db = factory.CreateOwnerDbContext();
         var names = await db.Customers.Select(c => c.LegalName).ToListAsync();
 
-        names.Should().HaveCount(6);
-        names.Should().Contain("Vandersteen Koeling B.V.");
-        names.Should().Contain("Kramer Logistics B.V.");
-        names.Should().Contain("De Groot Papier");
+        names.Count().ShouldBe(6);
+        names.ShouldContain("Vandersteen Koeling B.V.");
+        names.ShouldContain("Kramer Logistics B.V.");
+        names.ShouldContain("De Groot Papier");
     }
 
     [Fact]
@@ -13823,11 +13822,11 @@ public sealed class DemoDataSeederTests(CustomerApiFactory factory)
         await Seeder().SeedAsync(CancellationToken.None);
         var second = await Seeder().SeedAsync(CancellationToken.None);
 
-        second.Should().Be(0, "the seeder is a demo convenience, not a migration");
+        second.ShouldBe(0, "the seeder is a demo convenience, not a migration");
 
         await using var db = factory.CreateOwnerDbContext();
-        (await db.Customers.CountAsync()).Should().Be(6);
-        (await db.MeteringPoints.CountAsync()).Should().Be(11);
+        (await db.Customers.CountAsync()).ShouldBe(6);
+        (await db.MeteringPoints.CountAsync()).ShouldBe(11);
     }
 
     [Fact]
@@ -13838,9 +13837,9 @@ public sealed class DemoDataSeederTests(CustomerApiFactory factory)
         await using var db = factory.CreateOwnerDbContext();
         var accounts = await db.CustomerAccounts.ToListAsync();
 
-        accounts.Should().OnlyContain(a => a.PasswordHash != null);
+        accounts.ShouldAllBe(a => a.PasswordHash != null);
         accounts.Where(a => a.IsAdmin).Select(a => a.CustomerId).Distinct()
-            .Should().HaveCount(6);
+            .Count().ShouldBe(6);
     }
 
     [Fact]
@@ -13854,9 +13853,9 @@ public sealed class DemoDataSeederTests(CustomerApiFactory factory)
             .Where(m => m.CustomerId == vandersteen.Id)
             .ToListAsync();
 
-        connections.Should().HaveCount(6);
-        connections.Should().Contain(m => m.Name == null, "the grouped-EAN fallback needs a case");
-        connections.Should().Contain(m => m.ValidTo != null, "so does an ending connection");
+        connections.Count().ShouldBe(6);
+        connections.ShouldContain(m => m.Name == null, "the grouped-EAN fallback needs a case");
+        connections.ShouldContain(m => m.ValidTo != null, "so does an ending connection");
     }
 
     [Fact]
@@ -13869,8 +13868,8 @@ public sealed class DemoDataSeederTests(CustomerApiFactory factory)
         await using var db = factory.CreateOwnerDbContext();
         var eans = await db.MeteringPoints.Select(m => m.Ean.Value).ToListAsync();
 
-        eans.Should().Contain("871687100000000011");
-        eans.Should().OnlyContain(e => e.Length == 18);
+        eans.ShouldContain("871687100000000011");
+        eans.ShouldAllBe(e => e.Length == 18);
     }
 
     [Fact]
@@ -13881,10 +13880,10 @@ public sealed class DemoDataSeederTests(CustomerApiFactory factory)
         await using var db = factory.CreateOwnerDbContext();
         var pool = await db.EanPool.ToListAsync();
 
-        pool.Should().HaveCount(20);
-        pool.Should().OnlyContain(e => !e.IsClaimed);
+        pool.Count().ShouldBe(20);
+        pool.ShouldAllBe(e => !e.IsClaimed);
         // Gas is not a selectable commodity in slice 1, so the demo's two gas rows are left out.
-        pool.Should().OnlyContain(e => e.Commodity == Commodity.Electricity);
+        pool.ShouldAllBe(e => e.Commodity == Commodity.Electricity);
     }
 
     [Fact]
@@ -13898,7 +13897,7 @@ public sealed class DemoDataSeederTests(CustomerApiFactory factory)
 
         // An EAN in both places would be claimable twice and would then hit the GiST exclusion
         // constraint, which is a correct failure and an unreadable one.
-        pool.Should().NotIntersectWith(attached);
+        pool.Intersect(attached).ShouldBeEmpty();
     }
 }
 ```
@@ -14584,7 +14583,6 @@ In `specs/80-open-questions.md`, add six rows to the open register:
 | **[OQ-98]** | 🟡 | **Credential policy values** — the sign-in delay curve, the reset-token TTL, and password composition beyond the twelve-character minimum. The *mechanism* is designed and is no longer open (**[DEC-117]**, and the reset path in **[DEC-113]**); only the numbers are, and they belong to whoever owns security policy rather than to the delivery team | Needs an owner |
 | **[OQ-99]** | 🟡 | **The six-product entitlement gate in the prototype's rail.** `trading-poc` gates parts of the customer rail on a per-product entitlement. That is a commercial model which appears nowhere in this specification set: either it is real and F13 needs it, or the prototype invented it and the rail should not imply it | Needs an owner |
 | **[OQ-100]** | 🟢 | **Which GitHub organisation owns `peakpower-platform` and `peakpower-web`?** **Not blocking.** **[DEC-116]** defers publishing until a `peakpower` organisation exists, and slice 1 needs no remote at all. It matters when CI is stood up, and it stays cheap while nothing outside `peakpower-web` consumes the packages. Creating the organisation is not in the delivery team's gift, so it wants a named owner even though nothing waits on it today | Needs an owner |
-| **[OQ-101]** | 🟡 | **Does the assertion library stay FluentAssertions 7.2.0, or move to Shouldly?** 7.2.0 is the last Apache-2.0 release; 8.x ships an Xceed Community License for **non-commercial use only**, which PeakPower cannot take. Every test project is pinned to 7.2.0 today, so nothing is blocked — but 7.x is a frozen branch, and the decision of when to leave it (Shouldly 4.3.0 is the closest free equivalent) is a tooling-ownership call, not a delivery-team one | Needs an owner |
 | **[OQ-102]** | 🟠 | **Who owns the row-level-security login-role credentials?** Migration 2 creates `app_customer_role` and `app_employee_role` plus two non-owner login roles, and each host rewrites its connection string onto its own role — a superuser or table owner *bypasses* RLS silently, so this is what makes the mechanism real rather than decorative. Slice 1 is local-only with no deployment, so the two passwords are literals in the migration with a comment saying exactly that. **This needs an owner before anything is deployed anywhere** | Needs an owner |
 ```
 
@@ -14697,17 +14695,18 @@ from that list, and one of them is named by architecture fact 5 — so replace t
 > `dev-up` lives at the repository root of `peakpower-platform`, not under `src/`.
 ```
 
-§6's testing table names FluentAssertions with no version. Pin it, with the reason:
+§6's testing table names FluentAssertions, which the platform does not use. Replace it, with the reason:
 
 ```markdown
-| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** + NSubstitute |
+| Domain / Application unit | xUnit + **Shouldly 4.3.0**|
 
-> ⚠ **Pin FluentAssertions 7.2.0. 8.x may not be used** (added 2026-08-26). 8.10.0 ships an
+> ⚠ **Pin Shouldly 4.3.0. 8.x may not be used** (added 2026-08-26). 8.10.0 ships an
 > **Xceed Software Community License Agreement, "for Non-Commercial Use"**, where
 > non-commercial means use whose primary objective is not commercial advantage. PeakPower is a
-> commercial trading platform, so 8.x would need a paid Xceed licence. **7.2.0 is the last
-> `Apache-2.0` release.** The table was written when the library was still open source.
-> **[OQ-101]** owns the question of when to leave the frozen 7.x branch.
+> commercial trading platform, so 8.x would need a paid Xceed licence, and 7.2.0 — the last
+> `Apache-2.0` release — is the end of that line. **Shouldly 4.3.0 is Apache-2.0 and actively
+> maintained**, so it replaces the library outright rather than pinning a frozen branch
+> **[DEC-118]**. The table was written when FluentAssertions was still open source.
 ```
 
 - [ ] **Step 7: Say that row-level security needs database roles**
@@ -14880,7 +14879,6 @@ Everything here is design section 10 of `docs/superpowers/specs/2026-08-26-poc-s
 **[OQ-97]** when the GS1 check digit returns and under which weighting · **[OQ-98]** credential
 policy *values* (the mechanism is no longer open) · **[OQ-99]** the prototype's six-product
 entitlement gate · **[OQ-100]** which GitHub organisation owns the two repositories — not blocking ·
-**[OQ-101]** FluentAssertions 7.2.0 or Shouldly, once the frozen 7.x branch stops being enough ·
 **[OQ-102]** who owns the row-level-security login-role credentials before anything is deployed.
 
 ## Corrections
@@ -14903,8 +14901,10 @@ entitlement gate · **[OQ-100]** which GitHub organisation owns the two reposito
 9. Solution structure §1.1: the four implied infrastructure projects — `Time`, `Web`,
    `Identity`, `Email` — are added, making eleven source projects and four test projects rather
    than thirteen in total, and `dev-up`'s location is reconciled.
-10. Solution structure §6: **FluentAssertions is pinned to 7.2.0.** 8.x ships an Xceed Community
-    License for non-commercial use only, which a commercial trading platform cannot take.
+10. Solution structure §6: **assertions use Shouldly 4.3.0, not FluentAssertions** `[DEC-118]`.
+    FluentAssertions 8.x ships an Xceed Community License for non-commercial use only, which a
+    commercial trading platform cannot take, and 7.2.0 is the last Apache-2.0 release and the
+    end of that line. Shouldly is Apache-2.0 and actively maintained.
 11. Security §2: row-level security needs database **roles**, which the document never
     mentioned. A superuser or table owner bypasses RLS silently, so without them every policy is
     inert while every test stays green.

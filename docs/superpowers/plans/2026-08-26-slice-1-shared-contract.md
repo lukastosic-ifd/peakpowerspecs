@@ -551,7 +551,7 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** + NSubstitute — see the licence note below |
+| Domain / Application unit | xUnit + **Shouldly 4.3.0** + NSubstitute — **never FluentAssertions**, see below |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
@@ -567,18 +567,23 @@ reason. nl-NL numbers: `€ 19.722,00`, `385,4 MWh`, minus is U+2212 `−`.
 | `Konscious.Security.Cryptography.Argon2` | **1.3.1** | the Argon2id hasher `[DEC-113]` |
 | `NetArchTest.Rules` | **1.3.2** | the six architecture facts |
 | `Testcontainers.PostgreSql` | **4.14.0** | real PostgreSQL 17 in tests |
-| `FluentAssertions` | **7.2.0** | ⚠ **pin 7.x — do not take 8.x** |
+| `Shouldly` | **4.3.0** | ⚠ **not FluentAssertions** `[DEC-118]` |
 | `Mono.Cecil` | **0.11.6** | IL scanning for architecture facts 3-6 |
 
-> ⚠ **FluentAssertions 8.x may not be used.** Verified 2026-08-26 by reading the licence file
-> inside the package: 8.10.0 ships an **Xceed Software Community License Agreement, "for
-> Non-Commercial Use"**, where non-commercial means use whose primary objective is not
-> commercial advantage. PeakPower is a commercial trading platform, so 8.x would need a paid
-> Xceed licence. **7.2.0 is the last `Apache-2.0` release** (confirmed from its `.nuspec`) and is
-> what every plan pins. The specification's testing table names FluentAssertions without a
-> version because it was written when the library was still open source; design §10 proposes the
-> correction. If 7.x going unmaintained becomes a problem, `Shouldly` 4.3.0 is the closest
-> free alternative — that choice is `[OQ-101]`, not something a plan decides.
+> ⚠ **Assert with Shouldly. FluentAssertions is not used at all** — `[DEC-118]`.
+> Verified 2026-08-26 by reading the licence file inside the package: FluentAssertions 8.10.0
+> ships an **Xceed Software Community License Agreement, "for Non-Commercial Use"**, where
+> non-commercial means use whose primary objective is not commercial advantage. PeakPower is a
+> commercial trading platform, so 8.x would need a paid Xceed licence. 7.2.0 is the last
+> `Apache-2.0` release (confirmed from its `.nuspec`) — free, but the end of that line and no
+> longer maintained. **Shouldly 4.3.0 is Apache-2.0 and actively maintained**, so it is the
+> assertion library rather than a fallback. `verify-build-settings.sh` fails the build if
+> FluentAssertions reappears in `Directory.Packages.props`.
+>
+> The syntax is `actual.ShouldBe(expected)`, not `actual.Should().Be(expected)`. Throwing is
+> `Should.Throw<T>(act)` / `await Should.ThrowAsync<T>(act)`, which takes the delegate as an
+> argument rather than extending it. The specification's testing table names FluentAssertions
+> because it was written when the library was still open source; design §10 corrects it.
 
 
 **Architecture facts.** Six of them, and they are not all NetArchTest — its model is

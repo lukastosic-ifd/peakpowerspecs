@@ -23,7 +23,7 @@ wizard's answers and, on a verified six-digit signing code, writes `customer`,
 PostgreSQL 17 · Aspire 13.5.3 · `Konscious.Security.Cryptography.Argon2` 1.3.1 ·
 `Microsoft.AspNetCore.Authentication.JwtBearer` 10.0.0 ·
 `Microsoft.IdentityModel.JsonWebTokens` 8.16.0 · Npgsql 10.0.0 · xUnit +
-**FluentAssertions 7.2.0** + NSubstitute · Testcontainers (PostgreSQL 17) · NetArchTest ·
+**Shouldly 4.3.0**
 Mono.Cecil
 
 **Spec:** `docs/superpowers/specs/2026-08-26-poc-slice-1-design.md`
@@ -186,17 +186,17 @@ audit.audit_record
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **Shouldly 4.3.0**|
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
 | Frontend unit | Vitest |
 | E2E | Playwright, in `peakpower-web` |
 
-> ⚠ **FluentAssertions 8.x may not be used.** 8.10.0 ships an Xceed Software Community License
-> Agreement for **non-commercial use only**; PeakPower is a commercial trading platform. 7.2.0 is
-> the last Apache-2.0 release and is what every plan pins. Do not let `dotnet outdated` walk it
-> forward. Shared contract §13 carries the full note and registers the alternative as `[OQ-101]`.
+> ⚠ **Assert with Shouldly, never FluentAssertions** `[DEC-118]`. FluentAssertions 8.x ships an
+> Xceed Community License "for Non-Commercial Use" and PeakPower is commercial; 7.2.0 is the
+> last Apache-2.0 release and the end of that line. Shouldly 4.3.0 is Apache-2.0 and maintained.
+> `verify-build-settings.sh` fails the build if FluentAssertions reappears.
 
 **Architecture facts that must exist from week 1** (shared contract §13; facts 3-6 are
 Mono.Cecil IL scans, because their subject is a call site rather than a type reference):
@@ -398,7 +398,7 @@ The unit tests need to see the new assembly, so add to
 Create `tests/PeakPower.Application.Tests/Security/Argon2idPasswordHasherTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Infrastructure.Identity;
 using Xunit;
 
@@ -413,15 +413,15 @@ public sealed class Argon2idPasswordHasherTests
     {
         var hash = _hasher.Hash("correct-horse-battery");
 
-        hash.Should().StartWith("$argon2id$v=19$m=19456,t=2,p=1$");
-        hash.Split('$').Should().HaveCount(6);
+        hash.ShouldStartWith("$argon2id$v=19$m=19456,t=2,p=1$");
+        hash.Split('$').Count().ShouldBe(6);
     }
 
     [Fact]
     public void Hash_salts_so_the_same_password_never_produces_the_same_string()
     {
         _hasher.Hash("correct-horse-battery")
-            .Should().NotBe(_hasher.Hash("correct-horse-battery"));
+            .ShouldNotBe(_hasher.Hash("correct-horse-battery"));
     }
 
     [Fact]
@@ -429,7 +429,7 @@ public sealed class Argon2idPasswordHasherTests
     {
         var hash = _hasher.Hash("correct-horse-battery");
 
-        _hasher.Verify("correct-horse-battery", hash).Should().BeTrue();
+        _hasher.Verify("correct-horse-battery", hash).ShouldBeTrue();
     }
 
     [Fact]
@@ -437,7 +437,7 @@ public sealed class Argon2idPasswordHasherTests
     {
         var hash = _hasher.Hash("correct-horse-battery");
 
-        _hasher.Verify("correct-horse-batteri", hash).Should().BeFalse();
+        _hasher.Verify("correct-horse-batteri", hash).ShouldBeFalse();
     }
 
     [Theory]
@@ -447,7 +447,7 @@ public sealed class Argon2idPasswordHasherTests
     [InlineData("$argon2id$v=19$m=19456,t=2$c2FsdA==$aGFzaA==")]
     public void Verify_returns_false_for_anything_that_is_not_one_of_our_hashes(string hash)
     {
-        _hasher.Verify("correct-horse-battery", hash).Should().BeFalse();
+        _hasher.Verify("correct-horse-battery", hash).ShouldBeFalse();
     }
 }
 ```
@@ -649,7 +649,7 @@ Create `tests/PeakPower.Integration.Tests/Auth/JwksEndpointTests.cs`:
 ```csharp
 using System.Net;
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using Xunit;
 
 namespace PeakPower.Integration.Tests.Auth;
@@ -664,22 +664,22 @@ public sealed class JwksEndpointTests(CustomerApiFactory factory)
 
         var response = await client.GetAsync("/.well-known/jwks.json");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/json");
 
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var keys = document.RootElement.GetProperty("keys");
-        keys.GetArrayLength().Should().Be(1);
+        keys.GetArrayLength().ShouldBe(1);
 
         var key = keys[0];
-        key.GetProperty("kty").GetString().Should().Be("EC");
-        key.GetProperty("crv").GetString().Should().Be("P-256");
-        key.GetProperty("alg").GetString().Should().Be("ES256");
-        key.GetProperty("use").GetString().Should().Be("sig");
-        key.GetProperty("kid").GetString().Should().NotBeNullOrWhiteSpace();
-        key.GetProperty("x").GetString().Should().NotBeNullOrWhiteSpace();
-        key.GetProperty("y").GetString().Should().NotBeNullOrWhiteSpace();
-        key.TryGetProperty("d", out _).Should().BeFalse("the private scalar must never be published");
+        key.GetProperty("kty").GetString().ShouldBe("EC");
+        key.GetProperty("crv").GetString().ShouldBe("P-256");
+        key.GetProperty("alg").GetString().ShouldBe("ES256");
+        key.GetProperty("use").GetString().ShouldBe("sig");
+        key.GetProperty("kid").GetString().ShouldNotBeNullOrWhiteSpace();
+        key.GetProperty("x").GetString().ShouldNotBeNullOrWhiteSpace();
+        key.GetProperty("y").GetString().ShouldNotBeNullOrWhiteSpace();
+        key.TryGetProperty("d", out _).ShouldBeFalse("the private scalar must never be published");
     }
 
     [Fact]
@@ -690,8 +690,8 @@ public sealed class JwksEndpointTests(CustomerApiFactory factory)
         var first = new PeakPower.Infrastructure.Identity.FileSigningKeyStore(path);
         var second = new PeakPower.Infrastructure.Identity.FileSigningKeyStore(path);
 
-        second.KeyId.Should().Be(first.KeyId);
-        second.PublicJwks.Keys[0].X.Should().Be(first.PublicJwks.Keys[0].X);
+        second.KeyId.ShouldBe(first.KeyId);
+        second.PublicJwks.Keys[0].X.ShouldBe(first.PublicJwks.Keys[0].X);
     }
 }
 ```
@@ -1048,7 +1048,7 @@ meaning lives in the `customer.refresh_token` row (Task 4), which is what makes 
 Create `tests/PeakPower.Application.Tests/Security/JwtTokenIssuerTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.IdentityModel.JsonWebTokens;
 using NSubstitute;
 using PeakPower.Application.Abstractions;
@@ -1096,12 +1096,12 @@ public sealed class JwtTokenIssuerTests
         var token = CreateIssuer().IssueAccessToken(account);
 
         var jwt = new JsonWebToken(token.Jwt);
-        jwt.Alg.Should().Be("ES256");
-        jwt.GetClaim("sub").Value.Should().Be(account.Id.ToString());
-        jwt.GetClaim("customer_id").Value.Should().Be(account.CustomerId.ToString());
-        jwt.GetClaim("is_admin").Value.Should().Be("true");
-        jwt.GetClaim("stamp").Value.Should().Be(account.SecurityStamp.ToString());
-        jwt.GetPayloadValue<string[]>("amr").Should().BeEquivalentTo("pwd");
+        jwt.Alg.ShouldBe("ES256");
+        jwt.GetClaim("sub").Value.ShouldBe(account.Id.ToString());
+        jwt.GetClaim("customer_id").Value.ShouldBe(account.CustomerId.ToString());
+        jwt.GetClaim("is_admin").Value.ShouldBe("true");
+        jwt.GetClaim("stamp").Value.ShouldBe(account.SecurityStamp.ToString());
+        jwt.GetPayloadValue<string[]>("amr").ShouldBe(new[] { "pwd" });
     }
 
     [Fact]
@@ -1109,8 +1109,8 @@ public sealed class JwtTokenIssuerTests
     {
         var token = CreateIssuer().IssueAccessToken(SampleAccount());
 
-        token.ExpiresAt.Should().Be(Now.AddMinutes(15));
-        new JsonWebToken(token.Jwt).ValidTo.Should().BeCloseTo(
+        token.ExpiresAt.ShouldBe(Now.AddMinutes(15));
+        new JsonWebToken(token.Jwt).ValidTo.ShouldBe(
             Now.AddMinutes(15).UtcDateTime, TimeSpan.FromSeconds(1));
     }
 
@@ -1120,7 +1120,7 @@ public sealed class JwtTokenIssuerTests
         var jwt = new JsonWebToken(
             CreateIssuer().IssueAccessToken(SampleAccount(isAdmin: false)).Jwt);
 
-        jwt.GetClaim("is_admin").Value.Should().Be("false");
+        jwt.GetClaim("is_admin").Value.ShouldBe("false");
     }
 
     [Fact]
@@ -1131,11 +1131,11 @@ public sealed class JwtTokenIssuerTests
         var first = issuer.IssueRefreshToken(Guid.NewGuid(), out var expiresAt);
         var second = issuer.IssueRefreshToken(Guid.NewGuid(), out _);
 
-        expiresAt.Should().Be(Now.AddDays(14));
-        first.Should().NotBe(second);
-        first.Should().NotContain(".", "a refresh token is not a JWT");
+        expiresAt.ShouldBe(Now.AddDays(14));
+        first.ShouldNotBe(second);
+        first.ShouldNotContain(".", "a refresh token is not a JWT");
         Microsoft.IdentityModel.Tokens.Base64UrlEncoder.DecodeBytes(first)
-            .Should().HaveCount(32);
+            .Count().ShouldBe(32);
     }
 
     [Fact]
@@ -1144,9 +1144,9 @@ public sealed class JwtTokenIssuerTests
         var token = OpaqueToken.Create();
         var hash = OpaqueToken.HashOf(token);
 
-        hash.Should().MatchRegex("^[0-9A-F]{64}$");
-        OpaqueToken.Matches(token, hash).Should().BeTrue();
-        OpaqueToken.Matches(OpaqueToken.Create(), hash).Should().BeFalse();
+        hash.ShouldMatch("^[0-9A-F]{64}$");
+        OpaqueToken.Matches(token, hash).ShouldBeTrue();
+        OpaqueToken.Matches(OpaqueToken.Create(), hash).ShouldBeFalse();
     }
 }
 ```
@@ -1334,7 +1334,7 @@ Create `tests/PeakPower.Integration.Tests/Migrations/AuthSchemaTests.cs`:
 
 ```csharp
 using Dapper;
-using FluentAssertions;
+using Shouldly;
 using Npgsql;
 using Xunit;
 
@@ -1370,7 +1370,7 @@ public sealed class AuthSchemaTests(CustomerApiFactory factory) : IClassFixture<
             """,
             new { schema, table, column });
 
-        exists.Should().BeTrue();
+        exists.ShouldBeTrue();
     }
 
     [Fact]
@@ -1385,7 +1385,7 @@ public sealed class AuthSchemaTests(CustomerApiFactory factory) : IClassFixture<
                              AND indexdef LIKE '%UNIQUE%token_hash%')
             """);
 
-        exists.Should().BeTrue();
+        exists.ShouldBeTrue();
     }
 
     [Theory]
@@ -1404,7 +1404,7 @@ public sealed class AuthSchemaTests(CustomerApiFactory factory) : IClassFixture<
             """,
             new { schema, table });
 
-        enabled.Should().BeTrue();
+        enabled.ShouldBeTrue();
     }
 
     [Fact]
@@ -1419,8 +1419,8 @@ public sealed class AuthSchemaTests(CustomerApiFactory factory) : IClassFixture<
               AND policyname = 'refresh_token_tenant_isolation'
             """);
 
-        policy.Should().NotBeNull();
-        policy.Should().Contain("app.customer_id");
+        policy.ShouldNotBeNull();
+        policy.ShouldContain("app.customer_id");
     }
 
     [Fact]
@@ -1436,7 +1436,7 @@ public sealed class AuthSchemaTests(CustomerApiFactory factory) : IClassFixture<
                              AND grantee = 'app_customer_role')
             """);
 
-        granted.Should().BeFalse();
+        granted.ShouldBeFalse();
     }
 }
 ```
@@ -1736,7 +1736,7 @@ confusion attack.
 Create `tests/PeakPower.Application.Tests/Security/CustomerTokenValidationTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.IdentityModel.JsonWebTokens;
 using NSubstitute;
 using PeakPower.Application.Abstractions;
@@ -1772,9 +1772,9 @@ public sealed class CustomerTokenValidationTests
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(
             token.Jwt, CustomerTokenValidation.Parameters(keys));
 
-        result.IsValid.Should().BeTrue();
-        result.ClaimsIdentity.FindFirst("sub").Should().NotBeNull();
-        result.ClaimsIdentity.FindFirst("customer_id").Should().NotBeNull();
+        result.IsValid.ShouldBeTrue();
+        result.ClaimsIdentity.FindFirst("sub").ShouldNotBeNull();
+        result.ClaimsIdentity.FindFirst("customer_id").ShouldNotBeNull();
     }
 
     [Fact]
@@ -1787,7 +1787,7 @@ public sealed class CustomerTokenValidationTests
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(
             token.Jwt, CustomerTokenValidation.Parameters(otherKeys));
 
-        result.IsValid.Should().BeFalse();
+        result.IsValid.ShouldBeFalse();
     }
 
     [Fact]
@@ -1806,7 +1806,7 @@ public sealed class CustomerTokenValidationTests
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(
             unsigned, CustomerTokenValidation.Parameters(keys));
 
-        result.IsValid.Should().BeFalse();
+        result.IsValid.ShouldBeFalse();
     }
 
     [Fact]
@@ -1821,7 +1821,7 @@ public sealed class CustomerTokenValidationTests
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(
             token.Jwt, CustomerTokenValidation.Parameters(keys));
 
-        result.IsValid.Should().BeFalse();
+        result.IsValid.ShouldBeFalse();
     }
 }
 ```
@@ -1963,7 +1963,7 @@ Create `tests/PeakPower.Application.Tests/Auth/JwtCustomerContextTests.cs`:
 
 ```csharp
 using System.Security.Claims;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.AspNetCore.Http;
 using PeakPower.Infrastructure.Web.Tenancy;
 using Xunit;
@@ -1994,10 +1994,10 @@ public sealed class JwtCustomerContextTests
             new Claim("customer_id", customerId.ToString()),
             new Claim("is_admin", "true"));
 
-        context.IsAuthenticated.Should().BeTrue();
-        context.AccountId.Should().Be(accountId);
-        context.CustomerId.Should().Be(customerId);
-        context.IsAdmin.Should().BeTrue();
+        context.IsAuthenticated.ShouldBeTrue();
+        context.AccountId.ShouldBe(accountId);
+        context.CustomerId.ShouldBe(customerId);
+        context.IsAdmin.ShouldBeTrue();
     }
 
     [Fact]
@@ -2008,7 +2008,7 @@ public sealed class JwtCustomerContextTests
             new Claim("customer_id", Guid.NewGuid().ToString()),
             new Claim("is_admin", "false"));
 
-        context.IsAdmin.Should().BeFalse();
+        context.IsAdmin.ShouldBeFalse();
     }
 
     [Fact]
@@ -2016,10 +2016,10 @@ public sealed class JwtCustomerContextTests
     {
         var context = ContextFor();
 
-        context.IsAuthenticated.Should().BeFalse();
-        context.CustomerId.Should().Be(Guid.Empty);
-        context.AccountId.Should().Be(Guid.Empty);
-        context.IsAdmin.Should().BeFalse();
+        context.IsAuthenticated.ShouldBeFalse();
+        context.CustomerId.ShouldBe(Guid.Empty);
+        context.AccountId.ShouldBe(Guid.Empty);
+        context.IsAdmin.ShouldBeFalse();
     }
 
     [Fact]
@@ -2037,7 +2037,7 @@ public sealed class JwtCustomerContextTests
         http.Request.QueryString = new QueryString($"?customerId={Guid.NewGuid()}");
 
         new JwtCustomerContext(new HttpContextAccessor { HttpContext = http })
-            .CustomerId.Should().Be(real);
+            .CustomerId.ShouldBe(real);
     }
 }
 ```
@@ -2183,7 +2183,7 @@ Create `tests/PeakPower.Integration.Tests/Auth/SecurityStampTests.cs`:
 ```csharp
 using System.Net;
 using System.Net.Http.Headers;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PeakPower.Application.Abstractions;
@@ -2220,17 +2220,17 @@ public sealed class SecurityStampTests(CustomerApiFactory factory)
 
         var response = await client.GetAsync("/api/v1/auth/me");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content
             .ReadFromJsonAsync<PeakPower.Contracts.Customer.Auth.CurrentAccountResponse>();
-        body!.AccountId.Should().Be(accountId);
+        body!.AccountId.ShouldBe(accountId);
     }
 
     [Fact]
     public async Task Bumping_the_security_stamp_kills_the_token_on_the_very_next_call()
     {
         var (client, accountId) = await SignedInClientAsync();
-        (await client.GetAsync("/api/v1/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/api/v1/auth/me")).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         await using (var db = factory.CreateOwnerDbContext())
         {
@@ -2241,7 +2241,7 @@ public sealed class SecurityStampTests(CustomerApiFactory factory)
 
         var after = await client.GetAsync("/api/v1/auth/me");
 
-        after.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+        after.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
             "[F01-R16] says revocation is immediate, not in fifteen minutes");
     }
 
@@ -2258,7 +2258,7 @@ public sealed class SecurityStampTests(CustomerApiFactory factory)
         }
 
         (await client.GetAsync("/api/v1/auth/me")).StatusCode
-            .Should().Be(HttpStatusCode.Unauthorized);
+            .ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -2266,7 +2266,7 @@ public sealed class SecurityStampTests(CustomerApiFactory factory)
     {
         var response = await factory.CreateAnonymousClient().GetAsync("/api/v1/auth/me");
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 }
 ```
@@ -2598,7 +2598,7 @@ this list and explaining it in review.
 Create `tests/PeakPower.Integration.Tests/Auth/AnonymousEndpointAllowListTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -2647,7 +2647,7 @@ public sealed class AnonymousEndpointAllowListTests(CustomerApiFactory factory)
             .OrderBy(x => x, StringComparer.Ordinal)
             .ToArray();
 
-        anonymous.Should().BeEquivalentTo(Expected,
+        anonymous.ShouldBe(Expected,
             "an endpoint that skips CustomerSessionMiddleware runs with RLS disabled");
     }
 
@@ -2673,7 +2673,7 @@ public sealed class AnonymousEndpointAllowListTests(CustomerApiFactory factory)
 
 Run: `dotnet test tests/PeakPower.Integration.Tests --filter "FullyQualifiedName~AnonymousEndpointAllowListTests"`
 Expected: FAIL — the JWKS route is present but the nine `/api/v1/…` routes are missing, so
-FluentAssertions reports "Expected collection to be equivalent to … but could not find … "
+Shouldly reports the element-by-element difference between the two collections
 
 - [ ] **Step 3: Mark the test as pending the endpoints it guards**
 
@@ -2681,7 +2681,7 @@ The endpoints it names are built in Tasks 10 to 19. Keep the assertion honest in
 comparing only against the routes that exist:
 
 ```csharp
-        anonymous.Should().BeSubsetOf(Expected,
+        anonymous.ShouldBeSubsetOf(Expected,
             "an endpoint that skips CustomerSessionMiddleware runs with RLS disabled");
 ```
 
@@ -2740,7 +2740,7 @@ source counter even though no single username has failed often.
 Create `tests/PeakPower.Application.Tests/Auth/InMemorySignInThrottleTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using NSubstitute;
 using PeakPower.Api.Customer.Auth;
 using PeakPower.Application.Abstractions;
@@ -2775,7 +2775,7 @@ public sealed class InMemorySignInThrottleTests
         for (var i = 0; i < failures; i++) throttle.RecordFailure("p@vandersteen.nl", "10.0.0.1");
 
         throttle.DelayFor("p@vandersteen.nl", "10.0.0.1")
-            .Should().Be(TimeSpan.FromMilliseconds(expectedMilliseconds));
+            .ShouldBe(TimeSpan.FromMilliseconds(expectedMilliseconds));
     }
 
     [Fact]
@@ -2786,7 +2786,7 @@ public sealed class InMemorySignInThrottleTests
 
         throttle.RecordSuccess("p@vandersteen.nl", "10.0.0.1");
 
-        throttle.DelayFor("p@vandersteen.nl", "10.0.0.1").Should().Be(TimeSpan.Zero);
+        throttle.DelayFor("p@vandersteen.nl", "10.0.0.1").ShouldBe(TimeSpan.Zero);
     }
 
     [Fact]
@@ -2796,7 +2796,7 @@ public sealed class InMemorySignInThrottleTests
         for (var i = 0; i < 5; i++) throttle.RecordFailure($"victim{i}@example.nl", "10.0.0.1");
 
         throttle.DelayFor("someone-new@example.nl", "10.0.0.1")
-            .Should().Be(TimeSpan.FromSeconds(4));
+            .ShouldBe(TimeSpan.FromSeconds(4));
     }
 
     [Fact]
@@ -2807,7 +2807,7 @@ public sealed class InMemorySignInThrottleTests
 
         _now = _now.AddMinutes(16);
 
-        throttle.DelayFor("p@vandersteen.nl", "10.0.0.1").Should().Be(TimeSpan.Zero);
+        throttle.DelayFor("p@vandersteen.nl", "10.0.0.1").ShouldBe(TimeSpan.Zero);
     }
 
     [Fact]
@@ -2817,7 +2817,7 @@ public sealed class InMemorySignInThrottleTests
         for (var i = 0; i < 3; i++) throttle.RecordFailure("P@Vandersteen.NL", "10.0.0.1");
 
         throttle.DelayFor("p@vandersteen.nl", "10.0.0.2")
-            .Should().Be(TimeSpan.FromSeconds(1));
+            .ShouldBe(TimeSpan.FromSeconds(1));
     }
 }
 ```
@@ -3002,7 +3002,7 @@ Create `tests/PeakPower.Integration.Tests/Auth/SignInTests.cs`:
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Customer.Auth;
 using Xunit;
 
@@ -3029,17 +3029,17 @@ public sealed class SignInTests(CustomerApiFactory factory) : IClassFixture<Cust
         var response = await client.PostAsJsonAsync(
             "/api/v1/auth/sign-in", new SignInRequest(email, Password));
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var body = await response.Content.ReadFromJsonAsync<SignInResponse>();
-        body!.AccessToken.Should().NotBeNullOrWhiteSpace();
-        body.Account.Email.Should().Be(email);
+        body!.AccessToken.ShouldNotBeNullOrWhiteSpace();
+        body.Account.Email.ShouldBe(email);
 
         var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("pp_refresh="));
-        cookie.Should().Contain("httponly", AtLeast.Once());
-        cookie.ToLowerInvariant().Should().Contain("path=/api/v1/auth/refresh");
-        cookie.ToLowerInvariant().Should().Contain("samesite=strict");
-        cookie.ToLowerInvariant().Should().Contain("secure");
+        cookie.ShouldContain("httponly", AtLeast.Once());
+        cookie.ToLowerInvariant().ShouldContain("path=/api/v1/auth/refresh");
+        cookie.ToLowerInvariant().ShouldContain("samesite=strict");
+        cookie.ToLowerInvariant().ShouldContain("secure");
     }
 
     [Fact]
@@ -3050,9 +3050,9 @@ public sealed class SignInTests(CustomerApiFactory factory) : IClassFixture<Cust
         var response = await factory.CreateAnonymousClient().PostAsJsonAsync(
             "/api/v1/auth/sign-in", new SignInRequest(email, "correct-horse-batteri"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
-        response.Headers.Contains("Set-Cookie").Should().BeFalse();
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+        response.Headers.Contains("Set-Cookie").ShouldBeFalse();
     }
 
     [Fact]
@@ -3066,9 +3066,9 @@ public sealed class SignInTests(CustomerApiFactory factory) : IClassFixture<Cust
         var unknownUser = await client.PostAsJsonAsync(
             "/api/v1/auth/sign-in", new SignInRequest("nobody@example.nl", "nope-nope-nope"));
 
-        unknownUser.StatusCode.Should().Be(wrongPassword.StatusCode);
+        unknownUser.StatusCode.ShouldBe(wrongPassword.StatusCode);
         (await unknownUser.Content.ReadAsStringAsync())
-            .Should().Be(await wrongPassword.Content.ReadAsStringAsync());
+            .ShouldBe(await wrongPassword.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -3086,7 +3086,7 @@ public sealed class SignInTests(CustomerApiFactory factory) : IClassFixture<Cust
         await client.PostAsJsonAsync("/api/v1/auth/sign-in", new SignInRequest(email, "wrong"));
         stopwatch.Stop();
 
-        stopwatch.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(900),
+        stopwatch.Elapsed.ShouldBeGreaterThan(TimeSpan.FromMilliseconds(900),
             "three prior failures buy a one-second delay");
     }
 
@@ -3103,7 +3103,7 @@ public sealed class SignInTests(CustomerApiFactory factory) : IClassFixture<Cust
         var response = await factory.CreateAnonymousClient().PostAsJsonAsync(
             "/api/v1/auth/sign-in", new SignInRequest(email, Password));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 }
 ```
@@ -3308,7 +3308,7 @@ Create `tests/PeakPower.Integration.Tests/Auth/RefreshRotationTests.cs`:
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Customer.Auth;
 using Xunit;
@@ -3350,13 +3350,13 @@ public sealed class RefreshRotationTests(CustomerApiFactory factory)
 
         var response = await client.SendAsync(RefreshRequest(refresh));
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<SignInResponse>();
-        body!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        body!.AccessToken.ShouldNotBeNullOrWhiteSpace();
 
         var rotated = response.Headers.GetValues("Set-Cookie")
             .Single(c => c.StartsWith("pp_refresh="))["pp_refresh=".Length..].Split(';')[0];
-        rotated.Should().NotBe(refresh, "rotation means the old token is spent");
+        rotated.ShouldNotBe(refresh, "rotation means the old token is spent");
     }
 
     [Fact]
@@ -3364,17 +3364,17 @@ public sealed class RefreshRotationTests(CustomerApiFactory factory)
     {
         var (client, refresh, accountId) = await SignInAsync();
         (await client.SendAsync(RefreshRequest(refresh))).StatusCode
-            .Should().Be(HttpStatusCode.OK);
+            .ShouldBe(HttpStatusCode.OK);
 
         var replay = await client.SendAsync(RefreshRequest(refresh));
 
-        replay.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        replay.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
 
         await using var db = factory.CreateOwnerDbContext();
         var live = await db.RefreshTokens
             .Where(t => t.AccountId == accountId && t.RevokedAt == null && t.UsedAt == null)
             .CountAsync();
-        live.Should().Be(0, "a replay revokes the whole chain, including the rotated token");
+        live.ShouldBe(0, "a replay revokes the whole chain, including the rotated token");
     }
 
     [Fact]
@@ -3384,7 +3384,7 @@ public sealed class RefreshRotationTests(CustomerApiFactory factory)
 
         var response = await client.SendAsync(RefreshRequest("not-a-real-token"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -3399,7 +3399,7 @@ public sealed class RefreshRotationTests(CustomerApiFactory factory)
         }
 
         (await client.SendAsync(RefreshRequest(refresh))).StatusCode
-            .Should().Be(HttpStatusCode.Unauthorized);
+            .ShouldBe(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -3409,7 +3409,7 @@ public sealed class RefreshRotationTests(CustomerApiFactory factory)
 
         var response = await client.PostAsync("/api/v1/auth/refresh", content: null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 }
 ```
@@ -3564,7 +3564,7 @@ Create `tests/PeakPower.Integration.Tests/Auth/SignOutTests.cs`:
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Customer.Auth;
 using Xunit;
@@ -3593,16 +3593,16 @@ public sealed class SignOutTests(CustomerApiFactory factory) : IClassFixture<Cus
 
         var response = await client.PostAsync("/api/v1/auth/sign-out", content: null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         response.Headers.GetValues("Set-Cookie")
-            .Should().Contain(c => c.StartsWith("pp_refresh=;")
+            .ShouldContain(c => c.StartsWith("pp_refresh=;")
                                 || c.StartsWith("pp_refresh=") && c.Contains("expires=Thu, 01 Jan 1970"));
 
         await using var db = factory.CreateOwnerDbContext();
         var live = await db.RefreshTokens
             .Where(t => t.AccountId == account.Id && t.RevokedAt == null)
             .CountAsync();
-        live.Should().Be(0, "signing out ends every session, not only this browser's");
+        live.ShouldBe(0, "signing out ends every session, not only this browser's");
     }
 
     [Fact]
@@ -3611,7 +3611,7 @@ public sealed class SignOutTests(CustomerApiFactory factory) : IClassFixture<Cus
         var response = await factory.CreateAnonymousClient()
             .PostAsync("/api/v1/auth/sign-out", content: null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 }
 ```
@@ -3707,7 +3707,7 @@ Create `tests/PeakPower.Integration.Tests/Auth/PasswordResetTests.cs`:
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Customer.Auth;
 using Xunit;
@@ -3729,12 +3729,12 @@ public sealed class PasswordResetTests(CustomerApiFactory factory)
         var response = await factory.CreateAnonymousClient().PostAsJsonAsync(
             "/api/v1/auth/password-reset/requests", new PasswordResetRequest(email));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await using var db = factory.CreateOwnerDbContext();
         var token = await db.PasswordResetTokens.SingleAsync(t => t.AccountId == account.Id);
-        token.TokenHash.Should().MatchRegex("^[0-9A-F]{64}$", "the token is stored hashed");
-        (token.ExpiresAt - token.IssuedAt).Should().BeCloseTo(TimeSpan.FromHours(1), TimeSpan.FromSeconds(5));
+        token.TokenHash.ShouldMatch("^[0-9A-F]{64}$", "the token is stored hashed");
+        (token.ExpiresAt - token.IssuedAt).ShouldBe(TimeSpan.FromHours(1), TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -3750,14 +3750,14 @@ public sealed class PasswordResetTests(CustomerApiFactory factory)
         var forUnknown = await client.PostAsJsonAsync(
             "/api/v1/auth/password-reset/requests", new PasswordResetRequest("nobody@example.nl"));
 
-        forUnknown.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        forUnknown.StatusCode.Should().Be(forKnown.StatusCode);
+        forUnknown.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        forUnknown.StatusCode.ShouldBe(forKnown.StatusCode);
         (await forUnknown.Content.ReadAsStringAsync())
-            .Should().Be(await forKnown.Content.ReadAsStringAsync(),
+            .ShouldBe(await forKnown.Content.ReadAsStringAsync(),
                 "anything else is an account-enumeration oracle");
 
         await using var db = factory.CreateOwnerDbContext();
-        (await db.PasswordResetTokens.CountAsync()).Should().BeGreaterThan(0);
+        (await db.PasswordResetTokens.CountAsync()).ShouldBeGreaterThan(0);
     }
 }
 ```
@@ -3958,16 +3958,16 @@ Add to `tests/PeakPower.Integration.Tests/Auth/PasswordResetTests.cs`:
             "/api/v1/auth/password-reset/completions",
             new PasswordResetCompletion(token, "a-brand-new-passphrase"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         await using var after = factory.CreateOwnerDbContext();
         var account = await after.CustomerAccounts.SingleAsync(a => a.Id == accountId);
-        account.SecurityStamp.Should().NotBe(stampBefore,
+        account.SecurityStamp.ShouldNotBe(stampBefore,
             "every outstanding token for this account must die");
 
         var signIn = await factory.CreateAnonymousClient().PostAsJsonAsync(
             "/api/v1/auth/sign-in", new SignInRequest(email, "a-brand-new-passphrase"));
-        signIn.StatusCode.Should().Be(HttpStatusCode.OK);
+        signIn.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -3985,7 +3985,7 @@ Add to `tests/PeakPower.Integration.Tests/Auth/PasswordResetTests.cs`:
         var live = await db.RefreshTokens
             .Where(t => t.AccountId == accountId && t.RevokedAt == null)
             .CountAsync();
-        live.Should().Be(0);
+        live.ShouldBe(0);
     }
 
     [Fact]
@@ -4001,8 +4001,8 @@ Add to `tests/PeakPower.Integration.Tests/Auth/PasswordResetTests.cs`:
             "/api/v1/auth/password-reset/completions",
             new PasswordResetCompletion(token, "another-brand-new-one"));
 
-        first.StatusCode.Should().Be(HttpStatusCode.NoContent);
-        second.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        first.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        second.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -4014,8 +4014,8 @@ Add to `tests/PeakPower.Integration.Tests/Auth/PasswordResetTests.cs`:
             "/api/v1/auth/password-reset/completions",
             new PasswordResetCompletion(token, "short"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
     }
 ```
 
@@ -4200,7 +4200,7 @@ address.
 Create `tests/PeakPower.Domain.Tests/Onboarding/OnboardingApplicationTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Customers;
 using PeakPower.Domain.Onboarding;
 using Xunit;
@@ -4221,12 +4221,12 @@ public sealed class OnboardingApplicationTests
     {
         var application = Started();
 
-        application.Status.Should().Be(OnboardingStatus.Draft);
-        application.FirstName.Should().Be("Peter");
-        application.Email.Should().Be("p.devries@vandersteen.nl");
-        application.PasswordHash.Should().Be(Hash);
-        application.TermsAcceptedAt.Should().Be(Now);
-        application.Reference.Should().MatchRegex("^PP-ONB-[0-9A-HJ-NP-TV-Z]{4}$");
+        application.Status.ShouldBe(OnboardingStatus.Draft);
+        application.FirstName.ShouldBe("Peter");
+        application.Email.ShouldBe("p.devries@vandersteen.nl");
+        application.PasswordHash.ShouldBe(Hash);
+        application.TermsAcceptedAt.ShouldBe(Now);
+        application.Reference.ShouldMatch("^PP-ONB-[0-9A-HJ-NP-TV-Z]{4}$");
     }
 
     [Fact]
@@ -4235,8 +4235,8 @@ public sealed class OnboardingApplicationTests
         var result = OnboardingApplication.Start(
             "Peter", "de Vries", "p.devries@vandersteen.nl", Hash, termsAccepted: false, Now);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Accept the Terms of Use to create the account.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Accept the Terms of Use to create the account.");
     }
 
     [Theory]
@@ -4248,8 +4248,8 @@ public sealed class OnboardingApplicationTests
     {
         var result = OnboardingApplication.Start(first, last, email, Hash, true, Now);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be(expected);
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe(expected);
     }
 
     [Fact]
@@ -4257,10 +4257,10 @@ public sealed class OnboardingApplicationTests
     {
         var result = Started().ApplyCompany("Vandersteen Koeling B.V.", LegalEntityType.BV, "2439 8112");
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.OrganizationName.Should().Be("Vandersteen Koeling B.V.");
-        result.Value.KvkNumber.Should().Be("24398112");
-        result.Value.LegalEntityType.Should().Be(LegalEntityType.BV);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.OrganizationName.ShouldBe("Vandersteen Koeling B.V.");
+        result.Value.KvkNumber.ShouldBe("24398112");
+        result.Value.LegalEntityType.ShouldBe(LegalEntityType.BV);
     }
 
     [Theory]
@@ -4271,8 +4271,8 @@ public sealed class OnboardingApplicationTests
     {
         var result = Started().ApplyCompany(name, LegalEntityType.BV, kvk);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be(expected);
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe(expected);
     }
 
     [Fact]
@@ -4280,8 +4280,8 @@ public sealed class OnboardingApplicationTests
     {
         var result = Started().ApplyRegisteredAddress(null);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.RegisteredAddress.Should().BeNull();
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.RegisteredAddress.ShouldBeNull();
     }
 
     [Fact]
@@ -4291,16 +4291,16 @@ public sealed class OnboardingApplicationTests
 
         var result = Started().ApplyRegisteredAddress(address);
 
-        result.Value.RegisteredAddress.Should().Be(address);
+        result.Value.RegisteredAddress.ShouldBe(address);
     }
 
     [Fact]
     public void Step_four_is_optional_and_null_means_not_specified()
     {
-        Started().ApplyIndustry(null).Value.Industry.Should().BeNull();
-        Started().ApplyIndustry("Not specified").Value.Industry.Should().BeNull();
+        Started().ApplyIndustry(null).Value.Industry.ShouldBeNull();
+        Started().ApplyIndustry("Not specified").Value.Industry.ShouldBeNull();
         Started().ApplyIndustry("Agriculture & Food Processing").Value.Industry
-            .Should().Be("Agriculture & Food Processing");
+            .ShouldBe("Agriculture & Food Processing");
     }
 
     [Fact]
@@ -4308,17 +4308,17 @@ public sealed class OnboardingApplicationTests
     {
         var result = Started().ApplyIndustry("Interstellar Freight");
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Choose an industry from the list, or leave it unspecified.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Choose an industry from the list, or leave it unspecified.");
     }
 
     [Fact]
     public void The_industry_list_is_the_demos_twenty_four_plus_the_unspecified_lead()
     {
-        OnboardingReferenceData.Industries.Should().HaveCount(24);
-        OnboardingReferenceData.Industries.Should().Contain("Cryptocurrency");
-        OnboardingReferenceData.Industries.Should().Contain("Transportation");
-        OnboardingReferenceData.Industries.Should().NotContain("Not specified");
+        OnboardingReferenceData.Industries.Count().ShouldBe(24);
+        OnboardingReferenceData.Industries.ShouldContain("Cryptocurrency");
+        OnboardingReferenceData.Industries.ShouldContain("Transportation");
+        OnboardingReferenceData.Industries.ShouldNotContain("Not specified");
     }
 
     [Fact]
@@ -4326,28 +4326,28 @@ public sealed class OnboardingApplicationTests
     {
         var result = Started().ApplyVolume(FlowDirection.Both, VolumeBand.From1000To2500Mwh);
 
-        result.Value.FlowDirection.Should().Be(FlowDirection.Both);
-        result.Value.VolumeBand.Should().Be(VolumeBand.From1000To2500Mwh);
+        result.Value.FlowDirection.ShouldBe(FlowDirection.Both);
+        result.Value.VolumeBand.ShouldBe(VolumeBand.From1000To2500Mwh);
     }
 
     [Fact]
     public void The_volume_bands_read_in_dutch_number_format()
     {
-        OnboardingReferenceData.DisplayName(VolumeBand.UpTo250Mwh).Should().Be("Less than 250 MWh");
-        OnboardingReferenceData.DisplayName(VolumeBand.From500To1000Mwh).Should().Be("500 – 1.000 MWh");
-        OnboardingReferenceData.DisplayName(VolumeBand.Above2500Mwh).Should().Be("More than 2.500 MWh");
+        OnboardingReferenceData.DisplayName(VolumeBand.UpTo250Mwh).ShouldBe("Less than 250 MWh");
+        OnboardingReferenceData.DisplayName(VolumeBand.From500To1000Mwh).ShouldBe("500 – 1.000 MWh");
+        OnboardingReferenceData.DisplayName(VolumeBand.Above2500Mwh).ShouldBe("More than 2.500 MWh");
     }
 
     [Fact]
     public void Step_six_validates_the_iban_with_mod_97()
     {
         var good = Started().ApplyBankAccount("NL18 INGB 0002 4455 66", "Vandersteen Koeling B.V.");
-        good.IsSuccess.Should().BeTrue();
-        good.Value.Iban.Should().Be("NL18INGB0002445566");
-        good.Value.BankVerifiedAt.Should().BeNull("no payment rail exists in slice 1");
+        good.IsSuccess.ShouldBeTrue();
+        good.Value.Iban.ShouldBe("NL18INGB0002445566");
+        good.Value.BankVerifiedAt.ShouldBeNull("no payment rail exists in slice 1");
 
         var bad = Started().ApplyBankAccount("NL19 INGB 0002 4455 66", "Vandersteen Koeling B.V.");
-        bad.IsSuccess.Should().BeFalse();
+        bad.IsSuccess.ShouldBeFalse();
     }
 
     [Fact]
@@ -4355,10 +4355,10 @@ public sealed class OnboardingApplicationTests
     {
         var result = Started().ApplySigningAuthority(SigningAuthority.Jointly);
 
-        result.Value.SigningAuthority.Should().Be(SigningAuthority.Jointly);
-        OnboardingReferenceData.MinimumSignatories(SigningAuthority.Alone).Should().Be(1);
-        OnboardingReferenceData.MinimumSignatories(SigningAuthority.Jointly).Should().Be(2);
-        OnboardingReferenceData.MinimumSignatories(SigningAuthority.SomeoneElse).Should().Be(1);
+        result.Value.SigningAuthority.ShouldBe(SigningAuthority.Jointly);
+        OnboardingReferenceData.MinimumSignatories(SigningAuthority.Alone).ShouldBe(1);
+        OnboardingReferenceData.MinimumSignatories(SigningAuthority.Jointly).ShouldBe(2);
+        OnboardingReferenceData.MinimumSignatories(SigningAuthority.SomeoneElse).ShouldBe(1);
     }
 }
 ```
@@ -4924,7 +4924,7 @@ correct entry signs. Recorded here so a reader does not mistake it for an oversi
 Create `tests/PeakPower.Domain.Tests/Onboarding/OnboardingSigningTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Onboarding;
 using Xunit;
 
@@ -4951,9 +4951,9 @@ public sealed class OnboardingSigningTests
         var suggested = OnboardingApplication.SignatoriesForAuthority(
             SigningAuthority.Alone, "Peter", "de Vries", "p.devries@vandersteen.nl");
 
-        suggested.Should().HaveCount(1);
-        suggested[0].IsApplicant.Should().BeTrue();
-        suggested[0].Email.Should().Be("p.devries@vandersteen.nl");
+        suggested.Count().ShouldBe(1);
+        suggested[0].IsApplicant.ShouldBeTrue();
+        suggested[0].Email.ShouldBe("p.devries@vandersteen.nl");
     }
 
     [Fact]
@@ -4962,8 +4962,8 @@ public sealed class OnboardingSigningTests
         var suggested = OnboardingApplication.SignatoriesForAuthority(
             SigningAuthority.Jointly, "Peter", "de Vries", "p.devries@vandersteen.nl");
 
-        suggested.Should().HaveCount(1, "the second person is added by the customer");
-        suggested[0].IsApplicant.Should().BeTrue();
+        suggested.Count().ShouldBe(1, "the second person is added by the customer");
+        suggested[0].IsApplicant.ShouldBeTrue();
     }
 
     [Fact]
@@ -4972,7 +4972,7 @@ public sealed class OnboardingSigningTests
         var suggested = OnboardingApplication.SignatoriesForAuthority(
             SigningAuthority.SomeoneElse, "Peter", "de Vries", "p.devries@vandersteen.nl");
 
-        suggested.Should().BeEmpty("they manage the account, they do not sign it");
+        suggested.ShouldBeEmpty("they manage the account, they do not sign it");
     }
 
     [Fact]
@@ -4981,8 +4981,8 @@ public sealed class OnboardingSigningTests
         var result = Ready(SigningAuthority.Jointly).SetSignatories(
             [new OnboardingSignatory("Peter", "de Vries", "p.devries@vandersteen.nl", true)]);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("You answered that two people sign — add the second signatory.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("You answered that two people sign — add the second signatory.");
     }
 
     [Fact]
@@ -4991,8 +4991,8 @@ public sealed class OnboardingSigningTests
         var result = Ready(SigningAuthority.Alone).SetSignatories(
             [new OnboardingSignatory("Peter", "", "p.devries@vandersteen.nl", true)]);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be(
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe(
             "Every signatory needs a first name, last name and email address.");
     }
 
@@ -5005,11 +5005,11 @@ public sealed class OnboardingSigningTests
         [
             new OnboardingSignatory("Peter", "de Vries", "p.devries@vandersteen.nl", true),
             new OnboardingSignatory("Marieke", "Vandersteen", "m.vandersteen@vandersteen.nl", false),
-        ]).IsSuccess.Should().BeTrue();
+        ]).IsSuccess.ShouldBeTrue();
 
-        application.IssueSignCode(CodeHash, Now.AddMinutes(30)).IsSuccess.Should().BeTrue();
-        application.Status.Should().Be(OnboardingStatus.AwaitingSignature);
-        application.SignCodeAttempts.Should().Be(0);
+        application.IssueSignCode(CodeHash, Now.AddMinutes(30)).IsSuccess.ShouldBeTrue();
+        application.Status.ShouldBe(OnboardingStatus.AwaitingSignature);
+        application.SignCodeAttempts.ShouldBe(0);
     }
 
     private static OnboardingApplication AwaitingSignature()
@@ -5026,7 +5026,7 @@ public sealed class OnboardingSigningTests
     {
         var result = AwaitingSignature().VerifySignCode(CodeHash, agreedDocuments: true, Now);
 
-        result.IsSuccess.Should().BeTrue();
+        result.IsSuccess.ShouldBeTrue();
     }
 
     [Fact]
@@ -5034,8 +5034,8 @@ public sealed class OnboardingSigningTests
     {
         var result = AwaitingSignature().VerifySignCode(CodeHash, agreedDocuments: false, Now);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Tick the box to confirm you agree to the documents.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Tick the box to confirm you agree to the documents.");
     }
 
     [Fact]
@@ -5045,9 +5045,9 @@ public sealed class OnboardingSigningTests
 
         var result = application.VerifySignCode("0".PadLeft(64, '0'), true, Now);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("That code does not match the one we emailed you.");
-        application.SignCodeAttempts.Should().Be(1);
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("That code does not match the one we emailed you.");
+        application.SignCodeAttempts.ShouldBe(1);
     }
 
     [Fact]
@@ -5058,8 +5058,8 @@ public sealed class OnboardingSigningTests
 
         var withTheRightCode = application.VerifySignCode(CodeHash, true, Now);
 
-        withTheRightCode.IsSuccess.Should().BeFalse();
-        withTheRightCode.Error.Should().Be(
+        withTheRightCode.IsSuccess.ShouldBeFalse();
+        withTheRightCode.Error.ShouldBe(
             "Too many attempts. Ask for a new code to be sent.");
     }
 
@@ -5070,8 +5070,8 @@ public sealed class OnboardingSigningTests
 
         var result = application.VerifySignCode(CodeHash, true, Now.AddMinutes(31));
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("That code has expired. Ask for a new one to be sent.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("That code has expired. Ask for a new one to be sent.");
     }
 
     [Fact]
@@ -5082,8 +5082,8 @@ public sealed class OnboardingSigningTests
 
         application.IssueSignCode(CodeHash, Now.AddMinutes(30));
 
-        application.SignCodeAttempts.Should().Be(0);
-        application.VerifySignCode(CodeHash, true, Now).IsSuccess.Should().BeTrue();
+        application.SignCodeAttempts.ShouldBe(0);
+        application.VerifySignCode(CodeHash, true, Now).IsSuccess.ShouldBeTrue();
     }
 }
 ```
@@ -5281,7 +5281,7 @@ correctly now is the whole point of shipping the column early.
 Create `tests/PeakPower.Integration.Tests/Onboarding/OnboardingMaterialisationTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PeakPower.Api.Customer.Onboarding;
@@ -5340,24 +5340,24 @@ public sealed class OnboardingMaterialisationTests(CustomerApiFactory factory)
         var result = await Service(scope).SignAsync(
             applicationId, code, agreedDocuments: true, TestContext.Current.CancellationToken);
 
-        result.IsSuccess.Should().BeTrue(result.Error);
+        result.IsSuccess.ShouldBeTrue(result.Error);
 
         await using var db = factory.CreateOwnerDbContext();
         var customer = await db.Customers.SingleAsync(c => c.Id == result.Value.CustomerId);
-        customer.LegalName.Should().Be("Vandersteen Koeling B.V.");
-        customer.KvkNumber.Value.Should().Be("24398112");
-        customer.Status.Should().Be(CustomerStatus.Active, "the one cent cleared");
-        customer.Locale.Should().Be("nl-NL");
+        customer.LegalName.ShouldBe("Vandersteen Koeling B.V.");
+        customer.KvkNumber.Value.ShouldBe("24398112");
+        customer.Status.ShouldBe(CustomerStatus.Active, "the one cent cleared");
+        customer.Locale.ShouldBe("nl-NL");
 
         var account = await db.CustomerAccounts.SingleAsync(a => a.Id == result.Value.AccountId);
-        account.CustomerId.Should().Be(customer.Id);
-        account.IsAdmin.Should().BeTrue("the first account has to administer the company");
-        account.Status.Should().Be(AccountStatus.Active);
-        account.PasswordHash.Should().StartWith("$argon2id$");
+        account.CustomerId.ShouldBe(customer.Id);
+        account.IsAdmin.ShouldBeTrue("the first account has to administer the company");
+        account.Status.ShouldBe(AccountStatus.Active);
+        account.PasswordHash.ShouldStartWith("$argon2id$");
 
         var wallet = await db.Wallets.SingleAsync(w => w.CustomerId == customer.Id);
-        wallet.Currency.Should().Be("EUR");
-        wallet.Balance.Should().Be(0m);
+        wallet.Currency.ShouldBe("EUR");
+        wallet.Balance.ShouldBe(0m);
     }
 
     [Fact]
@@ -5371,7 +5371,7 @@ public sealed class OnboardingMaterialisationTests(CustomerApiFactory factory)
 
         await using var db = factory.CreateOwnerDbContext();
         var customer = await db.Customers.SingleAsync(c => c.Id == result.Value.CustomerId);
-        customer.Status.Should().Be(CustomerStatus.Prospect,
+        customer.Status.ShouldBe(CustomerStatus.Prospect,
             "the agreement is signed but the one cent has not arrived");
     }
 
@@ -5386,13 +5386,13 @@ public sealed class OnboardingMaterialisationTests(CustomerApiFactory factory)
         var second = await Service(scope).SignAsync(
             applicationId, code, true, TestContext.Current.CancellationToken);
 
-        second.IsSuccess.Should().BeTrue();
-        second.Value.CustomerId.Should().Be(first.Value.CustomerId);
-        second.Value.AccountId.Should().Be(first.Value.AccountId);
+        second.IsSuccess.ShouldBeTrue();
+        second.Value.CustomerId.ShouldBe(first.Value.CustomerId);
+        second.Value.AccountId.ShouldBe(first.Value.AccountId);
 
         await using var db = factory.CreateOwnerDbContext();
-        (await db.Customers.CountAsync(c => c.Id == first.Value.CustomerId)).Should().Be(1);
-        (await db.Wallets.CountAsync(w => w.CustomerId == first.Value.CustomerId)).Should().Be(1);
+        (await db.Customers.CountAsync(c => c.Id == first.Value.CustomerId)).ShouldBe(1);
+        (await db.Wallets.CountAsync(w => w.CustomerId == first.Value.CustomerId)).ShouldBe(1);
     }
 
     [Fact]
@@ -5406,8 +5406,8 @@ public sealed class OnboardingMaterialisationTests(CustomerApiFactory factory)
         var result = await Service(scope).SignAsync(
             applicationId, "000000", true, TestContext.Current.CancellationToken);
 
-        result.IsSuccess.Should().BeFalse();
-        (await CountCustomersAsync()).Should().Be(before);
+        result.IsSuccess.ShouldBeFalse();
+        (await CountCustomersAsync()).ShouldBe(before);
 
         async Task<int> CountCustomersAsync()
         {
@@ -5444,8 +5444,8 @@ public sealed class OnboardingMaterialisationTests(CustomerApiFactory factory)
         var result = await service.SignAsync(
             application.Id, code, true, TestContext.Current.CancellationToken);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("registered address");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldContain("registered address");
     }
 }
 ```
@@ -5798,7 +5798,7 @@ Create `tests/PeakPower.Integration.Tests/Onboarding/OnboardingEndpointTests.cs`
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Customer.Auth;
 using PeakPower.Contracts.Customer.Onboarding;
 using Xunit;
@@ -5822,12 +5822,12 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
 
         var created = await client.PostAsJsonAsync("/api/v1/onboarding/applications",
             new StartOnboardingRequest("Peter", "de Vries", email, "correct-horse-battery", true));
-        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        created.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var application = (await created.Content
             .ReadFromJsonAsync<OnboardingApplicationResponse>())!;
-        application.Reference.Should().StartWith("PP-ONB-");
-        application.Status.Should().Be("DRAFT");
+        application.Reference.ShouldStartWith("PP-ONB-");
+        application.Status.ShouldBe("DRAFT");
 
         var url = $"/api/v1/onboarding/applications/{application.Id}";
 
@@ -5836,48 +5836,48 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
             OrganizationName = "Vandersteen Koeling B.V.",
             LegalEntityType = "BV",
             KvkNumber = "2439 8112",
-        })).StatusCode.Should().Be(HttpStatusCode.OK);
+        })).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         (await client.PatchAsJsonAsync(url, Step(3) with { RegisteredAddress = Address }))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
 
         (await client.PatchAsJsonAsync(url, Step(4) with { Industry = "Agriculture & Food Processing" }))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
 
         (await client.PatchAsJsonAsync(url, Step(5) with
         {
             FlowDirection = "Both",
             VolumeBand = "From1000To2500Mwh",
-        })).StatusCode.Should().Be(HttpStatusCode.OK);
+        })).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         (await client.PatchAsJsonAsync(url, Step(6) with
         {
             Iban = "NL18INGB0002445566",
             BankAccountHolder = "Vandersteen Koeling B.V.",
-        })).StatusCode.Should().Be(HttpStatusCode.OK);
+        })).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         (await client.PatchAsJsonAsync(url, Step(7) with { SigningAuthority = "Alone" }))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var signatories = await client.PostAsJsonAsync($"{url}/signatories",
             new SubmitSignatoriesRequest([new SignatoryDto("Peter", "de Vries", email)]));
-        signatories.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        signatories.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         (await signatories.Content.ReadFromJsonAsync<OnboardingApplicationResponse>())!
-            .Status.Should().Be("AWAITING_SIGNATURE");
+            .Status.ShouldBe("AWAITING_SIGNATURE");
 
         var code = await ReadSignCodeAsync(application.Id);
 
         var signed = await client.PostAsJsonAsync($"{url}/sign",
             new SignOnboardingRequest(code, AgreedDocuments: true));
-        signed.StatusCode.Should().Be(HttpStatusCode.OK);
+        signed.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var outcome = (await signed.Content.ReadFromJsonAsync<SignedOnboardingResponse>())!;
-        outcome.Username.Should().Be(email);
-        outcome.CustomerStatus.Should().Be("PROSPECT", "no one cent has arrived");
+        outcome.Username.ShouldBe(email);
+        outcome.CustomerStatus.ShouldBe("PROSPECT", "no one cent has arrived");
 
         var signIn = await client.PostAsJsonAsync("/api/v1/auth/sign-in",
             new SignInRequest(email, "correct-horse-battery"));
-        signIn.StatusCode.Should().Be(HttpStatusCode.OK);
+        signIn.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     /// <summary>
@@ -5905,8 +5905,8 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
             new StartOnboardingRequest(
                 "Peter", "de Vries", $"{Guid.NewGuid():N}@vandersteen.nl", "short", true));
 
-        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
     }
 
     [Fact]
@@ -5918,7 +5918,7 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
                 "Peter", "de Vries", $"{Guid.NewGuid():N}@vandersteen.nl",
                 "correct-horse-battery", TermsAccepted: false));
 
-        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
     }
 
     [Fact]
@@ -5928,7 +5928,7 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
             $"/api/v1/onboarding/applications/{Guid.NewGuid()}",
             Step(4) with { Industry = "Mining" });
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -5946,12 +5946,12 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
             $"/api/v1/onboarding/applications/{application.Id}/bank-verification/simulate",
             content: null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         await using var db = factory.CreateOwnerDbContext();
         var stored = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
             .SingleAsync(db.OnboardingApplications, a => a.Id == application.Id);
-        stored.BankVerifiedAt.Should().NotBeNull();
+        stored.BankVerifiedAt.ShouldNotBeNull();
     }
 }
 ```
@@ -6254,7 +6254,7 @@ Now that every anonymous route exists, change the assertion in
 `BeSubsetOf` to the exact form:
 
 ```csharp
-        anonymous.Should().BeEquivalentTo(Expected,
+        anonymous.ShouldBe(Expected,
             "an endpoint that skips CustomerSessionMiddleware runs with RLS disabled");
 ```
 

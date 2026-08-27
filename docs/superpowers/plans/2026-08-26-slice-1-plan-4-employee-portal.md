@@ -188,16 +188,17 @@ depend on it.
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** + NSubstitute |
+| Domain / Application unit | xUnit + **Shouldly 4.3.0**|
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest 1.3.2 and Mono.Cecil 0.11.6 |
 | OpenAPI contract | Verify snapshot |
 | Frontend unit | Vitest |
 | E2E | Playwright, in `peakpower-web` |
 
-> ⚠ **FluentAssertions 8.x may not be used.** 8.10.0 ships an Xceed Software Community License
-> Agreement "for Non-Commercial Use"; PeakPower is a commercial trading platform. **7.2.0 is the
-> last `Apache-2.0` release** and is what every plan pins (shared contract §13).
+> ⚠ **Assert with Shouldly, never FluentAssertions** `[DEC-118]`. FluentAssertions 8.x ships an
+> Xceed Community License "for Non-Commercial Use" and PeakPower is commercial; 7.2.0 is the
+> last Apache-2.0 release and the end of that line. Shouldly 4.3.0 is Apache-2.0 and maintained.
+> `verify-build-settings.sh` fails the build if FluentAssertions reappears.
 
 **The six architecture facts, with the tool that enforces each and the plan that owns it**
 (shared contract §13). Facts 3-6 are about *call sites*, which NetArchTest's type-level model

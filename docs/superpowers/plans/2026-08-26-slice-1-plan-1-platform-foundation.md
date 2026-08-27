@@ -21,7 +21,7 @@ with a single `./dev-up` from either repository.
 **Tech Stack:** .NET SDK 10.0.400 · C# `latest` · EF Core 10.0.11 ·
 Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3 · EFCore.NamingConventions 10.0.1 ·
 PostgreSQL 17 · .NET Aspire 13.5.3 (`aspire.cli` global tool + `Aspire.AppHost.Sdk`) ·
-xUnit v3 3.2.2 · FluentAssertions 7.2.0 · NSubstitute 6.2.0 · NetArchTest.Rules 1.3.2 ·
+xUnit v3 3.2.2 · Shouldly 4.3.0 · NSubstitute 6.2.0 · NetArchTest.Rules 1.3.2 ·
 Mono.Cecil 0.11.6 · Testcontainers.PostgreSql 4.14.0 · Node 24.15.0 / npm 11.12.1 ·
 Docker 29.7.2
 
@@ -143,7 +143,7 @@ EXCLUDE USING gist (ean WITH =, validity WITH &&)
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** (+ NSubstitute for ports) — 7.x is pinned because 8.x is licensed for non-commercial use only; see the note in `Directory.Packages.props` |
+| Domain / Application unit | xUnit + **Shouldly 4.3.0** (+ NSubstitute for ports) — FluentAssertions is not used; see the note in `Directory.Packages.props` `[DEC-118]` |
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
@@ -565,14 +565,15 @@ for pinned in \
   'Include="Aspire.Hosting.JavaScript" Version="13.5.3"' \
   'Include="Testcontainers.PostgreSql" Version="4.14.0"' \
   'Include="NetArchTest.Rules" Version="1.3.2"' \
-  'Include="FluentAssertions" Version="7.2.0"' ; do
+  'Include="Shouldly" Version="4.3.0"' ; do
   grep -q "$pinned" "$packages" 2>/dev/null || fail "Directory.Packages.props is missing: $pinned"
 done
 
-# FluentAssertions 8.x is licensed for non-commercial use only. This is a licence check, not a
+# FluentAssertions must not come back. 8.x is an Xceed non-commercial licence and 7.x is the end
+# of the Apache-2.0 line, so the project uses Shouldly instead. This is a licence check, not a
 # style preference, so it is asserted rather than left to a comment.
-grep -q 'Include="FluentAssertions" Version="8' "$packages" 2>/dev/null \
-  && fail "FluentAssertions 8.x is an Xceed non-commercial licence; pin 7.2.0"
+grep -q 'Include="FluentAssertions"' "$packages" 2>/dev/null \
+  && fail "FluentAssertions is not used; assert with Shouldly [DEC-118]"
 
 if [[ $failures -gt 0 ]]; then
   echo "verify-build-settings: $failures check(s) failed" >&2
@@ -683,12 +684,13 @@ cat > Directory.Packages.props <<'XML'
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <!--
-      Pinned to 7.x on purpose. FluentAssertions 8.x ships an Xceed Software Community License
-      Agreement "for Non-Commercial Use"; PeakPower is a commercial trading platform, so 8.x
-      would need a paid Xceed licence. 7.2.0 is the last Apache-2.0 release. Do not let
-      `dotnet outdated` walk this forward.  [shared contract section 13]
+      Shouldly, not FluentAssertions  [DEC-118]. FluentAssertions 8.x ships an Xceed Software
+      Community License Agreement "for Non-Commercial Use" and PeakPower is a commercial
+      trading platform, while 7.2.0 — the last Apache-2.0 release — is the end of that line and
+      will stop getting fixes. Shouldly is Apache-2.0 and actively maintained.
+      `verify-build-settings.sh` fails the build if FluentAssertions reappears.
     -->
-    <PackageVersion Include="FluentAssertions" Version="7.2.0" />
+    <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
     <PackageVersion Include="Mono.Cecil" Version="0.11.6" />
@@ -1186,7 +1188,7 @@ cat > tests/PeakPower.Domain.Tests/PeakPower.Domain.Tests.csproj <<'XML'
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Shouldly" />
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 </Project>
@@ -1202,7 +1204,7 @@ cat > tests/PeakPower.Application.Tests/PeakPower.Application.Tests.csproj <<'XM
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Shouldly" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="coverlet.collector" />
@@ -1222,7 +1224,7 @@ cat > tests/PeakPower.Integration.Tests/PeakPower.Integration.Tests.csproj <<'XM
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Shouldly" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
@@ -1257,7 +1259,7 @@ cat > tests/PeakPower.Architecture.Tests/PeakPower.Architecture.Tests.csproj <<'
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Shouldly" />
     <PackageReference Include="NetArchTest.Rules" />
     <PackageReference Include="Mono.Cecil" />
     <PackageReference Include="coverlet.collector" />
@@ -1274,7 +1276,7 @@ cat > tests/PeakPower.AppHost.Tests/PeakPower.AppHost.Tests.csproj <<'XML'
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Shouldly" />
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
 </Project>
@@ -1361,7 +1363,7 @@ Create
 
 ```csharp
 using System.Reflection;
-using FluentAssertions;
+using Shouldly;
 using NetArchTest.Rules;
 
 namespace PeakPower.Architecture.Tests;
@@ -1407,7 +1409,7 @@ public sealed class ModuleGraphFacts
             .HaveDependencyOnAny(EverythingOutsideTheDomain)
             .GetResult();
 
-        result.IsSuccessful.Should().BeTrue(
+        result.IsSuccessful.ShouldBeTrue(
             "PeakPower.Domain must reference nothing. Offending types: {0}",
             string.Join(", ", result.FailingTypeNames ?? []));
     }
@@ -1415,7 +1417,7 @@ public sealed class ModuleGraphFacts
     [Fact]
     public void Fact_1_the_domain_assembly_has_no_PeakPower_assembly_references()
     {
-        PeakPowerReferencesOf(DomainAssembly).Should().BeEmpty(
+        PeakPowerReferencesOf(DomainAssembly).ShouldBeEmpty(
             "PeakPower.Domain must reference nothing at all, not even transitively");
     }
 
@@ -1427,7 +1429,7 @@ public sealed class ModuleGraphFacts
             .HaveDependencyOnAny(EverythingOutsideTheApplicationAndDomain)
             .GetResult();
 
-        result.IsSuccessful.Should().BeTrue(
+        result.IsSuccessful.ShouldBeTrue(
             "PeakPower.Application may reference only PeakPower.Domain. Offending types: {0}",
             string.Join(", ", result.FailingTypeNames ?? []));
     }
@@ -1437,7 +1439,7 @@ public sealed class ModuleGraphFacts
     {
         // "At most", not "exactly": the C# compiler drops an assembly reference that no IL uses,
         // so an Application that happens not to touch a Domain type yet still satisfies the rule.
-        PeakPowerReferencesOf(ApplicationAssembly).Should().BeSubsetOf(["PeakPower.Domain"]);
+        PeakPowerReferencesOf(ApplicationAssembly).ShouldBeSubsetOf(["PeakPower.Domain"]);
     }
 
     private static IReadOnlyList<string> PeakPowerReferencesOf(Assembly assembly) =>
@@ -1664,7 +1666,7 @@ Create
 `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Architecture.Tests/CallSiteFacts.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Mono.Cecil;
 
 namespace PeakPower.Architecture.Tests;
@@ -1705,7 +1707,7 @@ public sealed class CallSiteFacts
             .Where(name => name.StartsWith("PeakPower.Integration.Brp", StringComparison.Ordinal))
             .ToArray();
 
-        brpReferences.Should().BeEmpty(
+        brpReferences.ShouldBeEmpty(
             "PeakPower.Ingestion must talk to BRP adapters through a port, never by referencing one");
     }
 
@@ -1719,7 +1721,7 @@ public sealed class CallSiteFacts
             .Select(site => site.ToString())
             .ToArray();
 
-        offenders.Should().BeEmpty(
+        offenders.ShouldBeEmpty(
             "IMarketCalendar is the only source of \"now\". Anything else makes a test that depends "
             + "on the wall clock, and business days are Europe/Amsterdam, not the machine's zone.");
     }
@@ -1805,7 +1807,7 @@ The domain never throws for a validation failure; it returns `Result<T>`. Endpoi
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Common/ResultTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 
 namespace PeakPower.Domain.Tests.Common;
@@ -1817,9 +1819,9 @@ public sealed class ResultTests
     {
         var result = Result<int>.Success(42);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Be(42);
-        result.Error.Should().BeEmpty();
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ShouldBe(42);
+        result.Error.ShouldBeEmpty();
     }
 
     [Fact]
@@ -1827,8 +1829,8 @@ public sealed class ResultTests
     {
         var result = Result<int>.Failure("KvK number must be exactly 8 digits.");
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("KvK number must be exactly 8 digits.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("KvK number must be exactly 8 digits.");
     }
 
     [Fact]
@@ -1838,8 +1840,8 @@ public sealed class ResultTests
 
         var act = () => result.Value;
 
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("Cannot read Value of a failed result. Error: nope");
+        Should.Throw<InvalidOperationException>(act)
+            .Message.ShouldBe("Cannot read Value of a failed result. Error: nope");
     }
 
     [Fact]
@@ -1847,7 +1849,7 @@ public sealed class ResultTests
     {
         var act = () => Result<int>.Failure("   ");
 
-        act.Should().Throw<ArgumentException>();
+        Should.Throw<ArgumentException>(act);
     }
 }
 ```
@@ -1942,7 +1944,7 @@ add check-digit validation in slice 1** — the seed data would stop loading.
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Common/EanCodeTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 
 namespace PeakPower.Domain.Tests.Common;
@@ -1954,8 +1956,8 @@ public sealed class EanCodeTests
     {
         var result = EanCode.Create("871687100000000011");
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Value.Should().Be("871687100000000011");
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Value.ShouldBe("871687100000000011");
     }
 
     [Fact]
@@ -1963,8 +1965,8 @@ public sealed class EanCodeTests
     {
         var result = EanCode.Create("8716 8710 0000 0000 11");
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Value.Should().Be("871687100000000011");
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Value.ShouldBe("871687100000000011");
     }
 
     [Theory]
@@ -1975,8 +1977,8 @@ public sealed class EanCodeTests
     {
         var result = EanCode.Create(raw);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("EAN must be exactly 18 digits.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("EAN must be exactly 18 digits.");
     }
 
     [Theory]
@@ -1986,8 +1988,8 @@ public sealed class EanCodeTests
     {
         var result = EanCode.Create(raw);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("EAN must not be blank.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("EAN must not be blank.");
     }
 
     [Fact]
@@ -1995,7 +1997,7 @@ public sealed class EanCodeTests
     {
         // 871687100000000019 fails every GS1 weighting. Slice 1 must still accept it,
         // because five of the six demo EANs are in exactly this position. See [OQ-97].
-        EanCode.Create("871687100000000019").IsSuccess.Should().BeTrue();
+        EanCode.Create("871687100000000019").IsSuccess.ShouldBeTrue();
     }
 
     [Fact]
@@ -2003,7 +2005,7 @@ public sealed class EanCodeTests
     {
         var ean = EanCode.Create("871687100000000011").Value;
 
-        ean.ToDisplayString().Should().Be("8716 8710 0000 0000 11");
+        ean.ToDisplayString().ShouldBe("8716 8710 0000 0000 11");
     }
 
     [Fact]
@@ -2012,7 +2014,7 @@ public sealed class EanCodeTests
         var first = EanCode.Create("871687100000000011").Value;
         var second = EanCode.Create("8716 8710 0000 0000 11").Value;
 
-        first.Should().Be(second);
+        first.ShouldBe(second);
     }
 }
 ```
@@ -2143,7 +2145,7 @@ requires exactly eight digits.
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Common/KvkNumberTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 
 namespace PeakPower.Domain.Tests.Common;
@@ -2155,14 +2157,14 @@ public sealed class KvkNumberTests
     {
         var result = KvkNumber.Create("12345678");
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Value.Should().Be("12345678");
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Value.ShouldBe("12345678");
     }
 
     [Fact]
     public void Surrounding_whitespace_is_stripped()
     {
-        KvkNumber.Create(" 1234 5678 ").Value.Value.Should().Be("12345678");
+        KvkNumber.Create(" 1234 5678 ").Value.Value.ShouldBe("12345678");
     }
 
     [Theory]
@@ -2173,8 +2175,8 @@ public sealed class KvkNumberTests
     {
         var result = KvkNumber.Create(raw);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("KvK number must be exactly 8 digits.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("KvK number must be exactly 8 digits.");
     }
 
     [Fact]
@@ -2182,8 +2184,8 @@ public sealed class KvkNumberTests
     {
         var result = KvkNumber.Create("  ");
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("KvK number must not be blank.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("KvK number must not be blank.");
     }
 }
 ```
@@ -2280,7 +2282,7 @@ in the alphabet plus nine (`A` = 10 … `Z` = 35), and the resulting integer mus
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Common/IbanTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 
 namespace PeakPower.Domain.Tests.Common;
@@ -2295,8 +2297,8 @@ public sealed class IbanTests
     {
         var result = Iban.Create(raw);
 
-        result.IsSuccess.Should().BeTrue(result.IsSuccess ? string.Empty : result.Error);
-        result.Value.Value.Should().Be(raw);
+        result.IsSuccess.ShouldBeTrue(result.IsSuccess ? string.Empty : result.Error);
+        result.Value.Value.ShouldBe(raw);
     }
 
     [Fact]
@@ -2304,8 +2306,8 @@ public sealed class IbanTests
     {
         var result = Iban.Create("nl91 abna 0417 1643 00");
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Value.Should().Be("NL91ABNA0417164300");
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Value.ShouldBe("NL91ABNA0417164300");
     }
 
     [Fact]
@@ -2313,8 +2315,8 @@ public sealed class IbanTests
     {
         var result = Iban.Create("NL91ABNA0417164301");
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("IBAN failed the ISO 7064 mod-97 check.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("IBAN failed the ISO 7064 mod-97 check.");
     }
 
     [Theory]
@@ -2326,15 +2328,15 @@ public sealed class IbanTests
     {
         var result = Iban.Create(raw);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be(
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe(
             "IBAN must be 15 to 34 characters: two letters, two digits, then letters or digits.");
     }
 
     [Fact]
     public void A_blank_IBAN_is_rejected_with_its_own_message()
     {
-        Iban.Create("   ").Error.Should().Be("IBAN must not be blank.");
+        Iban.Create("   ").Error.ShouldBe("IBAN must not be blank.");
     }
 }
 ```
@@ -2488,7 +2490,7 @@ by value, so a record with the same field values is the same address.
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Customers/EnumSpellingTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Customers;
 
 namespace PeakPower.Domain.Tests.Customers;
@@ -2503,45 +2505,45 @@ public sealed class EnumSpellingTests
     [Fact]
     public void CustomerStatus_has_exactly_four_members()
     {
-        Enum.GetNames<CustomerStatus>().Should().Equal("Prospect", "Active", "Suspended", "Closed");
+        Enum.GetNames<CustomerStatus>().ShouldBe("Prospect", "Active", "Suspended", "Closed");
     }
 
     [Fact]
     public void AccountStatus_includes_PendingApproval_which_the_domain_model_document_omits()
     {
-        Enum.GetNames<AccountStatus>().Should().Equal("PendingApproval", "Invited", "Active", "Deactivated");
+        Enum.GetNames<AccountStatus>().ShouldBe("PendingApproval", "Invited", "Active", "Deactivated");
     }
 
     [Fact]
     public void ProductionExpectation_calls_the_middle_value_Never_not_NotExpected()
     {
-        Enum.GetNames<ProductionExpectation>().Should().Equal("Unknown", "Never", "Expected");
+        Enum.GetNames<ProductionExpectation>().ShouldBe("Unknown", "Never", "Expected");
     }
 
     [Fact]
     public void ProductionExpectationSource_has_five_members_including_CustomerDeclared()
     {
-        Enum.GetNames<ProductionExpectationSource>().Should()
-            .Equal("Contract", "GridOperator", "Observed", "Manual", "CustomerDeclared");
+        Enum.GetNames<ProductionExpectationSource>()
+            .ShouldBe(new[] { "Contract", "GridOperator", "Observed", "Manual", "CustomerDeclared" });
     }
 
     [Fact]
     public void Commodity_keeps_the_discriminator_but_offers_only_electricity()
     {
-        Enum.GetNames<Commodity>().Should().Equal("Electricity");
+        Enum.GetNames<Commodity>().ShouldBe("Electricity");
     }
 
     [Fact]
     public void BankAccountStatus_has_exactly_three_members()
     {
-        Enum.GetNames<BankAccountStatus>().Should().Equal("PendingApproval", "Active", "Deactivated");
+        Enum.GetNames<BankAccountStatus>().ShouldBe("PendingApproval", "Active", "Deactivated");
     }
 
     [Fact]
     public void FourEyesAction_has_five_arms_not_four()
     {
-        Enum.GetNames<FourEyesAction>().Should()
-            .Equal("AddBankAccount", "DeactivateBankAccount", "AddUser", "Trade", "Withdrawal");
+        Enum.GetNames<FourEyesAction>()
+            .ShouldBe(new[] { "AddBankAccount", "DeactivateBankAccount", "AddUser", "Trade", "Withdrawal" });
     }
 }
 ```
@@ -2549,7 +2551,7 @@ public sealed class EnumSpellingTests
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Common/ValueRecordTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 
 namespace PeakPower.Domain.Tests.Common;
@@ -2562,7 +2564,7 @@ public sealed class ValueRecordTests
         var first = new Address("Keizersgracht", "104", "B", "1015 CV", "Amsterdam", "NL");
         var second = new Address("Keizersgracht", "104", "B", "1015 CV", "Amsterdam", "NL");
 
-        first.Should().Be(second);
+        first.ShouldBe(second);
     }
 
     [Fact]
@@ -2571,7 +2573,7 @@ public sealed class ValueRecordTests
         var withSuffix = new Address("Keizersgracht", "104", "B", "1015 CV", "Amsterdam", "NL");
         var withoutSuffix = new Address("Keizersgracht", "104", null, "1015 CV", "Amsterdam", "NL");
 
-        withSuffix.Should().NotBe(withoutSuffix);
+        withSuffix.ShouldNotBe(withoutSuffix);
     }
 
     [Fact]
@@ -2580,7 +2582,7 @@ public sealed class ValueRecordTests
         var first = new ContactPerson("Sanne de Vries", "sanne@example.nl", "+31 6 12345678");
         var second = new ContactPerson("Sanne de Vries", "sanne@example.nl", "+31 6 12345678");
 
-        first.Should().Be(second);
+        first.ShouldBe(second);
     }
 
     [Fact]
@@ -2589,7 +2591,7 @@ public sealed class ValueRecordTests
         var withPhone = new ContactPerson("Sanne de Vries", "sanne@example.nl", "+31 6 12345678");
         var withoutPhone = new ContactPerson("Sanne de Vries", "sanne@example.nl", null);
 
-        withPhone.Should().NotBe(withoutPhone);
+        withPhone.ShouldNotBe(withoutPhone);
     }
 }
 ```
@@ -2766,7 +2768,7 @@ column.
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Customers/CustomerTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
 
@@ -2799,14 +2801,14 @@ public sealed class CustomerTests
     {
         var customer = AValidCustomer();
 
-        customer.Status.Should().Be(CustomerStatus.Prospect);
-        customer.FourEyesEnabled.Should().BeFalse();
+        customer.Status.ShouldBe(CustomerStatus.Prospect);
+        customer.FourEyesEnabled.ShouldBeFalse();
     }
 
     [Fact]
     public void A_new_customer_gets_an_identifier()
     {
-        AValidCustomer().Id.Should().NotBe(Guid.Empty);
+        AValidCustomer().Id.ShouldNotBe(Guid.Empty);
     }
 
     [Fact]
@@ -2814,12 +2816,12 @@ public sealed class CustomerTests
     {
         var customer = AValidCustomer();
 
-        customer.LegalName.Should().Be("Zonnedak Beheer B.V.");
-        customer.TradeName.Should().Be("Zonnedak");
-        customer.KvkNumber.Value.Should().Be("12345678");
-        customer.BillingAddress.Should().Be(BillingAddress);
-        customer.PrimaryContact.Should().Be(PrimaryContact);
-        customer.Locale.Should().Be("nl-NL");
+        customer.LegalName.ShouldBe("Zonnedak Beheer B.V.");
+        customer.TradeName.ShouldBe("Zonnedak");
+        customer.KvkNumber.Value.ShouldBe("12345678");
+        customer.BillingAddress.ShouldBe(BillingAddress);
+        customer.PrimaryContact.ShouldBe(PrimaryContact);
+        customer.Locale.ShouldBe("nl-NL");
     }
 
     [Theory]
@@ -2829,8 +2831,8 @@ public sealed class CustomerTests
     {
         var result = Create(legalName);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Legal name is required.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Legal name is required.");
     }
 
     [Fact]
@@ -2840,7 +2842,7 @@ public sealed class CustomerTests
             "Zonnedak Beheer B.V.", null, KvkNumber.Create("12345678").Value, null,
             BillingAddress, null, PrimaryContact, null, locale: "  ");
 
-        result.Value.Locale.Should().Be("nl-NL");
+        result.Value.Locale.ShouldBe("nl-NL");
     }
 
     [Fact]
@@ -2850,7 +2852,7 @@ public sealed class CustomerTests
             "Zonnedak Beheer B.V.", "   ", KvkNumber.Create("12345678").Value, null,
             BillingAddress, null, PrimaryContact, null, "nl-NL");
 
-        result.Value.TradeName.Should().BeNull();
+        result.Value.TradeName.ShouldBeNull();
     }
 
     [Fact]
@@ -2860,8 +2862,8 @@ public sealed class CustomerTests
 
         var result = customer.ChangeStatus(CustomerStatus.Active);
 
-        result.IsSuccess.Should().BeTrue();
-        customer.Status.Should().Be(CustomerStatus.Active);
+        result.IsSuccess.ShouldBeTrue();
+        customer.Status.ShouldBe(CustomerStatus.Active);
     }
 
     [Fact]
@@ -2872,9 +2874,9 @@ public sealed class CustomerTests
 
         var result = customer.ChangeStatus(CustomerStatus.Active);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("A closed customer cannot change status.");
-        customer.Status.Should().Be(CustomerStatus.Closed);
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("A closed customer cannot change status.");
+        customer.Status.ShouldBe(CustomerStatus.Closed);
     }
 
     [Fact]
@@ -2887,12 +2889,12 @@ public sealed class CustomerTests
             "Zonnedak Holding B.V.", null, "NL812345678B02", newAddress, null, PrimaryContact,
             "CRM-9911", "nl-NL");
 
-        result.IsSuccess.Should().BeTrue();
-        customer.LegalName.Should().Be("Zonnedak Holding B.V.");
-        customer.TradeName.Should().BeNull();
-        customer.BillingAddress.Should().Be(newAddress);
-        customer.InternalReference.Should().Be("CRM-9911");
-        customer.KvkNumber.Value.Should().Be("12345678");
+        result.IsSuccess.ShouldBeTrue();
+        customer.LegalName.ShouldBe("Zonnedak Holding B.V.");
+        customer.TradeName.ShouldBeNull();
+        customer.BillingAddress.ShouldBe(newAddress);
+        customer.InternalReference.ShouldBe("CRM-9911");
+        customer.KvkNumber.Value.ShouldBe("12345678");
     }
 
     [Fact]
@@ -2903,9 +2905,9 @@ public sealed class CustomerTests
         var result = customer.UpdateDetails(
             "  ", null, null, BillingAddress, null, PrimaryContact, null, "nl-NL");
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Legal name is required.");
-        customer.LegalName.Should().Be("Zonnedak Beheer B.V.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Legal name is required.");
+        customer.LegalName.ShouldBe("Zonnedak Beheer B.V.");
     }
 }
 ```
@@ -3090,7 +3092,7 @@ returning a `Result<T>` nobody would inspect.
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Customers/CustomerAccountTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
 
@@ -3113,19 +3115,19 @@ public sealed class CustomerAccountTests
     {
         var account = Create().Value;
 
-        account.Id.Should().NotBe(Guid.Empty);
-        account.CustomerId.Should().Be(CustomerId);
-        account.SecurityStamp.Should().NotBe(Guid.Empty);
-        account.PasswordHash.Should().BeNull();
-        account.ExternalSubjectId.Should().BeNull();
-        account.LastLoginAt.Should().BeNull();
-        account.IsAdmin.Should().BeFalse();
+        account.Id.ShouldNotBe(Guid.Empty);
+        account.CustomerId.ShouldBe(CustomerId);
+        account.SecurityStamp.ShouldNotBe(Guid.Empty);
+        account.PasswordHash.ShouldBeNull();
+        account.ExternalSubjectId.ShouldBeNull();
+        account.LastLoginAt.ShouldBeNull();
+        account.IsAdmin.ShouldBeFalse();
     }
 
     [Fact]
     public void A_username_is_stored_lower_case_because_the_column_is_citext_and_immutable()
     {
-        Create(username: "Sanne.DeVries").Value.Username.Should().Be("sanne.devries");
+        Create(username: "Sanne.DeVries").Value.Username.ShouldBe("sanne.devries");
     }
 
     [Theory]
@@ -3135,8 +3137,8 @@ public sealed class CustomerAccountTests
     {
         var result = Create(username: username);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Username is required.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Username is required.");
     }
 
     [Theory]
@@ -3146,8 +3148,8 @@ public sealed class CustomerAccountTests
     {
         var result = Create(email: email);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Email address is required and must contain an @.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Email address is required and must contain an @.");
     }
 
     [Fact]
@@ -3158,8 +3160,8 @@ public sealed class CustomerAccountTests
 
         account.SetPassword("$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$aGFzaA");
 
-        account.PasswordHash.Should().StartWith("$argon2id$");
-        account.SecurityStamp.Should().NotBe(before);
+        account.PasswordHash.ShouldStartWith("$argon2id$");
+        account.SecurityStamp.ShouldNotBe(before);
     }
 
     [Fact]
@@ -3170,8 +3172,8 @@ public sealed class CustomerAccountTests
 
         var setting = () => account.SetPassword("   ");
 
-        setting.Should().Throw<ArgumentException>();
-        account.SecurityStamp.Should().Be(before);
+        Should.Throw<ArgumentException>(setting);
+        account.SecurityStamp.ShouldBe(before);
     }
 
     [Fact]
@@ -3182,9 +3184,9 @@ public sealed class CustomerAccountTests
 
         var result = account.Deactivate();
 
-        result.IsSuccess.Should().BeTrue();
-        account.Status.Should().Be(AccountStatus.Deactivated);
-        account.SecurityStamp.Should().NotBe(before);
+        result.IsSuccess.ShouldBeTrue();
+        account.Status.ShouldBe(AccountStatus.Deactivated);
+        account.SecurityStamp.ShouldNotBe(before);
     }
 
     [Fact]
@@ -3194,8 +3196,8 @@ public sealed class CustomerAccountTests
 
         var result = account.Deactivate();
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Account is already deactivated.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Account is already deactivated.");
     }
 
     [Fact]
@@ -3207,12 +3209,12 @@ public sealed class CustomerAccountTests
         var result = account.UpdateProfile(
             "Sanne", "de Vries-Jansen", null, "sanne.new@example.nl", null, isAdmin: true);
 
-        result.IsSuccess.Should().BeTrue();
-        account.LastName.Should().Be("de Vries-Jansen");
-        account.JobTitle.Should().BeNull();
-        account.Email.Should().Be("sanne.new@example.nl");
-        account.IsAdmin.Should().BeTrue();
-        account.SecurityStamp.Should().NotBe(before);
+        result.IsSuccess.ShouldBeTrue();
+        account.LastName.ShouldBe("de Vries-Jansen");
+        account.JobTitle.ShouldBeNull();
+        account.Email.ShouldBe("sanne.new@example.nl");
+        account.IsAdmin.ShouldBeTrue();
+        account.SecurityStamp.ShouldNotBe(before);
     }
 
     [Fact]
@@ -3224,8 +3226,8 @@ public sealed class CustomerAccountTests
 
         account.RecordSuccessfulSignIn(moment);
 
-        account.LastLoginAt.Should().Be(moment);
-        account.SecurityStamp.Should().Be(before);
+        account.LastLoginAt.ShouldBe(moment);
+        account.SecurityStamp.ShouldBe(before);
     }
 }
 ```
@@ -3468,7 +3470,7 @@ the aggregate sets it. Neither is `ValidTo`: a period is closed later, through `
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Customers/MeteringPointTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 using PeakPower.Domain.Customers;
 
@@ -3496,13 +3498,13 @@ public sealed class MeteringPointTests
     {
         var point = Attach().Value;
 
-        point.Id.Should().NotBe(Guid.Empty);
-        point.CustomerId.Should().Be(CustomerId);
-        point.BrpId.Should().Be(BrpId);
-        point.Ean.Value.Should().Be("871687100000000011");
-        point.Commodity.Should().Be(Commodity.Electricity);
-        point.ValidFrom.Should().Be(ValidFrom);
-        point.ValidTo.Should().BeNull();
+        point.Id.ShouldNotBe(Guid.Empty);
+        point.CustomerId.ShouldBe(CustomerId);
+        point.BrpId.ShouldBe(BrpId);
+        point.Ean.Value.ShouldBe("871687100000000011");
+        point.Commodity.ShouldBe(Commodity.Electricity);
+        point.ValidFrom.ShouldBe(ValidFrom);
+        point.ValidTo.ShouldBeNull();
     }
 
     [Fact]
@@ -3510,8 +3512,8 @@ public sealed class MeteringPointTests
     {
         var result = Attach(brpId: Guid.Empty);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("A metering point must name a balance responsible party.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("A metering point must name a balance responsible party.");
     }
 
     [Fact]
@@ -3519,7 +3521,7 @@ public sealed class MeteringPointTests
     {
         var name = new string('a', 80);
 
-        Attach(name: name).Value.Name.Should().Be(name);
+        Attach(name: name).Value.Name.ShouldBe(name);
     }
 
     [Fact]
@@ -3527,8 +3529,8 @@ public sealed class MeteringPointTests
     {
         var result = Attach(name: new string('a', 81));
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Name must be 80 characters or fewer.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Name must be 80 characters or fewer.");
     }
 
     [Fact]
@@ -3536,7 +3538,7 @@ public sealed class MeteringPointTests
     {
         var description = new string('a', 500);
 
-        Attach(description: description).Value.Description.Should().Be(description);
+        Attach(description: description).Value.Description.ShouldBe(description);
     }
 
     [Fact]
@@ -3544,8 +3546,8 @@ public sealed class MeteringPointTests
     {
         var result = Attach(description: new string('a', 501));
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Description must be 500 characters or fewer.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Description must be 500 characters or fewer.");
     }
 
     [Fact]
@@ -3553,14 +3555,14 @@ public sealed class MeteringPointTests
     {
         var result = Attach(capacityKw: -1m);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Capacity must not be negative.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Capacity must not be negative.");
     }
 
     [Fact]
     public void An_attached_metering_point_is_open_ended_until_someone_end_dates_it()
     {
-        Attach().Value.ValidTo.Should().BeNull();
+        Attach().Value.ValidTo.ShouldBeNull();
     }
 
     [Fact]
@@ -3570,21 +3572,21 @@ public sealed class MeteringPointTests
 
         var result = point.EndDate(ValidFrom);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("The end date must be after the start date.");
-        point.ValidTo.Should().BeNull();
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("The end date must be after the start date.");
+        point.ValidTo.ShouldBeNull();
     }
 
     [Fact]
     public void DisplayLabel_is_the_friendly_name_when_there_is_one()
     {
-        Attach(name: "Zonnedak dak 1").Value.DisplayLabel.Should().Be("Zonnedak dak 1");
+        Attach(name: "Zonnedak dak 1").Value.DisplayLabel.ShouldBe("Zonnedak dak 1");
     }
 
     [Fact]
     public void DisplayLabel_falls_back_to_the_grouped_EAN_when_there_is_no_name()
     {
-        Attach().Value.DisplayLabel.Should().Be("8716 8710 0000 0000 11");
+        Attach().Value.DisplayLabel.ShouldBe("8716 8710 0000 0000 11");
     }
 
     [Fact]
@@ -3594,9 +3596,9 @@ public sealed class MeteringPointTests
 
         var result = point.Rename("Zonnedak dak 2", "Rooftop array, south facing");
 
-        result.IsSuccess.Should().BeTrue();
-        point.Name.Should().Be("Zonnedak dak 2");
-        point.Description.Should().Be("Rooftop array, south facing");
+        result.IsSuccess.ShouldBeTrue();
+        point.Name.ShouldBe("Zonnedak dak 2");
+        point.Description.ShouldBe("Rooftop array, south facing");
     }
 
     [Fact]
@@ -3606,8 +3608,8 @@ public sealed class MeteringPointTests
 
         point.Rename("   ", null);
 
-        point.Name.Should().BeNull();
-        point.DisplayLabel.Should().Be("8716 8710 0000 0000 11");
+        point.Name.ShouldBeNull();
+        point.DisplayLabel.ShouldBe("8716 8710 0000 0000 11");
     }
 
     [Fact]
@@ -3617,9 +3619,9 @@ public sealed class MeteringPointTests
 
         var result = point.Rename(new string('a', 81), null);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("Name must be 80 characters or fewer.");
-        point.Name.Should().Be("Zonnedak dak 1");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("Name must be 80 characters or fewer.");
+        point.Name.ShouldBe("Zonnedak dak 1");
     }
 
     [Fact]
@@ -3633,14 +3635,14 @@ public sealed class MeteringPointTests
             otherBrp, ProductionExpectation.Never, ProductionExpectationSource.GridOperator,
             "Stedin", 450m, address);
 
-        result.IsSuccess.Should().BeTrue();
-        point.BrpId.Should().Be(otherBrp);
-        point.ProductionExpectation.Should().Be(ProductionExpectation.Never);
-        point.ExpectationSource.Should().Be(ProductionExpectationSource.GridOperator);
-        point.GridOperator.Should().Be("Stedin");
-        point.CapacityKw.Should().Be(450m);
-        point.Address.Should().Be(address);
-        point.Name.Should().Be("Zonnedak dak 1");
+        result.IsSuccess.ShouldBeTrue();
+        point.BrpId.ShouldBe(otherBrp);
+        point.ProductionExpectation.ShouldBe(ProductionExpectation.Never);
+        point.ExpectationSource.ShouldBe(ProductionExpectationSource.GridOperator);
+        point.GridOperator.ShouldBe("Stedin");
+        point.CapacityKw.ShouldBe(450m);
+        point.Address.ShouldBe(address);
+        point.Name.ShouldBe("Zonnedak dak 1");
     }
 
     [Fact]
@@ -3651,9 +3653,9 @@ public sealed class MeteringPointTests
         var result = point.UpdateDetails(
             Guid.Empty, ProductionExpectation.Never, null, "Stedin", 450m, address: null);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("A metering point must name a balance responsible party.");
-        point.BrpId.Should().Be(BrpId);
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("A metering point must name a balance responsible party.");
+        point.BrpId.ShouldBe(BrpId);
     }
 
     [Fact]
@@ -3663,8 +3665,8 @@ public sealed class MeteringPointTests
 
         var result = point.EndDate(new DateOnly(2026, 7, 1));
 
-        result.IsSuccess.Should().BeTrue();
-        point.ValidTo.Should().Be(new DateOnly(2026, 7, 1));
+        result.IsSuccess.ShouldBeTrue();
+        point.ValidTo.ShouldBe(new DateOnly(2026, 7, 1));
     }
 
     [Fact]
@@ -3674,9 +3676,9 @@ public sealed class MeteringPointTests
 
         var result = point.EndDate(new DateOnly(2025, 6, 1));
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("The end date must be after the start date.");
-        point.ValidTo.Should().BeNull();
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("The end date must be after the start date.");
+        point.ValidTo.ShouldBeNull();
     }
 }
 ```
@@ -3950,7 +3952,7 @@ and 6's work.
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Domain.Tests/Supporting/SupportingTypeTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Auditing;
 using PeakPower.Domain.Metering;
 using PeakPower.Domain.Wallets;
@@ -3966,10 +3968,10 @@ public sealed class SupportingTypeTests
     {
         var brp = Brp.Create("pvned", "PVNed B.V.", isActive: true).Value;
 
-        brp.Id.Should().NotBe(Guid.Empty);
-        brp.Code.Should().Be("PVNED");
-        brp.Name.Should().Be("PVNed B.V.");
-        brp.IsActive.Should().BeTrue();
+        brp.Id.ShouldNotBe(Guid.Empty);
+        brp.Code.ShouldBe("PVNED");
+        brp.Name.ShouldBe("PVNed B.V.");
+        brp.IsActive.ShouldBeTrue();
     }
 
     [Fact]
@@ -3977,14 +3979,14 @@ public sealed class SupportingTypeTests
     {
         var result = Brp.Create("  ", "PVNed B.V.", isActive: true);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("BRP code is required.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("BRP code is required.");
     }
 
     [Fact]
     public void A_BRP_without_a_name_is_rejected()
     {
-        Brp.Create("PVNED", "  ", isActive: true).Error.Should().Be("BRP name is required.");
+        Brp.Create("PVNED", "  ", isActive: true).Error.ShouldBe("BRP name is required.");
     }
 
     [Fact]
@@ -3992,10 +3994,10 @@ public sealed class SupportingTypeTests
     {
         var wallet = Wallet.CreateEuroWallet(CustomerId).Value;
 
-        wallet.Id.Should().NotBe(Guid.Empty);
-        wallet.CustomerId.Should().Be(CustomerId);
-        wallet.Currency.Should().Be("EUR");
-        wallet.Balance.Should().Be(0m);
+        wallet.Id.ShouldNotBe(Guid.Empty);
+        wallet.CustomerId.ShouldBe(CustomerId);
+        wallet.Currency.ShouldBe("EUR");
+        wallet.Balance.ShouldBe(0m);
     }
 
     [Fact]
@@ -4003,8 +4005,8 @@ public sealed class SupportingTypeTests
     {
         var result = Wallet.CreateEuroWallet(Guid.Empty);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("A wallet must belong to a customer.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("A wallet must belong to a customer.");
     }
 
     [Fact]
@@ -4016,15 +4018,15 @@ public sealed class SupportingTypeTests
             occurredAt, "employee:jdoe", "customer.update", "Customer", CustomerId, CustomerId,
             before: "{\"legalName\":\"Old\"}", after: "{\"legalName\":\"New\"}").Value;
 
-        record.Id.Should().NotBe(Guid.Empty);
-        record.OccurredAt.Should().Be(occurredAt);
-        record.Actor.Should().Be("employee:jdoe");
-        record.Action.Should().Be("customer.update");
-        record.EntityType.Should().Be("Customer");
-        record.EntityId.Should().Be(CustomerId);
-        record.CustomerId.Should().Be(CustomerId);
-        record.Before.Should().Be("{\"legalName\":\"Old\"}");
-        record.After.Should().Be("{\"legalName\":\"New\"}");
+        record.Id.ShouldNotBe(Guid.Empty);
+        record.OccurredAt.ShouldBe(occurredAt);
+        record.Actor.ShouldBe("employee:jdoe");
+        record.Action.ShouldBe("customer.update");
+        record.EntityType.ShouldBe("Customer");
+        record.EntityId.ShouldBe(CustomerId);
+        record.CustomerId.ShouldBe(CustomerId);
+        record.Before.ShouldBe("{\"legalName\":\"Old\"}");
+        record.After.ShouldBe("{\"legalName\":\"New\"}");
     }
 
     [Fact]
@@ -4033,8 +4035,8 @@ public sealed class SupportingTypeTests
         var result = AuditRecord.Create(
             DateTimeOffset.UnixEpoch, "  ", "customer.update", "Customer", CustomerId, null, null, null);
 
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Be("An audit record must name its actor.");
+        result.IsSuccess.ShouldBeFalse();
+        result.Error.ShouldBe("An audit record must name its actor.");
     }
 }
 ```
@@ -4267,7 +4269,7 @@ Create
 `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Application.Tests/Abstractions/MarketCalendarPortTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using NSubstitute;
 using PeakPower.Application.Abstractions;
 
@@ -4287,8 +4289,8 @@ public sealed class MarketCalendarPortTests
         calendar.UtcNow.Returns(new DateTimeOffset(2026, 8, 26, 21, 30, 0, TimeSpan.Zero));
         calendar.TodayInAmsterdam.Returns(new DateOnly(2026, 8, 26));
 
-        calendar.UtcNow.Should().Be(new DateTimeOffset(2026, 8, 26, 21, 30, 0, TimeSpan.Zero));
-        calendar.TodayInAmsterdam.Should().Be(new DateOnly(2026, 8, 26));
+        calendar.UtcNow.ShouldBe(new DateTimeOffset(2026, 8, 26, 21, 30, 0, TimeSpan.Zero));
+        calendar.TodayInAmsterdam.ShouldBe(new DateOnly(2026, 8, 26));
     }
 }
 ```
@@ -4390,7 +4392,7 @@ Create
 `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Application.Tests/Abstractions/PortShapeTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using NSubstitute;
 using PeakPower.Application.Abstractions;
 using PeakPower.Domain.Customers;
@@ -4413,8 +4415,8 @@ public sealed class PortShapeTests
 
         var hash = hasher.Hash("correct horse");
 
-        hash.Should().StartWith("$argon2id$");
-        hasher.Verify("correct horse", hash).Should().BeTrue();
+        hash.ShouldStartWith("$argon2id$");
+        hasher.Verify("correct horse", hash).ShouldBeTrue();
     }
 
     [Fact]
@@ -4424,8 +4426,8 @@ public sealed class PortShapeTests
 
         var token = new AccessToken("header.payload.signature", expiresAt);
 
-        token.Jwt.Should().Be("header.payload.signature");
-        token.ExpiresAt.Should().Be(expiresAt);
+        token.Jwt.ShouldBe("header.payload.signature");
+        token.ExpiresAt.ShouldBe(expiresAt);
     }
 
     [Fact]
@@ -4450,9 +4452,9 @@ public sealed class PortShapeTests
         var access = issuer.IssueAccessToken(account);
         var refresh = issuer.IssueRefreshToken(account.Id, out var actualRefreshExpiry);
 
-        access.ExpiresAt.Should().Be(accessExpiry);
-        refresh.Should().Be("opaque-refresh-token");
-        actualRefreshExpiry.Should().Be(refreshExpiry);
+        access.ExpiresAt.ShouldBe(accessExpiry);
+        refresh.ShouldBe("opaque-refresh-token");
+        actualRefreshExpiry.ShouldBe(refreshExpiry);
     }
 
     [Fact]
@@ -4603,7 +4605,7 @@ Create
 `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Application.Tests/Time/MarketCalendarTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.Extensions.Time.Testing;
 using PeakPower.Infrastructure.Time;
 
@@ -4617,7 +4619,7 @@ public sealed class MarketCalendarTests
         var moment = new DateTimeOffset(2026, 8, 26, 21, 30, 0, TimeSpan.Zero);
         var calendar = new MarketCalendar(new FakeTimeProvider(moment));
 
-        calendar.UtcNow.Should().Be(moment);
+        calendar.UtcNow.ShouldBe(moment);
     }
 
     [Fact]
@@ -4631,8 +4633,8 @@ public sealed class MarketCalendarTests
         var alreadyTheTwentySeventh = new MarketCalendar(
             new FakeTimeProvider(new DateTimeOffset(2026, 8, 26, 22, 30, 0, TimeSpan.Zero)));
 
-        stillTheTwentySixth.TodayInAmsterdam.Should().Be(new DateOnly(2026, 8, 26));
-        alreadyTheTwentySeventh.TodayInAmsterdam.Should().Be(new DateOnly(2026, 8, 27));
+        stillTheTwentySixth.TodayInAmsterdam.ShouldBe(new DateOnly(2026, 8, 26));
+        alreadyTheTwentySeventh.TodayInAmsterdam.ShouldBe(new DateOnly(2026, 8, 27));
     }
 
     [Fact]
@@ -4642,13 +4644,13 @@ public sealed class MarketCalendarTests
         var calendar = new MarketCalendar(
             new FakeTimeProvider(new DateTimeOffset(2026, 1, 15, 23, 30, 0, TimeSpan.Zero)));
 
-        calendar.TodayInAmsterdam.Should().Be(new DateOnly(2026, 1, 16));
+        calendar.TodayInAmsterdam.ShouldBe(new DateOnly(2026, 1, 16));
     }
 
     [Fact]
     public void The_Amsterdam_time_zone_resolves_on_this_machine()
     {
-        MarketCalendar.AmsterdamTimeZone.Id.Should().BeOneOf("Europe/Amsterdam", "W. Europe Standard Time");
+        MarketCalendar.AmsterdamTimeZone.Id.ShouldBeOneOf("Europe/Amsterdam", "W. Europe Standard Time");
     }
 }
 ```
@@ -4782,7 +4784,7 @@ Create
 `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integration.Tests/Conversions/EnumToScreamingSnakeConverterTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Customers;
 using PeakPower.Persistence.Conversions;
 
@@ -4797,7 +4799,7 @@ public sealed class EnumToScreamingSnakeConverterTests
     [InlineData(AccountStatus.Deactivated, "DEACTIVATED")]
     public void AccountStatus_uses_the_database_spelling(AccountStatus value, string expected)
     {
-        EnumToScreamingSnakeConverter<AccountStatus>.ToScreamingSnake(value).Should().Be(expected);
+        EnumToScreamingSnakeConverter<AccountStatus>.ToScreamingSnake(value).ShouldBe(expected);
     }
 
     [Theory]
@@ -4807,7 +4809,7 @@ public sealed class EnumToScreamingSnakeConverterTests
     public void ProductionExpectationSource_uses_the_database_spelling(
         ProductionExpectationSource value, string expected)
     {
-        EnumToScreamingSnakeConverter<ProductionExpectationSource>.ToScreamingSnake(value).Should().Be(expected);
+        EnumToScreamingSnakeConverter<ProductionExpectationSource>.ToScreamingSnake(value).ShouldBe(expected);
     }
 
     [Theory]
@@ -4816,21 +4818,21 @@ public sealed class EnumToScreamingSnakeConverterTests
     [InlineData(FourEyesAction.Trade, "TRADE")]
     public void FourEyesAction_uses_the_database_spelling(FourEyesAction value, string expected)
     {
-        EnumToScreamingSnakeConverter<FourEyesAction>.ToScreamingSnake(value).Should().Be(expected);
+        EnumToScreamingSnakeConverter<FourEyesAction>.ToScreamingSnake(value).ShouldBe(expected);
     }
 
     [Fact]
     public void ProductionExpectation_stores_the_middle_value_as_NEVER()
     {
         EnumToScreamingSnakeConverter<ProductionExpectation>.ToScreamingSnake(ProductionExpectation.Never)
-            .Should().Be("NEVER");
+            .ShouldBe("NEVER");
     }
 
     [Fact]
     public void Commodity_stores_as_ELECTRICITY()
     {
         EnumToScreamingSnakeConverter<Commodity>.ToScreamingSnake(Commodity.Electricity)
-            .Should().Be("ELECTRICITY");
+            .ShouldBe("ELECTRICITY");
     }
 
     [Theory]
@@ -4838,7 +4840,7 @@ public sealed class EnumToScreamingSnakeConverterTests
     [InlineData("DEACTIVATED", AccountStatus.Deactivated)]
     public void The_database_spelling_reads_back_as_the_enum(string text, AccountStatus expected)
     {
-        EnumToScreamingSnakeConverter<AccountStatus>.FromScreamingSnake(text).Should().Be(expected);
+        EnumToScreamingSnakeConverter<AccountStatus>.FromScreamingSnake(text).ShouldBe(expected);
     }
 
     [Fact]
@@ -4858,8 +4860,8 @@ public sealed class EnumToScreamingSnakeConverterTests
     {
         var converter = new EnumToScreamingSnakeConverter<CustomerStatus>();
 
-        converter.ConvertToProvider(CustomerStatus.Suspended).Should().Be("SUSPENDED");
-        converter.ConvertFromProvider("SUSPENDED").Should().Be(CustomerStatus.Suspended);
+        converter.ConvertToProvider(CustomerStatus.Suspended).ShouldBe("SUSPENDED");
+        converter.ConvertFromProvider("SUSPENDED").ShouldBe(CustomerStatus.Suspended);
     }
 
     private static void RoundTrips<TEnum>() where TEnum : struct, Enum
@@ -4868,7 +4870,7 @@ public sealed class EnumToScreamingSnakeConverterTests
         {
             var text = EnumToScreamingSnakeConverter<TEnum>.ToScreamingSnake(value);
             EnumToScreamingSnakeConverter<TEnum>.FromScreamingSnake(text)
-                .Should().Be(value, "{0} must survive a round trip through \"{1}\"", value, text);
+                .ShouldBe(value, "{0} must survive a round trip through \"{1}\"", value, text);
         }
     }
 }
@@ -5031,7 +5033,7 @@ Create
 `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integration.Tests/Conversions/JsonbConverterTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Common;
 using PeakPower.Persistence.Conversions;
 
@@ -5050,7 +5052,7 @@ public sealed class JsonbConverterTests
         var json = (string?)converter.ConvertToProvider(AnAddress);
         var back = (Address?)converter.ConvertFromProvider(json);
 
-        back.Should().Be(AnAddress);
+        back.ShouldBe(AnAddress);
     }
 
     [Fact]
@@ -5060,8 +5062,8 @@ public sealed class JsonbConverterTests
 
         var json = (string?)converter.ConvertToProvider(AnAddress);
 
-        json.Should().Contain("\"houseNumberSuffix\":\"B\"");
-        json.Should().Contain("\"postalCode\":\"1015 CV\"");
+        json.ShouldContain("\"houseNumberSuffix\":\"B\"");
+        json.ShouldContain("\"postalCode\":\"1015 CV\"");
     }
 
     [Fact]
@@ -5069,8 +5071,8 @@ public sealed class JsonbConverterTests
     {
         var converter = new JsonbConverter<Address>();
 
-        converter.ConvertToProvider(null).Should().BeNull();
-        converter.ConvertFromProvider(null).Should().BeNull();
+        converter.ConvertToProvider(null).ShouldBeNull();
+        converter.ConvertFromProvider(null).ShouldBeNull();
     }
 
     [Fact]
@@ -5081,7 +5083,7 @@ public sealed class JsonbConverterTests
 
         var json = (string?)converter.ConvertToProvider(contact);
 
-        ((ContactPerson?)converter.ConvertFromProvider(json)).Should().Be(contact);
+        ((ContactPerson?)converter.ConvertFromProvider(json)).ShouldBe(contact);
     }
 
     [Fact]
@@ -5090,8 +5092,8 @@ public sealed class JsonbConverterTests
         var comparer = new JsonbComparer<Address>();
         var other = new Address("Keizersgracht", "104", "B", "1015 CV", "Amsterdam", "NL");
 
-        comparer.Equals(AnAddress, other).Should().BeTrue();
-        comparer.GetHashCode(AnAddress).Should().Be(comparer.GetHashCode(other));
+        comparer.Equals(AnAddress, other).ShouldBeTrue();
+        comparer.GetHashCode(AnAddress).ShouldBe(comparer.GetHashCode(other));
     }
 
     [Fact]
@@ -5100,7 +5102,7 @@ public sealed class JsonbConverterTests
         var comparer = new JsonbComparer<Address>();
         var moved = AnAddress with { City = "Rotterdam" };
 
-        comparer.Equals(AnAddress, moved).Should().BeFalse();
+        comparer.Equals(AnAddress, moved).ShouldBeFalse();
     }
 }
 ```
@@ -5219,7 +5221,7 @@ never from per-property attributes. Schemas are given explicitly per entity.
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integration.Tests/Model/ModelShapeTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Domain.Auditing;
 using PeakPower.Domain.Customers;
@@ -5259,9 +5261,9 @@ public sealed class ModelShapeTests : IDisposable
     {
         var entityType = _context.Model.FindEntityType(clrType);
 
-        entityType.Should().NotBeNull();
-        entityType!.GetSchema().Should().Be(schema);
-        entityType.GetTableName().Should().Be(table);
+        entityType.ShouldNotBeNull();
+        entityType!.GetSchema().ShouldBe(schema);
+        entityType.GetTableName().ShouldBe(table);
     }
 
     [Fact]
@@ -5271,9 +5273,9 @@ public sealed class ModelShapeTests : IDisposable
         var storeObject = Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier
             .Table("customer_account", "customer");
 
-        account.GetProperty(nameof(CustomerAccount.FirstName)).GetColumnName(storeObject).Should().Be("first_name");
-        account.GetProperty(nameof(CustomerAccount.SecurityStamp)).GetColumnName(storeObject).Should().Be("security_stamp");
-        account.GetProperty(nameof(CustomerAccount.ExternalSubjectId)).GetColumnName(storeObject).Should().Be("external_subject_id");
+        account.GetProperty(nameof(CustomerAccount.FirstName)).GetColumnName(storeObject).ShouldBe("first_name");
+        account.GetProperty(nameof(CustomerAccount.SecurityStamp)).GetColumnName(storeObject).ShouldBe("security_stamp");
+        account.GetProperty(nameof(CustomerAccount.ExternalSubjectId)).GetColumnName(storeObject).ShouldBe("external_subject_id");
     }
 
     [Fact]
@@ -5284,8 +5286,8 @@ public sealed class ModelShapeTests : IDisposable
 
         var converter = status.GetValueConverter();
 
-        converter.Should().NotBeNull();
-        converter!.ConvertToProvider(AccountStatus.PendingApproval).Should().Be("PENDING_APPROVAL");
+        converter.ShouldNotBeNull();
+        converter!.ConvertToProvider(AccountStatus.PendingApproval).ShouldBe("PENDING_APPROVAL");
     }
 
     [Fact]
@@ -5294,7 +5296,7 @@ public sealed class ModelShapeTests : IDisposable
         var source = _context.Model.FindEntityType(typeof(MeteringPoint))!
             .GetProperty(nameof(MeteringPoint.ExpectationSource));
 
-        source.GetValueConverter().Should().NotBeNull();
+        source.GetValueConverter().ShouldNotBeNull();
     }
 
     [Fact]
@@ -5302,8 +5304,8 @@ public sealed class ModelShapeTests : IDisposable
     {
         var account = _context.Model.FindEntityType(typeof(CustomerAccount))!;
 
-        account.GetProperty(nameof(CustomerAccount.Username)).GetColumnType().Should().Be("citext");
-        account.GetProperty(nameof(CustomerAccount.Email)).GetColumnType().Should().Be("citext");
+        account.GetProperty(nameof(CustomerAccount.Username)).GetColumnType().ShouldBe("citext");
+        account.GetProperty(nameof(CustomerAccount.Email)).GetColumnType().ShouldBe("citext");
     }
 
     [Fact]
@@ -5311,19 +5313,19 @@ public sealed class ModelShapeTests : IDisposable
     {
         var customer = _context.Model.FindEntityType(typeof(Customer))!;
 
-        customer.GetProperty(nameof(Customer.BillingAddress)).GetColumnType().Should().Be("jsonb");
-        customer.GetProperty(nameof(Customer.VisitingAddress)).GetColumnType().Should().Be("jsonb");
-        customer.GetProperty(nameof(Customer.PrimaryContact)).GetColumnType().Should().Be("jsonb");
+        customer.GetProperty(nameof(Customer.BillingAddress)).GetColumnType().ShouldBe("jsonb");
+        customer.GetProperty(nameof(Customer.VisitingAddress)).GetColumnType().ShouldBe("jsonb");
+        customer.GetProperty(nameof(Customer.PrimaryContact)).GetColumnType().ShouldBe("jsonb");
     }
 
     [Fact]
     public void Money_and_capacity_are_numeric_18_6()
     {
         _context.Model.FindEntityType(typeof(Wallet))!
-            .GetProperty(nameof(Wallet.Balance)).GetColumnType().Should().Be("numeric(18,6)");
+            .GetProperty(nameof(Wallet.Balance)).GetColumnType().ShouldBe("numeric(18,6)");
 
         _context.Model.FindEntityType(typeof(MeteringPoint))!
-            .GetProperty(nameof(MeteringPoint.CapacityKw)).GetColumnType().Should().Be("numeric(18,6)");
+            .GetProperty(nameof(MeteringPoint.CapacityKw)).GetColumnType().ShouldBe("numeric(18,6)");
     }
 
     [Fact]
@@ -5332,15 +5334,15 @@ public sealed class ModelShapeTests : IDisposable
         var ean = _context.Model.FindEntityType(typeof(MeteringPoint))!
             .GetProperty(nameof(MeteringPoint.Ean));
 
-        ean.GetMaxLength().Should().Be(18);
-        ean.GetValueConverter().Should().NotBeNull();
+        ean.GetMaxLength().ShouldBe(18);
+        ean.GetValueConverter().ShouldNotBeNull();
     }
 
     [Fact]
     public void DisplayLabel_is_computed_and_never_stored()
     {
         _context.Model.FindEntityType(typeof(MeteringPoint))!
-            .FindProperty(nameof(MeteringPoint.DisplayLabel)).Should().BeNull();
+            .FindProperty(nameof(MeteringPoint.DisplayLabel)).ShouldBeNull();
     }
 
     [Fact]
@@ -5352,7 +5354,7 @@ public sealed class ModelShapeTests : IDisposable
             .Where(index => index.IsUnique)
             .SelectMany(index => index.Properties)
             .Select(property => property.Name)
-            .Should().Contain(nameof(Customer.KvkNumber));
+            .ShouldContain(nameof(Customer.KvkNumber));
     }
 
     [Fact]
@@ -5360,9 +5362,10 @@ public sealed class ModelShapeTests : IDisposable
     {
         _context.Model.FindEntityType(typeof(Wallet))!
             .GetIndexes()
-            .Should().ContainSingle(index => index.IsUnique
+            .Count(index => index.IsUnique
                 && index.Properties.Count == 1
-                && index.Properties[0].Name == nameof(Wallet.CustomerId));
+                && index.Properties[0].Name == nameof(Wallet.CustomerId))
+            .ShouldBe(1);
     }
 
     public void Dispose() => _context.Dispose();
@@ -5851,7 +5854,7 @@ Create
 `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integration.Tests/Migrations/MigrationScriptTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -5881,15 +5884,15 @@ public sealed class MigrationScriptTests : IDisposable
     [Fact]
     public void There_is_exactly_one_migration_and_it_is_called_InitialSchema()
     {
-        _context.Database.GetMigrations().Should().ContainSingle()
-            .Which.Should().EndWith("_InitialSchema");
+        _context.Database.GetMigrations().ShouldHaveSingleItem()
+            .ShouldEndWith("_InitialSchema");
     }
 
     [Fact]
     public void The_migration_declares_citext_and_btree_gist()
     {
-        _script.Should().Contain("CREATE EXTENSION IF NOT EXISTS citext");
-        _script.Should().Contain("CREATE EXTENSION IF NOT EXISTS btree_gist");
+        _script.ShouldContain("CREATE EXTENSION IF NOT EXISTS citext");
+        _script.ShouldContain("CREATE EXTENSION IF NOT EXISTS btree_gist");
     }
 
     [Fact]
@@ -5899,11 +5902,11 @@ public sealed class MigrationScriptTests : IDisposable
         var btreeGist = _script.IndexOf("CREATE EXTENSION IF NOT EXISTS btree_gist", StringComparison.Ordinal);
         var firstSchema = _script.IndexOf("CREATE SCHEMA", StringComparison.Ordinal);
 
-        citext.Should().BeGreaterThan(-1);
-        btreeGist.Should().BeGreaterThan(-1);
-        firstSchema.Should().BeGreaterThan(-1);
-        citext.Should().BeLessThan(firstSchema);
-        btreeGist.Should().BeLessThan(firstSchema);
+        citext.ShouldBeGreaterThan(-1);
+        btreeGist.ShouldBeGreaterThan(-1);
+        firstSchema.ShouldBeGreaterThan(-1);
+        citext.ShouldBeLessThan(firstSchema);
+        btreeGist.ShouldBeLessThan(firstSchema);
     }
 
     [Theory]
@@ -5913,20 +5916,20 @@ public sealed class MigrationScriptTests : IDisposable
     [InlineData("audit")]
     public void All_four_schemas_are_created(string schema)
     {
-        _script.Should().Contain($"CREATE SCHEMA IF NOT EXISTS {schema}");
+        _script.ShouldContain($"CREATE SCHEMA IF NOT EXISTS {schema}");
     }
 
     [Fact]
     public void The_validity_column_is_a_generated_half_open_daterange()
     {
-        _script.Should().Contain(
+        _script.ShouldContain(
             "GENERATED ALWAYS AS (daterange(valid_from, valid_to, '[)')) STORED");
     }
 
     [Fact]
     public void The_same_EAN_cannot_overlap_itself_in_time()
     {
-        _script.Should().Contain("EXCLUDE USING gist (ean WITH =, validity WITH &&)");
+        _script.ShouldContain("EXCLUDE USING gist (ean WITH =, validity WITH &&)");
     }
 
     [Fact]
@@ -5936,23 +5939,23 @@ public sealed class MigrationScriptTests : IDisposable
         var validity = _script.IndexOf("GENERATED ALWAYS AS (daterange", StringComparison.Ordinal);
         var exclusion = _script.IndexOf("EXCLUDE USING gist", StringComparison.Ordinal);
 
-        table.Should().BeLessThan(validity);
-        validity.Should().BeLessThan(exclusion);
+        table.ShouldBeLessThan(validity);
+        validity.ShouldBeLessThan(exclusion);
     }
 
     [Fact]
     public void The_one_BRP_reference_row_is_seeded_because_every_metering_point_must_name_one()
     {
-        _script.Should().Contain("INSERT INTO metering.brp");
-        _script.Should().Contain("'PVNed B.V.'");
+        _script.ShouldContain("INSERT INTO metering.brp");
+        _script.ShouldContain("'PVNed B.V.'");
     }
 
     [Fact]
     public void The_three_auth_tables_are_deliberately_absent_because_plan_5_owns_them()
     {
-        _script.Should().NotContain("onboarding_application");
-        _script.Should().NotContain("refresh_token");
-        _script.Should().NotContain("password_reset_token");
+        _script.ShouldNotContain("onboarding_application");
+        _script.ShouldNotContain("refresh_token");
+        _script.ShouldNotContain("password_reset_token");
     }
 
     public void Dispose() => _context.Dispose();
@@ -6138,7 +6141,7 @@ Create
 `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integration.Tests/Database/MigrationBehaviourTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using PeakPower.Persistence;
@@ -6161,8 +6164,8 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
         var pending = await context.Database.GetPendingMigrationsAsync(TestContext.Current.CancellationToken);
         var applied = await context.Database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken);
 
-        pending.Should().BeEmpty();
-        applied.Should().ContainSingle().Which.Should().EndWith("_InitialSchema");
+        pending.ShouldBeEmpty();
+        applied.ShouldHaveSingleItem().ShouldEndWith("_InitialSchema");
     }
 
     [Fact]
@@ -6173,7 +6176,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
 
         var applied = await migrator.RunAsync(TestContext.Current.CancellationToken);
 
-        applied.Should().Be(0);
+        applied.ShouldBe(0);
     }
 
     [Theory]
@@ -6185,7 +6188,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
             "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = @name);",
             ("name", extension));
 
-        present.Should().BeTrue();
+        present.ShouldBeTrue();
     }
 
     [Theory]
@@ -6206,7 +6209,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
             ("schema", schema),
             ("table", table));
 
-        present.Should().BeTrue();
+        present.ShouldBeTrue();
     }
 
     [Fact]
@@ -6218,7 +6221,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
             WHERE table_schema = 'customer' AND table_name = 'metering_point' AND column_name = 'validity';
             """);
 
-        generated.Should().Be("ALWAYS");
+        generated.ShouldBe("ALWAYS");
     }
 
     [Fact]
@@ -6227,7 +6230,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
         var name = await ScalarAsync<string>(
             "SELECT name FROM metering.brp WHERE code = 'PVNED';");
 
-        name.Should().Be("PVNed B.V.");
+        name.ShouldBe("PVNed B.V.");
     }
 
     [Fact]
@@ -6240,9 +6243,9 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
         // 2026-06-01 falls inside [2026-01-01, 2026-07-01).
         var act = async () => await InsertMeteringPointAsync(ean, "2026-06-01", null);
 
-        var exception = await act.Should().ThrowAsync<PostgresException>();
-        exception.Which.SqlState.Should().Be(PostgresErrorCodes.ExclusionViolation);
-        exception.Which.ConstraintName.Should().Be("metering_point_ean_validity_excl");
+        var exception = await Should.ThrowAsync<PostgresException>(act);
+        exception.SqlState.ShouldBe(PostgresErrorCodes.ExclusionViolation);
+        exception.ConstraintName.ShouldBe("metering_point_ean_validity_excl");
     }
 
     [Fact]
@@ -6259,7 +6262,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
             "SELECT count(*) FROM customer.metering_point WHERE ean = @ean;",
             ("ean", ean));
 
-        count.Should().Be(2);
+        count.ShouldBe(2);
     }
 
     [Fact]
@@ -6273,7 +6276,7 @@ public sealed class MigrationBehaviourTests(PostgresFixture fixture)
         var count = await ScalarAsync<long>(
             "SELECT count(*) FROM customer.metering_point WHERE valid_from = DATE '2026-01-01';");
 
-        count.Should().BeGreaterThanOrEqualTo(2);
+        count.ShouldBeGreaterThanOrEqualTo(2);
     }
 
     /// <summary>
@@ -6601,7 +6604,7 @@ Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.Integrati
 
 ```csharp
 using System.Net;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.AspNetCore.Mvc.Testing;
 using PeakPower.Api.Customer;
 using PeakPower.Api.Employee;
@@ -6635,7 +6638,7 @@ public sealed class ApiShellTests
         var response = await client.GetAsync(
             "/api/v1/metering-points", TestContext.Current.CancellationToken);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -6647,7 +6650,7 @@ public sealed class ApiShellTests
         var response = await client.GetAsync(
             "/api/v1/customers", TestContext.Current.CancellationToken);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     private static async Task AssertOkAsync<TEntryPoint>(string path)
@@ -6658,7 +6661,7 @@ public sealed class ApiShellTests
 
         var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 }
 ```
@@ -6978,7 +6981,7 @@ distributed application.
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.AppHost.Tests/WebRootLocatorTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.AppHost;
 
 namespace PeakPower.AppHost.Tests;
@@ -6996,7 +6999,7 @@ public sealed class WebRootLocatorTests
         var located = WebRootLocator.Locate(
             "/elsewhere/peakpower-web", AppHostDirectory, path => path == "/elsewhere/peakpower-web");
 
-        located.Should().Be("/elsewhere/peakpower-web");
+        located.ShouldBe("/elsewhere/peakpower-web");
     }
 
     [Fact]
@@ -7004,7 +7007,7 @@ public sealed class WebRootLocatorTests
     {
         var located = WebRootLocator.Locate(null, AppHostDirectory, path => path == SiblingCheckout);
 
-        located.Should().Be(SiblingCheckout);
+        located.ShouldBe(SiblingCheckout);
     }
 
     [Fact]
@@ -7012,13 +7015,13 @@ public sealed class WebRootLocatorTests
     {
         var located = WebRootLocator.Locate("   ", AppHostDirectory, path => path == SiblingCheckout);
 
-        located.Should().Be(SiblingCheckout);
+        located.ShouldBe(SiblingCheckout);
     }
 
     [Fact]
     public void The_sibling_checkout_sits_beside_the_platform_repository()
     {
-        WebRootLocator.SiblingCheckoutPath(AppHostDirectory).Should().Be(SiblingCheckout);
+        WebRootLocator.SiblingCheckoutPath(AppHostDirectory).ShouldBe(SiblingCheckout);
     }
 
     [Fact]
@@ -7026,10 +7029,10 @@ public sealed class WebRootLocatorTests
     {
         var act = () => WebRootLocator.Locate("/nowhere/peakpower-web", AppHostDirectory, _ => false);
 
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*/nowhere/peakpower-web*")
-           .WithMessage("*PEAKPOWER_WEB_PATH*")
-           .WithMessage("*--backend-only*");
+        var message = Should.Throw<InvalidOperationException>(act).Message;
+        message.ShouldContain("/nowhere/peakpower-web");
+        message.ShouldContain("PEAKPOWER_WEB_PATH");
+        message.ShouldContain("--backend-only");
     }
 
     [Fact]
@@ -7037,11 +7040,11 @@ public sealed class WebRootLocatorTests
     {
         var act = () => WebRootLocator.Locate(null, AppHostDirectory, _ => false);
 
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage($"*{SiblingCheckout}*")
-           .WithMessage("*clone peakpower-web next to peakpower-platform*")
-           .WithMessage("*PEAKPOWER_WEB_PATH*")
-           .WithMessage("*--backend-only*");
+        var message = Should.Throw<InvalidOperationException>(act).Message;
+        message.ShouldContain(SiblingCheckout);
+        message.ShouldContain("clone peakpower-web next to peakpower-platform");
+        message.ShouldContain("PEAKPOWER_WEB_PATH");
+        message.ShouldContain("--backend-only");
     }
 }
 ```
@@ -7049,7 +7052,7 @@ public sealed class WebRootLocatorTests
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.AppHost.Tests/AppHostOptionsTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.AppHost;
 
 namespace PeakPower.AppHost.Tests;
@@ -7059,25 +7062,25 @@ public sealed class AppHostOptionsTests
     [Fact]
     public void The_flag_is_off_when_no_arguments_are_passed()
     {
-        AppHostOptions.IsBackendOnly([]).Should().BeFalse();
+        AppHostOptions.IsBackendOnly([]).ShouldBeFalse();
     }
 
     [Fact]
     public void The_flag_is_on_when_it_is_passed()
     {
-        AppHostOptions.IsBackendOnly(["--backend-only"]).Should().BeTrue();
+        AppHostOptions.IsBackendOnly(["--backend-only"]).ShouldBeTrue();
     }
 
     [Fact]
     public void The_flag_is_on_when_it_is_passed_among_other_arguments()
     {
-        AppHostOptions.IsBackendOnly(["--launch-profile", "https", "--backend-only"]).Should().BeTrue();
+        AppHostOptions.IsBackendOnly(["--launch-profile", "https", "--backend-only"]).ShouldBeTrue();
     }
 
     [Fact]
     public void An_unrelated_argument_does_not_turn_the_flag_on()
     {
-        AppHostOptions.IsBackendOnly(["--backend"]).Should().BeFalse();
+        AppHostOptions.IsBackendOnly(["--backend"]).ShouldBeFalse();
     }
 }
 ```
@@ -7230,7 +7233,7 @@ pure and therefore tested; the Aspire calls around it are verified by the build 
 Create `/Users/thinhhuynh/PeakPower/peakpower-platform/tests/PeakPower.AppHost.Tests/FrontEndPlanTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.AppHost;
 
 namespace PeakPower.AppHost.Tests;
@@ -7253,9 +7256,9 @@ public sealed class FrontEndPlanTests
             directoryExists: _ => throw new InvalidOperationException("must not be consulted"),
             fileExists: _ => throw new InvalidOperationException("must not be consulted"));
 
-        plan.Include.Should().BeFalse();
-        plan.WebRoot.Should().BeNull();
-        plan.Reason.Should().Contain("--backend-only");
+        plan.Include.ShouldBeFalse();
+        plan.WebRoot.ShouldBeNull();
+        plan.Reason.ShouldContain("--backend-only");
     }
 
     [Fact]
@@ -7268,8 +7271,8 @@ public sealed class FrontEndPlanTests
             directoryExists: path => path == SiblingCheckout,
             fileExists: path => path == SiblingPackageJson);
 
-        plan.Include.Should().BeTrue();
-        plan.WebRoot.Should().Be(SiblingCheckout);
+        plan.Include.ShouldBeTrue();
+        plan.WebRoot.ShouldBe(SiblingCheckout);
     }
 
     [Fact]
@@ -7282,10 +7285,10 @@ public sealed class FrontEndPlanTests
             directoryExists: path => path == SiblingCheckout,
             fileExists: _ => false);
 
-        plan.Include.Should().BeFalse();
-        plan.WebRoot.Should().Be(SiblingCheckout);
-        plan.Reason.Should().Contain(SiblingPackageJson);
-        plan.Reason.Should().Contain("Angular workspace");
+        plan.Include.ShouldBeFalse();
+        plan.WebRoot.ShouldBe(SiblingCheckout);
+        plan.Reason.ShouldContain(SiblingPackageJson);
+        plan.Reason.ShouldContain("Angular workspace");
     }
 
     [Fact]
@@ -7298,9 +7301,9 @@ public sealed class FrontEndPlanTests
             directoryExists: _ => false,
             fileExists: _ => false);
 
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage($"*{SiblingCheckout}*")
-           .WithMessage("*--backend-only*");
+        var message = Should.Throw<InvalidOperationException>(act).Message;
+        message.ShouldContain(SiblingCheckout);
+        message.ShouldContain("--backend-only");
     }
 
     [Fact]
@@ -7313,8 +7316,8 @@ public sealed class FrontEndPlanTests
             directoryExists: path => path == "/elsewhere/peakpower-web",
             fileExists: path => path == "/elsewhere/peakpower-web/package.json");
 
-        plan.Include.Should().BeTrue();
-        plan.WebRoot.Should().Be("/elsewhere/peakpower-web");
+        plan.Include.ShouldBeTrue();
+        plan.WebRoot.ShouldBe("/elsewhere/peakpower-web");
     }
 }
 ```

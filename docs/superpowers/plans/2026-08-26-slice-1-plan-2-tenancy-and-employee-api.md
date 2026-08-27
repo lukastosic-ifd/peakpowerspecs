@@ -21,7 +21,7 @@ tenant-scoped ones return an indistinguishable 404 for another company's objects
 
 **Tech Stack:** .NET SDK 10.0.400 · EF Core 10 · Npgsql.EntityFrameworkCore.PostgreSQL 10.0.0 ·
 PostgreSQL 17 · ASP.NET Core Minimal APIs · FluentValidation 12.0.0 · Microsoft.Extensions.
-ApiDescription.Server 10.0.0 · xUnit + FluentAssertions 7.2.0 · NSubstitute ·
+ApiDescription.Server 10.0.0 · xUnit + Shouldly 4.3.0 · NSubstitute ·
 Testcontainers.PostgreSql 4.14.0 · Microsoft.AspNetCore.Mvc.Testing 10.0.0 · Microsoft.AspNetCore.TestHost 10.0.0 ·
 NetArchTest.Rules 1.3.2 · Mono.Cecil 0.11.6 · Verify.Xunit 30.15.0 · Aspire 13.5.3
 
@@ -142,19 +142,17 @@ strings follow the same sentence-case rule.)
 
 | Layer | Tooling |
 | --- | --- |
-| Domain / Application unit | xUnit + **FluentAssertions 7.2.0** (+ NSubstitute for ports) |
+| Domain / Application unit | xUnit + **Shouldly 4.3.0**|
 | Persistence & integration | Testcontainers, real PostgreSQL 17 |
 | Architecture | NetArchTest |
 | OpenAPI contract | Verify snapshot |
 | Frontend unit | Vitest |
 | E2E | Playwright, in `peakpower-web` |
 
-> ⚠ **FluentAssertions is pinned to 7.2.0; 8.x may not be used.** 8.x ships an Xceed Software
-> Community License Agreement "for Non-Commercial Use", and PeakPower is a commercial trading
-> platform; 7.2.0 is the last `Apache-2.0` release. `Directory.Packages.props` is solution-wide,
-> so letting this version drift forward would relicense every test project in the platform. The
-> other versions this plan's tests rely on are fixed by shared contract §13 as well:
-> `NetArchTest.Rules` **1.3.2**, `Mono.Cecil` **0.11.6**, `Testcontainers.PostgreSql` **4.14.0**.
+> ⚠ **Assert with Shouldly, never FluentAssertions** `[DEC-118]`. FluentAssertions 8.x ships an
+> Xceed Community License "for Non-Commercial Use" and PeakPower is commercial; 7.2.0 is the
+> last Apache-2.0 release and the end of that line. Shouldly 4.3.0 is Apache-2.0 and maintained.
+> `verify-build-settings.sh` fails the build if FluentAssertions reappears.
 
 ---
 
@@ -452,7 +450,7 @@ dotnet add tests/PeakPower.Integration.Tests/PeakPower.Integration.Tests.csproj 
 Create `tests/PeakPower.Integration.Tests/Tenancy/DevelopmentCustomerContextTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.AspNetCore.Http;
 using PeakPower.Infrastructure.Web.Tenancy;
 using Xunit;
@@ -483,10 +481,10 @@ public sealed class DevelopmentCustomerContextTests
             (DevelopmentCustomerContext.AccountIdHeader, accountId.ToString()),
             (DevelopmentCustomerContext.IsAdminHeader, "true")));
 
-        context.IsAuthenticated.Should().BeTrue();
-        context.CustomerId.Should().Be(customerId);
-        context.AccountId.Should().Be(accountId);
-        context.IsAdmin.Should().BeTrue();
+        context.IsAuthenticated.ShouldBeTrue();
+        context.CustomerId.ShouldBe(customerId);
+        context.AccountId.ShouldBe(accountId);
+        context.IsAdmin.ShouldBeTrue();
     }
 
     [Fact]
@@ -494,10 +492,10 @@ public sealed class DevelopmentCustomerContextTests
     {
         var context = new DevelopmentCustomerContext(AccessorWith());
 
-        context.IsAuthenticated.Should().BeFalse();
-        context.CustomerId.Should().Be(Guid.Empty);
-        context.AccountId.Should().Be(Guid.Empty);
-        context.IsAdmin.Should().BeFalse();
+        context.IsAuthenticated.ShouldBeFalse();
+        context.CustomerId.ShouldBe(Guid.Empty);
+        context.AccountId.ShouldBe(Guid.Empty);
+        context.IsAdmin.ShouldBeFalse();
     }
 
     [Fact]
@@ -506,8 +504,8 @@ public sealed class DevelopmentCustomerContextTests
         var context = new DevelopmentCustomerContext(AccessorWith(
             (DevelopmentCustomerContext.CustomerIdHeader, "not-a-guid")));
 
-        context.IsAuthenticated.Should().BeFalse();
-        context.CustomerId.Should().Be(Guid.Empty);
+        context.IsAuthenticated.ShouldBeFalse();
+        context.CustomerId.ShouldBe(Guid.Empty);
     }
 
     [Fact]
@@ -515,10 +513,10 @@ public sealed class DevelopmentCustomerContextTests
     {
         var context = new UnscopedCustomerContext();
 
-        context.IsAuthenticated.Should().BeFalse();
-        context.CustomerId.Should().Be(Guid.Empty);
-        context.AccountId.Should().Be(Guid.Empty);
-        context.IsAdmin.Should().BeFalse();
+        context.IsAuthenticated.ShouldBeFalse();
+        context.CustomerId.ShouldBe(Guid.Empty);
+        context.AccountId.ShouldBe(Guid.Empty);
+        context.IsAdmin.ShouldBeFalse();
     }
 
     [Fact]
@@ -526,8 +524,8 @@ public sealed class DevelopmentCustomerContextTests
     {
         var context = new HeaderEmployeeContext(AccessorWith());
 
-        context.IsAuthenticated.Should().BeTrue();
-        context.EmployeeId.Should().Be(HeaderEmployeeContext.DefaultEmployeeId);
+        context.IsAuthenticated.ShouldBeTrue();
+        context.EmployeeId.ShouldBe(HeaderEmployeeContext.DefaultEmployeeId);
     }
 
     [Fact]
@@ -536,7 +534,7 @@ public sealed class DevelopmentCustomerContextTests
         var context = new HeaderEmployeeContext(AccessorWith(
             (HeaderEmployeeContext.EmployeeIdHeader, "iris.dekker")));
 
-        context.EmployeeId.Should().Be("iris.dekker");
+        context.EmployeeId.ShouldBe("iris.dekker");
     }
 }
 ```
@@ -760,7 +758,7 @@ service collection itself, and throws.
 Create `tests/PeakPower.Integration.Tests/Tenancy/TenancyStartupGuardTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using PeakPower.Application.Abstractions;
@@ -791,8 +789,9 @@ public sealed class TenancyStartupGuardTests
             services,
             new StubEnvironment { EnvironmentName = Environments.Production });
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*[F13-R31]*DevelopmentCustomerContext*");
+        var message = Should.Throw<InvalidOperationException>(act).Message;
+        message.ShouldContain("[F13-R31]");
+        message.ShouldContain("DevelopmentCustomerContext");
     }
 
     [Fact]
@@ -806,8 +805,8 @@ public sealed class TenancyStartupGuardTests
             services,
             new StubEnvironment { EnvironmentName = Environments.Production });
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*HeaderEmployeeContext*");
+        Should.Throw<InvalidOperationException>(act)
+            .Message.ShouldContain("HeaderEmployeeContext");
     }
 
     [Fact]
@@ -820,7 +819,7 @@ public sealed class TenancyStartupGuardTests
             services,
             new StubEnvironment { EnvironmentName = Environments.Development });
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact]
@@ -833,7 +832,7 @@ public sealed class TenancyStartupGuardTests
             services,
             new StubEnvironment { EnvironmentName = Environments.Production });
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 }
 ```
@@ -943,7 +942,7 @@ entity added without a filter fails this test.
 Create `tests/PeakPower.Integration.Tests/Tenancy/QueryFilterModelTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Application.Abstractions;
 using PeakPower.Infrastructure.Web.Tenancy;
@@ -979,7 +978,7 @@ public sealed class QueryFilterModelTests
                 entityType.ClrType == typeof(PeakPower.Domain.Customers.Customer))
             .ToArray();
 
-        customerOwned.Should().NotBeEmpty(
+        customerOwned.ShouldNotBeEmpty(
             "Customer, CustomerAccount and MeteringPoint are all customer-owned");
 
         var unfiltered = customerOwned
@@ -987,7 +986,7 @@ public sealed class QueryFilterModelTests
             .Select(entityType => entityType.ClrType.Name)
             .ToArray();
 
-        unfiltered.Should().BeEmpty(
+        unfiltered.ShouldBeEmpty(
             "an entity with a CustomerId and no global query filter is a tenancy hole");
     }
 
@@ -1001,9 +1000,9 @@ public sealed class QueryFilterModelTests
             .Select(entityType => entityType.ClrType.Name)
             .ToArray();
 
-        filtered.Should().Contain("Customer");
-        filtered.Should().Contain("CustomerAccount");
-        filtered.Should().Contain("MeteringPoint");
+        filtered.ShouldContain("Customer");
+        filtered.ShouldContain("CustomerAccount");
+        filtered.ShouldContain("MeteringPoint");
     }
 
     [Fact]
@@ -1013,8 +1012,8 @@ public sealed class QueryFilterModelTests
 
         var brp = db.Model.FindEntityType(typeof(PeakPower.Domain.Metering.Brp));
 
-        brp.Should().NotBeNull();
-        brp!.GetDeclaredQueryFilters().Should().BeEmpty(
+        brp.ShouldNotBeNull();
+        brp!.GetDeclaredQueryFilters().ShouldBeEmpty(
             "BRPs are platform reference data, shared by every customer");
     }
 }
@@ -1347,7 +1346,7 @@ public sealed class TenancyCollection : ICollectionFixture<TenancyFixture>;
 Create `tests/PeakPower.Integration.Tests/Tenancy/RowLevelSecurityTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Npgsql;
 using Xunit;
 
@@ -1387,7 +1386,7 @@ public sealed class RowLevelSecurityTests
 
         var seen = await CountMeteringPointsAsync(connection, _fixture.CompanyAId);
 
-        seen.Should().Be(1, "company A has exactly one metering point in the fixture");
+        seen.ShouldBe(1, "company A has exactly one metering point in the fixture");
     }
 
     [Fact]
@@ -1398,7 +1397,7 @@ public sealed class RowLevelSecurityTests
 
         var seen = await CountMeteringPointsAsync(connection, customerId: null);
 
-        seen.Should().Be(0, "an unset app.customer_id must fail closed, not open");
+        seen.ShouldBe(0, "an unset app.customer_id must fail closed, not open");
     }
 
     [Fact]
@@ -1419,7 +1418,7 @@ public sealed class RowLevelSecurityTests
             "SELECT count(*) FROM customer.metering_point WHERE id = @id", connection, transaction);
         command.Parameters.AddWithValue("id", _fixture.CompanyBMeteringPointId);
 
-        Convert.ToInt32(await command.ExecuteScalarAsync()).Should().Be(0);
+        Convert.ToInt32(await command.ExecuteScalarAsync()).ShouldBe(0);
     }
 
     [Fact]
@@ -1448,8 +1447,8 @@ public sealed class RowLevelSecurityTests
 
         var act = async () => await insert.ExecuteNonQueryAsync();
 
-        (await act.Should().ThrowAsync<PostgresException>())
-            .Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege,
+        (await Should.ThrowAsync<PostgresException>(act))
+            .SqlState.ShouldBe(PostgresErrorCodes.InsufficientPrivilege,
                 "the WITH CHECK arm of the policy must reject a cross-tenant write");
     }
 
@@ -1461,7 +1460,7 @@ public sealed class RowLevelSecurityTests
 
         var seen = await CountMeteringPointsAsync(connection, customerId: null);
 
-        seen.Should().Be(2, "the back office is not tenant-scoped");
+        seen.ShouldBe(2, "the back office is not tenant-scoped");
     }
 }
 ```
@@ -1685,7 +1684,7 @@ through `Npgsql.EntityFrameworkCore.PostgreSQL`, which is not enough for a direc
 Create `tests/PeakPower.Integration.Tests/Tenancy/AppRoleConnectionStringTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Npgsql;
 using PeakPower.Infrastructure.Web.Tenancy;
 using Xunit;
@@ -1704,11 +1703,11 @@ public sealed class AppRoleConnectionStringTests
             aspireConnectionString, "peakpower_app", "dev_only_app_password");
 
         var parsed = new NpgsqlConnectionStringBuilder(rewritten);
-        parsed.Host.Should().Be("localhost");
-        parsed.Port.Should().Be(51234);
-        parsed.Database.Should().Be("peakpower");
-        parsed.Username.Should().Be("peakpower_app");
-        parsed.Password.Should().Be("dev_only_app_password");
+        parsed.Host.ShouldBe("localhost");
+        parsed.Port.ShouldBe(51234);
+        parsed.Database.ShouldBe("peakpower");
+        parsed.Username.ShouldBe("peakpower_app");
+        parsed.Password.ShouldBe("dev_only_app_password");
     }
 
     [Fact]
@@ -1717,7 +1716,7 @@ public sealed class AppRoleConnectionStringTests
         var act = () => AppRoleConnectionString.For(
             "Host=localhost;Database=peakpower;Username=postgres;Password=x", "  ", "p");
 
-        act.Should().Throw<ArgumentException>().WithMessage("*role*");
+        Should.Throw<ArgumentException>(act).Message.ShouldContain("role");
     }
 }
 ```
@@ -1901,7 +1900,7 @@ Create `tests/PeakPower.Integration.Tests/Tenancy/ApiResultsTests.cs`:
 ```csharp
 using System.Reflection;
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using PeakPower.Infrastructure.Web.Http;
@@ -1937,9 +1936,9 @@ public sealed class ApiResultsTests
         var missing = await ExecuteAsync(ApiResults.Found<string>(null));
         var filteredAway = await ExecuteAsync(ApiResults.NotFound());
 
-        missing.Status.Should().Be(StatusCodes.Status404NotFound);
-        filteredAway.Status.Should().Be(StatusCodes.Status404NotFound);
-        missing.Body.Should().Be(filteredAway.Body,
+        missing.Status.ShouldBe(StatusCodes.Status404NotFound);
+        filteredAway.Status.ShouldBe(StatusCodes.Status404NotFound);
+        missing.Body.ShouldBe(filteredAway.Body,
             "[F13-R19] a 404 must never reveal whether the object exists for someone else");
     }
 
@@ -1949,9 +1948,9 @@ public sealed class ApiResultsTests
         var (_, body) = await ExecuteAsync(ApiResults.NotFound());
 
         using var document = JsonDocument.Parse(body);
-        document.RootElement.GetProperty("status").GetInt32().Should().Be(404);
-        document.RootElement.GetProperty("title").GetString().Should().Be(ApiResults.NotFoundTitle);
-        document.RootElement.GetProperty("detail").GetString().Should().Be(ApiResults.NotFoundDetail);
+        document.RootElement.GetProperty("status").GetInt32().ShouldBe(404);
+        document.RootElement.GetProperty("title").GetString().ShouldBe(ApiResults.NotFoundTitle);
+        document.RootElement.GetProperty("detail").GetString().ShouldBe(ApiResults.NotFoundDetail);
     }
 
     [Fact]
@@ -1959,8 +1958,8 @@ public sealed class ApiResultsTests
     {
         var (status, body) = await ExecuteAsync(ApiResults.Found("payload"));
 
-        status.Should().Be(StatusCodes.Status200OK);
-        body.Should().Contain("payload");
+        status.ShouldBe(StatusCodes.Status200OK);
+        body.ShouldContain("payload");
     }
 
     [Fact]
@@ -1971,8 +1970,8 @@ public sealed class ApiResultsTests
             .Select(method => method.Name)
             .ToArray();
 
-        members.Should().NotContain(name => name.Contains("Forbid", StringComparison.OrdinalIgnoreCase));
-        members.Should().NotContain(name => name.Contains("Denied", StringComparison.OrdinalIgnoreCase));
+        members.ShouldNotContain(name => name.Contains("Forbid", StringComparison.OrdinalIgnoreCase));
+        members.ShouldNotContain(name => name.Contains("Denied", StringComparison.OrdinalIgnoreCase));
     }
 }
 ```
@@ -1981,7 +1980,7 @@ Create `tests/PeakPower.Integration.Tests/Tenancy/EnumWireFormatTests.cs`:
 
 ```csharp
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Domain.Customers;
 using PeakPower.Infrastructure.Web.Http;
 using Xunit;
@@ -1996,7 +1995,7 @@ public sealed class EnumWireFormatTests
     [InlineData(AccountStatus.Deactivated, "DEACTIVATED")]
     public void an_enum_goes_onto_the_wire_in_the_database_spelling(AccountStatus status, string wire)
     {
-        EnumWireFormat.ToWire(status).Should().Be(wire,
+        EnumWireFormat.ToWire(status).ShouldBe(wire,
             "shared contract §4 makes the database spelling normative and §5.2 extends it to JSON");
     }
 
@@ -2004,18 +2003,18 @@ public sealed class EnumWireFormatTests
     public void a_multi_word_source_keeps_its_underscore()
     {
         EnumWireFormat.ToWire(ProductionExpectationSource.CustomerDeclared)
-            .Should().Be("CUSTOMER_DECLARED");
+            .ShouldBe("CUSTOMER_DECLARED");
         EnumWireFormat.ToWire(ProductionExpectationSource.GridOperator)
-            .Should().Be("GRID_OPERATOR");
+            .ShouldBe("GRID_OPERATOR");
     }
 
     [Fact]
     public void the_wire_spelling_round_trips_and_pascal_case_is_rejected()
     {
-        EnumWireFormat.TryParse<CustomerStatus>("SUSPENDED", out var parsed).Should().BeTrue();
-        parsed.Should().Be(CustomerStatus.Suspended);
+        EnumWireFormat.TryParse<CustomerStatus>("SUSPENDED", out var parsed).ShouldBeTrue();
+        parsed.ShouldBe(CustomerStatus.Suspended);
 
-        EnumWireFormat.TryParse<CustomerStatus>("Suspended", out _).Should().BeFalse(
+        EnumWireFormat.TryParse<CustomerStatus>("Suspended", out _).ShouldBeFalse(
             "accepting PascalCase on the way in is how the two spellings survive side by side");
     }
 
@@ -2023,7 +2022,7 @@ public sealed class EnumWireFormatTests
     public void the_names_helper_lists_every_value_in_wire_spelling()
     {
         EnumWireFormat.Names<ProductionExpectation>()
-            .Should().Equal("UNKNOWN", "NEVER", "EXPECTED");
+            .ShouldBe("UNKNOWN", "NEVER", "EXPECTED");
     }
 
     [Fact]
@@ -2033,7 +2032,7 @@ public sealed class EnumWireFormatTests
         options.Converters.Add(EnumWireFormat.Converter);
 
         JsonSerializer.Serialize(AccountStatus.PendingApproval, options)
-            .Should().Be("\"PENDING_APPROVAL\"",
+            .ShouldBe("\"PENDING_APPROVAL\"",
                 "the mappers and the serializer must never disagree about one enum");
     }
 }
@@ -2312,7 +2311,7 @@ below simply will not find it, and the scan still runs over everything that exis
 Create `tests/PeakPower.Architecture.Tests/TenancyArchitectureTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using Xunit;
 
 namespace PeakPower.Architecture.Tests;
@@ -2333,7 +2332,7 @@ public sealed class TenancyArchitectureTests
             declaringTypeSuffix: "EntityFrameworkQueryableExtensions",
             methodName: "IgnoreQueryFilters");
 
-        offenders.Should().BeEmpty(
+        offenders.ShouldBeEmpty(
             "the global query filter is the default-correct half of tenancy; " +
             "turning it off is how a cross-tenant read gets shipped");
     }
@@ -2352,7 +2351,7 @@ public sealed class TenancyArchitectureTests
             .Concat(IlScanner.FindCalls(assemblies, "HttpContext", "ForbidAsync"))
             .ToArray();
 
-        forbidCalls.Should().BeEmpty(
+        forbidCalls.ShouldBeEmpty(
             "[F13-R19] a cross-tenant read returns 404, never 403");
     }
 }
@@ -2622,7 +2621,7 @@ directives at the top of the file: `using System.Reflection;` and `using NetArch
                 "Microsoft.AspNetCore.Http.HttpContextAccessor")
             .GetResult();
 
-        result.IsSuccessful.Should().BeTrue(
+        result.IsSuccessful.ShouldBeTrue(
             "[F13] business rule 2 — only the context-provider assembly may touch HttpContext. " +
             "Offenders: " + string.Join(", ", result.FailingTypeNames ?? []));
     }
@@ -2647,7 +2646,7 @@ directives at the top of the file: `using System.Reflection;` and `using NetArch
                 .Concat(IlScanner.FindCalls(policed, "ClaimsIdentity", reader)))
             .ToArray();
 
-        offenders.Should().BeEmpty(
+        offenders.ShouldBeEmpty(
             "a customer identifier that arrives in a token is still a customer identifier; " +
             "ICustomerContext is the one seam allowed to read it");
     }
@@ -2667,7 +2666,7 @@ directives at the top of the file: `using System.Reflection;` and `using NetArch
 
         var offenders = IlScanner.FindStringLiteral(policed, literal);
 
-        offenders.Should().BeEmpty(
+        offenders.ShouldBeEmpty(
             $"'{literal}' is how a request declares its customer. Reading it anywhere but the " +
             "context-provider assembly bypasses ICustomerContext, which is the whole seam.");
     }
@@ -2861,7 +2860,7 @@ Create `tests/PeakPower.Integration.Tests/Tenancy/RouteTableTenancyTests.cs`:
 ```csharp
 using System.Net;
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Infrastructure.Web.Tenancy;
 using Xunit;
 
@@ -2892,7 +2891,7 @@ public sealed class RouteTableTenancyTests : IAsyncLifetime
             .Select(entry => entry.ToString())
             .ToArray();
 
-        undeclared.Should().BeEmpty(
+        undeclared.ShouldBeEmpty(
             "every endpoint must say whether it is tenant-scoped, back-office or anonymous, " +
             "by calling .TenantScoped(kind), .BackOffice(reason) or .AnonymousEndpoint(reason) " +
             "where it is mapped. Until it does, the route-table test cannot prove anything " +
@@ -2928,7 +2927,7 @@ public sealed class RouteTableTenancyTests : IAsyncLifetime
             }
         }
 
-        problems.Should().BeEmpty();
+        problems.ShouldBeEmpty();
     }
 
     [Fact]
@@ -2961,7 +2960,7 @@ public sealed class RouteTableTenancyTests : IAsyncLifetime
             }
         }
 
-        failures.Should().BeEmpty(
+        failures.ShouldBeEmpty(
             "[F13-R19] every cross-tenant read returns 404, never 403 and never 200");
     }
 
@@ -2997,7 +2996,7 @@ public sealed class RouteTableTenancyTests : IAsyncLifetime
             }
         }
 
-        failures.Should().BeEmpty();
+        failures.ShouldBeEmpty();
     }
 
     [Fact]
@@ -3014,9 +3013,9 @@ public sealed class RouteTableTenancyTests : IAsyncLifetime
         using var nonexistentResponse = await _probe.Client.SendAsync(nonexistentRequest);
         var nonexistentBody = await nonexistentResponse.Content.ReadAsStringAsync();
 
-        crossTenantResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        nonexistentResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        crossTenantBody.Should().Be(nonexistentBody,
+        crossTenantResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        nonexistentResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        crossTenantBody.ShouldBe(nonexistentBody,
             "a caller must not be able to tell 'someone else owns this' from 'this never existed'");
     }
 
@@ -3027,13 +3026,13 @@ public sealed class RouteTableTenancyTests : IAsyncLifetime
             _fixture.CompanyAId, "GET", $"/api/v1/metering-points/{_fixture.CompanyAMeteringPointId}");
         using var response = await _probe.Client.SendAsync(request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK,
+        response.StatusCode.ShouldBe(HttpStatusCode.OK,
             "a tenancy test that passes because everything returns 404 proves nothing");
 
         var payload = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(payload);
         document.RootElement.GetProperty("id").GetGuid()
-            .Should().Be(_fixture.CompanyAMeteringPointId);
+            .ShouldBe(_fixture.CompanyAMeteringPointId);
     }
 
     [Fact]
@@ -3046,7 +3045,7 @@ public sealed class RouteTableTenancyTests : IAsyncLifetime
         var payload = await response.Content.ReadAsStringAsync();
 
         using var document = JsonDocument.Parse(payload);
-        document.RootElement.GetArrayLength().Should().Be(0,
+        document.RootElement.GetArrayLength().ShouldBe(0,
             "an unscoped connection on the customer login role must fail closed");
     }
 }
@@ -3394,7 +3393,7 @@ API host (Task 11), which is allowed to know about both.
 Create `tests/PeakPower.Domain.Tests/Contracts/ContractPurityTests.cs`:
 
 ```csharp
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Employee;
 using Xunit;
 
@@ -3411,7 +3410,7 @@ public sealed class ContractPurityTests
             .Where(name => name.StartsWith("PeakPower.", StringComparison.Ordinal))
             .ToArray();
 
-        references.Should().BeEmpty(
+        references.ShouldBeEmpty(
             "wire types must not drag the domain across the boundary; " +
             "mapping belongs in the API host");
     }
@@ -3425,11 +3424,11 @@ public sealed class ContractPurityTests
                 "ACTIVE", "Rotterdam", AccountCount: 3, MeteringPointCount: 7)],
             Total: 51);
 
-        response.Items.Should().ContainSingle();
-        response.Items[0].AccountCount.Should().Be(3);
-        response.Items[0].Status.Should().Be("ACTIVE",
+        response.Items.ShouldHaveSingleItem();
+        response.Items[0].AccountCount.ShouldBe(3);
+        response.Items[0].Status.ShouldBe("ACTIVE",
             "shared contract §5.2 — the wire spelling is the database spelling");
-        response.Total.Should().Be(51,
+        response.Total.ShouldBe(51,
             "the pager needs the total across every page, not just this one");
     }
 
@@ -3441,8 +3440,8 @@ public sealed class ContractPurityTests
             .Where(type => type.IsClass && type.Name.EndsWith("Request", StringComparison.Ordinal))
             .ToArray();
 
-        requestTypes.Should().NotBeEmpty();
-        requestTypes.Should().OnlyContain(
+        requestTypes.ShouldNotBeEmpty();
+        requestTypes.ShouldAllBe(
             type => type.GetMethod("<Clone>$", System.Reflection.BindingFlags.Instance
                                                 | System.Reflection.BindingFlags.Public
                                                 | System.Reflection.BindingFlags.NonPublic) != null,
@@ -3811,7 +3810,7 @@ Create `tests/PeakPower.Integration.Tests/Employee/ReferenceDataEndpointTests.cs
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Employee;
 using PeakPower.Integration.Tests.Tenancy;
 using Xunit;
@@ -3845,10 +3844,10 @@ public sealed class ReferenceDataEndpointTests : IAsyncLifetime
     {
         var brps = await _client.GetFromJsonAsync<List<BrpDto>>("/api/v1/reference-data/brps");
 
-        brps.Should().NotBeNull();
-        var pvned = brps!.Should().ContainSingle(brp => brp.Code == "PVNED").Which;
-        pvned.Name.Should().Be("PVNed B.V.");
-        pvned.IsActive.Should().BeTrue(
+        brps.ShouldNotBeNull();
+        var pvned = brps!.Single(brp => brp.Code == "PVNED");
+        pvned.Name.ShouldBe("PVNed B.V.");
+        pvned.IsActive.ShouldBeTrue(
             "Plan 4's reference-data screen renders the flag and filters the metering-point " +
             "form's picker on it, so it has to reach the wire");
     }
@@ -3858,8 +3857,8 @@ public sealed class ReferenceDataEndpointTests : IAsyncLifetime
     {
         using var response = await _client.GetAsync("/api/v1/reference-data/nothing-here");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
     }
 }
 ```
@@ -4154,7 +4153,7 @@ Create `tests/PeakPower.Integration.Tests/Employee/CustomerEndpointTests.cs`:
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Employee;
 using PeakPower.Integration.Tests.Tenancy;
 using Xunit;
@@ -4194,10 +4193,10 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
     {
         var list = await _client.GetFromJsonAsync<CustomerListResponse>("/api/v1/customers");
 
-        list.Should().NotBeNull();
+        list.ShouldNotBeNull();
         list!.Items.Select(customer => customer.Id)
-            .Should().Contain([_fixture.CompanyAId, _fixture.CompanyBId]);
-        list.Total.Should().BeGreaterThanOrEqualTo(2, "the total spans every page, not this one");
+            .ShouldContain([_fixture.CompanyAId, _fixture.CompanyBId]);
+        list.Total.ShouldBeGreaterThanOrEqualTo(2, "the total spans every page, not this one");
     }
 
     [Fact]
@@ -4206,11 +4205,11 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
         var list = await _client.GetFromJsonAsync<CustomerListResponse>(
             "/api/v1/customers?q=windkracht");
 
-        var row = list!.Items.Should().ContainSingle().Which;
-        row.Id.Should().Be(_fixture.CompanyBId);
-        row.City.Should().Be("Rotterdam");
-        row.AccountCount.Should().Be(1, "company B was seeded with one account");
-        row.MeteringPointCount.Should().Be(1);
+        var row = list!.Items.ShouldHaveSingleItem();
+        row.Id.ShouldBe(_fixture.CompanyBId);
+        row.City.ShouldBe("Rotterdam");
+        row.AccountCount.ShouldBe(1, "company B was seeded with one account");
+        row.MeteringPointCount.ShouldBe(1);
     }
 
     [Fact]
@@ -4219,8 +4218,8 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
         var list = await _client.GetFromJsonAsync<CustomerListResponse>(
             "/api/v1/customers?q=81000001");
 
-        list!.Items.Should().ContainSingle()
-            .Which.Id.Should().Be(_fixture.CompanyAId);
+        list!.Items.ShouldHaveSingleItem()
+            .Id.ShouldBe(_fixture.CompanyAId);
     }
 
     [Fact]
@@ -4229,12 +4228,12 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
         var detail = await _client.GetFromJsonAsync<CustomerDetailDto>(
             $"/api/v1/customers/{_fixture.CompanyBId}");
 
-        detail.Should().NotBeNull();
-        detail!.KvkNumber.Should().Be("81000002");
-        detail.Accounts.Should().ContainSingle(account => account.Id == _fixture.CompanyBAccountId);
-        detail.MeteringPoints.Should().ContainSingle(
-            meteringPoint => meteringPoint.Id == _fixture.CompanyBMeteringPointId);
-        detail.MeteringPoints[0].BrpName.Should().Be("PVNed B.V.");
+        detail.ShouldNotBeNull();
+        detail!.KvkNumber.ShouldBe("81000002");
+        detail.Accounts.Count(account => account.Id == _fixture.CompanyBAccountId).ShouldBe(1);
+        detail.MeteringPoints.Count(
+            meteringPoint => meteringPoint.Id == _fixture.CompanyBMeteringPointId).ShouldBe(1);
+        detail.MeteringPoints[0].BrpName.ShouldBe("PVNed B.V.");
     }
 
     [Fact]
@@ -4242,7 +4241,7 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
     {
         using var response = await _client.GetAsync($"/api/v1/customers/{Guid.NewGuid()}");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -4254,12 +4253,12 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
 
         using var response = await _client.PostAsJsonAsync("/api/v1/customers", request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var created = await response.Content.ReadFromJsonAsync<CustomerDetailDto>();
-        created!.Status.Should().Be("PROSPECT",
+        created!.Status.ShouldBe("PROSPECT",
             "shared contract §5.2 — the wire spelling is the database spelling");
-        created.KvkNumber.Should().Be("81000003");
-        response.Headers.Location!.ToString().Should().EndWith(created.Id.ToString());
+        created.KvkNumber.ShouldBe("81000003");
+        response.Headers.Location!.ToString().ShouldEndWith(created.Id.ToString());
     }
 
     [Fact]
@@ -4270,10 +4269,10 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
 
         using var response = await _client.PostAsJsonAsync("/api/v1/customers", request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
         var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("KvkNumber");
+        body.ShouldContain("KvkNumber");
     }
 
     [Fact]
@@ -4290,11 +4289,11 @@ public sealed class CustomerEndpointTests : IAsyncLifetime
 
         using var response = await _client.PatchAsJsonAsync($"/api/v1/customers/{created!.Id}", update);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var updated = await response.Content.ReadFromJsonAsync<CustomerDetailDto>();
-        updated!.LegalName.Should().Be("Duinwind Holding B.V.");
-        updated.KvkNumber.Should().Be("81000004");
-        updated.Status.Should().Be("ACTIVE");
+        updated!.LegalName.ShouldBe("Duinwind Holding B.V.");
+        updated.KvkNumber.ShouldBe("81000004");
+        updated.Status.ShouldBe("ACTIVE");
     }
 }
 ```
@@ -4715,7 +4714,7 @@ Create `tests/PeakPower.Integration.Tests/Employee/AccountEndpointTests.cs`:
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using Microsoft.EntityFrameworkCore;
 using PeakPower.Contracts.Employee;
 using PeakPower.Integration.Tests.Tenancy;
@@ -4753,7 +4752,7 @@ public sealed class AccountEndpointTests : IAsyncLifetime
         using var response = await _client.PostAsJsonAsync(
             $"/api/v1/customers/{_fixture.CompanyAId}/accounts", request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<AccountDto>())!;
     }
 
@@ -4762,10 +4761,10 @@ public sealed class AccountEndpointTests : IAsyncLifetime
     {
         var account = await CreateAccountAsync("n.vos");
 
-        account.Status.Should().Be("INVITED",
+        account.Status.ShouldBe("INVITED",
             "shared contract §5.2 — the wire spelling is the database spelling");
-        account.CustomerId.Should().Be(_fixture.CompanyAId);
-        account.Username.Should().Be("n.vos");
+        account.CustomerId.ShouldBe(_fixture.CompanyAId);
+        account.Username.ShouldBe("n.vos");
     }
 
     [Fact]
@@ -4777,7 +4776,7 @@ public sealed class AccountEndpointTests : IAsyncLifetime
         using var response = await _client.PostAsJsonAsync(
             $"/api/v1/customers/{Guid.NewGuid()}/accounts", request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -4791,8 +4790,8 @@ public sealed class AccountEndpointTests : IAsyncLifetime
         using var response = await _client.PostAsJsonAsync(
             $"/api/v1/customers/{_fixture.CompanyBId}/accounts", request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
     }
 
     [Fact]
@@ -4811,7 +4810,7 @@ public sealed class AccountEndpointTests : IAsyncLifetime
             "Nina", "Vos-Jansen", "Senior analyst", "n.vos@example.test", "+31612345678", true);
 
         using var response = await _client.PatchAsJsonAsync($"/api/v1/accounts/{account.Id}", update);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         await using var afterDb = _fixture.OwnerContext();
         var after = await afterDb.CustomerAccounts
@@ -4820,7 +4819,7 @@ public sealed class AccountEndpointTests : IAsyncLifetime
             .Select(candidate => candidate.SecurityStamp)
             .SingleAsync();
 
-        after.Should().NotBe(before, "[F01-R16] an edit revokes the account's outstanding tokens");
+        after.ShouldNotBe(before, "[F01-R16] an edit revokes the account's outstanding tokens");
     }
 
     [Fact]
@@ -4837,9 +4836,9 @@ public sealed class AccountEndpointTests : IAsyncLifetime
 
         using var response = await _client.PostAsync($"/api/v1/accounts/{account.Id}/deactivate", null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var deactivated = await response.Content.ReadFromJsonAsync<AccountDto>();
-        deactivated!.Status.Should().Be("DEACTIVATED");
+        deactivated!.Status.ShouldBe("DEACTIVATED");
 
         await using var afterDb = _fixture.OwnerContext();
         var after = await afterDb.CustomerAccounts
@@ -4848,7 +4847,7 @@ public sealed class AccountEndpointTests : IAsyncLifetime
             .Select(candidate => candidate.SecurityStamp)
             .SingleAsync();
 
-        after.Should().NotBe(before);
+        after.ShouldNotBe(before);
     }
 
     [Fact]
@@ -4856,7 +4855,7 @@ public sealed class AccountEndpointTests : IAsyncLifetime
     {
         using var response = await _client.PostAsync($"/api/v1/accounts/{Guid.NewGuid()}/deactivate", null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -4868,8 +4867,8 @@ public sealed class AccountEndpointTests : IAsyncLifetime
         using var response = await _client.PostAsJsonAsync(
             $"/api/v1/customers/{_fixture.CompanyAId}/accounts", request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("Email");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Email");
     }
 }
 ```
@@ -5155,7 +5154,7 @@ Create `tests/PeakPower.Integration.Tests/Employee/MeteringPointEndpointTests.cs
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Employee;
 using PeakPower.Integration.Tests.Tenancy;
 using Xunit;
@@ -5194,15 +5193,15 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
             $"/api/v1/customers/{_fixture.CompanyAId}/metering-points",
             Attach("871687110000000301", new DateOnly(2026, 2, 1)));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var created = await response.Content.ReadFromJsonAsync<MeteringPointDto>();
-        created!.Ean.Should().Be("871687110000000301");
-        created.EanDisplay.Should().NotBe(created.Ean, "[F01-R31] the EAN is grouped for reading");
-        created.BrpName.Should().Be("PVNed B.V.");
-        created.Commodity.Should().Be("ELECTRICITY",
+        created!.Ean.ShouldBe("871687110000000301");
+        created.EanDisplay.ShouldNotBe(created.Ean, "[F01-R31] the EAN is grouped for reading");
+        created.BrpName.ShouldBe("PVNed B.V.");
+        created.Commodity.ShouldBe("ELECTRICITY",
             "shared contract §5.2 — the wire spelling is the database spelling");
-        created.ValidTo.Should().BeNull();
-        created.DisplayLabel.Should().Be(created.EanDisplay, "[F01-R30] there is no friendly name yet");
+        created.ValidTo.ShouldBeNull();
+        created.DisplayLabel.ShouldBe(created.EanDisplay, "[F01-R30] there is no friendly name yet");
     }
 
     [Fact]
@@ -5212,8 +5211,8 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
             $"/api/v1/customers/{_fixture.CompanyAId}/metering-points",
             Attach("8716871", new DateOnly(2026, 2, 1)));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("Ean");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("Ean");
     }
 
     [Fact]
@@ -5224,15 +5223,15 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
         using var first = await _client.PostAsJsonAsync(
             $"/api/v1/customers/{_fixture.CompanyAId}/metering-points",
             Attach(ean, new DateOnly(2026, 1, 1)));
-        first.StatusCode.Should().Be(HttpStatusCode.Created);
+        first.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         using var second = await _client.PostAsJsonAsync(
             $"/api/v1/customers/{_fixture.CompanyBId}/metering-points",
             Attach(ean, new DateOnly(2026, 3, 1)));
 
-        second.StatusCode.Should().Be(HttpStatusCode.Conflict,
+        second.StatusCode.ShouldBe(HttpStatusCode.Conflict,
             "[F01-R26] the same EAN may not serve two customers over overlapping periods");
-        (await second.Content.ReadAsStringAsync()).Should().Contain(ean);
+        (await second.Content.ReadAsStringAsync()).ShouldContain(ean);
     }
 
     [Fact]
@@ -5248,13 +5247,13 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
         using var endDated = await _client.PostAsJsonAsync(
             $"/api/v1/metering-points/{original!.Id}/end-date",
             new EndDateMeteringPointRequest(new DateOnly(2026, 6, 1)));
-        endDated.StatusCode.Should().Be(HttpStatusCode.OK);
+        endDated.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         using var second = await _client.PostAsJsonAsync(
             $"/api/v1/customers/{_fixture.CompanyBId}/metering-points",
             Attach(ean, new DateOnly(2026, 6, 1)));
 
-        second.StatusCode.Should().Be(HttpStatusCode.Created,
+        second.StatusCode.ShouldBe(HttpStatusCode.Created,
             "the range is half-open, so 1 June is the first day of the new period");
     }
 
@@ -5273,13 +5272,13 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
         using var response = await _client.PatchAsJsonAsync(
             $"/api/v1/metering-points/{meteringPoint!.Id}", update);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var updated = await response.Content.ReadFromJsonAsync<MeteringPointDto>();
-        updated!.Name.Should().Be("Dakinstallatie noord");
-        updated.DisplayLabel.Should().Be("Dakinstallatie noord", "[F01-R30]");
-        updated.ProductionExpectation.Should().Be("EXPECTED");
-        updated.ExpectationSource.Should().Be("CONTRACT");
-        updated.CapacityKw.Should().Be(300m);
+        updated!.Name.ShouldBe("Dakinstallatie noord");
+        updated.DisplayLabel.ShouldBe("Dakinstallatie noord", "[F01-R30]");
+        updated.ProductionExpectation.ShouldBe("EXPECTED");
+        updated.ExpectationSource.ShouldBe("CONTRACT");
+        updated.CapacityKw.ShouldBe(300m);
     }
 
     [Fact]
@@ -5296,7 +5295,7 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
         using var response = await _client.PatchAsJsonAsync(
             $"/api/v1/metering-points/{meteringPoint!.Id}", update);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, "[F01-R29] the name is at most 80");
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "[F01-R29] the name is at most 80");
     }
 
     [Fact]
@@ -5311,7 +5310,7 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
             $"/api/v1/metering-points/{meteringPoint!.Id}/end-date",
             new EndDateMeteringPointRequest(new DateOnly(2026, 1, 1)));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -5321,7 +5320,7 @@ public sealed class MeteringPointEndpointTests : IAsyncLifetime
             $"/api/v1/metering-points/{Guid.NewGuid()}/end-date",
             new EndDateMeteringPointRequest(new DateOnly(2026, 12, 1)));
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 }
 ```
@@ -5693,7 +5692,7 @@ Create `tests/PeakPower.Integration.Tests/Employee/EmployeeRouteTableTests.cs`:
 
 ```csharp
 using System.Net.Http.Json;
-using FluentAssertions;
+using Shouldly;
 using PeakPower.Contracts.Employee;
 using PeakPower.Infrastructure.Web.Tenancy;
 using PeakPower.Integration.Tests.Tenancy;
@@ -5734,7 +5733,7 @@ public sealed class EmployeeRouteTableTests : IAsyncLifetime
             .Select(entry => entry.ToString())
             .ToArray();
 
-        undeclared.Should().BeEmpty(
+        undeclared.ShouldBeEmpty(
             "every endpoint must call .TenantScoped(kind), .BackOffice(reason) or " +
             ".AnonymousEndpoint(reason) where it is mapped, so the route-table test can reason " +
             "about it. A new endpoint that declares nothing fails here, by design.");
@@ -5745,14 +5744,14 @@ public sealed class EmployeeRouteTableTests : IAsyncLifetime
     {
         var entries = RouteTable.Enumerate(_factory.Services);
 
-        entries.Should().NotBeEmpty("the employee API maps eleven endpoints under /api/v1");
+        entries.ShouldNotBeEmpty("the employee API maps eleven endpoints under /api/v1");
 
-        entries.Should().OnlyContain(
+        entries.ShouldAllBe(
             entry => entry.Classification!.Scope == TenancyScope.BackOffice,
             "the employee API is deliberately not tenant-scoped; a tenant-scoped endpoint here " +
             "would mean somebody narrowed the back office to one customer");
 
-        entries.Should().OnlyContain(
+        entries.ShouldAllBe(
             entry => !string.IsNullOrWhiteSpace(entry.Classification!.Reason),
             "an exemption without a stated reason is an exemption nobody will ever revisit");
     }
@@ -5764,7 +5763,7 @@ public sealed class EmployeeRouteTableTests : IAsyncLifetime
             "/api/v1/customers?pageSize=100");
 
         list!.Items.Select(customer => customer.Id)
-            .Should().Contain([_fixture.CompanyAId, _fixture.CompanyBId],
+            .ShouldContain([_fixture.CompanyAId, _fixture.CompanyBId],
                 "back-office staff administer every customer company; scoping this API to one " +
                 "tenant would break it");
     }
@@ -5777,8 +5776,8 @@ public sealed class EmployeeRouteTableTests : IAsyncLifetime
         var companyB = await _client.GetFromJsonAsync<CustomerDetailDto>(
             $"/api/v1/customers/{_fixture.CompanyBId}");
 
-        companyA!.Id.Should().Be(_fixture.CompanyAId);
-        companyB!.Id.Should().Be(_fixture.CompanyBId);
+        companyA!.Id.ShouldBe(_fixture.CompanyAId);
+        companyB!.Id.ShouldBe(_fixture.CompanyBId);
     }
 }
 ```
@@ -5934,7 +5933,7 @@ Create `tests/PeakPower.Integration.Tests/Contract/EmployeeOpenApiSnapshotTests.
 
 ```csharp
 using System.Text.Json;
-using FluentAssertions;
+using Shouldly;
 using VerifyXunit;
 using Xunit;
 
@@ -5953,7 +5952,7 @@ public sealed class EmployeeOpenApiSnapshotTests
     [Fact]
     public void the_document_is_emitted_at_build()
     {
-        File.Exists(DocumentPath).Should().BeTrue(
+        File.Exists(DocumentPath).ShouldBeTrue(
             $"building PeakPower.Api.Employee must write {DocumentPath}; check that " +
             "OpenApiGenerateDocuments is true in the project file");
     }
@@ -6072,7 +6071,7 @@ Create `tests/PeakPower.Integration.Tests/Hosting/AppHostWiringTests.cs`:
 ```csharp
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
-using FluentAssertions;
+using Shouldly;
 using Xunit;
 
 namespace PeakPower.Integration.Tests.Hosting;
@@ -6093,11 +6092,11 @@ public sealed class AppHostWiringTests
         var employeeApi = builder.Resources
             .SingleOrDefault(resource => resource.Name == "employee-api");
 
-        employeeApi.Should().NotBeNull("dev-up must bring the employee API up");
+        employeeApi.ShouldNotBeNull("dev-up must bring the employee API up");
 
         var waits = employeeApi!.Annotations.OfType<WaitAnnotation>().ToArray();
 
-        waits.Should().Contain(
+        waits.ShouldContain(
             wait => wait.Resource.Name == "migrator"
                     && wait.WaitType == WaitType.WaitForCompletion,
             "the employee API connects as peakpower_employee, a role that migration 2 creates");
@@ -6112,7 +6111,7 @@ public sealed class AppHostWiringTests
         var employeeApi = builder.Resources.Single(resource => resource.Name == "employee-api");
 
         employeeApi.Annotations.OfType<EnvironmentCallbackAnnotation>()
-            .Should().NotBeEmpty(
+            .ShouldNotBeEmpty(
                 "the host must receive Tenancy__DatabaseRole, or it will connect as the table " +
                 "owner and row-level security will not apply to it");
     }

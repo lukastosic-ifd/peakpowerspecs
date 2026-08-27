@@ -4880,7 +4880,7 @@ public sealed class EnumToScreamingSnakeConverterTests
         {
             var text = EnumToScreamingSnakeConverter<TEnum>.ToScreamingSnake(value);
             EnumToScreamingSnakeConverter<TEnum>.FromScreamingSnake(text)
-                .ShouldBe(value, "{0} must survive a round trip through \"{1}\"", value, text);
+                .ShouldBe(value, $"{value} must survive a round trip through \"{text}\"");
         }
     }
 }

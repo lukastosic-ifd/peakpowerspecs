@@ -845,7 +845,9 @@ done
 
 # The domain must not reference anything. This is architecture fact 1 stated in MSBuild;
 # Task 4 makes it executable against the compiled IL as well.
-if grep -q "ProjectReference" "$root/src/Core/PeakPower.Domain/PeakPower.Domain.csproj" 2>/dev/null; then
+# Match the ELEMENT, not the word: this file's own comment says "Do not add a ProjectReference
+# here", and a bare-word grep matches that comment and fails against a correct project.
+if grep -q "<ProjectReference" "$root/src/Core/PeakPower.Domain/PeakPower.Domain.csproj" 2>/dev/null; then
   fail "PeakPower.Domain has a ProjectReference; it must reference nothing"
 fi
 

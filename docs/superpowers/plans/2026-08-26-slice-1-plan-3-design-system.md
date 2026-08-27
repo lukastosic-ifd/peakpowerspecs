@@ -52,7 +52,11 @@ Resolved npm versions used by this plan (verified on the registry, 2026-08-26):
 /Users/thinhhuynh/PeakPower/peakpower-web           # Angular — AppHost relies on it
 ```
 
-`git init` in both. **No remotes, no CI, no package registry, no deployment** in slice 1.
+`git init` in both. Both are now published privately under the **`peakpower-nl`** GitHub
+organisation and pushed (`[OQ-100]` resolved 2026-08-27); `origin` is expected and
+`tools/verify-repositories.sh` fails if it is missing or points elsewhere. **No CI, no
+package registry, no deployment** in slice 1 — the code is published, nothing is built or
+run remotely.
 Commit locally and often. **This plan owns `peakpower-web` only.**
 
 ### Naming

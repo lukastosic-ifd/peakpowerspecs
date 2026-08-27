@@ -118,6 +118,17 @@ neither can be written before the query filters and the context-provider assembl
   `SameSite=Strict` cookie named `pp_refresh`, path-scoped to `/api/v1/auth/refresh`
 - The customer access token is held **in memory only** in the browser — never `localStorage`
 
+### Identity — the platform owns it `[DEC-119]`
+
+Authentication and authorisation are **the platform's own, JWT only**. Microsoft Entra ID is
+dropped for both realms, customer and employee; nothing Microsoft is integrated for auth in the
+proof of concept. No task in any slice-1 plan may add `Microsoft.Identity.*`,
+`Microsoft.AspNetCore.Authentication.OpenIdConnect`, or any `Azure.*` package.
+
+This plan ships **no** authentication at all — identity arrives through header-driven development
+providers, and `TenancyStartupGuard` refuses to boot Production with them registered. Plan 5
+replaces them with the platform's own token, for staff as well as customers.
+
 ### Database
 
 Schemas `customer`, `metering`, `wallet`, `audit`.
@@ -554,7 +565,8 @@ namespace PeakPower.Application.Abstractions;
 /// <summary>
 /// THE tenancy seam <c>[F13-R30]</c>. Every piece of code that needs to know which customer
 /// company a request belongs to reads it here and nowhere else. Swapping a development header
-/// for an Entra token is a change of DI registration, not a change to any query.
+/// for the platform's own JWT (plan 5) is a change of DI registration, not a change to any
+/// query. [DEC-119]: the platform owns identity; nothing Microsoft is integrated for auth.
 /// </summary>
 public interface ICustomerContext
 {
@@ -683,8 +695,9 @@ using PeakPower.Application.Abstractions;
 namespace PeakPower.Infrastructure.Web.Tenancy;
 
 /// <summary>
-/// Development-only <see cref="IEmployeeContext"/>. Back-office authentication (corporate Entra)
-/// is out of slice 1, so the employee identity is a header with a named default, and
+/// Development-only <see cref="IEmployeeContext"/>. Back-office authentication is out of slice 1
+/// - plan 5 issues the platform's own JWT for staff too [DEC-119] - so the employee identity is
+/// a header with a named default, and
 /// <see cref="TenancyStartupGuard"/> refuses to boot Production with this registered.
 /// </summary>
 public sealed class HeaderEmployeeContext : IEmployeeContext

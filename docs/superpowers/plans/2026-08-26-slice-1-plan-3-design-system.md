@@ -4,7 +4,7 @@
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stand up the `peakpower-web` Angular 22 workspace and port the SB-2026 design system into `@peakpower/shared-ui` — the token module, nine `pp-*` primitives, four nl-NL formatting pipes and a component gallery — with no backend dependency.
+**Goal:** Stand up the `peakpower-web` Angular 22 workspace and port the SB-2026 design system into `@peakpower-nl/shared-ui` — the token module, nine `pp-*` primitives, four nl-NL formatting pipes and a component gallery — with no backend dependency.
 
 **Architecture:** One npm workspace at the root of `peakpower-web` holds two Angular applications (`apps/customer-portal`, `apps/employee-portal`) and one Angular library (`libs/shared-ui`). The library ships the SB-2026 CSS custom properties as plain stylesheets, plus standalone, signal-input, `OnPush` components whose visual rules live in per-component `.css` files. Applications consume the library from source through a TypeScript path mapping, so slice 1 never runs `ng-packagr`.
 
@@ -58,7 +58,7 @@ Commit locally and often. **This plan owns `peakpower-web` only.**
 ### Naming
 
 - .NET namespace root `PeakPower.` — e.g. `PeakPower.Domain.Customers`
-- npm scope `@peakpower/` — kept even though no such GitHub org exists yet `[OQ-100]`
+- npm scope `@peakpower-nl/` — matches the GitHub organisation, which now exists `[OQ-100]` **resolved**
 - Database: snake_case, singular, schema-qualified — `customer.metering_point`
 - C#: PascalCase; EF Core maps to snake_case via a naming convention, not per-property attributes
 
@@ -69,9 +69,9 @@ peakpower-web/
 ├── package.json                        # ONE workspace at the root
 ├── apps/customer-portal/               # start:customer-portal
 ├── apps/employee-portal/               # start:employee-portal
-├── libs/shared-ui/                     # @peakpower/shared-ui
-├── libs/api-client-customer/           # @peakpower/api-client-customer  (generated, committed)
-└── libs/api-client-employee/           # @peakpower/api-client-employee  (generated, committed)
+├── libs/shared-ui/                     # @peakpower-nl/shared-ui
+├── libs/api-client-customer/           # @peakpower-nl/api-client-customer  (generated, committed)
+└── libs/api-client-employee/           # @peakpower-nl/api-client-employee  (generated, committed)
 ```
 
 Standalone components throughout · signals for state · lazy-loaded feature routes ·
@@ -203,7 +203,7 @@ Every path below is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 | --- | --- |
 | `package.json` | The single npm workspace root. Declares `workspaces: ["libs/*"]`, every dependency, and the `start:*` / `test:*` scripts the Aspire AppHost and CI will call. |
 | `angular.json` | The Angular workspace: three projects (`customer-portal`, `employee-portal`, `shared-ui`) and their build / serve / test targets. |
-| `tsconfig.json` | Compiler options shared by every project, plus the `@peakpower/shared-ui` path mapping. |
+| `tsconfig.json` | Compiler options shared by every project, plus the `@peakpower-nl/shared-ui` path mapping. |
 | `.gitignore` | Excludes `node_modules`, `dist`, `.angular`, `out-tsc`. |
 | `.editorconfig` | Two-space indent, LF, final newline. |
 | `tools/workspace.test.mjs` | Node built-in test asserting the workspace contract the AppHost depends on: root `start:*` scripts, no per-app `package.json`, both projects registered. |
@@ -230,7 +230,7 @@ Every path below is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 
 | File | Responsibility |
 | --- | --- |
-| `package.json` | `name: "@peakpower/shared-ui"`, resolved by npm workspaces. |
+| `package.json` | `name: "@peakpower-nl/shared-ui"`, resolved by npm workspaces. |
 | `ng-package.json` | ng-packagr entry point. Unused in slice 1; present so the library can be packaged later without restructuring. |
 | `tsconfig.lib.json` / `tsconfig.lib.prod.json` | Library compilation. Excludes specs and the spec-only helpers. |
 | `tsconfig.spec.json` | Spec compilation. |
@@ -286,7 +286,7 @@ Aspire bug. This task makes that contract executable.
     `test:workspace`, `test:shared-ui`, `test:customer-portal`, `test:employee-portal`, `test`.
     Plan 1's `builder.AddJavaScriptApp("customer-portal", webRoot, "start:customer-portal")`
     depends on the first two by name.
-  - `tsconfig.json` path mapping `"@peakpower/shared-ui" -> ["libs/shared-ui/src/public-api.ts"]`,
+  - `tsconfig.json` path mapping `"@peakpower-nl/shared-ui" -> ["libs/shared-ui/src/public-api.ts"]`,
     which Plans 4 and 6 import through.
   - `angular.json` with `newProjectRoot: "libs"`.
 
@@ -331,14 +331,14 @@ test('there is exactly one package.json, at the workspace root', () => {
   }
 });
 
-test('npm workspaces cover libs/, so @peakpower/* resolves by package name', () => {
+test('npm workspaces cover libs/, so @peakpower-nl/* resolves by package name', () => {
   const pkg = readJson('package.json');
   assert.deepEqual(pkg.workspaces, ['libs/*']);
 });
 
 test('the shared-ui path mapping points at the library source', () => {
   const tsconfig = readJson('tsconfig.json');
-  assert.deepEqual(tsconfig.compilerOptions.paths['@peakpower/shared-ui'], [
+  assert.deepEqual(tsconfig.compilerOptions.paths['@peakpower-nl/shared-ui'], [
     'libs/shared-ui/src/public-api.ts',
   ]);
 });
@@ -424,7 +424,7 @@ Create `/Users/thinhhuynh/PeakPower/peakpower-web/tsconfig.json`:
     "target": "ES2022",
     "module": "preserve",
     "paths": {
-      "@peakpower/shared-ui": ["libs/shared-ui/src/public-api.ts"]
+      "@peakpower-nl/shared-ui": ["libs/shared-ui/src/public-api.ts"]
     }
   },
   "angularCompilerOptions": {
@@ -839,7 +839,7 @@ git commit -m "feat(web): add the customer and employee portal application shell
 
 ---
 
-## Task 3: `@peakpower/shared-ui` and the SB-2026 token module
+## Task 3: `@peakpower-nl/shared-ui` and the SB-2026 token module
 
 The token module is the library's foundation: every component reads these custom properties and
 hard-codes almost nothing. The CSS is a **verbatim port** from the Claude Design project
@@ -866,7 +866,7 @@ cascade is partial, so a pixel assertion there would be testing jsdom, not the d
 - Test: `libs/shared-ui/src/styles/tokens.spec.ts`
 
 **Interfaces:**
-- Consumes: the workspace root and the `@peakpower/shared-ui` path mapping from Task 1.
+- Consumes: the workspace root and the `@peakpower-nl/shared-ui` path mapping from Task 1.
 - Produces:
   - `libs/shared-ui/src/styles/tokens.css` — the one stylesheet applications list in
     `angular.json`. Plans 4 and 6 rely on it already being in their `styles` array.
@@ -1002,7 +1002,7 @@ navigates by `routerLink` (Task 14), not by an output the application has to wir
 
 ```json
 {
-  "name": "@peakpower/shared-ui",
+  "name": "@peakpower-nl/shared-ui",
   "version": "0.0.1",
   "peerDependencies": {
     "@angular/common": "^22.1.0",
@@ -4272,7 +4272,7 @@ demo-honesty rule.
 - Test: `apps/customer-portal/src/app/gallery/gallery.spec.ts`
 
 **Interfaces:**
-- Consumes, all from `@peakpower/shared-ui` (Tasks 4–14):
+- Consumes, all from `@peakpower-nl/shared-ui` (Tasks 4–14):
   `PP_MINUS`, `PpMoneyPipe`, `PpEnergyPipe`, `PpPowerPipe`, `PpPricePipe`, `PpTone`, `PpBadge`,
   `PpButton`, `PpButtonVariant`, `PpCard`, `PpStatCard`, `PpBanner`, `PpDsBanner`,
   `PpGridTable`, `PpGridHead`, `PpGridRow`, `PpSearchInput`, `PpAppShell`, `PpNavSection`.
@@ -4287,7 +4287,7 @@ Create `apps/customer-portal/src/app/gallery/gallery.spec.ts`:
 ```ts
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { PP_MINUS } from '@peakpower/shared-ui';
+import { PP_MINUS } from '@peakpower-nl/shared-ui';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Gallery } from './gallery';
 
@@ -4394,7 +4394,7 @@ import {
   type PpButtonVariant,
   type PpNavSection,
   type PpTone,
-} from '@peakpower/shared-ui';
+} from '@peakpower-nl/shared-ui';
 
 interface Connection {
   readonly ean: string;
@@ -4810,7 +4810,7 @@ Not done in this plan, and deliberately so:
 Names this plan defines that the shared contract does not. The nine `pp-` selectors, the two
 grid directives, `PpTone`, `PpNavItem`, `PpNavSection` and every component input listed in
 shared contract §10.1 are **the contract's**, not this plan's — this plan implements them.
-Likewise the workspace layout, the `@peakpower/` scope, the token values and `--pp-canvas` come
+Likewise the workspace layout, the `@peakpower-nl/` scope, the token values and `--pp-canvas` come
 from `docs/superpowers/plans/2026-08-26-slice-1-shared-contract.md`.
 
 **Formatting layer** — `libs/shared-ui/src/lib/format/`

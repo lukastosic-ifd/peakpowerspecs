@@ -60,7 +60,7 @@ version.
 ### Naming
 
 - .NET namespace root `PeakPower.` — e.g. `PeakPower.Domain.Customers`
-- npm scope `@peakpower/` — kept even though no such GitHub org exists yet `[OQ-100]`
+- npm scope `@peakpower-nl/` — matches the GitHub organisation, which now exists `[OQ-100]` **resolved**
 - Database: snake_case, singular, schema-qualified — `customer.metering_point`
 - C#: PascalCase; EF Core maps to snake_case via a naming convention, not per-property attributes
 
@@ -5833,7 +5833,7 @@ Two separate things, both needed:
 
 - **Emission at build.** `Microsoft.Extensions.ApiDescription.Server` runs the host's document
   generation as an MSBuild step and writes `artifacts/openapi/employee.json`. That file is
-  committed, and Plan 4 generates `@peakpower/api-client-employee` from it.
+  committed, and Plan 4 generates `@peakpower-nl/api-client-employee` from it.
 - **A Verify snapshot.** The emitted document is compared against a reviewed copy. Any change to
   a route, a status code or a DTO shape turns the test red, and the only way to make it green is
   to look at the diff and accept it. That is the point: an API contract change should cost a
@@ -6231,7 +6231,7 @@ Read this before starting Plan 5 or Plan 6.
 
 | Plan | What it must do with this plan's work |
 | --- | --- |
-| 4 · Employee portal | Generate `@peakpower/api-client-employee` from `artifacts/openapi/employee.json`. Send `X-PeakPower-Employee-Id` on every request until back-office authentication exists. The customer list is `CustomerListResponse { items, total }` over `CustomerListItemDto`, whose rows carry `city`, `accountCount` and `meteringPointCount`; every enum on the wire is the database spelling (`ACTIVE`, `PENDING_APPROVAL`, `CUSTOMER_DECLARED`), so build label maps on those literals and never on PascalCase. `BrpDto` carries `isActive` and no EAN — the aggregate has none. `UpdateCustomerRequest` takes `status` and omits `kvkNumber`, and no request on this API carries a bank account: bank details belong to Plan 5's onboarding. The two nested POSTs are `/customers/{customerId}/accounts` and `/customers/{customerId}/metering-points`. |
+| 4 · Employee portal | Generate `@peakpower-nl/api-client-employee` from `artifacts/openapi/employee.json`. Send `X-PeakPower-Employee-Id` on every request until back-office authentication exists. The customer list is `CustomerListResponse { items, total }` over `CustomerListItemDto`, whose rows carry `city`, `accountCount` and `meteringPointCount`; every enum on the wire is the database spelling (`ACTIVE`, `PENDING_APPROVAL`, `CUSTOMER_DECLARED`), so build label maps on those literals and never on PascalCase. `BrpDto` carries `isActive` and no EAN — the aggregate has none. `UpdateCustomerRequest` takes `status` and omits `kvkNumber`, and no request on this API carries a bank account: bank details belong to Plan 5's onboarding. The two nested POSTs are `/customers/{customerId}/accounts` and `/customers/{customerId}/metering-points`. |
 | 5 · Auth & onboarding | Put the token-backed `ICustomerContext` in **`PeakPower.Infrastructure.Web`**, not in `PeakPower.Api.Customer` — architecture fact 6 forbids reading `customer_id` anywhere else, and Task 8 enforces it. Register it in place of `DevelopmentCustomerContext` outside Development. Connect `PeakPower.Api.Customer` as **`peakpower_app`** with `Tenancy:DatabaseRole`, call `app.UseTenantScope()`, and add the `security_stamp` comparison inside the transaction that middleware already opens. Revisit `customer.refresh_token`, `customer.password_reset_token` and `customer.onboarding_application`, which migration 2 deliberately left without a policy because all three are read before the caller's customer is known. |
 | 6 · Customer portal | Every new customer endpoint calls `.TenantScoped(kind)`, and every mutating one gets an entry in `TenancyFixture.SampleBodies`. Add `CustomerApiRouteTableTests` running **both** arms of the harness — `every_registered_endpoint_declares_its_tenancy` and the cross-tenant 404 arm — against `WebApplicationFactory<CustomerApiEntryPoint>`; the harness is already written, and until something points it at the customer host that host's tenancy rests on hand-written per-endpoint tests, which is the decaying list design §6 rejected. Register `EnumWireFormat.Converter` on that host too, and map its enums with `EnumWireFormat.ToWire` so the two APIs cannot disagree about one value. Any new customer-owned entity needs a `HasQueryFilter` (Task 3's model test catches it) **and** a policy pair in a new migration (nothing catches that automatically; add the table to `RowLevelSecurityTests`). |
 

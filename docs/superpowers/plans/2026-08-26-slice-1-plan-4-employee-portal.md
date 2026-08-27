@@ -10,7 +10,7 @@ the employee OpenAPI document and committed to the repository, with a staleness 
 the client rotting.
 
 **Architecture:** `libs/api-client-employee` is an npm workspace package named
-`@peakpower/api-client-employee`. Its `src/generated/` directory holds TypeScript types emitted
+`@peakpower-nl/api-client-employee`. Its `src/generated/` directory holds TypeScript types emitted
 from `peakpower-platform/artifacts/openapi/employee.json` by a pinned generator; those files are
 committed and `npm run verify:clients` regenerates them into a temporary directory and fails if
 a single byte differs. Its `src/lib/` directory holds a small hand-written Angular transport
@@ -18,7 +18,7 @@ layer (`EmployeeApiClient`) built on Angular's own `HttpClient`, so requests flo
 DI, interceptors and `HttpTestingController` while every request and response shape is derived
 from the contract rather than retyped. `apps/employee-portal` is a standalone-component,
 zoneless, signal-driven Angular 22 application that renders the design system's `pp-*` primitives
-from `@peakpower/shared-ui`.
+from `@peakpower-nl/shared-ui`.
 
 **Tech Stack:** Angular 22.1.3 (`@angular/cli` / `@angular/build` 22.1.6) · TypeScript 6.0.3 ·
 Node 24.15.0 / npm 11.12.1 · Vitest 4.1.11 through the `@angular/build:unit-test` builder ·
@@ -72,7 +72,7 @@ run from that directory.
 ### Naming (shared contract §3)
 
 - .NET namespace root `PeakPower.` — e.g. `PeakPower.Domain.Customers`
-- npm scope `@peakpower/` — kept even though no such GitHub org exists yet `[OQ-100]`
+- npm scope `@peakpower-nl/` — matches the GitHub organisation, which now exists `[OQ-100]` **resolved**
 - Database: snake_case, singular, schema-qualified — `customer.metering_point`
 - C#: PascalCase; EF Core maps to snake_case via a naming convention, not per-property attributes
 
@@ -135,9 +135,9 @@ peakpower-web/
 ├── package.json                        # ONE workspace at the root
 ├── apps/customer-portal/               # start:customer-portal
 ├── apps/employee-portal/               # start:employee-portal
-├── libs/shared-ui/                     # @peakpower/shared-ui
-├── libs/api-client-customer/           # @peakpower/api-client-customer  (generated, committed)
-└── libs/api-client-employee/           # @peakpower/api-client-employee  (generated, committed)
+├── libs/shared-ui/                     # @peakpower-nl/shared-ui
+├── libs/api-client-customer/           # @peakpower-nl/api-client-customer  (generated, committed)
+└── libs/api-client-employee/           # @peakpower-nl/api-client-employee  (generated, committed)
 ```
 
 Standalone components throughout · signals for state · lazy-loaded feature routes ·
@@ -236,7 +236,7 @@ Two runners are used in this repository and they are not interchangeable:
 If (1) fails, Plan 2 is not finished and this plan cannot start. If (2) fails, Plan 3 is not
 finished and this plan cannot start.
 
-### What this plan consumes from Plan 3 (`@peakpower/shared-ui`)
+### What this plan consumes from Plan 3 (`@peakpower-nl/shared-ui`)
 
 Plan 3 owns these; this plan only imports them. **Shared contract §10.1 is the normative
 declaration** — it is reproduced verbatim below so that the templates in this plan can be read
@@ -398,7 +398,7 @@ Every path is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 | --- | --- |
 | `package.json` | *(modify, key-level)* Plan 3's one workspace manifest gains three keys: the `generate:clients` and `verify:clients` scripts and the `openapi-typescript` devDependency |
 | `angular.json` | *(modify, key-level)* Plan 3's `employee-portal` project gains `serve.options` (port + proxy) and `test.options` (runner + include globs) |
-| `tsconfig.json` | *(modify)* adds the `@peakpower/api-client-employee` path mapping |
+| `tsconfig.json` | *(modify)* adds the `@peakpower-nl/api-client-employee` path mapping |
 | `tools/openapi-clients.mjs` | the client registry and the three pure functions the two scripts share: `generateTypes`, `checkClient`, `firstDifferenceLine` |
 | `tools/generate-clients.mjs` | writes the generated types to their committed locations |
 | `tools/verify-clients.mjs` | the staleness check — regenerates to a temp dir and fails on any difference |
@@ -406,7 +406,7 @@ Every path is relative to `/Users/thinhhuynh/PeakPower/peakpower-web`.
 | `tools/openapi-clients.test.mjs` | `node --test` coverage for generation |
 | `tools/verify-clients.test.mjs` | `node --test` coverage for the staleness check |
 
-### `libs/api-client-employee` — `@peakpower/api-client-employee`
+### `libs/api-client-employee` — `@peakpower-nl/api-client-employee`
 
 | File | Responsibility |
 | --- | --- |
@@ -458,7 +458,7 @@ task builds the generator; Task 2 builds the check that stops the committed copy
 
 Two things a reader new to this repository needs to know. First, **npm workspaces resolve a
 dependency by the `name` field in its `package.json`, not by registry scope** — so
-`import { … } from '@peakpower/api-client-employee'` works today with no registry and keeps
+`import { … } from '@peakpower-nl/api-client-employee'` works today with no registry and keeps
 working unchanged the day the package is published. Second, the generator emits **types only**
 (`openapi-typescript` produces a `.d.ts` with zero runtime code). The transport is hand-written
 on Angular's `HttpClient` in Task 3, which is what lets requests go through Angular DI,
@@ -524,7 +524,7 @@ Create the workspace package manifest:
 
 ```json
 {
-  "name": "@peakpower/api-client-employee",
+  "name": "@peakpower-nl/api-client-employee",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -537,7 +537,7 @@ Create the workspace package manifest:
 ```
 
 Add one key to `compilerOptions.paths` in the workspace `tsconfig.json` — Plan 3 created that
-file and its `@peakpower/shared-ui` entry, which points at `public-api.ts` and must be left
+file and its `@peakpower-nl/shared-ui` entry, which points at `public-api.ts` and must be left
 alone. The result reads:
 
 ```json
@@ -545,15 +545,15 @@ alone. The result reads:
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@peakpower/shared-ui": ["libs/shared-ui/src/public-api.ts"],
-      "@peakpower/api-client-employee": ["libs/api-client-employee/src/index.ts"]
+      "@peakpower-nl/shared-ui": ["libs/shared-ui/src/public-api.ts"],
+      "@peakpower-nl/api-client-employee": ["libs/api-client-employee/src/index.ts"]
     }
   }
 }
 ```
 
 The workspace entry and the path mapping do different jobs and you need both: npm links
-`node_modules/@peakpower/api-client-employee` so tooling can find the package by name, while the
+`node_modules/@peakpower-nl/api-client-employee` so tooling can find the package by name, while the
 TypeScript path mapping is what makes the Angular compiler build the library from source rather
 than looking for a `dist`.
 
@@ -660,7 +660,7 @@ describe('resolvePlatformRoot', () => {
 
 describe('CLIENTS', () => {
   it('registers the employee client with its committed output path', () => {
-    const employee = CLIENTS.find((c) => c.name === '@peakpower/api-client-employee');
+    const employee = CLIENTS.find((c) => c.name === '@peakpower-nl/api-client-employee');
     assert.ok(employee, 'employee client must be registered');
     assert.equal(employee.output,
       resolve(WEB_ROOT, 'libs/api-client-employee/src/generated/employee-schema.d.ts'));
@@ -713,7 +713,7 @@ const PLATFORM_ROOT = resolvePlatformRoot();
 
 export const CLIENTS = Object.freeze([
   Object.freeze({
-    name: '@peakpower/api-client-employee',
+    name: '@peakpower-nl/api-client-employee',
     document: resolve(PLATFORM_ROOT, 'artifacts/openapi/employee.json'),
     output: resolve(WEB_ROOT, 'libs/api-client-employee/src/generated/employee-schema.d.ts'),
   }),
@@ -784,7 +784,7 @@ cd /Users/thinhhuynh/PeakPower/peakpower-web
 npm run generate:clients
 ```
 
-Expected: `@peakpower/api-client-employee: wrote libs/api-client-employee/src/generated/employee-schema.d.ts (NNN lines)`
+Expected: `@peakpower-nl/api-client-employee: wrote libs/api-client-employee/src/generated/employee-schema.d.ts (NNN lines)`
 
 Then open the generated file and check three things, because Task 3 depends on them:
 
@@ -881,7 +881,7 @@ describe('checkClient', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'pp-verify-'));
-    client = { name: '@peakpower/test', document: FIXTURE, output: join(dir, 'schema.d.ts') };
+    client = { name: '@peakpower-nl/test', document: FIXTURE, output: join(dir, 'schema.d.ts') };
   });
 
   afterEach(async () => {
@@ -1017,7 +1017,7 @@ git checkout -- libs/api-client-employee/src/generated/employee-schema.d.ts
 npm run verify:clients
 ```
 
-Expected: `up to date` → then `@peakpower/api-client-employee is stale.` with a line number and
+Expected: `up to date` → then `@peakpower-nl/api-client-employee is stale.` with a line number and
 `exit=1` → then `up to date` again.
 
 - [ ] **Step 6: Record the dev-up hook**
@@ -1620,7 +1620,7 @@ test cycle.
 - Test: `apps/employee-portal/src/app/shared/apply-problem-details.spec.ts`
 
 **Interfaces:**
-- Consumes (Task 3): `ValidationProblemDetails` from `@peakpower/api-client-employee`.
+- Consumes (Task 3): `ValidationProblemDetails` from `@peakpower-nl/api-client-employee`.
 - Produces:
   - `export const SERVER_ERROR_KEY = 'server'`
   - `export function normaliseProblemKey(key: string): string`
@@ -1766,7 +1766,7 @@ Create `apps/employee-portal/src/app/shared/apply-problem-details.ts`:
 
 ```ts
 import type { AbstractControl, FormGroup } from '@angular/forms';
-import type { ValidationProblemDetails } from '@peakpower/api-client-employee';
+import type { ValidationProblemDetails } from '@peakpower-nl/api-client-employee';
 
 /** The single error key every server-side validation message lands under. */
 export const SERVER_ERROR_KEY = 'server';
@@ -1869,7 +1869,7 @@ Domain terms a reader may not know:
 
 **Interfaces:**
 - Consumes (Task 3): `CustomerStatusValue`, `AccountStatusValue`, `ProductionExpectationValue`,
-  `ProductionExpectationSourceValue`, and `PpTone` from `@peakpower/shared-ui`.
+  `ProductionExpectationSourceValue`, and `PpTone` from `@peakpower-nl/shared-ui`.
 - Produces:
   - `export function customerStatusLabel(value: CustomerStatusValue): string`
   - `export function customerStatusTone(value: CustomerStatusValue): PpTone`
@@ -1982,13 +1982,13 @@ Expected: FAIL — `Failed to resolve import "./labels"`.
 Create `apps/employee-portal/src/app/shared/labels.ts`:
 
 ```ts
-import type { PpTone } from '@peakpower/shared-ui';
+import type { PpTone } from '@peakpower-nl/shared-ui';
 import type {
   AccountStatusValue,
   CustomerStatusValue,
   ProductionExpectationSourceValue,
   ProductionExpectationValue,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 // Wire values are the database spelling (shared contract §4). Screens never print them.
 // Copy rule: sentence case everywhere.
@@ -2264,7 +2264,7 @@ Create `apps/employee-portal/src/app/features/home/home-page.spec.ts`:
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { provideEmployeeApiTesting } from '@peakpower/api-client-employee';
+import { provideEmployeeApiTesting } from '@peakpower-nl/api-client-employee';
 
 import { HomePage } from './home-page';
 
@@ -2311,7 +2311,7 @@ Expected: FAIL — `Failed to resolve import "./employee-nav"` and `"./home-page
 Create `apps/employee-portal/src/app/shell/employee-nav.ts`:
 
 ```ts
-import type { PpNavItem, PpNavSection } from '@peakpower/shared-ui';
+import type { PpNavItem, PpNavSection } from '@peakpower-nl/shared-ui';
 
 // Labels come from the design system; routeKey keeps the specification's name [DEC-115].
 // Every item outside this slice renders disabled WITH the sentence that explains why: a rail
@@ -2404,7 +2404,7 @@ Create `apps/employee-portal/src/app/features/home/home-page.ts`:
 ```ts
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { PpBanner, PpCard } from '@peakpower/shared-ui';
+import { PpBanner, PpCard } from '@peakpower-nl/shared-ui';
 
 import { EMPLOYEE_NAV } from '../../shell/employee-nav';
 
@@ -2486,7 +2486,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
-import { PpAppShell } from '@peakpower/shared-ui';
+import { PpAppShell } from '@peakpower-nl/shared-ui';
 
 import { EMPLOYEE_NAV, crumbForUrl, routeKeyForUrl } from './shell/employee-nav';
 
@@ -2541,7 +2541,7 @@ import {
 } from '@angular/core';
 import type { ApplicationConfig } from '@angular/core';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { EMPLOYEE_API_BASE_URL } from '@peakpower/api-client-employee';
+import { EMPLOYEE_API_BASE_URL } from '@peakpower-nl/api-client-employee';
 
 import { routes } from './app.routes';
 
@@ -2664,7 +2664,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   provideEmployeeApiTesting,
   type CustomerListResponse,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { CustomerListPage } from './customer-list-page';
 
@@ -2823,12 +2823,12 @@ import {
   PpGridRow,
   PpGridTable,
   PpSearchInput,
-} from '@peakpower/shared-ui';
+} from '@peakpower-nl/shared-ui';
 import {
   EmployeeApiClient,
   type CustomerListItem,
   type CustomerListResponse,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { customerStatusLabel, customerStatusTone } from '../../shared/labels';
 
@@ -3039,7 +3039,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   provideEmployeeApiTesting,
   type CustomerDetail,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { CustomerDetailPage, DETAIL_GRID } from './customer-detail-page';
 
@@ -3258,13 +3258,13 @@ import {
   PpGridHead,
   PpGridRow,
   PpGridTable,
-} from '@peakpower/shared-ui';
+} from '@peakpower-nl/shared-ui';
 import {
   EmployeeApiClient,
   type Account,
   type CustomerDetail,
   type MeteringPoint,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import {
   accountStatusLabel,
@@ -3611,7 +3611,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   provideEmployeeApiTesting,
   type CustomerDetail,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { CustomerFormPage } from './customer-form-page';
 
@@ -3992,7 +3992,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+import { PpBanner, PpButton, PpCard } from '@peakpower-nl/shared-ui';
 import {
   EmployeeApiClient,
   isValidationProblem,
@@ -4000,7 +4000,7 @@ import {
   type CustomerDetail,
   type CustomerStatusValue,
   type UpdateCustomerRequest,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { applyProblemDetails, serverError } from '../../shared/apply-problem-details';
 import { PpAddressFields, buildAddressGroup } from '../../shared/address-fields';
@@ -4383,7 +4383,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   provideEmployeeApiTesting,
   type CustomerDetail,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { AccountFormPage } from './account-form-page';
 
@@ -4634,14 +4634,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { PpBadge, PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+import { PpBadge, PpBanner, PpButton, PpCard } from '@peakpower-nl/shared-ui';
 import {
   EmployeeApiClient,
   isValidationProblem,
   type Account,
   type CreateAccountRequest,
   type UpdateAccountRequest,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { applyProblemDetails, serverError } from '../../shared/apply-problem-details';
 import { PpFormField } from '../../shared/form-field';
@@ -4989,7 +4989,7 @@ import {
   provideEmployeeApiTesting,
   type Brp,
   type CustomerDetail,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { MeteringPointFormPage } from './metering-point-form-page';
 
@@ -5230,7 +5230,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+import { PpBanner, PpButton, PpCard } from '@peakpower-nl/shared-ui';
 import {
   EmployeeApiClient,
   isValidationProblem,
@@ -5241,7 +5241,7 @@ import {
   type ProductionExpectationSourceValue,
   type ProductionExpectationValue,
   type UpdateMeteringPointRequest,
-} from '@peakpower/api-client-employee';
+} from '@peakpower-nl/api-client-employee';
 
 import { applyProblemDetails, serverError } from '../../shared/apply-problem-details';
 import { PpFormField } from '../../shared/form-field';
@@ -5668,7 +5668,7 @@ import { TestBed } from '@angular/core/testing';
 import type { ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { provideEmployeeApiTesting, type Brp } from '@peakpower/api-client-employee';
+import { provideEmployeeApiTesting, type Brp } from '@peakpower-nl/api-client-employee';
 
 import { BrpListPage } from './brp-list-page';
 
@@ -5762,8 +5762,8 @@ Create `apps/employee-portal/src/app/features/reference-data/brp-list-page.ts`:
 ```ts
 import { httpResource } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { PpBadge, PpCard, PpGridHead, PpGridRow, PpGridTable } from '@peakpower/shared-ui';
-import { EmployeeApiClient, type Brp } from '@peakpower/api-client-employee';
+import { PpBadge, PpCard, PpGridHead, PpGridRow, PpGridTable } from '@peakpower-nl/shared-ui';
+import { EmployeeApiClient, type Brp } from '@peakpower-nl/api-client-employee';
 
 @Component({
   selector: 'pp-brp-list-page',
@@ -5970,7 +5970,7 @@ export function checkClient(client): Promise<{
                                           // start/build/test:employee-portal and
                                           // test:workspace are Plan 3's
 
-// libs/api-client-employee — @peakpower/api-client-employee
+// libs/api-client-employee — @peakpower-nl/api-client-employee
 export const EMPLOYEE_API_BASE_URL: InjectionToken<string>;
 export class EmployeeApiClient { /* see Task 3 Interfaces for every member */ }
 export interface ValidationProblemDetails {
@@ -6030,9 +6030,9 @@ export const REFERENCE_DATA_ROUTES: Routes;
 export const appConfig: ApplicationConfig;
 ```
 
-### Assumed from Plan 3 (`@peakpower/shared-ui`)
+### Assumed from Plan 3 (`@peakpower-nl/shared-ui`)
 
-**Nothing.** The whole `@peakpower/shared-ui` surface this plan binds — `PpTone`, `PpNavItem`,
+**Nothing.** The whole `@peakpower-nl/shared-ui` surface this plan binds — `PpTone`, `PpNavItem`,
 `PpNavSection`, `PpAppShell`, `PpCard`, `PpBadge`, `PpButton`, `PpBanner`, `PpGridTable`,
 `PpGridHead`, `PpGridRow`, `PpSearchInput` — is declared normatively in shared contract §10.1 and
 reproduced under **What this plan consumes from Plan 3** above. Plan 3 implements it; this plan

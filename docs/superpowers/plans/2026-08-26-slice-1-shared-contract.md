@@ -33,7 +33,7 @@ Commit locally and often.
 ## 3. Naming
 
 - .NET namespace root `PeakPower.` — e.g. `PeakPower.Domain.Customers`
-- npm scope `@peakpower/` — kept even though no such GitHub org exists yet `[OQ-100]`
+- npm scope `@peakpower-nl/` — matches the GitHub organisation, which now exists `[OQ-100]` **resolved**
 - Database: snake_case, singular, schema-qualified — `customer.metering_point`
 - C#: PascalCase; EF Core maps to snake_case via a naming convention, not per-property attributes
 
@@ -436,9 +436,9 @@ peakpower-web/
 ├── package.json                        # ONE workspace at the root
 ├── apps/customer-portal/               # start:customer-portal
 ├── apps/employee-portal/               # start:employee-portal
-├── libs/shared-ui/                     # @peakpower/shared-ui
-├── libs/api-client-customer/           # @peakpower/api-client-customer  (generated, committed)
-└── libs/api-client-employee/           # @peakpower/api-client-employee  (generated, committed)
+├── libs/shared-ui/                     # @peakpower-nl/shared-ui
+├── libs/api-client-customer/           # @peakpower-nl/api-client-customer  (generated, committed)
+└── libs/api-client-employee/           # @peakpower-nl/api-client-employee  (generated, committed)
 ```
 
 Standalone components throughout · signals for state · lazy-loaded feature routes ·
@@ -475,7 +475,7 @@ Component selectors are prefixed `pp-`: `pp-card`, `pp-stat-card`, `pp-badge`, `
 > This is why `package.json` must define `start:customer-portal` and `start:employee-portal` at
 > the **root**, not `start` inside each app.
 
-## 10.1 `@peakpower/shared-ui` public API — NORMATIVE
+## 10.1 `@peakpower-nl/shared-ui` public API — NORMATIVE
 
 ⚠ **Plan 3 owns these components; plans 4 and 6 only consume them.** Where the two sides
 disagreed, the consumers' shape won, because two plans call it and one defines it.

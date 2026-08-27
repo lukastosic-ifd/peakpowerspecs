@@ -5,7 +5,7 @@
 > checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the seven tenant-scoped customer API endpoints, generate and commit
-`@peakpower/api-client-customer`, build the Angular customer portal — onboarding wizard,
+`@peakpower-nl/api-client-customer`, build the Angular customer portal — onboarding wizard,
 sign-in, password reset, connections, naming, EAN-pool claiming, company profile — seed the
 demo data, prove the whole path with one Playwright run, and open the specification pull
 request that closes slice 1.
@@ -14,7 +14,7 @@ request that closes slice 1.
 by plan 5; every one of them reads identity only through `ICustomerContext`, is isolated by the
 EF Core global query filter plus PostgreSQL row-level security, and returns 404 rather than 403
 across tenants. The host emits `artifacts/openapi/customer.json` at build, from which the
-committed npm workspace package `@peakpower/api-client-customer` is generated. The Angular
+committed npm workspace package `@peakpower-nl/api-client-customer` is generated. The Angular
 `apps/customer-portal` application consumes that client through an HTTP interceptor that holds
 the access token in an in-memory signal — never `localStorage`, never `sessionStorage` — and
 refreshes exactly once against the HttpOnly `pp_refresh` cookie before redirecting to sign-in.
@@ -58,7 +58,7 @@ Commit locally and often.
 ### Naming
 
 - .NET namespace root `PeakPower.` — e.g. `PeakPower.Domain.Customers`
-- npm scope `@peakpower/` — kept even though no such GitHub org exists yet `[OQ-100]`
+- npm scope `@peakpower-nl/` — matches the GitHub organisation, which now exists `[OQ-100]` **resolved**
 - Database: snake_case, singular, schema-qualified — `customer.metering_point`
 - C#: PascalCase; EF Core maps to snake_case via a naming convention, not per-property attributes
 
@@ -297,9 +297,9 @@ peakpower-web/
 ├── package.json                        # ONE workspace at the root
 ├── apps/customer-portal/               # start:customer-portal
 ├── apps/employee-portal/               # start:employee-portal
-├── libs/shared-ui/                     # @peakpower/shared-ui
-├── libs/api-client-customer/           # @peakpower/api-client-customer  (generated, committed)
-└── libs/api-client-employee/           # @peakpower/api-client-employee  (generated, committed)
+├── libs/shared-ui/                     # @peakpower-nl/shared-ui
+├── libs/api-client-customer/           # @peakpower-nl/api-client-customer  (generated, committed)
+└── libs/api-client-employee/           # @peakpower-nl/api-client-employee  (generated, committed)
 ```
 
 Standalone components throughout · signals for state · lazy-loaded feature routes ·
@@ -609,7 +609,7 @@ public sealed class CustomerApiFactory : WebApplicationFactory<CustomerApiEntryP
 > on the wire in this system is SCREAMING_SNAKE, so this is the one place a reader will guess
 > wrong. It is flagged in **New names introduced** for the consistency pass.
 
-### From plan 3 (`@peakpower/shared-ui`)
+### From plan 3 (`@peakpower-nl/shared-ui`)
 
 ```ts
 export type PpTone =
@@ -840,7 +840,7 @@ Each page file carries its own `*.spec.ts` beside it.
 | --- | --- |
 | `package.json` | *(modify)* customer-portal scripts, Playwright, the customer client workspace entry |
 | `angular.json` | *(modify)* the `customer-portal` project |
-| `tsconfig.json` | *(modify)* the `@peakpower/api-client-customer` path mapping |
+| `tsconfig.json` | *(modify)* the `@peakpower-nl/api-client-customer` path mapping |
 | `tools/openapi-clients.mjs` | *(modify)* register the customer client in `CLIENTS` |
 | `playwright.config.ts` | The E2E runner configuration |
 | `e2e/onboard-and-rename.spec.ts` | The one slice-1 path |
@@ -3653,7 +3653,7 @@ Two separate things, both needed, and both mirror what plan 2 did for the employ
 
 - **Emission at build.** `Microsoft.Extensions.ApiDescription.Server` runs the host's document
   generation as an MSBuild step and writes `artifacts/openapi/customer.json`. That file is
-  committed, and Task 11 generates `@peakpower/api-client-customer` from it.
+  committed, and Task 11 generates `@peakpower-nl/api-client-customer` from it.
 - **A Verify snapshot.** The emitted document is compared against a reviewed copy. Any change
   to a route, a status code or a DTO shape turns the test red, and the only way to make it green
   is to look at the diff and accept it. An API contract change should cost a deliberate act,
@@ -4199,7 +4199,7 @@ git commit -m "test(customer-api): drive the route-table tenancy harness off the
 
 ---
 
-### Task 11: `@peakpower/api-client-customer`
+### Task 11: `@peakpower-nl/api-client-customer`
 
 Everything from here on is in `/Users/thinhhuynh/PeakPower/peakpower-web`.
 
@@ -4208,7 +4208,7 @@ Slice 1 has no npm registry `[DEC-116]`. The TypeScript derived from `customer.j
 plan 4 already built — is what replaces the registry's drift protection. Two things a reader
 new to this repository needs to know: **npm workspaces resolve a dependency by the `name` field
 in its `package.json`, not by registry scope**, so `import { … } from
-'@peakpower/api-client-customer'` works today with no registry and keeps working unchanged the
+'@peakpower-nl/api-client-customer'` works today with no registry and keeps working unchanged the
 day the package is published; and the generator emits **types only** — the transport is
 hand-written on Angular's `HttpClient`, which is what lets requests go through Angular DI,
 interceptors and `HttpTestingController`.
@@ -4264,7 +4264,7 @@ Add to `tools/openapi-clients.test.mjs`, inside the existing `describe('CLIENTS'
 
 ```js
   it('registers the customer client with its committed output path', () => {
-    const customer = CLIENTS.find((c) => c.name === '@peakpower/api-client-customer');
+    const customer = CLIENTS.find((c) => c.name === '@peakpower-nl/api-client-customer');
     assert.ok(customer, 'customer client must be registered');
     assert.equal(customer.output,
       resolve(WEB_ROOT, 'libs/api-client-customer/src/generated/customer-schema.d.ts'));
@@ -4288,12 +4288,12 @@ Add a second entry to `CLIENTS` in `tools/openapi-clients.mjs`, keeping the empl
 ```js
 export const CLIENTS = Object.freeze([
   Object.freeze({
-    name: '@peakpower/api-client-employee',
+    name: '@peakpower-nl/api-client-employee',
     document: resolve(PLATFORM_ROOT, 'artifacts/openapi/employee.json'),
     output: resolve(WEB_ROOT, 'libs/api-client-employee/src/generated/employee-schema.d.ts'),
   }),
   Object.freeze({
-    name: '@peakpower/api-client-customer',
+    name: '@peakpower-nl/api-client-customer',
     document: resolve(PLATFORM_ROOT, 'artifacts/openapi/customer.json'),
     output: resolve(WEB_ROOT, 'libs/api-client-customer/src/generated/customer-schema.d.ts'),
   }),
@@ -4311,7 +4311,7 @@ Create `libs/api-client-customer/package.json`:
 
 ```json
 {
-  "name": "@peakpower/api-client-customer",
+  "name": "@peakpower-nl/api-client-customer",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -4330,9 +4330,9 @@ Create `libs/api-client-customer/package.json`:
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@peakpower/shared-ui": ["libs/shared-ui/src/public-api.ts"],
-      "@peakpower/api-client-employee": ["libs/api-client-employee/src/index.ts"],
-      "@peakpower/api-client-customer": ["libs/api-client-customer/src/index.ts"]
+      "@peakpower-nl/shared-ui": ["libs/shared-ui/src/public-api.ts"],
+      "@peakpower-nl/api-client-employee": ["libs/api-client-employee/src/index.ts"],
+      "@peakpower-nl/api-client-customer": ["libs/api-client-customer/src/index.ts"]
     }
   }
 }
@@ -4768,7 +4768,7 @@ export interface SignCodePeek {
  * RFC 7807 `application/problem+json`. ASP.NET Core adds `errors` for a validation failure: a
  * map from a property path to one or more human-readable messages.
  *
- * Re-declared here rather than imported from `@peakpower/api-client-employee`: a client library
+ * Re-declared here rather than imported from `@peakpower-nl/api-client-employee`: a client library
  * that depended on another client library would make the two OpenAPI documents co-dependent for
  * no gain.
  */
@@ -5042,7 +5042,7 @@ Two rules, both from design §7:
 **Interfaces:**
 - Consumes: `CustomerApiClient.refresh(): Observable<SignInResponse>`,
   `CUSTOMER_API_BASE_URL`, `CurrentAccount`, `SignInResponse` from
-  `@peakpower/api-client-customer` (Task 11); `@angular/router`'s `Router`.
+  `@peakpower-nl/api-client-customer` (Task 11); `@angular/router`'s `Router`.
 - Produces:
   - `export class AccessTokenStore` with `readonly token: Signal<string | null>`,
     `readonly account: Signal<CurrentAccount | null>`,
@@ -5060,7 +5060,7 @@ Create `apps/customer-portal/src/app/auth/access-token.store.spec.ts`:
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { CurrentAccount } from '@peakpower/api-client-customer';
+import type { CurrentAccount } from '@peakpower-nl/api-client-customer';
 
 import { AccessTokenStore } from './access-token.store';
 
@@ -5131,7 +5131,7 @@ Create `apps/customer-portal/src/app/auth/access-token.store.ts`:
 
 ```ts
 import { Injectable, computed, signal } from '@angular/core';
-import type { CurrentAccount } from '@peakpower/api-client-customer';
+import type { CurrentAccount } from '@peakpower-nl/api-client-customer';
 
 /**
  * The one place an access token is held, and it is memory.
@@ -5179,8 +5179,8 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CUSTOMER_API_BASE_URL } from '@peakpower/api-client-customer';
-import type { CurrentAccount, SignInResponse } from '@peakpower/api-client-customer';
+import { CUSTOMER_API_BASE_URL } from '@peakpower-nl/api-client-customer';
+import type { CurrentAccount, SignInResponse } from '@peakpower-nl/api-client-customer';
 
 import { AccessTokenStore } from './access-token.store';
 import { authInterceptor } from './auth.interceptor';
@@ -5389,8 +5389,8 @@ Create `apps/customer-portal/src/app/auth/token-refresher.ts`:
 
 ```ts
 import { Injectable, inject } from '@angular/core';
-import { CustomerApiClient } from '@peakpower/api-client-customer';
-import type { SignInResponse } from '@peakpower/api-client-customer';
+import { CustomerApiClient } from '@peakpower-nl/api-client-customer';
+import type { SignInResponse } from '@peakpower-nl/api-client-customer';
 import { finalize, shareReplay, tap } from 'rxjs/operators';
 import type { Observable } from 'rxjs';
 
@@ -5556,7 +5556,7 @@ this plan adds the key and Task 29 records it.
 - Test: `apps/customer-portal/src/app/shell/customer-nav.spec.ts`
 
 **Interfaces:**
-- Consumes: `PpNavItem` and `PpNavSection` from `@peakpower/shared-ui` (plan 3).
+- Consumes: `PpNavItem` and `PpNavSection` from `@peakpower-nl/shared-ui` (plan 3).
 - Produces:
   - `export const CUSTOMER_ROUTE_KEYS: readonly string[]`
   - `export type CustomerRouteKey`
@@ -5670,7 +5670,7 @@ Expected: FAIL — `Failed to resolve import "./customer-nav"`
 Create `apps/customer-portal/src/app/shell/customer-nav.ts`:
 
 ```ts
-import type { PpNavItem, PpNavSection } from '@peakpower/shared-ui';
+import type { PpNavItem, PpNavSection } from '@peakpower-nl/shared-ui';
 
 /**
  * The specification's route keys, unchanged [DEC-115].
@@ -5826,7 +5826,7 @@ case for anyone arriving cold.
 **Interfaces:**
 - Consumes: `AccessTokenStore`, `TokenRefresher`, `authInterceptor` (Task 12);
   `CUSTOMER_NAV` (Task 13); `CustomerApiClient.signIn/signOut/refresh` (Task 11);
-  `PpAppShell` from `@peakpower/shared-ui`.
+  `PpAppShell` from `@peakpower-nl/shared-ui`.
 - Produces:
   - `export class AuthService` with
     `readonly account: Signal<CurrentAccount | null>`,
@@ -5851,8 +5851,8 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CUSTOMER_API_BASE_URL } from '@peakpower/api-client-customer';
-import type { CurrentAccount, SignInResponse } from '@peakpower/api-client-customer';
+import { CUSTOMER_API_BASE_URL } from '@peakpower-nl/api-client-customer';
+import type { CurrentAccount, SignInResponse } from '@peakpower-nl/api-client-customer';
 
 import { AccessTokenStore } from './access-token.store';
 import { AuthService } from './auth.service';
@@ -5991,8 +5991,8 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import type { ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CUSTOMER_API_BASE_URL } from '@peakpower/api-client-customer';
-import type { SignInResponse } from '@peakpower/api-client-customer';
+import { CUSTOMER_API_BASE_URL } from '@peakpower-nl/api-client-customer';
+import type { SignInResponse } from '@peakpower-nl/api-client-customer';
 import { isObservable, firstValueFrom, of } from 'rxjs';
 
 import { authenticatedGuard } from './authenticated.guard';
@@ -6066,8 +6066,8 @@ Create `apps/customer-portal/src/app/auth/auth.service.ts`:
 
 ```ts
 import { Injectable, inject } from '@angular/core';
-import { CustomerApiClient } from '@peakpower/api-client-customer';
-import type { CurrentAccount } from '@peakpower/api-client-customer';
+import { CustomerApiClient } from '@peakpower-nl/api-client-customer';
+import type { CurrentAccount } from '@peakpower-nl/api-client-customer';
 import { of, throwError } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
 import type { Observable } from 'rxjs';
@@ -6269,7 +6269,7 @@ Create `apps/customer-portal/src/app/features/dashboard/dashboard-page.ts`:
 ```ts
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { PpBanner, PpCard } from '@peakpower/shared-ui';
+import { PpBanner, PpCard } from '@peakpower-nl/shared-ui';
 
 import { AuthService } from '../../auth/auth.service';
 
@@ -6318,7 +6318,7 @@ Create `apps/customer-portal/src/app/app.ts`:
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
-import { PpAppShell, PpButton } from '@peakpower/shared-ui';
+import { PpAppShell, PpButton } from '@peakpower-nl/shared-ui';
 import { filter, map } from 'rxjs';
 
 import { AuthService } from './auth/auth.service';
@@ -6400,7 +6400,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { LOCALE_ID, provideZonelessChangeDetection } from '@angular/core';
 import type { ApplicationConfig } from '@angular/core';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { CUSTOMER_API_BASE_URL } from '@peakpower/api-client-customer';
+import { CUSTOMER_API_BASE_URL } from '@peakpower-nl/api-client-customer';
 
 import { APP_ROUTES } from './app.routes';
 import { authInterceptor } from './auth/auth.interceptor';
@@ -6474,8 +6474,8 @@ design §7 makes the password-reset request always return 202.
 
 **Interfaces:**
 - Consumes: `AuthService.signIn(username, password)` (Task 14);
-  `isValidationProblem` and `ValidationProblemDetails` from `@peakpower/api-client-customer`;
-  `PpButton`, `PpCard`, `PpBanner` from `@peakpower/shared-ui`.
+  `isValidationProblem` and `ValidationProblemDetails` from `@peakpower-nl/api-client-customer`;
+  `PpButton`, `PpCard`, `PpBanner` from `@peakpower-nl/shared-ui`.
 - Produces:
   - `export function applyProblemDetails(form: FormGroup, error: unknown): string | null`
   - `export class PpFormField` — selector `pp-form-field`, inputs `label`, `for`, `hint`, `error`
@@ -6583,7 +6583,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CUSTOMER_API_BASE_URL } from '@peakpower/api-client-customer';
+import { CUSTOMER_API_BASE_URL } from '@peakpower-nl/api-client-customer';
 
 import { SignInPage } from './sign-in-page';
 
@@ -6701,8 +6701,8 @@ Create `apps/customer-portal/src/app/shared/apply-problem-details.ts`:
 ```ts
 import { HttpErrorResponse } from '@angular/common/http';
 import type { FormGroup } from '@angular/forms';
-import { isValidationProblem } from '@peakpower/api-client-customer';
-import type { ValidationProblemDetails } from '@peakpower/api-client-customer';
+import { isValidationProblem } from '@peakpower-nl/api-client-customer';
+import type { ValidationProblemDetails } from '@peakpower-nl/api-client-customer';
 
 /**
  * Puts an RFC 7807 problem document onto a reactive form.
@@ -6832,7 +6832,7 @@ Create `apps/customer-portal/src/app/features/sign-in/sign-in-page.ts`:
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { PpButton, PpCard } from '@peakpower/shared-ui';
+import { PpButton, PpCard } from '@peakpower-nl/shared-ui';
 
 import { AuthService } from '../../auth/auth.service';
 import { PpFormField } from '../../shared/form-field';
@@ -7020,7 +7020,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, it, expect, afterEach } from 'vitest';
-import { CUSTOMER_API_BASE_URL } from '@peakpower/api-client-customer';
+import { CUSTOMER_API_BASE_URL } from '@peakpower-nl/api-client-customer';
 
 import { ForgotPasswordPage } from './forgot-password-page';
 
@@ -7111,7 +7111,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { CUSTOMER_API_BASE_URL } from '@peakpower/api-client-customer';
+import { CUSTOMER_API_BASE_URL } from '@peakpower-nl/api-client-customer';
 import { of } from 'rxjs';
 
 import { ResetPasswordPage } from './reset-password-page';
@@ -7221,8 +7221,8 @@ Create `apps/customer-portal/src/app/features/sign-in/forgot-password-page.ts`:
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { CustomerApiClient, PpButtonUnused as _unused } from '@peakpower/api-client-customer';
-import { PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+import { CustomerApiClient, PpButtonUnused as _unused } from '@peakpower-nl/api-client-customer';
+import { PpBanner, PpButton, PpCard } from '@peakpower-nl/shared-ui';
 
 import { PpFormField } from '../../shared/form-field';
 
@@ -7321,7 +7321,7 @@ export class ForgotPasswordPage {
 > Delete the `PpButtonUnused as _unused` import above — it is not a real export and is written
 > here only so a copy-paste that leaves it in fails loudly at compile time rather than
 > silently. The correct import line is:
-> `import { CustomerApiClient } from '@peakpower/api-client-customer';`
+> `import { CustomerApiClient } from '@peakpower-nl/api-client-customer';`
 
 Create `apps/customer-portal/src/app/features/sign-in/reset-password-page.ts`:
 
@@ -7330,8 +7330,8 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import type { AbstractControl, ValidationErrors } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { CustomerApiClient } from '@peakpower/api-client-customer';
-import { PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+import { CustomerApiClient } from '@peakpower-nl/api-client-customer';
+import { PpBanner, PpButton, PpCard } from '@peakpower-nl/shared-ui';
 
 import { applyProblemDetails } from '../../shared/apply-problem-details';
 import { PpFormField } from '../../shared/form-field';
@@ -7554,8 +7554,8 @@ Task 22's last test asserts.
 **Interfaces:**
 - Consumes: `CustomerApiClient.startOnboarding(body)`, `.saveOnboardingStep(id, body)` (Task 11);
   `SaveOnboardingStepRequest`, `StartOnboardingRequest`, `OnboardingApplicationResponse` from
-  `@peakpower/api-client-customer` (Task 11); `applyProblemDetails(form, error)` (Task 15);
-  `PpButton` from `@peakpower/shared-ui` (plan 3).
+  `@peakpower-nl/api-client-customer` (Task 11); `applyProblemDetails(form, error)` (Task 15);
+  `PpButton` from `@peakpower-nl/shared-ui` (plan 3).
 - Produces:
   - `export interface OnboardingStep { readonly n: number; readonly group: string; readonly label: string; readonly title: string; readonly intro: string; readonly next?: string }`
   - `export const STEPS: readonly OnboardingStep[]` and `export const LAST_STEP: number`
@@ -7896,7 +7896,7 @@ Expected: FAIL — `Failed to resolve import "./onboarding-flow"`
 Create `apps/customer-portal/src/app/onboarding/onboarding-flow.ts`:
 
 ```ts
-import type { OnboardingAddress, SaveOnboardingStepRequest } from '@peakpower/api-client-customer';
+import type { OnboardingAddress, SaveOnboardingStepRequest } from '@peakpower-nl/api-client-customer';
 
 /**
  * The onboarding flow's ten steps and the rules that gate them — the components render, this
@@ -8369,7 +8369,7 @@ import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, it, expect, afterEach } from 'vitest';
-import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
+import { provideCustomerApiTesting } from '@peakpower-nl/api-client-customer';
 
 import { OnboardingWizard } from './onboarding-wizard';
 import { defaultState } from './onboarding-flow';
@@ -8551,9 +8551,9 @@ Create `apps/customer-portal/src/app/onboarding/onboarding-wizard.ts`:
 ```ts
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormGroup } from '@angular/forms';
-import { CustomerApiClient } from '@peakpower/api-client-customer';
-import type { OnboardingApplicationResponse } from '@peakpower/api-client-customer';
-import { PpButton } from '@peakpower/shared-ui';
+import { CustomerApiClient } from '@peakpower-nl/api-client-customer';
+import type { OnboardingApplicationResponse } from '@peakpower-nl/api-client-customer';
+import { PpButton } from '@peakpower-nl/shared-ui';
 
 import { applyProblemDetails } from '../shared/apply-problem-details';
 import {
@@ -8935,7 +8935,7 @@ value carries the digits alone.
 
 **Interfaces:**
 - Consumes: `OnboardingState`, `OnboardingFields`, `ENTITY_TYPES`, `MIN_PASSWORD`,
-  `withField`, `inputValue`, `defaultState` (Task 17); `PpCard` from `@peakpower/shared-ui`.
+  `withField`, `inputValue`, `defaultState` (Task 17); `PpCard` from `@peakpower-nl/shared-ui`.
 - Produces:
   - `export class StepAccount` — selector `pp-step-account`, `state = model.required<OnboardingState>()`
   - `export class StepCompany` — selector `pp-step-company`, `state = model.required<OnboardingState>()`
@@ -9092,7 +9092,7 @@ Create `apps/customer-portal/src/app/onboarding/steps/step-account.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, model } from '@angular/core';
-import { PpCard } from '@peakpower/shared-ui';
+import { PpCard } from '@peakpower-nl/shared-ui';
 
 import { MIN_PASSWORD, inputValue, withField } from '../onboarding-flow';
 import type { OnboardingFields, OnboardingState } from '../onboarding-flow';
@@ -9226,7 +9226,7 @@ Create `apps/customer-portal/src/app/onboarding/steps/step-company.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, model } from '@angular/core';
-import { PpCard } from '@peakpower/shared-ui';
+import { PpCard } from '@peakpower-nl/shared-ui';
 
 import { ENTITY_TYPES, inputValue, withField } from '../onboarding-flow';
 import type { OnboardingFields, OnboardingState } from '../onboarding-flow';
@@ -9376,7 +9376,7 @@ worth keeping: it makes "net volume" mean something specific.
 
 **Interfaces:**
 - Consumes: `OnboardingState`, `INDUSTRIES`, `FLOWS`, `VOLUMES`, `kvkDigits`, `withField`,
-  `inputValue` (Task 17); `PpCard`, `PpBanner` from `@peakpower/shared-ui`.
+  `inputValue` (Task 17); `PpCard`, `PpBanner` from `@peakpower-nl/shared-ui`.
 - Produces:
   - `export class StepAddress` — selector `pp-step-address`, in `steps/step-company.ts`
   - `export class StepIndustry` — selector `pp-step-industry`, in `steps/step-company.ts`
@@ -9561,7 +9561,7 @@ Expected: FAIL — `No export named 'StepAddress'` from `./step-company`
 
 Append to `apps/customer-portal/src/app/onboarding/steps/step-company.ts` — and extend the
 existing import lines to `import { ENTITY_TYPES, INDUSTRIES, inputValue, kvkDigits, withField }
-from '../onboarding-flow';` and `import { PpBanner, PpCard } from '@peakpower/shared-ui';`:
+from '../onboarding-flow';` and `import { PpBanner, PpCard } from '@peakpower-nl/shared-ui';`:
 
 ```ts
 /**
@@ -9745,7 +9745,7 @@ Create `apps/customer-portal/src/app/onboarding/steps/step-volume.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, model } from '@angular/core';
-import { PpCard } from '@peakpower/shared-ui';
+import { PpCard } from '@peakpower-nl/shared-ui';
 
 import { FLOWS, VOLUMES } from '../onboarding-flow';
 import type { OnboardingState } from '../onboarding-flow';
@@ -9905,7 +9905,7 @@ rebuild anything, or a colleague typed in on step 8 vanishes with nothing on scr
 **Interfaces:**
 - Consumes: `OnboardingState`, `AUTHORITY`, `signatoriesForAuthority`, `withField`, `inputValue`
   (Task 17); `CustomerApiClient.simulateBankVerification(id)` and `.saveOnboardingStep(id, body)`
-  (Task 11); `PpCard`, `PpBadge`, `PpBanner`, `PpButton` from `@peakpower/shared-ui`.
+  (Task 11); `PpCard`, `PpBadge`, `PpBanner`, `PpButton` from `@peakpower-nl/shared-ui`.
 - Produces:
   - `export class StepBank` — selector `pp-step-bank`, `state = model.required<OnboardingState>()`,
     `verify = output<void>()`
@@ -10108,7 +10108,7 @@ Create `apps/customer-portal/src/app/onboarding/steps/step-bank.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, model, output } from '@angular/core';
-import { PpBadge, PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+import { PpBadge, PpBanner, PpButton, PpCard } from '@peakpower-nl/shared-ui';
 
 import { inputValue, withField } from '../onboarding-flow';
 import type { OnboardingFields, OnboardingState } from '../onboarding-flow';
@@ -10281,7 +10281,7 @@ Create `apps/customer-portal/src/app/onboarding/steps/step-authority.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, model } from '@angular/core';
-import { PpCard } from '@peakpower/shared-ui';
+import { PpCard } from '@peakpower-nl/shared-ui';
 
 import { AUTHORITY, signatoriesForAuthority } from '../onboarding-flow';
 import type { OnboardingState } from '../onboarding-flow';
@@ -10493,7 +10493,7 @@ welcome step sends them to sign in instead.
 - Consumes: `OnboardingState`, `SignatoryDraft`, `blankSignatory`, `minSignatories`,
   `SIGN_CODE_DIGITS`, `SUPPORT_EMAIL`, `fullName`, `codeDigits`, `inputValue` (Task 17);
   `CustomerApiClient.submitSignatories(id, body)` and `.signOnboarding(id, body)` (Task 11);
-  `AuthService.signIn(username, password)` (Task 14); `PpCard` from `@peakpower/shared-ui`.
+  `AuthService.signIn(username, password)` (Task 14); `PpCard` from `@peakpower-nl/shared-ui`.
 - Produces:
   - `export class StepSignatories` — selector `pp-step-signatories`, in `steps/step-authority.ts`
   - `export class StepSign` — selector `pp-step-sign`, in `steps/step-sign.ts`
@@ -10949,7 +10949,7 @@ Create `apps/customer-portal/src/app/onboarding/steps/step-sign.ts`:
 
 ```ts
 import { ChangeDetectionStrategy, Component, model } from '@angular/core';
-import { PpCard } from '@peakpower/shared-ui';
+import { PpCard } from '@peakpower-nl/shared-ui';
 
 import { SIGN_CODE_DIGITS, SUPPORT_EMAIL, inputValue } from '../onboarding-flow';
 import type { OnboardingState } from '../onboarding-flow';
@@ -11308,7 +11308,7 @@ click apart. If the automatic sign-in failed the action goes to `/sign-in` inste
 **Interfaces:**
 - Consumes: `OnboardingState`, `summaryRows`, `fullName`, `VOLUMES`, `FLOWS`, `SUPPORT_EMAIL`
   (Task 17); `AuthService.isSignedIn` (Task 14); `PpCard`, `PpStatCard`, `PpBadge`, `PpBanner`,
-  `PpButton` from `@peakpower/shared-ui`; `RouterLink` from `@angular/router`.
+  `PpButton` from `@peakpower-nl/shared-ui`; `RouterLink` from `@angular/router`.
 - Produces:
   - `export class StepWelcome` — selector `pp-step-welcome`, in `steps/step-sign.ts`, with
     `state = model.required<OnboardingState>()` and `destination = input.required<string>()`
@@ -11446,7 +11446,7 @@ Expected: FAIL — `No export named 'StepWelcome'` from `./step-sign`
 Extend the imports at the top of `apps/customer-portal/src/app/onboarding/steps/step-sign.ts` to
 `import { ChangeDetectionStrategy, Component, input, model } from '@angular/core';`,
 `import { RouterLink } from '@angular/router';`,
-`import { PpBadge, PpBanner, PpButton, PpCard, PpStatCard } from '@peakpower/shared-ui';` and
+`import { PpBadge, PpBanner, PpButton, PpCard, PpStatCard } from '@peakpower-nl/shared-ui';` and
 `import { FLOWS, SIGN_CODE_DIGITS, SUPPORT_EMAIL, VOLUMES, fullName, inputValue, summaryRows }
 from '../onboarding-flow';`, then append:
 
@@ -11809,9 +11809,9 @@ than a subset of it, and it is why the search box is debounced rather than firin
 **Interfaces:**
 - Consumes: `CustomerApiClient.listConnections(q)` (Task 11); `ConnectionSummary`,
   `ConnectionListResponse`, `ConnectionStatusValue`, `AccountStatusValue`, `CustomerStatusValue`,
-  `ProductionExpectationValue` from `@peakpower/api-client-customer` (Task 11);
+  `ProductionExpectationValue` from `@peakpower-nl/api-client-customer` (Task 11);
   `PpCard`, `PpBadge`, `PpGridTable`, `PpGridHead`, `PpGridRow`, `PpSearchInput`, `PpTone` from
-  `@peakpower/shared-ui` (plan 3).
+  `@peakpower-nl/shared-ui` (plan 3).
 - Produces:
   - `export function connectionStatusLabel(value: ConnectionStatusValue): string`
   - `export function connectionStatusTone(value: ConnectionStatusValue): PpTone`
@@ -11888,8 +11888,8 @@ import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, it, expect, afterEach } from 'vitest';
-import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
-import type { ConnectionListResponse, ConnectionSummary } from '@peakpower/api-client-customer';
+import { provideCustomerApiTesting } from '@peakpower-nl/api-client-customer';
+import type { ConnectionListResponse, ConnectionSummary } from '@peakpower-nl/api-client-customer';
 
 import { ConnectionListPage } from './connection-list-page';
 
@@ -12049,13 +12049,13 @@ Expected: FAIL — `Failed to resolve import "./labels"`
 Create `apps/customer-portal/src/app/shared/labels.ts`:
 
 ```ts
-import type { PpTone } from '@peakpower/shared-ui';
+import type { PpTone } from '@peakpower-nl/shared-ui';
 import type {
   AccountStatusValue,
   ConnectionStatusValue,
   CustomerStatusValue,
   ProductionExpectationValue,
-} from '@peakpower/api-client-customer';
+} from '@peakpower-nl/api-client-customer';
 
 /**
  * Wire value → the sentence the customer reads, in one file.
@@ -12163,11 +12163,11 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { debounceTime, distinctUntilChanged, startWith, switchMap } from 'rxjs';
 import { toObservable } from '@angular/core/rxjs-interop';
-import { CustomerApiClient } from '@peakpower/api-client-customer';
-import type { ConnectionListResponse, ConnectionSummary } from '@peakpower/api-client-customer';
+import { CustomerApiClient } from '@peakpower-nl/api-client-customer';
+import type { ConnectionListResponse, ConnectionSummary } from '@peakpower-nl/api-client-customer';
 import {
   PpBadge, PpCard, PpGridHead, PpGridRow, PpGridTable, PpSearchInput,
-} from '@peakpower/shared-ui';
+} from '@peakpower-nl/shared-ui';
 
 import { NO_DATA_YET, connectionStatusLabel, connectionStatusTone } from '../../shared/labels';
 
@@ -12347,10 +12347,10 @@ server was willing to say.
 
 **Interfaces:**
 - Consumes: `CustomerApiClient.getConnection(id)` and `.renameConnection(id, body)` (Task 11);
-  `ConnectionDetail` from `@peakpower/api-client-customer`; `applyProblemDetails` and
+  `ConnectionDetail` from `@peakpower-nl/api-client-customer`; `applyProblemDetails` and
   `PpFormField` (Task 15); `connectionStatusLabel`, `connectionStatusTone`,
   `productionExpectationLabel`, `NO_DATA_YET` (Task 23); `PpCard`, `PpBadge`, `PpButton`,
-  `PpBanner` from `@peakpower/shared-ui`; `ActivatedRoute` from `@angular/router`.
+  `PpBanner` from `@peakpower-nl/shared-ui`; `ActivatedRoute` from `@angular/router`.
 - Produces:
   - `export class ConnectionDetailPage` — selector `pp-connection-detail-page`
   - `export const NAME_MAX_LENGTH = 80`, `export const DESCRIPTION_MAX_LENGTH = 500`
@@ -12365,8 +12365,8 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { describe, it, expect, afterEach } from 'vitest';
 import { of } from 'rxjs';
-import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
-import type { ConnectionDetail } from '@peakpower/api-client-customer';
+import { provideCustomerApiTesting } from '@peakpower-nl/api-client-customer';
+import type { ConnectionDetail } from '@peakpower-nl/api-client-customer';
 
 import { ConnectionDetailPage } from './connection-detail-page';
 
@@ -12565,9 +12565,9 @@ Create `apps/customer-portal/src/app/features/connections/connection-detail-page
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { CustomerApiClient } from '@peakpower/api-client-customer';
-import type { Address, ConnectionDetail } from '@peakpower/api-client-customer';
-import { PpBadge, PpBanner, PpButton, PpCard } from '@peakpower/shared-ui';
+import { CustomerApiClient } from '@peakpower-nl/api-client-customer';
+import type { Address, ConnectionDetail } from '@peakpower-nl/api-client-customer';
+import { PpBadge, PpBanner, PpButton, PpCard } from '@peakpower-nl/shared-ui';
 
 import { applyProblemDetails } from '../../shared/apply-problem-details';
 import { PpFormField } from '../../shared/form-field';
@@ -12888,9 +12888,9 @@ were looking at is gone.
 **Interfaces:**
 - Consumes: `CustomerApiClient.searchEanPool(q)` and `.claimConnection(body)` (Task 11);
   `EanPoolEntry`, `EanPoolResponse`, `ClaimConnectionRequest`, `ProductionExpectationValue` from
-  `@peakpower/api-client-customer`; `applyProblemDetails` and `PpFormField` (Task 15); `PpCard`,
+  `@peakpower-nl/api-client-customer`; `applyProblemDetails` and `PpFormField` (Task 15); `PpCard`,
   `PpButton`, `PpSearchInput`, `PpGridTable`, `PpGridHead`, `PpGridRow` from
-  `@peakpower/shared-ui`.
+  `@peakpower-nl/shared-ui`.
 - Produces:
   - `export class ClaimConnectionPage` — selector `pp-claim-connection-page`
 
@@ -12903,8 +12903,8 @@ import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
-import type { EanPoolEntry, EanPoolResponse } from '@peakpower/api-client-customer';
+import { provideCustomerApiTesting } from '@peakpower-nl/api-client-customer';
+import type { EanPoolEntry, EanPoolResponse } from '@peakpower-nl/api-client-customer';
 
 import { ClaimConnectionPage } from './claim-connection-page';
 
@@ -13067,13 +13067,13 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { debounceTime, distinctUntilChanged, startWith, switchMap } from 'rxjs';
-import { CustomerApiClient } from '@peakpower/api-client-customer';
+import { CustomerApiClient } from '@peakpower-nl/api-client-customer';
 import type {
   Address, EanPoolEntry, EanPoolResponse, ProductionExpectationValue,
-} from '@peakpower/api-client-customer';
+} from '@peakpower-nl/api-client-customer';
 import {
   PpButton, PpCard, PpGridHead, PpGridRow, PpGridTable, PpSearchInput,
-} from '@peakpower/shared-ui';
+} from '@peakpower-nl/shared-ui';
 
 import { applyProblemDetails } from '../../shared/apply-problem-details';
 import { PpFormField } from '../../shared/form-field';
@@ -13386,9 +13386,9 @@ not carry — earns its place. Task 13 added the key; Task 29 records it in
 **Interfaces:**
 - Consumes: `CustomerApiClient.getCompany()` and `.getCompanyAccounts()` (Task 11);
   `CompanyProfile`, `CompanyAccount`, `CompanyAccountsResponse`, `Address` from
-  `@peakpower/api-client-customer`; `accountStatusLabel`, `accountStatusTone`,
+  `@peakpower-nl/api-client-customer`; `accountStatusLabel`, `accountStatusTone`,
   `customerStatusLabel` (Task 23); `PpCard`, `PpBadge`, `PpGridTable`, `PpGridHead`, `PpGridRow`
-  from `@peakpower/shared-ui`.
+  from `@peakpower-nl/shared-ui`.
 - Produces:
   - `export class CompanyPage` — selector `pp-company-page`
 
@@ -13401,8 +13401,8 @@ import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { describe, it, expect, afterEach } from 'vitest';
-import { provideCustomerApiTesting } from '@peakpower/api-client-customer';
-import type { CompanyAccount, CompanyProfile } from '@peakpower/api-client-customer';
+import { provideCustomerApiTesting } from '@peakpower-nl/api-client-customer';
+import type { CompanyAccount, CompanyProfile } from '@peakpower-nl/api-client-customer';
 
 import { CompanyPage } from './company-page';
 
@@ -13536,11 +13536,11 @@ Create `apps/customer-portal/src/app/features/company/company-page.ts`:
 ```ts
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { CustomerApiClient } from '@peakpower/api-client-customer';
+import { CustomerApiClient } from '@peakpower-nl/api-client-customer';
 import type {
   Address, CompanyAccount, CompanyAccountsResponse, CompanyProfile,
-} from '@peakpower/api-client-customer';
-import { PpBadge, PpCard, PpGridHead, PpGridRow, PpGridTable } from '@peakpower/shared-ui';
+} from '@peakpower-nl/api-client-customer';
+import { PpBadge, PpCard, PpGridHead, PpGridRow, PpGridTable } from '@peakpower-nl/shared-ui';
 
 import { accountStatusLabel, accountStatusTone, customerStatusLabel } from '../../shared/labels';
 
@@ -14572,7 +14572,7 @@ In `specs/00-overview/04-assumptions-and-decisions.md`, append five rows immedia
 | **DEC-113** | **Customer companies may be created by self-service onboarding.** The platform stores an **Argon2id** credential hash for the customer realm and **owns the password-reset path**. Customers may claim metering points from a shared EAN pool | Account creation staying exclusively with PeakPower employees, and the platform holding no customer credential | ⚠ **Reverses [DEC-16], [DEC-29] and [F01-R12]; amends [F01-R23].** Taken for the proof of concept, where the ten-step wizard from `trading-poc` is the demo story. Contained by three things: the hash is Argon2id at OWASP's current floor (19 MiB, 2 iterations, parallelism 1), never logged and never returned by any endpoint; `ICustomerContext` stays the single seam identity reaches the application through, so the credential store is swappable behind one DI registration rather than a rewrite (**[DEC-119]** later made the platform's ownership of identity permanent); and reset is in scope, because a credential store without one is not shippable past a demo. Hard lockout and MFA are **not** in scope — a hard lockout on a username is a denial-of-service primitive against a named customer — so sign-in carries a progressive delay instead |
 | **DEC-114** | **EAN validation is eighteen digits only for the proof of concept.** The GS1 check digit is reinstated before go-live | Enforcing the check digit from the first commit | ⚠ **Reverses the check-digit half of [F01-R24].** Not one of the six demo EANs in `trading-poc` carries a correct check digit, under either weighting, so enforcing it would leave the demo with no data at all. **[OQ-97]** owns reinstating it and pinning which weighting is normative, and the seed script carries the reason inline at the point where it inserts them |
 | **DEC-115** | **The customer portal's navigation and labels follow the design system. Route keys keep the specification's names** | Labels and route keys being the same string, as the wireframes assume | Amends `specs/60-mockups/screens-customer.mjs:7`. `Consumption` reads **Volume**, `Trading` reads **Trades**, `Wallet` reads **Balance**, and `Invoices` is replaced by **Settlements**. One mapping — `PAGE_LABELS` — sits between the two, so a label change is one line and never touches a URL, a guard or a test. Nav items outside the current slice render disabled, each with the sentence explaining why: a rail that grows between demos looks unfinished, one that is complete and honest looks planned |
-| **DEC-116** | **GitHub Packages is the destination for generated API clients once a `peakpower` organisation exists.** Until then, committed npm **workspace packages** — the fallback [solution structure §5.1](../20-architecture/02-solution-structure.md) already sanctions — keep the name `@peakpower/api-client-*` | Choosing a feed now, and picking a package name that matches whatever owner happens to exist today | Settles the unnumbered feed question in [solution structure §8](../20-architecture/02-solution-structure.md). npm workspaces resolve by the `name` field, not by registry scope, so every import works today with no registry and keeps working unchanged the day the packages are published. A scripted **staleness check** — regenerate, fail if the diff is non-empty — replaces what the registry would have protected against; without it, committed clients rot silently and the two repositories drift exactly as **[DEC-55]** warns. See **[OQ-100]** |
+| **DEC-116** | **GitHub Packages is the destination for generated API clients.** The organisation exists as **`peakpower-nl`** since 2026-08-27 (`[OQ-100]` resolved) and the scope was renamed to `@peakpower-nl/` to match, since GitHub Packages requires it; publishing is still out of scope for slice 1, so committed npm **workspace packages** — the fallback [solution structure §5.1](../20-architecture/02-solution-structure.md) already sanctions — keep the name `@peakpower-nl/api-client-*` | Choosing a feed now, and picking a package name that matches whatever owner happens to exist today | Settles the unnumbered feed question in [solution structure §8](../20-architecture/02-solution-structure.md). npm workspaces resolve by the `name` field, not by registry scope, so every import works today with no registry and keeps working unchanged the day the packages are published. A scripted **staleness check** — regenerate, fail if the diff is non-empty — replaces what the registry would have protected against; without it, committed clients rot silently and the two repositories drift exactly as **[DEC-55]** warns. See **[OQ-100]** |
 | **DEC-117** | **Customer authentication is a JWT access/refresh pair, ES256 over JWKS, with a `security_stamp` claim checked per request** | A shared-secret HS256 token, and accepting that a stateless token cannot be revoked before it expires | New ground: **[DEC-20]** assumed the proof of concept would run unauthenticated. Access token 15 minutes; refresh token 14 days, rotating, single-use, stored hashed, in an HttpOnly `SameSite=Strict` cookie scoped to the refresh endpoint. The access token is held **in memory only** in the browser — a JWT in `localStorage` is readable by any XSS. ES256 over a JWKS endpoint rather than a shared secret so the signing key never leaves the issuer and keys can rotate without redeploying verifiers (**[DEC-119]** removed the Entra migration this originally anticipated). The `stamp` claim is compared to a `security_stamp` column on every request, which costs nothing measurable — every request already opens a transaction to `SET LOCAL app.customer_id` for row-level security — and it is what makes **[F01-R16]**'s *immediate* revocation literally true against a stateless token |
 ```
 
@@ -14584,7 +14584,7 @@ In `specs/80-open-questions.md`, add six rows to the open register:
 | **[OQ-97]** | 🟠 | **When is the GS1 check digit reinstated, and which weighting is normative?** **[DEC-114]** relaxed EAN validation to eighteen digits for the proof of concept. The two conventions in circulation disagree on five of the six demo EANs, and the specification says "GS1 check digit" without pinning the algorithm — so this needs an owner and a date, not just an intention | Needs an owner |
 | **[OQ-98]** | 🟡 | **Credential policy values** — the sign-in delay curve, the reset-token TTL, and password composition beyond the twelve-character minimum. The *mechanism* is designed and is no longer open (**[DEC-117]**, and the reset path in **[DEC-113]**); only the numbers are, and they belong to whoever owns security policy rather than to the delivery team | Needs an owner |
 | **[OQ-99]** | 🟡 | **The six-product entitlement gate in the prototype's rail.** `trading-poc` gates parts of the customer rail on a per-product entitlement. That is a commercial model which appears nowhere in this specification set: either it is real and F13 needs it, or the prototype invented it and the rail should not imply it | Needs an owner |
-| **[OQ-100]** | 🟢 | **Which GitHub organisation owns `peakpower-platform` and `peakpower-web`?** **Not blocking.** **[DEC-116]** defers publishing until a `peakpower` organisation exists, and slice 1 needs no remote at all. It matters when CI is stood up, and it stays cheap while nothing outside `peakpower-web` consumes the packages. Creating the organisation is not in the delivery team's gift, so it wants a named owner even though nothing waits on it today | Needs an owner |
+| **[OQ-100]** | ✅ | **Which GitHub organisation owns `peakpower-platform` and `peakpower-web`?** **RESOLVED 2026-08-27: `peakpower-nl`.** Both repositories are published there, privately, and pushed. Not `peakpower`, which the `@peakpower/` scope had assumed — renamed to `@peakpower-nl/` across the specification while that was still free. |
 | **[OQ-102]** | 🟠 | **Who owns the row-level-security login-role credentials?** Migration 2 creates `app_customer_role` and `app_employee_role` plus two non-owner login roles, and each host rewrites its connection string onto its own role — a superuser or table owner *bypasses* RLS silently, so this is what makes the mechanism real rather than decorative. Slice 1 is local-only with no deployment, so the two passwords are literals in the migration with a comment saying exactly that. **This needs an owner before anything is deployed anywhere** | Needs an owner |
 ```
 
@@ -14871,7 +14871,7 @@ Everything here is design section 10 of `docs/superpowers/specs/2026-08-26-poc-s
   amends [F01-R23].
 - **[DEC-114]** EAN validation is 18 digits for the PoC. Reverses the check-digit half of [F01-R24].
 - **[DEC-115]** portal labels follow the design system; route keys keep the specification's names.
-- **[DEC-116]** GitHub Packages once a `peakpower` organisation exists; committed workspace
+- **[DEC-116]** GitHub Packages; the organisation exists as `peakpower-nl` and the scope now matches, publishing still out of scope; committed workspace
   packages until then.
 - **[DEC-117]** customer auth is a JWT access/refresh pair, ES256 over JWKS, with a
   `security_stamp` claim checked per request.

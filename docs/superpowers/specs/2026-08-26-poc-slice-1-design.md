@@ -95,7 +95,9 @@ values are the narrowed `[OQ-98]`.
 - Tenancy: context pipeline, query filter, row-level security, 404-not-403, and the tests
   that prove all four
 - OpenAPI emitted at build; typed clients as committed workspace packages `[DEC-116]`
-- No CI, no remotes, no registry — slice 1 runs entirely on a developer machine
+- No CI and no package registry. Both repositories are now published privately under the
+  `peakpower-nl` organisation, but nothing is deployed and nothing is built remotely — slice 1
+  still runs entirely on a developer machine
 
 ### Out
 
@@ -428,16 +430,23 @@ twelve-character minimum — are the narrowed `[OQ-98]`; the mechanism is not op
 generated into two npm **workspace packages** inside `peakpower-web`, which are **committed**:
 
 ```
-peakpower-web/libs/api-client-customer/    name: @peakpower/api-client-customer
-peakpower-web/libs/api-client-employee/    name: @peakpower/api-client-employee
+peakpower-web/libs/api-client-customer/    name: @peakpower-nl/api-client-customer
+peakpower-web/libs/api-client-employee/    name: @peakpower-nl/api-client-employee
 ```
 
 npm workspaces resolve a dependency by the `name` field in its `package.json`, not by registry
-scope, so `import { … } from '@peakpower/api-client-customer'` works locally today and keeps
-working unchanged the day the packages are published — provided the organisation is eventually
-named `peakpower`. That is the reason to keep the specification's name rather than pick one
-that matches an owner we happen to have now: **the migration is then a publish step and an
-`.npmrc`, with not one import touched.**
+scope, so `import { … } from '@peakpower-nl/api-client-customer'` works locally today and keeps
+working unchanged the day the packages are published.
+
+> **Renamed from `@peakpower/` on 2026-08-27.** This paragraph previously argued for keeping
+> `@peakpower/` *"provided the organisation is eventually named `peakpower`"* — the whole case
+> rested on that condition. The organisation was created as **`peakpower-nl`**, so the condition
+> failed, and GitHub Packages requires the scope to match the owning organisation exactly. The
+> rename cost one substitution across the specification because plans 3-6 had not yet run; after
+> them it would have meant touching Angular source, `tsconfig` path mappings, the npm workspace
+> symlinks and both generated clients. **The migration to a registry is still a publish step and
+> an `.npmrc`, with not one import touched** — which was the point of the original argument, and
+> is now actually true.
 
 This is the specification's own sanctioned fallback, not an invention:
 
@@ -463,9 +472,10 @@ and the two repositories drift exactly as `[DEC-55]` warns.
 **Migration, when the organisation exists.** Add `.npmrc` mapping `@peakpower` to
 `https://npm.pkg.github.com`, add a publish step to platform CI, replace the two workspace
 entries with versioned dependencies, delete the committed source. Imports do not change. If the
-organisation ends up named something other than `peakpower`, one find-and-replace across
-`peakpower-web` does change them — which is the cost of `[OQ-100]` staying open, and it is
-small and bounded.
+organisation ended up named `peakpower-nl` rather than `peakpower`, so that find-and-replace was
+in fact required — it was paid on 2026-08-27, across the specification only, because plans 3-6 had
+not yet run and no `peakpower-web` source existed to touch. The bounded cost this paragraph
+predicted turned out to be the actual outcome rather than the unlikely one.
 
 ---
 
@@ -605,7 +615,7 @@ record and the build do not diverge.
 | `[DEC-113]` | Customer companies may be created by **self-service onboarding**. The platform stores an Argon2id credential hash for the customer realm **and owns the password-reset path**. Customers may claim metering points from a shared EAN pool. | `[DEC-16]`, `[DEC-29]`, `[F01-R12]`, `[F01-R23]` |
 | `[DEC-114]` | EAN validation is **18 digits only** for the proof of concept. The GS1 check digit is reinstated before go-live. | the check-digit half of `[F01-R24]` |
 | `[DEC-115]` | The customer portal's navigation and labels follow the design system. Route keys keep the specification's names. | `screens-customer.mjs:7` |
-| `[DEC-116]` | **GitHub Packages** is the destination for generated API clients **once a `peakpower` organisation exists**. Until then slice 1 uses committed npm **workspace packages** — the specification's own §5.1 fallback — keeping the name `@peakpower/api-client-*` so the migration costs a publish step and an `.npmrc` and changes no imports. A scripted staleness check replaces the registry's drift protection. | settles the unnumbered feed question in [solution structure §8](../../../specs/20-architecture/02-solution-structure.md) |
+| `[DEC-116]` | **GitHub Packages** is the destination for generated API clients. The organisation now exists as **`peakpower-nl`** (`[OQ-100]`, resolved 2026-08-27) and the scope was renamed to `@peakpower-nl/` to match, since GitHub Packages requires it; **publishing itself is still out of scope for slice 1**. Until then slice 1 uses committed npm **workspace packages** — the specification's own §5.1 fallback — keeping the name `@peakpower-nl/api-client-*` so the migration costs a publish step and an `.npmrc` and changes no imports. A scripted staleness check replaces the registry's drift protection. | settles the unnumbered feed question in [solution structure §8](../../../specs/20-architecture/02-solution-structure.md) |
 | `[DEC-117]` | Customer authentication is a **JWT** access/refresh pair, ES256 over JWKS, with a `security_stamp` claim checked per request so `[F01-R16]`'s immediate revocation holds against a stateless token. | new ground — `[DEC-20]` assumed no authentication at all |
 | `[DEC-118]` | Assertions use **Shouldly 4.3.0**, not FluentAssertions. 8.x is an Xceed non-commercial licence a commercial platform cannot take, and 7.2.0 is the end of the Apache-2.0 line. A build check fails if FluentAssertions reappears. | closes what was `[OQ-101]`; corrects the testing table in [solution structure §6](../../../specs/20-architecture/02-solution-structure.md) |
 | `[DEC-119]` | **The platform owns identity.** Microsoft Entra ID is dropped entirely, for both realms. The platform issues and validates its own JWTs and holds its own credentials — extending `[DEC-113]` and `[DEC-117]` from proof-of-concept-only to the standing model. | reverses `[DEC-20]`, `[DEC-66]`, `[DEC-67]`; retires the corporate-tenancy dependency in [roadmap §2.1](../../../specs/70-delivery/01-roadmap-and-phasing.md) |
@@ -634,8 +644,8 @@ record and the build do not diverge.
 | `[OQ-97]` | When is the GS1 check digit reinstated, and which weighting is normative? | Both conventions disagree on five of the six demo EANs; the spec says "GS1 check digit" without pinning the algorithm |
 | `[OQ-98]` | Credential **policy values** — sign-in delay curve, reset-token TTL, password composition beyond twelve characters | The mechanism is designed (§7) and no longer open; only the numbers are, and they belong to whoever owns security policy rather than to the delivery team |
 | `[OQ-99]` | The six-product entitlement gate in the demo's rail | A commercial model that appears nowhere in the specification set |
-| `[OQ-102]` | Who owns the RLS login-role credentials? | Slice 1 is local-only, so migration 2 carries two literal passwords with a comment saying so. That is fine on one machine and unacceptable anywhere else, and the first deployment is when it bites |
-| `[OQ-100]` | Which GitHub organisation owns `peakpower-platform` and `peakpower-web`? | **Not blocking.** `[DEC-116]` defers publishing until a `peakpower` organisation exists; slice 1 needs no remote at all. It matters only when CI is stood up, and it stays cheap while nothing outside `peakpower-web` consumes the packages. Creating the organisation is not in the delivery team's gift, so it wants a named owner even though nothing waits on it today |
+| `[OQ-102]` | Who owns the RLS login-role credentials? | Nothing is deployed and the roles exist only in a container `dev-up` recreates, but the literals are now visible to anyone with read access to the private repositories rather than to one machine. Still unowned. Was: slice 1 is local-only, so migration 2 carries two literal passwords with a comment saying so. That is fine on one machine and unacceptable anywhere else, and the first deployment is when it bites |
+| `[OQ-100]` | Which GitHub organisation owns `peakpower-platform` and `peakpower-web`? | **RESOLVED 2026-08-27 — `peakpower-nl`.** Both repositories exist there, privately, and both are pushed. The answer was not `peakpower`, which is what `[DEC-116]` and the `@peakpower/` npm scope had both assumed, so the scope was renamed to `@peakpower-nl/` across the specification — free while plans 3-6 had not run, and the reason to resolve this before rather than after they do. Publishing clients to GitHub Packages remains out of scope. |
 
 ### Not changed, deliberately
 
@@ -681,12 +691,13 @@ dotnet tool install -g aspire.cli
 Verified present on 2026-08-26: .NET SDK 10.0.400 (default), Node 24.15.0, npm 11.12.1,
 Docker 29.7.2 with the daemon running.
 
-**Slice 1 is local-only.** Both target repositories are empty and not yet git-initialised;
+**Slice 1 builds and runs entirely locally.** *(Written when both target repositories were empty and not yet published; they are now private repositories under `peakpower-nl`, which changes where the code lives but not where it runs.)* Both target repositories were empty and not yet git-initialised;
 `git init` is step one and **no remote is added**. There is no CI, no package registry and no
 deployment in this slice. Nothing in the design depends on a GitHub organisation existing, and
 the two things that eventually will — publishing clients `[DEC-116]` and the `deploy/`
-pipelines — are both out of scope. Pushing to remotes is a later, separate step whose only
-prerequisite is `[OQ-100]`.
+pipelines — are both out of scope. Pushing to remotes was that later, separate step: its
+prerequisite `[OQ-100]` resolved on 2026-08-27 and both repositories are now published privately
+under `peakpower-nl`. Publishing *clients* to a registry is still out of scope.
 
 The corporate Entra tenant access request (§13) is the exception worth repeating: it is a
 non-code item, it has the longest lead time in Phase 1, and running locally is precisely the
@@ -713,7 +724,7 @@ third — naming the path it looked in and the two ways to fix it. Your existing
 
 | # | Step | Depends on |
 | --- | --- | --- |
-| 1 | `git init` both repos, no remotes; solution and workspace skeletons; `Directory.*.props`; architecture tests | — |
+| 1 | `git init` both repos (remotes added 2026-08-27, once `peakpower-nl` existed); solution and workspace skeletons; `Directory.*.props`; architecture tests | — |
 | 2 | Migration 1 — extensions, schemas, tables, exclusion constraint, BRP seed | 1 |
 | 3 | Domain: `Customer`, `CustomerAccount`, `MeteringPoint`, `Ean`, `KvkNumber`, `Iban` + tests | 1 |
 | 4 | Tenancy: `ICustomerContext`, query filters, RLS, 404-not-403, **the route-table test** | 2, 3 |

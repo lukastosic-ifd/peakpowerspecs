@@ -64,6 +64,34 @@ can specify. Guessing them in plan 1 would be inventing plan 5's work.
 | 3 | `onboarding_application`, `refresh_token`, `password_reset_token`, and their policies | plan 5 |
 | 4 | the shared EAN pool | plan 6 |
 
+⚠ **Migration 1 seeds one `metering.brp` row. Read it — do not insert it.** PVNed is the only
+balance responsible party in slice 1 `[F12-R49]`, and migration 1's `Up()` seeds it as reference
+data, not demo data, with `ON CONFLICT (code) DO NOTHING` so a re-run of the migration itself is
+harmless:
+
+```
+id    0199a1a0-0000-7000-8000-0000000000b1
+code  PVNED
+name  PVNed B.V.
+is_active  TRUE
+```
+
+`ix_brp_code` is a **unique** index on `code`. Any test fixture that runs
+`Brp.Create("PVNED", ...)` followed by a plain `db.Brps.Add(...)` / `SaveChangesAsync()` — with
+no `ON CONFLICT`, which is what EF Core's normal insert generates — collides with this row and
+raises Postgres `23505`. Query the existing row instead:
+
+```csharp
+var brp = await db.Brps.SingleAsync(b => b.Code == "PVNED");
+```
+
+or select on the literal id above. This is normative for every plan that seeds tenancy or
+metering-point fixtures against a migrated database (plan 2's `TenancyFixture.SeedAsync` and
+plan 6's fixtures currently insert instead; both need this fix before they run against
+migration 1 for the first time). Plan 1's own `MigrationBehaviourTests` and `MigrationScriptTests`
+assert this row exists and is named `PVNed B.V.`, so **dropping the seed instead is not an
+option** — it would take those tests down along with anything downstream that relies on it.
+
 ⚠ **RLS needs database roles the design never mentions.** A superuser or table owner *bypasses*
 RLS silently, so running the APIs on Aspire's default connection would disable the whole
 mechanism while every test still passed. Migration 2 creates `app_customer_role` and

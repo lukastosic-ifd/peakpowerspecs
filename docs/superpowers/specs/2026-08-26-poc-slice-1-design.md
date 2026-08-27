@@ -608,6 +608,7 @@ record and the build do not diverge.
 | `[DEC-116]` | **GitHub Packages** is the destination for generated API clients **once a `peakpower` organisation exists**. Until then slice 1 uses committed npm **workspace packages** — the specification's own §5.1 fallback — keeping the name `@peakpower/api-client-*` so the migration costs a publish step and an `.npmrc` and changes no imports. A scripted staleness check replaces the registry's drift protection. | settles the unnumbered feed question in [solution structure §8](../../../specs/20-architecture/02-solution-structure.md) |
 | `[DEC-117]` | Customer authentication is a **JWT** access/refresh pair, ES256 over JWKS, with a `security_stamp` claim checked per request so `[F01-R16]`'s immediate revocation holds against a stateless token. | new ground — `[DEC-20]` assumed no authentication at all |
 | `[DEC-118]` | Assertions use **Shouldly 4.3.0**, not FluentAssertions. 8.x is an Xceed non-commercial licence a commercial platform cannot take, and 7.2.0 is the end of the Apache-2.0 line. A build check fails if FluentAssertions reappears. | closes what was `[OQ-101]`; corrects the testing table in [solution structure §6](../../../specs/20-architecture/02-solution-structure.md) |
+| `[DEC-119]` | **The platform owns identity.** Microsoft Entra ID is dropped entirely, for both realms. The platform issues and validates its own JWTs and holds its own credentials — extending `[DEC-113]` and `[DEC-117]` from proof-of-concept-only to the standing model. | reverses `[DEC-20]`, `[DEC-66]`, `[DEC-67]`; retires the corporate-tenancy dependency in [roadmap §2.1](../../../specs/70-delivery/01-roadmap-and-phasing.md) |
 
 ### Corrections
 
@@ -644,6 +645,30 @@ switcher would. The dev context provider is still built, because the identity sl
 when the credential moves to Entra.
 
 ---
+
+## 10.1 What `[DEC-119]` changes downstream
+
+Dropping Entra is a simplification, and it removes the plan's single longest-lead-time dependency —
+but it moves work rather than deleting it. What follows from it:
+
+| Was | Becomes |
+| --- | --- |
+| `[DEC-20]` Entra ID in production, PoC unauthenticated | the platform authenticates both realms, from the start |
+| `[DEC-66]` the corporate Microsoft tenancy | nothing — no tenant, no app registrations `[F13-R03]` |
+| `[DEC-67]` claim-mapping spike against that tenancy | nothing — there is no external claim to map |
+| `[F13-R32]` the `customer_id` claim mapping | the platform mints the claim itself; `[DEC-117]` already specifies it |
+| `[DEC-92]` MFA enforced by Conditional Access | **unowned** — MFA is now the platform's to build or to drop. Register it |
+| `[DEC-29]` the identity provider owns credentials | already reversed by `[DEC-113]`; now reversed for employees too |
+| `CustomerAccount.ExternalSubjectId` | dead column — keep it or drop it, but nothing sets it |
+| The **employee** realm, previously Entra-only | needs its own credential store, sign-in and token issuance — work plan 5 did not scope |
+
+⚠ **Two things get harder, not easier.** The employee realm now needs everything the customer realm
+has, which plan 5 sized for one realm. And password reset, lockout and MFA become the platform's
+problem for staff as well as customers — `[OQ-98]` widens.
+
+⚠ **One thing gets much easier.** The critical path shortens: `[DEC-67]` put a spike against someone
+else's tenancy on it by choice, and roadmap §2.1's tenant-access row was the only Phase 1 dependency
+with a hard external blocker and no substitute. Both are gone.
 
 ## 11. Local development
 

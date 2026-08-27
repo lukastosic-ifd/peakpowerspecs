@@ -486,19 +486,21 @@ Design §13's week-1 non-code deliverable. Longest lead time in phase 1; [DEC-67
 proving the claim mapping against a developer tenant, so nothing here can be simulated.
 
 - Owner: Thinh Huynh <thinh@kikker.nl>
-- Raised: $(date -I)
-- Asked of: corporate IT service desk
+- Prepared: $(date -I)
+- To be asked of: corporate IT service desk
 - Asked for: app registration and service principal in the corporate Entra tenant, with the
   claims the employee sign-in maps (\`oid\`, \`upn\`, group membership)
 - Needed by: the slice that puts employee sign-in behind Entra. Slice 1 stores
   \`CustomerAccount.ExternalSubjectId\` as null and does not use it.
-- Status: raised, awaiting the tenant administrator
+- Status: **NOT YET RAISED.** Raising it is an action for the owner above — no agent can file a
+  ticket with corporate IT, and nothing in this repository can substitute for it.
 
-Update the status line when it is granted. Until then this file is the answer to "did anyone
-actually ask?"
+Update the status when the request is actually made, and again when it is granted. This file is
+the answer to "did anyone actually ask?", so it must never claim more than is true: a record that
+says "raised" when nobody asked is worse than no record, because it makes the item look handled.
 MD
 git add docs/entra-tenant-access-request.md
-git commit -m "chore: record the corporate Entra tenant access request raised in week 1"
+git commit -m "chore: record the corporate Entra tenant access request as prepared, not raised"
 ```
 
 ---

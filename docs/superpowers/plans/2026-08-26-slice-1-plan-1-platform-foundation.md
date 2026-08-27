@@ -2515,19 +2515,19 @@ public sealed class EnumSpellingTests
     [Fact]
     public void CustomerStatus_has_exactly_four_members()
     {
-        Enum.GetNames<CustomerStatus>().ShouldBe("Prospect", "Active", "Suspended", "Closed");
+        Enum.GetNames<CustomerStatus>().ShouldBe(new[] { "Prospect", "Active", "Suspended", "Closed" });
     }
 
     [Fact]
     public void AccountStatus_includes_PendingApproval_which_the_domain_model_document_omits()
     {
-        Enum.GetNames<AccountStatus>().ShouldBe("PendingApproval", "Invited", "Active", "Deactivated");
+        Enum.GetNames<AccountStatus>().ShouldBe(new[] { "PendingApproval", "Invited", "Active", "Deactivated" });
     }
 
     [Fact]
     public void ProductionExpectation_calls_the_middle_value_Never_not_NotExpected()
     {
-        Enum.GetNames<ProductionExpectation>().ShouldBe("Unknown", "Never", "Expected");
+        Enum.GetNames<ProductionExpectation>().ShouldBe(new[] { "Unknown", "Never", "Expected" });
     }
 
     [Fact]
@@ -2546,7 +2546,7 @@ public sealed class EnumSpellingTests
     [Fact]
     public void BankAccountStatus_has_exactly_three_members()
     {
-        Enum.GetNames<BankAccountStatus>().ShouldBe("PendingApproval", "Active", "Deactivated");
+        Enum.GetNames<BankAccountStatus>().ShouldBe(new[] { "PendingApproval", "Active", "Deactivated" });
     }
 
     [Fact]

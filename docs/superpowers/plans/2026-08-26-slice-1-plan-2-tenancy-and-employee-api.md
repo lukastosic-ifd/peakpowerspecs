@@ -2022,7 +2022,7 @@ public sealed class EnumWireFormatTests
     public void the_names_helper_lists_every_value_in_wire_spelling()
     {
         EnumWireFormat.Names<ProductionExpectation>()
-            .ShouldBe("UNKNOWN", "NEVER", "EXPECTED");
+            .ShouldBe(new[] { "UNKNOWN", "NEVER", "EXPECTED" });
     }
 
     [Fact]

@@ -1052,6 +1052,14 @@ cat > src/Hosts/PeakPower.ServiceDefaults/PeakPower.ServiceDefaults.csproj <<'XM
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
+    <!--
+      AddServiceDefaults registers IMarketCalendar for every host (Task 24), so the shared
+      composition root needs the implementation. This is the module rule working as intended:
+      a Hosts-tier project references infrastructure solely to register it in DI.
+    -->
+    <ProjectReference Include="../../Infrastructure/PeakPower.Infrastructure.Time/PeakPower.Infrastructure.Time.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />

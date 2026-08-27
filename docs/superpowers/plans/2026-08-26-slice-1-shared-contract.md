@@ -201,7 +201,9 @@ public sealed class CustomerAccount              // aggregate root
     public bool IsAdmin { get; }                 // [DEC-71] — column only in slice 1
     public string? PasswordHash { get; }         // Argon2id  [DEC-113]
     public Guid SecurityStamp { get; }           // bumped to revoke every token  [DEC-117]
-    public string? ExternalSubjectId { get; }    // reserved for Entra; null in slice 1
+    public string? ExternalSubjectId { get; }    // DEAD COLUMN. Was reserved for Entra, which
+                                                 // [DEC-119] drops. Always null. Drop it in the
+                                                 // migration that follows slice 1.
     public DateTimeOffset? LastLoginAt { get; }
 }
 

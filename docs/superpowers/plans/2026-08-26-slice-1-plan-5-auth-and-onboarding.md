@@ -1212,9 +1212,10 @@ using PeakPower.Domain.Customers;
 namespace PeakPower.Infrastructure.Identity;
 
 /// <summary>
-/// ES256 over a local JWKS, not HS256 over a shared secret. The point is that the validation
-/// path here is the same code that will one day validate an Entra token: migrating means
-/// changing an issuer and pointing at a remote JWKS URL, not replacing the pipeline.
+/// ES256 over a local JWKS, not HS256 over a shared secret. Asymmetric signing keeps the
+/// signing key out of every service that merely *verifies* a token, and a JWKS endpoint lets
+/// keys rotate without redeploying the verifiers. [DEC-119]: the platform owns identity
+/// permanently - there is no external provider to migrate to.
 /// </summary>
 public sealed class JwtTokenIssuer(ISigningKeyStore keys, IMarketCalendar calendar) : ITokenIssuer
 {
@@ -1842,10 +1843,9 @@ namespace PeakPower.Infrastructure.Identity;
 
 /// <summary>
 /// One place defines how a customer access token is validated, so the host and its tests can
-/// never drift apart on the rules. When the credential moves to Entra, only the two lines that
-/// supply the issuer and the keys change: <c>ValidIssuer</c> becomes the tenant's issuer and
-/// <c>IssuerSigningKeys</c> is replaced by an <c>Authority</c> that fetches the remote JWKS.
-/// Everything else here is already what an Entra token needs.
+/// never drift apart on the rules. PeakPower is the issuer and holds the keys [DEC-119]; if a
+/// second PeakPower service ever needs to verify these tokens it points <c>Authority</c> at this
+/// platform's own JWKS endpoint and changes nothing else here.
 /// </summary>
 public static class CustomerTokenValidation
 {

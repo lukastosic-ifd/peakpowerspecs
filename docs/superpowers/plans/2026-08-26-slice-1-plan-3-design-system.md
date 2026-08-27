@@ -343,7 +343,7 @@ test('npm workspaces cover libs/, so @peakpower-nl/* resolves by package name', 
 test('the shared-ui path mapping points at the library source', () => {
   const tsconfig = readJson('tsconfig.json');
   assert.deepEqual(tsconfig.compilerOptions.paths['@peakpower-nl/shared-ui'], [
-    'libs/shared-ui/src/public-api.ts',
+    './libs/shared-ui/src/public-api.ts',
   ]);
 });
 ```
@@ -428,7 +428,7 @@ Create `/Users/thinhhuynh/PeakPower/peakpower-web/tsconfig.json`:
     "target": "ES2022",
     "module": "preserve",
     "paths": {
-      "@peakpower-nl/shared-ui": ["libs/shared-ui/src/public-api.ts"]
+      "@peakpower-nl/shared-ui": ["./libs/shared-ui/src/public-api.ts"]
     }
   },
   "angularCompilerOptions": {

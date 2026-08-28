@@ -267,7 +267,7 @@ every endpoint must either require authorization or be named in an explicit list
 
 **Domain terms, once.** *KvK* (Kamer van Koophandel) is the Dutch chamber of commerce; a KvK
 number is exactly eight digits and identifies a legal entity. *IBAN* is the international bank
-account number; Dutch ones look like `NL18INGB0002445566`. *BRP* (balance responsible party) is
+account number; Dutch ones look like `NL98INGB0002445566`. *BRP* (balance responsible party) is
 the market participant answerable for a connection's imbalance. An *EAN* is the 18-digit code
 identifying a grid connection point. A *connection* and a *metering point* are the same thing;
 the portal says connection, the schema says metering point.
@@ -4347,7 +4347,7 @@ public sealed class OnboardingApplicationTests
     {
         var good = Started().ApplyBankAccount("NL18 INGB 0002 4455 66", "Vandersteen Koeling B.V.");
         good.IsSuccess.ShouldBeTrue();
-        good.Value.Iban.ShouldBe("NL18INGB0002445566");
+        good.Value.Iban.ShouldBe("NL98INGB0002445566");
         good.Value.BankVerifiedAt.ShouldBeNull("no payment rail exists in slice 1");
 
         var bad = Started().ApplyBankAccount("NL19 INGB 0002 4455 66", "Vandersteen Koeling B.V.");
@@ -5314,7 +5314,7 @@ public sealed class OnboardingMaterialisationTests(CustomerApiFactory factory)
             new Address("Havenweg", "22", null, "3089 JJ", "Rotterdam", "NL"));
         application.ApplyIndustry("Agriculture & Food Processing");
         application.ApplyVolume(FlowDirection.Both, VolumeBand.From1000To2500Mwh);
-        application.ApplyBankAccount("NL18INGB0002445566", "Vandersteen Koeling B.V.");
+        application.ApplyBankAccount("NL98INGB0002445566", "Vandersteen Koeling B.V.");
         application.ApplySigningAuthority(SigningAuthority.Alone);
         application.SetSignatories(
             [new OnboardingSignatory("Peter", "de Vries", application.Email, true)]);
@@ -5856,7 +5856,7 @@ public sealed class OnboardingEndpointTests(CustomerApiFactory factory)
 
         (await client.PatchAsJsonAsync(url, Step(6) with
         {
-            Iban = "NL18INGB0002445566",
+            Iban = "NL98INGB0002445566",
             BankAccountHolder = "Vandersteen Koeling B.V.",
         })).StatusCode.ShouldBe(HttpStatusCode.OK);
 

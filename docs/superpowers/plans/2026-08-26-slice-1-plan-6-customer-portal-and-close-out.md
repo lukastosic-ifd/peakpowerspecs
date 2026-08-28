@@ -7627,7 +7627,7 @@ function filled(): OnboardingState {
       houseNumberSuffix: '',
       postcode: '3089 JJ',
       city: 'Rotterdam',
-      iban: 'NL18INGB0002445566',
+      iban: 'NL98INGB0002445566',
       bankAccountHolder: 'Vandersteen Koeling B.V.',
     },
     agreed: true,
@@ -7849,7 +7849,7 @@ describe('saveStepRequest', () => {
   });
 
   it('sends the bank details on step 6 and blanks as null', () => {
-    expect(saveStepRequest(filled(), 6).iban).toBe('NL18INGB0002445566');
+    expect(saveStepRequest(filled(), 6).iban).toBe('NL98INGB0002445566');
     expect(saveStepRequest(defaultState(), 6).iban).toBeNull();
   });
 });
@@ -10426,14 +10426,14 @@ existing `describe('OnboardingWizard', …)`:
       ...s,
       step: 6,
       applicationId: 'app-1',
-      f: { ...s.f, iban: 'NL18INGB0002445566', bankAccountHolder: 'Vandersteen Koeling B.V.' },
+      f: { ...s.f, iban: 'NL98INGB0002445566', bankAccountHolder: 'Vandersteen Koeling B.V.' },
     }));
     await fixture.whenStable();
 
     fixture.componentInstance.verifyBank();
 
     const save = http.expectOne('/api/v1/onboarding/applications/app-1');
-    expect(save.request.body.iban).toBe('NL18INGB0002445566');
+    expect(save.request.body.iban).toBe('NL98INGB0002445566');
     save.flush({ id: 'app-1', reference: 'PP-ONB-7F3K', status: 'Draft' });
     await fixture.whenStable();
 
@@ -14438,7 +14438,7 @@ test('a prospect onboards, signs in, sees a connection and renames it', async ({
 
   // ── Step 6 · the cent ─────────────────────────────────────────────────────
   await expect(page.getByText('Step 6 of 10')).toBeVisible();
-  await page.locator('#iban').fill('NL18INGB0002445566');
+  await page.locator('#iban').fill('NL98INGB0002445566');
   await page.locator('#bankAccountHolder').fill('E2E Koeling B.V.');
   await page.locator('#pay-ideal').click();
   await expect(page.getByText('Bank account verified')).toBeVisible();

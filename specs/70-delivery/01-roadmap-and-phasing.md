@@ -254,10 +254,49 @@ this table exists to prevent.
 placeholder — [OQ-88] closed without anyone being asked for anything, and **[DEC-66]** says so
 explicitly. **A dependency with a date and no name is a date nobody misses.**
 
-⚠ **Two rows were added on 2026-08-19 and the table is now the plan's real critical path.** Five of
-the six rows are needed before phase 2 ends — every one except the DPIA transfer — and two of them,
-[OQ-69] and the mapping **[DEC-107]**, are blocking rather than merely early. None of the six is engineering work; all six are somebody
-saying yes. That ratio is worth reading twice: the plan's largest single exposure is not code.
+⚠ **Two rows were added on 2026-08-19 and the table is now the plan's real critical path.** **Four
+of the six** rows are needed before phase 2 ends — see the 2026-08-19 round below, which is the count
+that governs. (An earlier draft of this note said five; the round that added the two rows also moved
+one out of phase 2.) Two of them, [OQ-69] and the mapping **[DEC-107]**, are blocking rather than
+merely early. None of the six is engineering work; all six are somebody saying yes. That ratio is
+worth reading twice: the plan's largest single exposure is not code.
+
+⚠ **One of the six was resolved by removing it — 2026-09-03, [DEC-119].** The **Entra tenant access**
+row is closed, not by access arriving but by the proof of concept ceasing to need it: the platform
+now owns identity outright, JWT only, with no Microsoft integration anywhere. What that buys is that
+slice 1 was not blocked. What it costs is recorded rather than netted off — **[DEC-92]**'s mandatory
+MFA and **[DEC-51]**'s tenant-enforced Conditional Access have nothing enforcing them, and employee
+single sign-on does not exist. The row returns the day an identity provider does, and it returns
+carrying a **migration** for the credentials the platform has stored in the meantime.
+
+## 2.2 Proof-of-concept slice 1 — what shipped, and what it shipped without
+
+⚠ **Added 2026-09-03.** Slice 1 was built ahead of phase 1 as a working proof of concept across two
+repositories: the customer API, the generated client, and the Angular customer portal — onboarding
+wizard, sign-in, password reset, connections, naming, EAN-pool claiming and the company profile.
+**Every screen exists.** This section records what it does *not* have, because the alternative is
+that each item is rediscovered by whoever hits it.
+
+**Scope decisions, deliberate:** **no CI, no package registry, no deployment.** Both repositories are
+published privately under the `peakpower-nl` organisation and pushed; nothing is built or run
+remotely. The five `tools/verify-*.sh` guards on the platform side are run by hand. The cross-repo
+client staleness check is the exception and was moved into the web workspace's own `npm test` for
+exactly that reason.
+
+**Open, with no owner, and every one of them raised by an implementer who could not fix it from
+where they stood:**
+
+| # | Gap | Why it is not cosmetic |
+| --: | --- | --- |
+| 1 | **Consent and choice controls are keyboard-unreachable.** Five `(click)` handlers sit on `<div>`s with no `role`, no `tabindex` and no key handler, across **four required onboarding steps** — 1 (terms), 5 (flow and volume), 7 (signing authority) and **9 (the signature)** | **Blocking, not polish.** A keyboard-only or screen-reader customer **cannot sign the contract**. The other items degrade the experience; this one prevents completion |
+| 2 | **No skip link anywhere, and no `<main>` outside the onboarding wizard.** `<h1>` is present on connections (list, detail, claim), company and the wizard, and **absent** from the dashboard, sign-in, forgot-password and reset-password | Raised by three tasks in a row, and none could fix it: the heading element lives in `libs/shared-ui`'s `PpCard`, which renders a `div`, and a customer-portal task may not change a library the employee portal also uses |
+| 3 | **`aria-describedby` is absent from the whole workspace.** `pp-form-field` emits an id-less `<p>` for its validation message | The label/`for` half is wired and tested; the half that reads the error aloud is not, so a validation failure is silent to a screen reader |
+| 4 | **There is no shared error-state treatment.** No screen brief in the plan specified one | A 500 on the company page renders **less than empty**: the People section *and its own empty-state `@else`* both vanish, leaving three container comments. The customer sees a page that appears to have silently lost data |
+| 5 | **The reset-password flow cannot be completed by a human.** The email says "use this code" and carries **no URL**; the screen reads a `?token=` query parameter and offers no field to paste a code into | Completable by a machine and not by a person. The end-to-end test constructs the URL directly, so nothing red |
+| 6 | **No workspace guard for `var(--pp-*)` tokens.** Every task has checked them by hand | A non-existent token renders invisibly rather than failing |
+
+Items 2, 3 and 6 are cross-cutting by nature — cheapest once every screen exists, which is now.
+Item 1 is the one that decides whether the flow can be signed off at all.
 
 ## 3. Phase 1 — *See your data*
 

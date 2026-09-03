@@ -57,6 +57,19 @@ above describes this round of wireframes rather than a standing position.
 
 ## Design decisions worth noting
 
+**Labels come from the design system; route keys come from the specifications.** `[DEC-115]`, added
+2026-09-03. The wireframes here name the customer rail
+`Dashboard · Connections · Volume · Prices · Trades · Balance · Settlements · Company`; they
+previously read `Consumption · Trading · Wallet · Invoices` for four of those and carried no
+`Company` row at all. The built portal uses the same words over the **unchanged** route keys, mapped
+in one place — `PAGE_LABELS`. When a mockup and the portal disagree about a **word**, the portal is
+right; when they disagree about a **URL**, the mockup is.
+
+⚠ **`employee-customer-admin.svg` is stale for a different reason and is deliberately left alone.**
+It predates `[DEC-71]` and still shows editable bank details with an Edit button, no admin flag and
+no four-eyes toggle. Regenerating it needs the current requirements read first, so it is a follow-up
+rather than a half-fix.
+
 **The block step line is the signature element.** Its 08:00 and 20:00 steps are the clearest possible
 expression of what a peak block is. Everything about the day chart is arranged so that step is
 unmissable, and the peak window is shaded behind it.

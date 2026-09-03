@@ -53,7 +53,12 @@ src/Infrastructure/ Persistence · Time · Web · Identity · Email
 tests/              Domain.Tests · Application.Tests · Integration.Tests · Architecture.Tests
 ```
 
-Eleven source projects, four test projects. Design §10 proposes the correction upstream.
+~~Eleven source projects, four test projects.~~ ⚠ **Corrected 2026-09-03, counted against
+`PeakPower.sln` rather than against this list: THIRTEEN source projects and FIVE test projects,
+eighteen in all.** The block above already names thirteen sources — 5 hosts + 3 core + 5
+infrastructure — so "eleven" was arithmetic, not a different list. The fifth test project is
+`PeakPower.AppHost.Tests`, which is in no earlier list at all. The correction is now upstream in
+[solution structure §1.1](../../../specs/20-architecture/02-solution-structure.md).
 
 ## 3.2 Migrations — migration 1 does not create every table
 
@@ -324,6 +329,55 @@ declares `public partial class Program`.**
 Both APIs register **one shared `JsonStringEnumConverter`** mapping each enum to its database
 spelling; no mapper calls `.ToString()` on an enum, and no client hard-codes PascalCase.
 
+> ⚠ **Amended 2026-09-03: "the wire spelling IS the database spelling" is FALSE for four members,
+> and the failure is sharper than a mismatch.**
+>
+> Two independent SCREAMING_SNAKE algorithms exist. `EnumWireFormat` (JSON, both APIs) uses
+> `JsonNamingPolicy.SnakeCaseUpper`, which treats a run of capitals as **one word**. The
+> persistence converter `EnumToScreamingSnakeConverter<T>` breaks before **every** capital without
+> exception. They agree on any name with no adjacent capitals — `PendingApproval` →
+> `PENDING_APPROVAL` either way — and disagree the moment two capitals sit together:
+>
+> | Member | On the wire | Stored in PostgreSQL |
+> | --- | --- | --- |
+> | `LegalEntityType.BV` | `BV` | `B_V` |
+> | `LegalEntityType.NV` | `NV` | `N_V` |
+> | `LegalEntityType.VOF` | `VOF` | `V_O_F` |
+> | `LegalEntityType.CV` | `CV` | `C_V` |
+>
+> **These four are the whole divergence**, over the ten enums EF actually converts.
+>
+> **The sharp form:** `EnumToScreamingSnakeConverter<T>.FromScreamingSnake` title-cases each
+> underscore-delimited segment and hands the result to the **case-sensitive** `Enum.Parse<T>`. Fed
+> the *wire* spelling `"BV"` it builds `"Bv"`, which matches no member, and **throws
+> `ArgumentException`**. A row that ever carried the wire spelling in a column this converter reads
+> is an unhandled exception on every subsequent read — not a value that merely disagrees.
+>
+> **Ruling: the wire spelling stays.** `BV`, `NV`, `VOF` and `CV` are how a Dutch legal entity type
+> is actually written; `B_V` is not, and the wire is the customer-facing surface. Changing the
+> stored values needs a data migration, which is disproportionate for a proof of concept.
+> **`EnumWireAlgorithmDivergenceTests` freezes the divergence to exactly this four-member allow-list
+> so nothing widens it by accident. It does not repair the read path**, and it is not a migration.
+> **[OQ-101]** owns that. Cost, stated: anyone inferring a stored value from a wire value gets these
+> four wrong.
+
+> ⚠ **The four `VolumeBand` wire tokens carry no underscore before their digits** (recorded
+> 2026-09-03), because `SnakeCaseUpper` keeps a digit attached to the word it follows:
+>
+> `UP_TO250_MWH` · `FROM250_TO500_MWH` · `FROM500_TO1000_MWH` · `FROM1000_TO2500_MWH` ·
+> `ABOVE2500_MWH`
+>
+> **That is the contract's permanent spelling, by ruling.** A hand-written map to the prettier
+> `UP_TO_250_MWH` was rejected: a hand-maintained token map is precisely where the **accepted** set
+> and the **documented** set drift apart, and the transformer that publishes these values now sources
+> them from `EnumWireFormat.Names<T>()` — the same array the parser accepts — so the two are
+> literally one list rather than two that agree today. Ugly-but-derived beats pretty-but-hand-
+> maintained. Cost, accepted: four tokens a human would not have chosen, in a customer-facing
+> contract, permanently.
+>
+> Parsing is **strict, case-sensitive and does not trim**: `"ALONE "` is a 422, so a client must trim
+> before sending.
+
 ## 6. Application ports
 
 **Where each port is declared and implemented.** Every interface below is *declared* in
@@ -396,6 +450,16 @@ public sealed record AccessToken(string Jwt, DateTimeOffset ExpiresAt);
 | `stamp` | guid string | `CustomerAccount.SecurityStamp`, compared per request |
 
 Access token 15 minutes, ES256. Refresh token 14 days, rotating, single-use, stored hashed.
+
+⚠ **`amr` is evidence only — nothing rejects on it** (recorded 2026-09-03, **[DEC-119]**). There is
+no identity provider, so `["pwd"]` is a password rather than a second factor and the claim is read by
+nobody. **[F13-R45]** and **[DEC-92]**'s mandatory MFA are recorded and unbuilt; the specification
+now says so in `05-api-contracts.md` §1.2 and `07-security.md` §3.1.0 rather than reading safer on
+paper than in production.
+
+⚠ **There is no `roles` claim and no `account_id` claim.** The role model is the boolean `is_admin`
+above, and the person is `sub`. Both are correct here and were wrong in `05-api-contracts.md`, which
+is now amended.
 
 ## 8. HTTP
 

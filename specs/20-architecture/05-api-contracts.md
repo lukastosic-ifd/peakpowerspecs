@@ -31,8 +31,8 @@ deleted, with the decision that removed it.
 | Idempotency | `Idempotency-Key` header required on all state-changing POSTs |
 | Concurrency | `If-Match` with an ETag on updates that can conflict |
 | Correlation | `X-Correlation-Id` accepted and echoed; generated if absent |
-| Authentication strength | A customer token must **evidence multi-factor authentication** **[DEC-92]** — §1.2 |
-| Roles | Every customer token carries `customer.user`; an admin carries `customer.admin` beside it **[DEC-71]**, **[F13-R43]** — §1.2 |
+| Authentication strength | A customer token must **evidence multi-factor authentication** **[DEC-92]** — §1.2. ⚠ **Suspended 2026-09-03 by [DEC-119]:** the token carries `amr: ["pwd"]` and **nothing rejects on it** |
+| Roles | ~~Every customer token carries `customer.user`; an admin carries `customer.admin` beside it~~ ⚠ **Corrected 2026-09-03:** there is **no `roles` claim**. The role model is a boolean `is_admin` claim **[DEC-71]**, **[F13-R43]** — §1.2 |
 | VAT | Every amount is **ex-VAT** **[DEC-26]**, **[DEC-76]** — the platform computes no VAT at all. The single exception is a trade reservation and the debit it becomes, which are VAT-**inclusive** **[DEC-78]** and always carry the `vatRate` they used |
 
 ### 1.1 Error shape
@@ -60,9 +60,16 @@ than assumed from the tenant that issued it.
 | Claim | Carries | What the API does with it |
 | --- | --- | --- |
 | `customer_id` | the **company** | Scopes every read and write **[F13-R14]**. Never a path parameter on the customer API |
-| `account_id` | the **person** | Stamped on every write as the acting account **[DEC-17]**. Never scopes |
-| `roles` | `customer.user`, plus `customer.admin` for an admin **[F13-R43]** | Decides who may raise and who may approve a four-eyes action **[DEC-71]**, §2.10. Nothing else branches on it — an admin reads and writes exactly what a non-admin does **[F13-R41]** |
-| `amr` | the authentication methods used | Rejects the call unless one of them is a second factor **[DEC-92]**, **[F13-R45]** |
+| ~~`account_id`~~ `sub` | the **person** | Stamped on every write as the acting account **[DEC-17]**. Never scopes. ⚠ **Renamed 2026-09-03**: the claim is the standard `sub`, not `account_id`; the meaning is unchanged |
+| ~~`roles`~~ `is_admin` | ~~`customer.user`, plus `customer.admin` for an admin~~ `"true"` / `"false"` **[F13-R43]** | Decides who may raise and who may approve a four-eyes action **[DEC-71]**, §2.10. Nothing else branches on it — an admin reads and writes exactly what a non-admin does **[F13-R41]**. ⚠ **Corrected 2026-09-03:** there is no `roles` claim and no `customer.*` role vocabulary. The flag is one boolean claim, and `ICustomerContext` reads that |
+| `amr` | the authentication methods used | ~~Rejects the call unless one of them is a second factor~~ ⚠ **Corrected 2026-09-03 by [DEC-119]: evidence only.** The claim is issued as `["pwd"]` — a password, not a second factor — and **nothing anywhere rejects on it**. The verification **[DEC-92]**, **[F13-R45]** describes is recorded, not built; see [Security §3.1.0](07-security.md) |
+| `stamp` | `customer_account.security_stamp` | ⚠ **Added 2026-09-03 by [DEC-117].** Compared to the account's stored stamp on **every** request. It costs nothing measurable — the request already opens a transaction to `SET LOCAL app.customer_id` — and it is what makes **[F01-R16]**'s *immediate* revocation literally true against a stateless 15-minute token |
+
+⚠ **None of the following paragraph is built — [DEC-119], added 2026-09-03.** There is no Entra
+tenant, so there is no Conditional Access enforcing anything and no `amr` value the platform did not
+mint itself. The `403 mfa-required` response shape below is **never produced**. The text is kept
+because it states what has to be reinstated when an identity provider exists, and because a security
+requirement quietly deleted is a requirement nobody reinstates.
 
 **MFA is mandatory for customer users [DEC-92].** It is still *enforced* by Conditional Access on the
 corporate tenancy **[DEC-66]** and the platform still implements no MFA, no enrolment and no step-up —
@@ -93,7 +100,7 @@ set is corrected — which is why the rejection is logged with its reason **[F13
 is configuration. The alternative failure is worse and silent: accepting single-factor sign-ins and
 never knowing.
 
-**The admin flag rides in the existing `roles` claim [DEC-71].** `customer.admin` beside
+**~~The admin flag rides in the existing `roles` claim~~ [DEC-71].** ⚠ **Corrected 2026-09-03: it is its own `is_admin` claim.** There is no `roles` claim on this API. The reasoning below — one authorisation vocabulary rather than a parallel boolean one — is what was *intended*; what was built is the boolean, and `ICustomerContext` reads it directly. The paragraph's **re-validation** is achieved by a different mechanism than it describes, and the guarantee is intact: `is_admin` is read off the token and is *not* compared to the account row per request — but changing the flag **bumps `security_stamp`**, and the `stamp` claim is compared on every request **[DEC-117]**, so a token minted before the flag was cleared is rejected on its very next call. Same property, one comparison instead of two. `customer.admin` beside
 `customer.user`, so deny-by-default endpoint declaration **[F13-R18]** keeps one authorisation
 vocabulary instead of gaining a parallel boolean one, and like `customer_id` and `account_id` it is
 **re-validated against the platform's own account record on every request** **[F13-R43]** — a claim
@@ -120,14 +127,67 @@ account of a company sees the same data **[DEC-16]** — but it is stamped on ev
 account **[DEC-17]**. Two claims, two jobs: `customer_id` decides *what may be touched*, `account_id`
 records *who touched it*.
 
+### 2.0 Authentication and onboarding — ⚠ added 2026-09-03
+
+Neither group existed when this document was written, because the proof of concept was to run
+unauthenticated **[DEC-20]**. **[DEC-113]** and **[DEC-117]** created both. These are the routes as
+frozen in `artifacts/openapi/customer.json`; the paths below are relative to `/api/v1`.
+
+**Auth [DEC-117]** — the two `password-reset` routes and `sign-in` are anonymous; the rest need a
+token.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/auth/sign-in` | Username and password for an access token (15 min) and a rotating refresh cookie. `200` or `401`, and the `401` is **byte-identical** for a wrong password, an unknown username and a deactivated account — one branch, one constant response, deliberately no oracle |
+| `POST` | `/auth/refresh` | Rotates the HttpOnly `pp_refresh` cookie. No request body: the cookie **is** the credential |
+| `POST` | `/auth/sign-out` | Revokes the refresh chain and clears the cookie. `204` |
+| `GET` | `/auth/me` | The signed-in account |
+| `POST` | `/auth/password-reset/requests` | Always `202`, whether or not the address exists **[DEC-113]** |
+| `POST` | `/auth/password-reset/completions` | Token plus new password. `204`, and every session for that account dies with it |
+| `GET` | `/.well-known/jwks.json` | The ES256 verification key **[DEC-117]**. Anonymous by definition |
+
+**Onboarding [DEC-113]** — the nine-step self-service wizard. **Every route here is anonymous**: a
+prospect has no company and no token until step 9 signs.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/onboarding/applications` | Start a draft. `201` with `Location` |
+| `PATCH` | `/onboarding/applications/{id}` | Save one step. **A partial save sends every field**, with the ten optional ones explicitly `null` |
+| `POST` | `/onboarding/applications/{id}/signatories` | Step 8. `202` with `Location` |
+| `POST` | `/onboarding/applications/{id}/bank-verification/simulate` | Stands in for a real bank check for the proof of concept |
+| `POST` | `/onboarding/applications/{id}/sign` | Step 9. Six-digit code; creates the company, the account and the wallet in one transaction |
+| `GET` | `/onboarding/applications/{id}/sign-code` | ⚠ **Development only, and the gate is structural rather than a route condition.** The route is mapped **unconditionally** and appears in the frozen contract; what is gated is its **backing store**, registered only when the host is Development. Outside Development the store is absent and the route answers `404`. Mapping it conditionally would have made the contract differ between environments — worse than a documented `404` |
+
+⚠ **Onboarding's rejections are `422`, and they carry no `errors` map.** The routes are declared
+`ProducesProblem`, never `ProducesValidationProblem`, so a client **cannot** field-target a validation
+message from an onboarding response the way it can from `/metering-points`. That is a real limit on
+the wizard, not an omission in this table.
+
 ### 2.1 Metering points
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/metering-points` | List with search, filter, sort |
+| `POST` | `/metering-points` | ⚠ **Added 2026-09-03 [DEC-113].** Claim an unclaimed EAN out of the shared pool and attach it to the company. `201` with `Location`; `409` when someone claimed it first; `404` for an EAN that is not in the pool at all — those are two different answers and a client needs both |
 | `GET` | `/metering-points/{id}` | Detail with data-quality summary |
-| `PATCH` | `/metering-points/{id}/label` | Set friendly name and description |
+| `PATCH` | `/metering-points/{id}/naming` | Set friendly name and description |
+| `GET` | `/ean-pool` | ⚠ **Added 2026-09-03 [DEC-113].** The unclaimed pool. It is **shared reference data**, not tenant-scoped — two different companies must receive byte-identical bodies — so it has its own tenancy classification rather than being labelled tenant-scoped and lying about it. It still requires a token |
 | `GET` | `/metering-points/{id}/data-quality` | Per-date data state for a range |
+
+> **Renamed from `/label` on 2026-08-26**, following the friendly name settling as `name` +
+> `description` columns on `metering_point`. The route had no consumers when it was renamed, so it
+> was free then and awkward later.
+
+⚠ **Framework `400` and `415` are deliberately undeclared** on the nine body-binding operations
+(recorded 2026-09-03). Three of them — `POST /metering-points`, `PATCH /metering-points/{id}/naming`
+and `POST /auth/password-reset/completions` — already own a **domain-meaning** `400`. The only
+available mechanism adds a response by `TryAdd`, so a document-wide framework `400` would *skip*
+those three and land on the other six, producing a contract where `400` means "malformed JSON" on six
+operations and "name too long" on three. Inconsistent is worse than absent, and a blind overwrite
+would replace `HttpValidationProblemDetails` with a bare `ProblemDetails` on the two routes that
+legitimately return a field-keyed `errors` map. **Cost, accepted:** a generated client types a
+malformed-body `400` and a wrong-content-type `415` as untyped failures. They are client bugs rather
+than API outcomes, so a correct client cannot reach them.
 
 ### 2.2 Consumption
 

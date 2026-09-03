@@ -125,6 +125,40 @@ SET LOCAL app.customer_id = '…';   -- set from the validated token, per reques
    platform does not record as one is rejected and alerted, on the same footing as rule 4 — the flag
    is worth forging precisely because it is the whole of the four-eyes control.
 
+⚠ **Row-level security needs database roles, and this document never mentions them** (added
+2026-09-03). A superuser or a table owner **bypasses** RLS silently: with the APIs on the default
+connection, every policy in this section is inert while every test still passes — the most expensive
+kind of green. Migration 2 therefore creates `app_customer_role` and `app_employee_role`, plus two
+non-owner **login** roles, and each host rewrites its connection string onto its own role. The
+Migrator keeps the owner connection, because it must be able to create and alter the tables the
+policies sit on.
+
+Slice 1 is local-only with no deployment, so the two login passwords are literals in the migration
+with a comment saying exactly that. **[OQ-102]** owns them before anything is deployed anywhere.
+
+⚠ **This is also what makes a tenancy mutation honest.** Because the customer session drops every
+authenticated request onto `app_customer_role`, a mutation that only defeats the EF query filter —
+`IgnoreQueryFilters()` — leaks nothing: the database still refuses. A tenancy test that survives a
+single-layer mutation has therefore proved nothing; a real leak has to suppress the role drop as
+well, and any future mutation exercise must do both.
+
+⚠ **Two tables are deliberately exempt from row-level security** (added 2026-09-03), and both are
+named in the coverage guards rather than hidden from them — an exemption a guard can see is
+reviewable, a table no guard ever looks at is not. `metering.ean_pool` is shared reference data with
+**no `customer_id`**: an unclaimed entry belongs to nobody and must be visible to every customer at
+once, and a **claimed row leaves the pool**, because the API only ever selects `claimed_at IS NULL`.
+`customer.onboarding_application` has a **nullable `customer_id`** that is null for the whole life of
+a draft, and **every path that reaches it is anonymous** — a prospect has no token, so there is no
+`app.customer_id` to key a policy on; a row is addressed by its own id, a capability rather than a
+query. [Database design §6](04-database-design.md) carries both reasons in full, with what reopens
+each.
+
+⚠ **Both coverage guards match a `CustomerId` *suffix*, not the exact name** (added 2026-09-03).
+That is what makes `ean_pool.claimed_by_customer_id` visible to them; under the exact-name predicate
+the table would have been invisible rather than exempt. `refresh_token` and `password_reset_token`
+carry no `customer_id` at all — they are scoped by **account** — and are held to the same two-policy
+bar by a separate account-owned discovery pass, not waved through.
+
 ### 2.1 The test that must exist
 
 An integration test that, for every customer-API endpoint, authenticates as customer A and attempts
@@ -157,7 +191,25 @@ See [F13](../10-features/F13-identity-and-access.md). Summary:
 Tokens are never placed in `localStorage`. The refresh cookie is scoped to the token endpoint path
 only.
 
-### 3.1 Customer MFA — [DEC-51], ⚠ **amended 2026-08-19 by [DEC-92]**
+### 3.1 Customer MFA — [DEC-51], ⚠ **amended 2026-08-19 by [DEC-92]**, ⚠ **suspended 2026-09-03 by [DEC-119]**
+
+#### 3.1.0 ⚠ None of this section is built, and the reason is not a shortcut — [DEC-119]
+
+**[DEC-119]** removes the identity provider every paragraph below depends on. There is no Entra
+tenant, no Conditional Access, no External ID customer tenant and no `amr` values emitted by anyone
+but the platform itself. Concretely, and verified against the build rather than assumed:
+
+- the customer access token carries `amr: ["pwd"]` — a password, which **is not a second factor**;
+- **nothing rejects on `amr`.** The claim is issued and read by no one; there is no accepted-method
+  set, no configuration for one, and no fail-closed path;
+- **[F13-R45]** is therefore recorded but **not built**, and **[DEC-92]**'s mandatory MFA has nothing
+  enforcing it at either end.
+
+This is a **suspension with a stated cost, not a reversal**: the requirement stands, the mechanism is
+absent, and the text below is kept because it is what has to be reinstated — not rewritten — the day
+an identity provider exists. Whoever reinstates it is also reinstating the *enrolment* obligation
+[DEC-92] accepted, which nothing in slice 1 has paid. **[OQ-98]** owns the credential-policy values
+that are, for now, the only sign-in control there is.
 
 **Read §3.1.1 first; the original text below it is kept because the distinction it draws — between
 *enforcing* MFA and *implementing* it — is the distinction [DEC-92] preserves.**

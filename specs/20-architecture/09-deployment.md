@@ -377,8 +377,8 @@ nightly run against both `main` branches is what stops the gap between them grow
 
 | Question | Answer |
 | --- | --- |
-| What is published | `@peakpower/api-client-customer` and `@peakpower/api-client-employee`, generated from the two OpenAPI documents |
-| Where | A private feed — Azure Artifacts or GitHub Packages, still to choose ([Solution structure](02-solution-structure.md) §8). The fallback, an automated pull request committing the generated client into `peakpower-web`, needs no feed |
+| What is published | `@peakpower-nl/api-client-customer` and `@peakpower-nl/api-client-employee`, generated from the two OpenAPI documents. ⚠ **Scope corrected 2026-09-03 [DEC-116]**: GitHub Packages requires the scope to match the owner, and the organisation is `peakpower-nl` (`[OQ-100]`) |
+| Where | **GitHub Packages** **[DEC-116]**, closing the choice this row left open ([Solution structure](02-solution-structure.md) §8). ⚠ **Nothing is published in slice 1** — no CI, no registry, no deployment — so what exists is the fallback: the generated clients are committed as npm **workspace packages** in `peakpower-web`, guarded by a regenerate-and-diff staleness check that runs inside that repository's own `npm test` |
 | When | On merge to `main` in the platform repository. **Not on every pull request** — a pull-request build generates and compiles the client to prove it can, and publishes nothing |
 | Version | `MAJOR.MINOR.PATCH` derived from the OpenAPI diff, not from the platform's build number: a **removed or narrowed** field or endpoint is a **major**; an added optional field is a minor; anything else is a patch. The build number goes in the pre-release suffix |
 | Who consumes it | `peakpower-web`, from its lockfile. A bump is an ordinary reviewable pull request |

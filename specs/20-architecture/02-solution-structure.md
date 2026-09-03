@@ -38,6 +38,10 @@ peakpower-platform/                             # repository 1 — .NET
 │   │
 │   └── Infrastructure/
 │       ├── PeakPower.Persistence/              # EF Core, migrations, repositories
+│       ├── PeakPower.Infrastructure.Time/      # IMarketCalendar — the ONLY source of "now"
+│       ├── PeakPower.Infrastructure.Web/       # the ONE context-provider assembly
+│       ├── PeakPower.Infrastructure.Identity/  # IPasswordHasher, ITokenIssuer  [DEC-113] [DEC-117]
+│       ├── PeakPower.Infrastructure.Email/     # IEmailSender — console sink in slice 1
 │       ├── PeakPower.Ingestion/                # BRP-agnostic pipeline: raw persistence,
 │       │                                       # versioning [DEC-07], quarantine  [DEC-69]
 │       ├── PeakPower.Integration.Brp.Pvned/    # first BRP adapter — was
@@ -55,7 +59,11 @@ peakpower-platform/                             # repository 1 — .NET
 │   ├── PeakPower.Domain.Tests/                 # unit, incl. property-based
 │   ├── PeakPower.Application.Tests/
 │   ├── PeakPower.Integration.Tests/            # Testcontainers + real Postgres
-│   └── PeakPower.Architecture.Tests/           # module dependency rules
+│   ├── PeakPower.Architecture.Tests/           # module dependency rules
+│   └── PeakPower.AppHost.Tests/                # the orchestration graph itself
+│
+├── dev-up                                      # one command; repository root, NOT under src/
+├── tools/verify-*.sh                           # five guards, run BY HAND — there is no CI
 │
 ├── artifacts/openapi/                          # emitted at build: customer.json, employee.json
 └── deploy/
@@ -82,7 +90,7 @@ now so the two agree.
 peakpower-web/                                  # repository 2 — Angular 22  [DEC-54]
 ├── package.json                                # one npm workspace, three apps + one library
 ├── angular.json
-├── .npmrc                                      # private feed for @peakpower/api-client-*
+├── .npmrc                                      # private feed for @peakpower-nl/api-client-*
 │
 ├── apps/
 │   ├── customer-portal/                        # Angular 22 SPA
@@ -96,6 +104,28 @@ peakpower-web/                                  # repository 2 — Angular 22  [
 
 The specification set (this repository) is a third repository and always was; **[DEC-55]** does not
 change it.
+
+⚠ **Amended 2026-09-03. Four infrastructure projects and one test project were missing, and one
+of them is named by architecture fact 5.**
+
+- **`Infrastructure.Time`** is required *by name*: the fact is "no type **outside
+  `PeakPower.Infrastructure.Time`** reads the system clock", which cannot be written without the
+  project existing.
+- **`Infrastructure.Web`** is the one context-provider assembly architecture fact 6 allow-lists —
+  nothing else may depend on `HttpContext` or `IHttpContextAccessor`.
+- **`Infrastructure.Identity`** and **`Infrastructure.Email`** hold the `IPasswordHasher`,
+  `ITokenIssuer` and `IEmailSender` adapters, which have no business inside the persistence project.
+- **`AppHost.Tests`** exists and is not in any earlier list.
+
+Counted against the solution file rather than against this tree: **thirteen source projects and five
+test projects, eighteen in all.** The tree above still names five source projects that slice 1 did
+not build — `Worker`, `DevStubs`, `Ingestion`, `Integration.Brp.Pvned`, `Integration.Montel`,
+`Integration.Payments`, `Integration.Bookkeeping`, `Integration.Email` and `Jobs` — and they are
+kept because they are later slices' work, not because they exist. The count above is of what does.
+
+⚠ **`dev-up` lives at the repository root**, not under `src/`, and there is **no CI in slice 1**:
+the five `tools/verify-*.sh` guards are run by hand, by whoever remembers. That is a stated
+limitation rather than an oversight — see §6.
 
 ### 1.2 Why `deploy/` stays with .NET, and the E2E suite moves
 
@@ -226,8 +256,8 @@ public void Modules_respect_the_dependency_graph()
             "PeakPower.Domain.Wallet")
         .GetResult();
 
-    result.IsSuccessful.Should().BeTrue(
-        because: string.Join(", ", result.FailingTypeNames ?? []));
+    result.IsSuccessful.ShouldBeTrue(
+        string.Join(", ", result.FailingTypeNames ?? []));
 }
 
 [Fact]
@@ -235,7 +265,7 @@ public void Domain_depends_on_nothing_outside_itself()
 {
     Types.InAssembly(typeof(Customer).Assembly)
         .ShouldNot().HaveDependencyOnAny("Microsoft.EntityFrameworkCore", "Hangfire", "System.Net.Http")
-        .GetResult().IsSuccessful.Should().BeTrue();
+        .GetResult().IsSuccessful.ShouldBeTrue();
 }
 
 // [DEC-69] — the seam that makes a second BRP additive rather than a rewrite.
@@ -244,8 +274,8 @@ public void The_ingestion_pipeline_never_names_a_BRP_adapter()
 {
     Types.InAssembly(typeof(IngestionPipeline).Assembly)
         .ShouldNot().HaveDependencyOn("PeakPower.Integration.Brp")   // matches Brp.Pvned and any successor
-        .GetResult().IsSuccessful.Should().BeTrue(
-            because: "adapters are resolved from the metering point's brp row at the composition root");
+        .GetResult().IsSuccessful.ShouldBeTrue(
+            customMessage: "adapters are resolved from the metering point's brp row at the composition root");
 }
 ```
 
@@ -260,9 +290,15 @@ three front-ends it does not contain** — §4.3.
 var builder = DistributedApplication.CreateBuilder(args);
 
 // ── Infrastructure ────────────────────────────────────────────────────
-var postgres = builder.AddPostgres("postgres")
-    .WithDataVolume()                 // survives restarts
-    .WithPgAdmin();
+// The superuser password is PINNED, not generated — see the amendment note below.
+var postgresPassword = builder.AddParameter(
+    "postgres-password", "dev_only_postgres_password", secret: true);
+
+var postgres = builder.AddPostgres("postgres", password: postgresPassword)
+    .WithImageTag("17")
+    .WithDataVolume("peakpower-postgres-data")   // survives restarts
+    .WithHostPort(5432)                          // every host port is pinned
+    .WithPgAdmin(pgAdmin => pgAdmin.WithHostPort(5050));
 
 var appDb     = postgres.AddDatabase("peakpower");
 var hangfireDb = postgres.AddDatabase("hangfire");
@@ -274,7 +310,10 @@ var blobs   = storage.AddBlobs("documents");
 // ── Migrations run to completion before the APIs start ────────────────
 var migrator = builder.AddProject<Projects.PeakPower_Migrator>("migrator")
     .WithReference(appDb)
-    .WaitFor(appDb);
+    .WaitFor(appDb)
+    // DOTNET_ENVIRONMENT, not ASPNETCORE_ENVIRONMENT. The Migrator is a GENERIC host and never
+    // reads the ASPNETCORE_ prefix; setting the wrong one looks right and does nothing.
+    .WithEnvironment("DOTNET_ENVIRONMENT", "Development");
 
 // ── Application hosts ─────────────────────────────────────────────────
 var customerApi = builder.AddProject<Projects.PeakPower_Api_Customer>("customer-api")
@@ -297,23 +336,24 @@ var webRoot = builder.Configuration["PEAKPOWER_WEB_PATH"]
 
 if (Directory.Exists(webRoot))
 {
-    builder.AddNpmApp("customer-portal", $"{webRoot}/apps/customer-portal", "start")
+    builder.AddJavaScriptApp("customer-portal", webRoot, "start:customer-portal")
         .WithReference(customerApi)
-        .WithHttpEndpoint(env: "PORT")
+        .WithHttpEndpoint(env: "PORT", port: 4200)
         .WithExternalHttpEndpoints();
 
-    builder.AddNpmApp("employee-portal", $"{webRoot}/apps/employee-portal", "start")
+    builder.AddJavaScriptApp("employee-portal", webRoot, "start:employee-portal")
         .WithReference(employeeApi)
-        .WithHttpEndpoint(env: "PORT")
+        .WithHttpEndpoint(env: "PORT", port: 4300)
         .WithExternalHttpEndpoints();
-
-    builder.AddNpmApp("public-site", $"{webRoot}/apps/public-site", "start")
-        .WithHttpEndpoint(env: "PORT")
-        .WithExternalHttpEndpoints();
+}
+else if (args.Contains("--backend-only"))
+{
+    // Backend-only is a legitimate mode; SILENTLY backend-only is not. Saying it out loud is
+    // the whole point of the branch.
+    builder.Configuration["PeakPower:FrontEnds"] = "disabled";
 }
 else
 {
-    // Backend-only is a legitimate mode; silently backend-only is not.
     throw new InvalidOperationException(
         $"peakpower-web not found at '{webRoot}'. Clone it beside this repository, set " +
         "PEAKPOWER_WEB_PATH, or run with --backend-only.");
@@ -330,8 +370,62 @@ builder.Build().Run();
 ```
 
 ```bash
+./dev-up                    # the supported entry point — repository root
 dotnet run --project src/Hosts/PeakPower.AppHost
 ```
+
+> ⚠ **Amended 2026-09-03, verified by running the stack rather than by reading it.** Seven things
+> were wrong; four of them were found only because `./dev-up` was actually executed, and none of
+> them is visible to a test suite whose fixtures seed themselves.
+>
+> 1. **`AddNpmApp` no longer exists.** `Aspire.Hosting.NodeJs` is frozen at 9.5.2; the current
+>    package is `Aspire.Hosting.JavaScript`, which exposes `AddJavaScriptApp`, `AddNodeApp` and
+>    `AddViteApp`. The signature is
+>    `AddJavaScriptApp(string name, string appDirectory, string runScriptName = "dev")`.
+> 2. **The directory was wrong.** The workspace declares exactly **one** `package.json`, at the
+>    root, so there is no script to run inside `apps/<name>`. The call passes the workspace root
+>    and a per-app script name instead — which is why `package.json` defines
+>    `start:customer-portal` and `start:employee-portal` at the root rather than `start` in each
+>    app.
+> 3. **`public-site` is not built in slice 1** and its resource is dropped until it is.
+> 4. **The `--backend-only` flag was promised and nothing implemented it.** The `else` branch threw
+>    while naming a flag no code read. It is now a real gate.
+> 5. **The postgres superuser password is PINNED, not generated.** A generated password plus a
+>    named data volume is a trap by construction: Postgres reads `POSTGRES_PASSWORD` **only** when
+>    it initialises an empty data directory, so the volume remembers the first password forever and
+>    every later value is rejected on every connection. The failure has no diagnostic anywhere a
+>    developer looks — the migrator, both APIs and both front ends all `WaitFor` the database's
+>    health check, so every one of them sits in *Waiting* indefinitely while the only evidence is a
+>    line inside the container's own log. Pinning removes the failure instead of reporting it.
+>    Hardcoding is deliberate and bounded: slice 1 has no deployment, nothing here is reachable from
+>    outside localhost, and the same reasoning already applies to the RLS login passwords
+>    **[OQ-102]**.
+> 6. **Every host port is pinned** — postgres **5432**, pgAdmin **5050**, customer-api **5101**,
+>    employee-api **5102**, customer-portal **4200**, employee-portal **4300**. Aspire otherwise
+>    assigns a fresh host port per run, which makes a bookmark, a saved pgAdmin connection or an
+>    E2E base URL wrong as soon as the stack restarts. (`docker ps` still shows a random port
+>    because Aspire proxies; `localhost:5432` is the stable address.)
+> 7. **The Migrator needs `DOTNET_ENVIRONMENT=Development`.** It is a generic host
+>    (`Host.CreateApplicationBuilder`) and never reads the `ASPNETCORE_` prefix the two APIs are
+>    given, and Aspire launches projects with `--no-launch-profile`, so nothing had ever set it.
+>    **Consequence, and it is the largest of the seven: the demo seed had never once run, on any
+>    `dev-up`.** The Production gate declined correctly on every single run. The symptom was not an
+>    error — migrations applied, every resource went green, and `dev-up` handed over an **empty
+>    schema**, so the six demo companies, their connections and the unclaimed EAN pool the whole
+>    demo is built around were simply absent. The gate was right; nothing had ever told it this is
+>    a developer's machine.
+>
+> **`dev-up` also carries a watchdog** for a data volume left over from before the password was
+> pinned. It watches the postgres container's log for `password authentication failed for user`,
+> prints the remedy with the exact `docker volume rm` command, and stops the host. It lives in
+> `dev-up` rather than in the AppHost because the AppHost is what hangs, and because a hosted
+> service registered on `DistributedApplicationBuilder.Services` **never starts** — established by
+> build marker, not assumed, and the C# attempt was deleted rather than left in: a guard that
+> provably never fires is worse than none, because it reads as coverage.
+>
+> **Aspire is also no longer a `dotnet workload`.** It is the `aspire.cli` global tool plus the
+> `Aspire.AppHost.Sdk` NuGet package, currently **13.5.3**. Install with
+> `dotnet tool install -g aspire.cli`.
 
 ### 4.1 Why the dev stubs matter
 
@@ -454,9 +548,19 @@ until someone bumps it.
 | Step | Where | What |
 | --- | --- | --- |
 | 1 · Emit | platform CI | The two OpenAPI documents are produced at build time into `artifacts/openapi/`. The existing contract-snapshot test (§6) already fails the build on an unreviewed change |
-| 2 · Generate | platform CI | `@peakpower/api-client-customer` and `@peakpower/api-client-employee` are generated from those documents |
+| 2 · Generate | platform CI | `@peakpower-nl/api-client-customer` and `@peakpower-nl/api-client-employee` are generated from those documents |
 | 3 · Publish | platform CI, on merge to `main` | Both packages published to a private feed (Azure Artifacts or GitHub Packages), versioned `<api-version>-<build>` with semver rules: a breaking OpenAPI change is a **major** |
 | 4 · Consume | web repo | `npm install` from the lockfile. A version bump is a normal, reviewable pull request that either compiles or does not |
+
+⚠ **Amended 2026-09-03 by [DEC-116] and [OQ-100].** The scope is **`@peakpower-nl/`**, not
+`@peakpower/` — GitHub Packages requires the scope to match the owner, and the organisation exists as
+`peakpower-nl`. The feed is **GitHub Packages**. And **none of the four steps above runs in slice 1**:
+there is **no CI in either repository**, so "platform CI" describes nobody. What shipped is the
+Alternative below, minus the automation: the clients are committed npm **workspace packages**, which
+resolve by the `name` field rather than by registry scope, so every import works with no registry and
+keeps working unchanged the day they are published. The property step 1 was there to protect is held
+by a **staleness check** that regenerates and fails on a non-empty diff — and it is real only because
+it runs inside the web workspace's own `npm test`, not as a script somebody remembers.
 
 **Alternative, if a private package feed is not available:** generate the clients in platform CI and
 open an automated pull request that commits them into `peakpower-web`. It is uglier and it works —
@@ -481,16 +585,40 @@ discovered in production.
 
 | Layer | What | Tooling |
 | --- | --- | --- |
-| **Domain unit** | Invariants, state transitions, block maths, ledger arithmetic | xUnit + FluentAssertions |
+| **Domain unit** | Invariants, state transitions, block maths, ledger arithmetic | xUnit + **Shouldly 4.3.0** **[DEC-118]** |
 | **Property-based** | Calendar arithmetic (DST, peak counts, interval counts), allocation rounding, ledger balance identity | FsCheck |
 | **Application** | Use cases against in-memory ports | xUnit + NSubstitute |
 | **Persistence** | Real PostgreSQL, real migrations, constraint behaviour | Testcontainers |
 | **Integration** | Ingestion end-to-end with sample payloads; webhook idempotency; the same document routed through the BRP adapter its `brp` row names **[DEC-69]**; bank-transfer deposit matched on the issued reference **[DEC-106]** | Testcontainers + WireMock |
 | **Architecture** | Module graph, domain purity, no `DateTime.Now` outside the calendar service, **and the ingestion pipeline naming no BRP adapter [DEC-69]** | NetArchTest |
 | **API contract** | OpenAPI snapshot to catch breaking changes — **and the trigger for the client publish [DEC-55]**, §5.1 | Verify |
-| **Cross-repo client** | Applications compile against the *latest published* client, nightly, not only against the pinned one **[DEC-55]** | npm + tsc |
-| **E2E** | Login with MFA **[DEC-92]**, request a trade, accept an offer, **approve it as a second admin account of the same company with four-eyes on [DEC-71]**, view the ledger, raise a withdrawal request **[DEC-83]**. Lives in `peakpower-web` **[DEC-55]**, runs against a deployed environment | Playwright |
+| **Cross-repo client** | ~~Applications compile against the *latest published* client, nightly~~ ⚠ **Corrected 2026-09-03: there is nothing published and no nightly, because there is no CI and no registry [DEC-116].** What exists instead is a **staleness check** — regenerate the client from the committed `artifacts/openapi/customer.json`, fail if the diff is non-empty — and the thing that makes it real is that it runs inside the web workspace's own `npm test`, not as a script somebody remembers. It bites: renaming an enum member in the platform's frozen contract without regenerating turns `test:workspace` red **while all 491 customer-portal tests stay green**, because they type against the stale schema and mock HTTP | npm + tsc |
+| **E2E** | ~~Login with MFA **[DEC-92]**~~ (⚠ there is no MFA — **[DEC-119]**), login, request a trade, accept an offer, **approve it as a second admin account of the same company with four-eyes on [DEC-71]**, view the ledger, raise a withdrawal request **[DEC-83]**. Lives in `peakpower-web` **[DEC-55]**, runs against a deployed environment | Playwright |
 | **Frontend unit** | Components, pipes, signal stores | Vitest |
+
+> ⚠ **Pin Shouldly 4.3.0. FluentAssertions may not be used, at any version** (added 2026-09-03,
+> **[DEC-118]**). FluentAssertions 8.10.0 ships an **Xceed Software Community License Agreement,
+> "for Non-Commercial Use"**, where non-commercial means use whose primary objective is not
+> commercial advantage. PeakPower is a commercial trading platform, so 8.x would need a paid Xceed
+> licence, and 7.2.0 — the last `Apache-2.0` release — is the end of that line. **Shouldly 4.3.0 is
+> Apache-2.0 and actively maintained**, so it replaces the library outright rather than pinning a
+> frozen branch. The table was written when FluentAssertions was still open source.
+>
+> ⚠ **Shouldly's `ShouldContain` is case-insensitive by default.** That has already let three
+> assertions in this codebase pass against the wrong value — including one in a guard written
+> specifically to catch silent no-ops. An assertion on a key, a property name or a wire token must
+> say `Case.Sensitive` or read the structured value rather than the rendered body.
+
+> ⚠ **There is no CI in slice 1, in either repository** (added 2026-09-03). Neither
+> `peakpower-platform` nor `peakpower-web` has a `.github/` directory. On the platform side the five
+> `tools/verify-*.sh` guards — `verify-aspire-api`, `verify-build-settings`, `verify-migrator`,
+> `verify-repositories`, `verify-solution-layout` — are run **by hand**, by whoever remembers, and
+> nothing fails a merge if they are not. On the web side the picture is better and deliberately so:
+> the cross-repo staleness check was moved *into* `npm test` precisely because a guard nobody runs
+> is not a guard. Both repositories are published privately under the **`peakpower-nl`**
+> organisation and pushed; **no CI, no package registry, no deployment** is a slice-1 scope
+> decision, and it is what makes the two dev-up defects above discoverable only by running the
+> stack.
 
 ### 6.1 Tests that must exist before phase 2 ships
 
@@ -583,4 +711,4 @@ first eight do: each one fails silently in production and shows up as money.
 | [OQ-93] | Which incoming-payment feed does the platform consume for wallet deposits — CAMT.053 import, a PSP webhook, or a SEPA-instant push? It decides what `PeakPower.Integration.Payments` contains, and it blocks the bank-transfer deposit route **[DEC-106]** |
 | [OQ-95] | Is customer usage delivered over an API, over file/FTP, or both **[DEC-97]**? HTTP costs a surface on `PeakPower.Api.Customer`; FTP costs a scheduled export in `PeakPower.Jobs` and a place to put the files. Both is both. Nothing else in the layout moves either way |
 | [OQ-94] | What collateral or exposure limit applies to a short position **[DEC-72]**? It decides whether `Domain/Trading` gains an exposure concept or the sell path stays as thin as it is today. Test 16 (§6.1) is written to fail the day this is answered |
-| *(new, from **[DEC-55]**)* | Which private package feed hosts `@peakpower/api-client-*` — Azure Artifacts or GitHub Packages? The fallback (generated-and-committed, §5.1) needs no feed, so this gates the preferred path only |
+| ~~*(new, from **[DEC-55]**)*~~ | ~~Which private package feed hosts `@peakpower/api-client-*` — Azure Artifacts or GitHub Packages?~~ **Closed by [DEC-116]** — GitHub Packages, and the scope is `@peakpower-nl/` because GitHub Packages requires the scope to match the owner (`[OQ-100]`, resolved). ⚠ **Publishing is out of scope for slice 1**, so the fallback is what shipped: committed npm **workspace packages**, which resolve by the `name` field rather than by registry scope, so every import works today with no registry and keeps working unchanged the day they are published |

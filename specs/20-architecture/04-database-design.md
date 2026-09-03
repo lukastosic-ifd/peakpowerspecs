@@ -4,12 +4,27 @@ PostgreSQL 17. One database, schema-per-module, declarative partitioning on the 
 
 ---
 
+## 0. Extensions
+
+Migration 1 **begins** with these two statements, before any schema or table:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS citext;      -- username, email
+CREATE EXTENSION IF NOT EXISTS btree_gist;  -- equality inside a GiST exclusion constraint
+```
+
+The DDL throughout this document needs both and declared neither. `citext` is what makes
+`username` and `email` case-insensitive without a functional index on every lookup;
+`btree_gist` is what lets `ean WITH =` sit inside the same exclusion constraint as
+`validity WITH &&`. Without them migration 1 fails on its first table, which is a cheap failure
+and an entirely avoidable one.
+
 ## 1. Schemas
 
 | Schema | Contents |
 | --- | --- |
-| `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, **approval requests [DEC-71]**, metering points, labels |
-| `metering` | **BRPs [DEC-69]**, inbound messages, interval data versions, readings, imbalance, data state |
+| `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, **approval requests [DEC-71]**, metering points, **refresh tokens [DEC-117]**, **password-reset tokens [DEC-113]**, **onboarding applications [DEC-113]** |
+| `metering` | **BRPs [DEC-69]**, **the shared EAN pool [DEC-113]**, inbound messages, interval data versions, readings, imbalance, data state |
 | `market` | peak calendars, calendar intervals, price indications, **the indication markup [DEC-80]**, day-ahead prices |
 | `trading` | trades, lines, offers, events, blocks, allocations, ~~**four-eyes thresholds [DEC-33]**~~ |
 | `wallet` | wallets, entries, reservations, payments, **deposit intents, incoming payments [DEC-106]**, **withdrawal requests [DEC-83]** |
@@ -140,7 +155,18 @@ CREATE TABLE customer.customer_account (
     -- approving or declining ANOTHER admin's sensitive action. It is not a permission on data,
     -- on trading or on spending, and a non-admin keeps every ordinary privilege  [DEC-16], [DEC-18].
     is_admin            boolean NOT NULL DEFAULT false,
-    external_subject_id text,                    -- IdP `sub`, set when the invitation is accepted
+
+    -- ⚠ Added 2026-09-03. The platform holds the credential  [DEC-113], and the stamp is what makes
+    --   revocation of a stateless token immediate  [DEC-117], [F01-R16]. `password_hash` is Argon2id,
+    --   nullable until a credential is set, never logged and never returned by any endpoint. Every
+    --   authenticated request compares the token's `stamp` claim to this column.
+    password_hash       text,
+    security_stamp      uuid NOT NULL,
+
+    -- ⚠ Dead column, 2026-09-03. It was reserved for an identity provider's subject identifier,
+    --   which [DEC-119] drops: the platform owns identity outright and there is no external subject
+    --   to hold. Always null; nothing reads or writes it. Dropped in the migration after slice 1.
+    external_subject_id text,                    -- was: IdP `sub`, set when the invitation is accepted
     created_by_employee text NOT NULL,
     created_at          timestamptz NOT NULL DEFAULT now(),
     activated_at        timestamptz,
@@ -149,7 +175,9 @@ CREATE TABLE customer.customer_account (
 
     -- ⚠ Qualified 2026-08-19 by [DEC-71]: still no role / permission column, and `is_admin` above
     --    is not one — it decides who may give the SECOND pair of eyes, nothing else  [DEC-16]
-    CHECK (status <> 'ACTIVE' OR external_subject_id IS NOT NULL),
+    -- ⚠ Withdrawn 2026-09-03 by [DEC-119], and NOT built: an active account has a password hash,
+    --   not an external subject, so this constraint would refuse every account the platform creates.
+    --   Original text: CHECK (status <> 'ACTIVE' OR external_subject_id IS NOT NULL)
     CHECK (status <> 'DEACTIVATED' OR deactivated_at IS NOT NULL)
 );
 
@@ -371,6 +399,90 @@ database. It is checkable only because **[DEC-17]** already records the acting a
 action. `ux_approval_open_subject` stops the same subject accumulating two pending approvals, which
 is how a "second" approval could otherwise be manufactured by clicking twice.
 
+#### Self-service onboarding and the credential store — ⚠ added 2026-09-03
+
+Three tables **[DEC-113]**, **[DEC-117]**. They did not exist when this document was written because
+the proof of concept was to run unauthenticated **[DEC-20]**; it does not.
+
+```sql
+-- A rotating, single-use refresh token, stored HASHED  [DEC-117]. The plaintext lives only in the
+-- HttpOnly SameSite=Strict cookie scoped to the refresh endpoint; it is never returned in a body.
+-- Scoped by ACCOUNT, not by company — which is why its RLS policy joins through customer_account
+-- rather than carrying a customer_id of its own.
+CREATE TABLE customer.refresh_token (
+    id                   uuid PRIMARY KEY,
+    customer_account_id  uuid NOT NULL REFERENCES customer.customer_account(id),
+    token_hash           varchar(64) NOT NULL,
+    issued_at            timestamptz NOT NULL,
+    expires_at           timestamptz NOT NULL,      -- issued_at + 14 days
+    used_at              timestamptz,               -- single use: a second presentation is theft
+    revoked_at           timestamptz,
+    replaced_by_token_id uuid                       -- the rotation chain, so theft revokes all of it
+);
+
+CREATE INDEX ix_refresh_token_customer_account_id
+    ON customer.refresh_token (customer_account_id);
+
+-- The platform owns password reset  [DEC-113]. Same shape, same hashing, no rotation chain.
+CREATE TABLE customer.password_reset_token (
+    id                   uuid PRIMARY KEY,
+    customer_account_id  uuid NOT NULL REFERENCES customer.customer_account(id),
+    token_hash           varchar(64) NOT NULL,
+    issued_at            timestamptz NOT NULL,
+    expires_at           timestamptz NOT NULL,
+    used_at              timestamptz
+);
+
+CREATE INDEX ix_password_reset_token_customer_account_id
+    ON customer.password_reset_token (customer_account_id);
+
+-- The nine-step wizard's draft, before a company exists  [DEC-113]. Every column after the first
+-- block is nullable because a partial save is the normal case: the customer is on step 3.
+CREATE TABLE customer.onboarding_application (
+    id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    reference            varchar(16) NOT NULL,      -- what the customer quotes to support
+    status               text NOT NULL,             -- DRAFT | AWAITING_SIGNATURE | SIGNED
+    created_at           timestamptz NOT NULL,
+
+    -- Step 1. The credential is captured here and moves to customer_account at signing.
+    first_name           varchar(100) NOT NULL,
+    last_name            varchar(100) NOT NULL,
+    email                citext NOT NULL,
+    password_hash        varchar(200) NOT NULL,     -- Argon2id, from the first keystroke
+    terms_accepted_at    timestamptz NOT NULL,
+
+    organization_name    varchar(200),              -- steps 2-4
+    legal_entity_type    text,                      -- BV | NV | EENMANSZAAK | VOF | ...
+    kvk_number           varchar(8),
+    registered_address   jsonb,
+    industry             varchar(60),
+    flow_direction       text,                      -- steps 5-6: CONSUMPTION | PRODUCTION | BOTH
+    volume_band          text,
+    iban                 varchar(34),               -- steps 6-7
+    bank_account_holder  varchar(200),
+    bank_verified_at     timestamptz,
+    signing_authority    text,                      -- ALONE | JOINTLY | SOMEONE_ELSE
+    signatories          jsonb NOT NULL,            -- step 8; '[]' until then
+
+    -- Step 9. The code is HASHED and attempt-counted; the plaintext is emailed and never stored.
+    sign_code_hash       varchar(64),
+    sign_code_expires_at timestamptz,
+    sign_code_attempts   integer NOT NULL,
+    signed_at            timestamptz,
+
+    -- Written at signing, null for every draft. This is why the table has no RLS policy — see §6.
+    customer_id          uuid,
+    account_id           uuid
+);
+```
+
+⚠ **`onboarding_application` deliberately has no row-level-security policy.** Its `customer_id` is
+null for the entire life of a draft and every path that touches it is **anonymous** — a prospect has
+no company and no token, so there is no `app.customer_id` to key a policy on. A policy of migration
+2's shape would evaluate false on every row and make the wizard unreadable to the only requests that
+need it. What contains it instead is that a row is addressed by its own id — a capability, not a
+query. §6 records the exemption and what reopens it.
+
 ### 3.2 Metering — partitioned
 
 ```sql
@@ -390,6 +502,27 @@ CREATE TABLE metering.brp (
     is_active         boolean NOT NULL DEFAULT true,
     created_at        timestamptz NOT NULL DEFAULT now(),
     UNIQUE (adapter_key, code)
+);
+
+-- ⚠ Added 2026-09-03  [DEC-113]. The shared pool of unclaimed grid connections both portals draw
+-- from. Self-service onboarding needs somewhere to claim a connection FROM, and a customer cannot
+-- be handed a connection that belongs to nobody unless the pool exists as reference data.
+--
+-- `btree_gist` (§0) is what lets the equality and the range sit in one exclusion constraint on
+-- customer.metering_point; this table has no such constraint of its own, only a unique EAN.
+CREATE TABLE metering.ean_pool (
+    id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    ean                    varchar(18) NOT NULL UNIQUE
+        CHECK (ean ~ '^[0-9]{18}$'),               -- eighteen digits only, for now  [DEC-114]
+    commodity              text NOT NULL,          -- ELECTRICITY
+    grid_operator          varchar(120),
+    capacity_kw            numeric(18,6),
+    address                jsonb,
+
+    -- A claim takes the row OUT of the pool. `claimed_by_customer_id` records who took it; it is
+    -- deliberately NOT a tenancy key — see §6.
+    claimed_at             timestamptz,
+    claimed_by_customer_id uuid
 );
 
 CREATE TABLE metering.inbound_message (
@@ -1285,6 +1418,37 @@ the highest-value rows in the schema — a bank account, an approval and a payou
 policy is not optional on them. `wallet.incoming_payment` is the exception and gets **no customer
 policy at all**: an unmatched credit line belongs to nobody yet, and exposing it by IBAN guess would
 be a disclosure. It is employee-only until a `bank_deposit` row attaches it to a wallet.
+
+⚠ **Row-level security needs database roles, and this document never named them** (added
+2026-09-03). A superuser or a table owner **bypasses** RLS silently: with the APIs on the default
+connection, every policy in this section is inert while every test still passes — the most expensive
+kind of green. Migration 2 therefore creates `app_customer_role` and `app_employee_role`, plus two
+non-owner **login** roles, and each host rewrites its connection string onto its own role. The
+Migrator keeps the owner connection, because it must be able to create and alter the tables the
+policies sit on. Slice 1 is local-only with no deployment, so the two login passwords are literals in
+the migration with a comment saying exactly that. **[OQ-102]** owns them before anything is deployed
+anywhere.
+
+⚠ **Two tables are deliberately exempt, and both are named in the guard rather than hidden from it**
+(added 2026-09-03). An exemption a guard can see is reviewable; a table no guard ever looks at is not.
+
+| Table | Why it has no policy | What reopens it |
+| --- | --- | --- |
+| `metering.ean_pool` **[DEC-113]** | Shared reference data. It has **no `customer_id`** and no tenant to isolate to: an unclaimed entry belongs to nobody and must be visible to every customer at once, so a `column = app.customer_id` policy would evaluate false on every row and hide the whole pool from everyone. A **claimed row leaves the pool** — what keeps one customer's choices private from another is that the API only ever selects `claimed_at IS NULL`, so a claimed row is invisible to every customer including its claimant. `metering.brp` is the same shape and predates it | The pool gaining a customer-scoped read — a "connections I claimed" screen would be one |
+| `customer.onboarding_application` **[DEC-113]** | Its `customer_id` is **nullable** and null for the whole life of a draft, and **every path is anonymous**: a prospect has no company and no token, so there is no `app.customer_id` for a policy to key on. A row is addressed by its own id — a capability, not a query | An authenticated read of a *signed* application, e.g. a customer viewing their own onboarding history |
+
+⚠ **How the coverage guards discover a table, and why it had to change** (added 2026-09-03).
+`AutomaticPolicyCoverageTests` walks the EF model and `CatalogPolicyCoverageTests` walks
+`information_schema` plus `pg_class.relrowsecurity`, so a table EF does not know about is still
+caught. Both once matched a property named **exactly** `CustomerId`; both now match any name that
+**ends** in it, which is what makes `ean_pool.claimed_by_customer_id` visible to them at all. Under
+the exact-name predicate that table would have been invisible rather than exempt — and an invisible
+table is not a decision, it is an omission nobody made.
+
+⚠ **`refresh_token` and `password_reset_token` are scoped by ACCOUNT, not by company**, so neither
+carries a `customer_id` and neither is exempt: migration 3 gives each a policy whose predicate joins
+through `customer_account.customer_id`. They are held to the same two-policy bar as everything else,
+by a separate account-owned discovery pass.
 
 ⚠ **The admin flag is not an RLS concept.** `is_admin` **[DEC-71]** decides who may *approve*, which
 is an authorisation check in the domain **[F13-R43]**, re-validated against the account record on

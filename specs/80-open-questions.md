@@ -244,9 +244,34 @@ these.
 
 ---
 
+## Slice-1 build round — 2026-09-03
+
+Six rows, raised while the first slice was built rather than before it. Five are open and need an
+owner; one is already resolved and is recorded closed so the decision that depended on it resolves.
+None of them blocks slice 1 — every one of them blocks something after it.
+
+| Ref | P | Question | Impact | Owner |
+| --- | :--: | --- | --- | --- |
+| **OQ-97** | 🟠 | **When is the GS1 check digit reinstated, and which weighting is normative?** | **[DEC-114]** relaxed EAN validation to eighteen digits for the proof of concept. The two conventions in circulation disagree on five of the six demo EANs, and the specification says "GS1 check digit" **[F01-R24]** without pinning the algorithm — so this needs an owner and a date, not just an intention. Until it has one, the platform accepts EANs that are structurally invalid, and reinstating the digit later invalidates whatever has been captured in the meantime | Needs an owner |
+| **OQ-98** | 🟡 | **Credential policy values** — the sign-in delay curve, the reset-token TTL, and password composition beyond the twelve-character minimum | The *mechanism* is designed and is no longer open (**[DEC-117]**, and the reset path in **[DEC-113]**); only the numbers are, and they belong to whoever owns security policy rather than to the delivery team. ⚠ Under **[DEC-119]** these are the *only* credential controls there are: with no identity provider, nothing else is enforcing a password policy behind them | Security |
+| **OQ-99** | 🟡 | **The six-product entitlement gate in the prototype's rail** | `trading-poc` gates parts of the customer rail on a per-product entitlement. That is a commercial model which appears nowhere in this specification set: either it is real and **[F13](10-features/F13-identity-and-access.md)** needs it, or the prototype invented it and the rail should not imply it. **[DEC-115]** ships the rail with out-of-slice items disabled, which is honest either way and does not decide this | Product |
+| ~~OQ-100~~ | ✅ | ~~**Which GitHub organisation owns `peakpower-platform` and `peakpower-web`?**~~ **CLOSED — `peakpower-nl`, 2026-08-27.** Both repositories are published there, privately, and pushed | Not `peakpower`, which the `@peakpower/` scope had assumed — renamed to `@peakpower-nl/` across the specification while the name was still free, because GitHub Packages requires the scope to match the owner **[DEC-116]**. ⚠ Publishing itself is still out of scope: slice 1 has **no CI, no package registry and no deployment**, so the clients are committed npm workspace packages | Closed |
+| **OQ-101** | 🟠 | **Who owns the migration that repairs the stored spelling of `LegalEntityType`?** | Two SCREAMING_SNAKE algorithms disagree on four members — `BV`, `NV`, `VOF` and `CV` — so the wire says `BV` and PostgreSQL stores `B_V` (see [shared contract §5.2](../docs/superpowers/plans/2026-08-26-slice-1-shared-contract.md)). The wire spelling was kept deliberately, because `BV` is how a Dutch legal form is written and `B_V` is not. What is **not** resolved is the read path: `EnumToScreamingSnakeConverter<T>.FromScreamingSnake` fed a wire-spelled stored value builds `Bv`, hands it to a case-sensitive `Enum.Parse`, and **throws `ArgumentException`** — an unhandled exception on every subsequent read, not a mismatch. `EnumWireAlgorithmDivergenceTests` freezes the divergence to those four members so it cannot grow; it does not repair anything. Repairing it needs a data migration, which is disproportionate for a proof of concept and belongs to whoever owns the first one after it | Needs an owner |
+| **OQ-102** | 🟠 | **Who owns the row-level-security login-role credentials?** | Migration 2 creates `app_customer_role` and `app_employee_role` plus two non-owner login roles, and each host rewrites its connection string onto its own role — a superuser or table owner **bypasses** RLS silently, so this is what makes the mechanism real rather than decorative. Slice 1 is local-only with no deployment, so the two passwords are literals in the migration with a comment saying exactly that. ⚠ **This needs an owner before anything is deployed anywhere**, and it is the same class of item as the pinned `dev_only_postgres_password` in the AppHost | Needs an owner |
+
+---
+
 ## Summary
 
 **96 entries · 16 open · 80 closed.**
+
+⚠ **Amended 2026-09-03 by the slice-1 build round: 102 entries · 21 open · 81 closed.** Six rows
+joined — [OQ-97] to [OQ-102] — of which [OQ-100] arrived already closed, so open rises 16 → 21 and
+closed 80 → 81. 21 + 81 = 102. By priority: three 🟠 P2 ([OQ-97], [OQ-101], [OQ-102]) and two 🟡 P3
+([OQ-98], [OQ-99]), so P2 rises 11 → 14 and P3 4 → 6. Nothing new is 🔴 P1. By
+owner: **Security** gains [OQ-98] (1 → 2), **Product** gains [OQ-99] (1 → 2), and **three rows have
+no owner at all** — [OQ-97], [OQ-101] and [OQ-102] — which is the point of recording them. The
+tables below are the 2026-08-19 position and are left as they stood; this note is the correction.
 
 | Priority | Count | Blocks |
 | --- | --: | --- |

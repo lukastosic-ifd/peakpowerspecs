@@ -98,7 +98,7 @@ configuration change plus a migration, not a rewrite.
 > | Is MFA required for customer users | Whatever the tenant policy says | **Mandatory** |
 > | Who enforces it | Conditional Access in the corporate tenancy **[DEC-66]** | Unchanged — Conditional Access in the corporate tenancy **[DEC-66]** |
 > | Does the platform implement MFA | No — no setting, no enrolment, no step-up | Unchanged — no |
-> | What the platform does with `amr` | Records it as evidence **[F13-R06]** | Records **and verifies** it; a token with no second-factor method is rejected **[F13-R45]** |
+> | What the platform does with `amr` | Records it as evidence **[F13-R06]** | Records **and verifies** it; a token with no second-factor method is rejected **[F13-R45]**. ⚠ **Neither column is what was built** — see **[DEC-119]**: the platform issues `amr: ["pwd"]` and reads it nowhere at all |
 >
 > So the platform stops trusting the tenant silently. It still cannot *cause* MFA to happen, but it can
 > refuse a session that does not evidence it, which is the only lever a relying party has.
@@ -256,7 +256,7 @@ keep their MoSCoW tags because nothing here is dropped — only sequenced behind
 | F13-R09 | Sign-out invalidates the local session and initiates provider sign-out. | Must |
 | F13-R10 | Failed logins, lockouts and password resets are handled by the provider; the platform surfaces provider errors without leaking whether an account exists **[DEC-29]**. | Must |
 | F13-R11 | Employees can sign in with the organisation's existing corporate identity if the chosen provider supports federation. Entra makes this the default path for employees **[DEC-20]**. | Should |
-| F13-R45 | **MFA is mandatory for customer users [DEC-92]**, and the platform **verifies the authentication-method claim** on every customer access token: a token whose `amr` carries no second-factor method is rejected and no session is established. Enforcement stays in Conditional Access on the corporate tenancy **[DEC-66]** — the platform still implements no MFA, no enrolment and no step-up **[F13-R06]** — but it no longer trusts the tenant silently. The accepted method set is **configuration, not a constant**, because Entra's `amr` values change over time; an empty, absent or unrecognised value **fails closed**. Every rejection is logged with the reason **[F15](F15-audit-and-observability.md)**, so "the tenant policy changed under us" is diagnosable in minutes rather than by inference from a support queue. | Must |
+| F13-R45 | ⚠ **NOT BUILT — suspended 2026-09-03 by [DEC-119].** There is no identity provider, so there is no second factor to verify and no `amr` value the platform did not mint itself: the token carries `amr: ["pwd"]` and **nothing anywhere rejects on it**. The requirement below stands and is what must be reinstated when a provider exists; it is recorded as unbuilt rather than deleted, because a security requirement quietly removed is one nobody reinstates. Original text: **MFA is mandatory for customer users [DEC-92]**, and the platform **verifies the authentication-method claim** on every customer access token: a token whose `amr` carries no second-factor method is rejected and no session is established. Enforcement stays in Conditional Access on the corporate tenancy **[DEC-66]** — the platform still implements no MFA, no enrolment and no step-up **[F13-R06]** — but it no longer trusts the tenant silently. The accepted method set is **configuration, not a constant**, because Entra's `amr` values change over time; an empty, absent or unrecognised value **fails closed**. Every rejection is logged with the reason **[F15](F15-audit-and-observability.md)**, so "the tenant policy changed under us" is diagnosable in minutes rather than by inference from a support queue. | Must |
 
 ### Authorisation
 
@@ -280,7 +280,7 @@ which describe a surface **[DEC-97]** that does not exist in the PoC and whose t
 | F13-R20 | Employees have no implicit write access to customer-owned actions (a trader cannot accept an offer on a customer's behalf). | Must |
 | F13-R41 | A customer account carries an **admin** boolean **[DEC-71]**. It is set and cleared by a PeakPower employee **[DEC-16]**, never by the customer, never derived from a request parameter and never defaulted on (no "first account of a company is admin" rule). It grants **no additional read or write**: an admin sees and does exactly what a non-admin sees and does, and a **non-admin may still accept an offer [DEC-18]**. Its only effect is to make the account eligible to give — or refuse — a four-eyes approval **[F13-R44]**. Any endpoint that gates an ordinary read or write on the flag is a defect (§3, rule 11). | Must |
 | F13-R42 | A customer **company** carries a **four-eyes enabled** boolean **[DEC-71]**. There is **no threshold**, in euros or in megawatts: ⚠ **[DEC-33]**'s threshold reference data **[F05-R50]** is replaced, not set to zero, so nothing resolves a value at acceptance time. When the flag is off, the admin flag has no behavioural effect anywhere in the platform. When it is on, the actions enumerated in [F05](F05-energy-block-trading.md) require a second admin. Changing the flag is an employee action, audited like any other **[DEC-17]**. | Must |
-| F13-R43 | The admin flag reaches the API as a **second entry in the existing `roles` claim** (`customer.admin` beside `customer.user`), so that deny-by-default endpoint declaration **[F13-R18]** keeps one authorisation vocabulary instead of gaining a parallel boolean one. Like `customer_id` and `account_id` it is **re-validated against the platform's own account record on every request**, and the token is rejected on mismatch **[F13-R16]** — a claim that decides who may release money must not be trusted on the token alone, because a token issued before the flag was cleared would otherwise still approve. In the PoC it arrives from the development context provider **[F13-R30]**, for the same reason `account_id` does: the four-eyes path cannot be exercised before authentication exists otherwise. ⚠ **`four_eyes_enabled` is deliberately *not* a claim** — it is company reference data read server-side per request, so switching the mode takes effect immediately instead of at the next token refresh. | Must |
+| F13-R43 | ⚠ **Corrected 2026-09-03: the flag reaches the API as its own boolean `is_admin` claim.** There is no `roles` claim and no `customer.*` role vocabulary on either API, and `ICustomerContext.IsAdmin` reads the boolean. The **re-validation** below is achieved by a different mechanism and the guarantee is intact: `is_admin` is not compared to the account row per request, but changing the flag **bumps `security_stamp`**, and the `stamp` claim IS compared on every request **[DEC-117]** — so a token minted before the flag was cleared is rejected on its next call. Original text: The admin flag reaches the API as a **second entry in the existing `roles` claim** (`customer.admin` beside `customer.user`), so that deny-by-default endpoint declaration **[F13-R18]** keeps one authorisation vocabulary instead of gaining a parallel boolean one. Like `customer_id` and `account_id` it is **re-validated against the platform's own account record on every request**, and the token is rejected on mismatch **[F13-R16]** — a claim that decides who may release money must not be trusted on the token alone, because a token issued before the flag was cleared would otherwise still approve. In the PoC it arrives from the development context provider **[F13-R30]**, for the same reason `account_id` does: the four-eyes path cannot be exercised before authentication exists otherwise. ⚠ **`four_eyes_enabled` is deliberately *not* a claim** — it is company reference data read server-side per request, so switching the mode takes effect immediately instead of at the next token refresh. | Must |
 | F13-R44 | The identity layer exposes the single predicate the four-eyes rule is built on: *account B is an **admin** of the **same** company as account A, and B ≠ A* **[DEC-71]**, **[DEC-17]**. A company-level check is not sufficient and **self-approval is rejected at this layer**, not only in the trading UI — the approval API is reached by more than one client over the platform's life. | Must |
 | F13-R46 | The customer **usage API** authorises on the same `customer_id` scope as the portal, through the same global query filter **[F13-R17]** and the same `404`-not-`403` behaviour **[F13-R19]** **[DEC-97]**. A usage credential reads the usage of **its own company** and nothing else: there is no cross-company scope, no employee scope and no "all customers" mode on this surface. | Must |
 | F13-R47 | The usage API exposes **usage data only** — no forward price, no price indication, no offer and no export of either **[DEC-97]**, **[DEC-81]**, **[DEC-27]**. This is enforced by the surface not carrying those endpoints, rather than by a role check that a later change could relax. ⚠ The credential and the transport are **[OQ-95]** (API or file/FTP); the scope rule above holds whichever is chosen, which is why it is written before the transport is. | Must |
@@ -343,20 +343,39 @@ break-glass and no "emergency password reset" for a customer account.
 1. **Two realms, no crossover.** An employee token is never valid on the customer API and vice
    versa, enforced by audience validation.
 2. **`customer_id` comes from the token, always.** Any code path that reads a customer identifier
-   from a query string, body or header for authorisation purposes is a defect.
+   from a route, query string, body or header for authorisation purposes is a defect. ⚠ **This is
+   an architecture test, not advice** (added 2026-09-03): *no type outside the context-provider
+   assembly reads a customer identifier from `HttpContext`.* It runs from week one alongside the
+   other five facts, because the slice that builds the tenancy pipeline is precisely the slice
+   where taking the shortcut is tempting.
 3. **Deny by default.** Both at the endpoint level and at the data-access level.
 4. **Deactivate, never delete.** Audit trails must remain readable years later.
 5. **Impersonation is read-only** **[F12-R31..R33]**.
 6. **Provider-agnostic.** No provider-specific API calls in domain code; provisioning goes through one
-   adapter. **[DEC-20]** names Entra ID as the provider; it does not license Entra-shaped code
-   outside that adapter.
-7. **The platform holds no customer credential [DEC-29].** Not a password, not a hash, not a reset
-   token. **[DEC-53]** amends this for **employees only**: the named break-glass accounts hold a hash
+   adapter. ~~**[DEC-20]** names Entra ID as the provider~~; it does not license Entra-shaped code
+   outside that adapter. ⚠ **Amended 2026-09-03 by [DEC-119]: there is no provider.** With no access
+   to the corporate Microsoft tenancy, the platform owns identity outright — JWT only, no Entra, no
+   Microsoft integration, no external identity provider anywhere in the proof of concept. The rule
+   survives its own premise and is now the thing that keeps a provider reintroducible: `ICustomerContext`
+   is still the one seam, so a provider goes behind one registration rather than through a rewrite.
+7. ~~**The platform holds no customer credential [DEC-29].** Not a password, not a hash, not a reset
+   token.~~ ⚠ **Reversed 2026-09-03 by [DEC-113], and made permanent by [DEC-119].** The platform
+   holds an **Argon2id hash** on `customer_account.password_hash`, **owns the reset path**, and
+   stores hashed reset and refresh tokens. What survives of the rule is the containment: the hash is
+   never logged and never returned by any endpoint, and every control the break-glass exception below
+   demanded — hashing, rotation, revocation — now applies to the customer realm too. Hard lockout and
+   MFA are **not** in scope; sign-in carries a progressive delay instead, because a hard lockout on a
+   username is a denial-of-service primitive against a named customer. Original text and its
+   exception, unchanged and still binding for employees: **[DEC-53]** amends this for **employees only**: the named break-glass accounts hold a hash
    **[F13-R33]**, disabled by default, second-factored off-provider, alerted on every use and
    rehearsed. Everything outside that enumerated set is unchanged, and the exception is not a licence
    to store any other credential "while we are at it".
 8. **No authentication is not no tenancy [DEC-20].** The context pipeline, the query filter and the
    `404` behaviour are unconditional. A build with authentication disabled still scopes every query.
+   ⚠ **Honoured rather than superseded by [DEC-117]** (2026-09-03): real sign-in exercises the same
+   pipeline more strongly than a development switcher would, and the development context provider is
+   still built and still registered — under `IsDevelopment()` only, with a startup guard that turns
+   a Production host wired to one into a boot failure.
 9. **Break-glass is exercised or it does not exist [DEC-53].** Rehearsal is a requirement
    **[F13-R39]**, not a good intention, and the alerting **[F13-R37]** is what makes a real use
    distinguishable from an attacker finding the same door.
@@ -366,6 +385,11 @@ break-glass and no "emergency password reset" for a customer account.
     Access on the corporate tenancy **[DEC-66]** — and the platform still never claims more than `amr`
     says. What changes is that it now makes exactly one decision on the evidence: **no second factor,
     no session** **[F13-R45]**.
+    ⚠ **Suspended 2026-09-03 by [DEC-119], and this is the half that matters.** There is no tenant,
+    so nobody is enforcing MFA at either end. The token carries `amr: ["pwd"]` — a password — and
+    **nothing rejects on it**: the claim is issued and read by no one. The rule's own last clause is
+    what saves it from being a false record: the platform must never *claim* MFA was applied, and it
+    does not. **[F13-R45]** is recorded and unbuilt.
 11. **Two levels, and the flag grants nothing [DEC-71].** `customer.admin` is eligibility to approve,
     not extra access. Any code path that gates an ordinary read or write on it — a report, a screen, a
     higher limit — is a defect, because it turns one bit into an org chart **[F13-R41]**.

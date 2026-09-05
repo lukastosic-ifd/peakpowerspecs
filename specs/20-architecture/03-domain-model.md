@@ -303,8 +303,15 @@ public sealed class CustomerAccount : Entity
     public string? JobTitle { get; private set; }  // "role in the company" — descriptive only
     public string Email { get; private set; }
     public string? Phone { get; private set; }
-    public AccountStatus Status { get; private set; }   // Invited | Active | Deactivated
-    public ExternalSubjectId? SubjectId { get; private set; }  // set when the invitation is accepted
+    public AccountStatus Status { get; private set; }   // PendingApproval | Invited | Active | Deactivated
+    // ⚠ Retired 2026-09-03 by [DEC-119]: the platform owns identity outright, so there is no
+    //   external subject to hold. Always null; nothing reads or writes it. Dropped after slice 1.
+    public ExternalSubjectId? SubjectId { get; private set; }  // was: set when the invitation is accepted
+
+    // ⚠ Added 2026-09-03. The platform holds the credential [DEC-113] and revokes a stateless
+    //   token by comparing the stamp on every request [DEC-117], [F01-R16].
+    public string? PasswordHash { get; private set; }          // Argon2id; null until a credential is set
+    public Guid SecurityStamp { get; private set; }            // bumped by every mutator, and by reset
     public DateTimeOffset? LastLoginAt { get; private set; }
 
     /// ⚠ Amended 2026-08-19 by [DEC-71], which qualifies [DEC-16]. The one and only
@@ -356,7 +363,8 @@ public sealed class MeteringPoint : Entity
     public DateTimeOffset? ExpectationDeclaredAt { get; private set; }
 }
 
-public enum ProductionExpectation { Unknown = 0, Expected = 1, NotExpected = 2 }
+// The database spelling is normative: NEVER, not NOT_EXPECTED. Corrected 2026-09-03.
+public enum ProductionExpectation { Unknown = 0, Expected = 1, Never = 2 }
 ```
 
 ### 3.1 Invariants
@@ -401,8 +409,11 @@ public sealed class FourEyesRequest : AggregateRoot
 {
     public FourEyesRequestId Id { get; }
     public CustomerId CustomerId { get; }
+    // ⚠ Corrected 2026-09-03 to the five arms the database defines. `Trade` was missing, and
+    //   `Withdraw` is spelled `Withdrawal` — the database spelling is normative in both cases,
+    //   and WITHDRAWAL is what the CHECK constraint in customer.approval_request accepts.
     public FourEyesAction Action { get; }        // AddBankAccount | DeactivateBankAccount
-                                                 // | AddUser | Withdraw
+                                                 // | AddUser | Trade | Withdrawal
     public string SubjectRef { get; }            // the id of the thing being acted on
     public string PayloadJson { get; }           // the proposed change, frozen at request time
     public CustomerAccountId RequestedByAccountId { get; }

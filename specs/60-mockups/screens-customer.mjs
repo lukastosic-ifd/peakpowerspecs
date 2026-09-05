@@ -4,7 +4,11 @@ import {
   coverageBands, axis, legend, note,
 } from './lib.mjs';
 
-const NAV = ['Dashboard', 'Connections', 'Consumption', 'Prices', 'Trading', 'Wallet', 'Invoices'];
+// Labels follow the design system, route keys follow the specifications [DEC-115]. The built
+// portal maps between them in PAGE_LABELS; this array is the label half. `Company` is added
+// because design section 8.3 carries a "Company profile + accounts" screen [F01-R09] [F01-R21]
+// that these wireframes never had a row for.
+const NAV = ['Dashboard', 'Connections', 'Volume', 'Prices', 'Trades', 'Balance', 'Settlements', 'Company'];
 const USER = 'J. de Vries · Vandersteen Koeling';
 
 const HOURS = ['00', '03', '06', '09', '12', '15', '18', '21', '24'];

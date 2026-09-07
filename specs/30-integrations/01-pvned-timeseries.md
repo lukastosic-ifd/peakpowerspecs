@@ -68,8 +68,11 @@ only* — and the distinction matters, because almost nothing about the transpor
 | The nine documentation inconsistencies in §9 | **Unwalked** — [OQ-65] |
 | A usable PVNed test environment | **Not established.** The warning stands |
 
-**Risk R-01 is deferred, not closed** ([Risks](../70-delivery/02-risks.md)) — it remains the
-highest-scoring risk on the register.
+**Risk R-01 is deferred, not closed** ([Risks](../70-delivery/02-risks.md)) — it remains **joint
+highest** on the register, at 20, alongside **[R-10]**. ⚠ *Corrected 2026-09-08: this said "the
+highest-scoring risk", which stopped being true when [R-10] was raised from 9 to 20 on 2026-08-19.*
+**PoC slice 2 does not lower it** — see `docs/what-slice-2-does-not-prove.md` in
+`peakpower-platform`.
 
 The generated data must be produced **against the reconstructed sample message (§6) and the XSD
 described in this document**, and driven through the **real webhook, parser and validation path**

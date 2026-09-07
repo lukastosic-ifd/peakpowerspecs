@@ -246,7 +246,7 @@ this table exists to prevent.
 | **Access to the corporate Entra tenancy** **[DEC-66]** | PeakPower IT — whoever administers the corporate Microsoft tenant | ⚠ **Unnamed — must be named before phase 0 exits** | **2026-08-12** | **2026-08-26**, and hard-stop **2026-10-19** | The tenancy **exists [DEC-66]**; only access is outstanding. 2026-08-26 keeps it ahead of phase 1 starting 2026-09-01; 2026-10-19 is when the claim-mapping spike starts (`p1f`), and **[DEC-67]** runs that spike against **this** tenancy, so the spike cannot start without it. Needed for: app registrations for both portals **[F13-R03]**, the `customer_id` claim mapping **[F13-R32]**, tenant MFA policy **[DEC-51]**, and the directory that will hold the managed identities ([Deployment §1.1](../20-architecture/09-deployment.md)) |
 | **The bookkeeping program named — [OQ-69]** 🔴 **P1** | PeakPower — commercial and finance, not the delivery team | ⚠ **Unnamed — must be named before phase 0 exits** | **2026-08-19** | **2026-09-30** (`p0e`), hard-stop **2027-02-15** | **New 2026-08-19, and the only blocking item in the plan.** 2026-09-30 is the last date at which phase 3's integration can be specified without guessing; 2027-02-15 is when phase 3 starts and the mapping build (`p3e`) begins, and neither can begin against an unnamed target. Needed for: draft-invoice push and invoice numbering **[DEC-88]**, the PDF and the customer email **[DEC-89]**, energiebelasting ledger entries **[DEC-74]**, VAT per ledger account **[DEC-76]**, payment settlement reconciliation **[DEC-105]**, customer records created from the platform **[DEC-108]** and the bank-feed view of deposits **[DEC-109]**. ⚠ Unlike every other row here, the thing being asked for is a **decision**, not access — which makes it faster to grant and easier to postpone |
 | **Chart of accounts + tax-code mapping, authored** **[DEC-107]** | PeakPower finance, against the program above | ⚠ **Unnamed — must be named before phase 0 exits** | **2026-08-19** | First draft **2026-10-31**; complete before `p3e` ends **2027-03-15** | **New 2026-08-19.** **[DEC-59]** said it does not exist; **[DEC-107]** says it must be built. It is the one row in this table that is **work as well as a request** — hence a named owner from day one and a first draft months before it is needed, because it can only be written once [OQ-69] is answered and it has grown since [DEC-59]: an energiebelasting account **[DEC-74]** and a **VAT rate per account** **[DEC-76]**, since the platform now computes no VAT at all |
-| **PVNed endpoint, auth, ack format and a test environment** ([OQ-65], [OQ-05]) | PVNed | ⚠ **Unnamed** | Phase 0 | Before the real integration is validated | **[DEC-21]** buys time with generated data; it does not remove the dependency, and **R-01 (20)** is the highest-scoring risk on the register. A third party's calendar is not controllable, so book it rather than wait for it. ⚠ **Widened 2026-08-19 by [DEC-69]**: PVNed is now the **first BRP, not the only one**, so the same conversation must establish what varies between BRPs — credentials, endpoint, document format — and **[DEC-98]** adds one item to the list: the reconciliation data that arrives *after* the 10-working-day window, in whatever form it arrives |
+| **PVNed endpoint, auth, ack format and a test environment** ([OQ-65], [OQ-05]) | PVNed | ⚠ **Unnamed** | Phase 0 | Before the real integration is validated | **[DEC-21]** buys time with generated data; it does not remove the dependency, and **R-01 (20)** is **joint** highest on the register with **[R-10]** (also 20, raised from 9 on 2026-08-19). ⚠ **Corrected 2026-09-08** — it was "the highest-scoring risk" here and in two other files, which stopped being true at that rescore. A third party's calendar is not controllable, so book it rather than wait for it. ⚠ **Widened 2026-08-19 by [DEC-69]**: PVNed is now the **first BRP, not the only one**, so the same conversation must establish what varies between BRPs — credentials, endpoint, document format — and **[DEC-98]** adds one item to the list: the reconciliation data that arrives *after* the 10-working-day window, in whatever form it arrives |
 | **A dedicated sending domain with SPF, DKIM and DMARC** **[DEC-48]** | Whoever owns PeakPower DNS | ⚠ **Unnamed** | Phase 0 | ~~Before the first invoice run (phase 3)~~ ⚠ **Pulled forward 2026-08-19: before the first offer notification (phase 2)** | DMARC is the long pole — start at `p=none`, read the reports, then tighten ([Deployment §5.1](../20-architecture/09-deployment.md)). ~~**[DEC-47]** puts invoices on the same channel as time-critical offer notifications~~ ⚠ **Amended 2026-08-19 by [DEC-89]**: the bookkeeping program sends the invoice email, so SendGrid narrows to the platform's **own** notifications — offers **[DEC-111]**, wallet events, deposit-received confirmations **[DEC-106]**, alerts. That makes the domain needed **earlier**, not later: phase 2's 30-minute offer window is the first thing that fails if mail lands in spam |
 | **DPIA and processor agreements** ([OQ-58]) | Legal, with PVNed, ~~CM.com **[DEC-58]**~~ **a PSP still unchosen [DEC-86]**, Entra ID **[DEC-20]**, SendGrid **[DEC-48]** and the cloud provider | ⚠ **Unnamed for the transfer** — **Kikker holds them for the test phase [DEC-101]** | Phase 0 | Before go-live | The counterparties are all named now, which makes the work schedulable rather than open-ended. Longest external lead time of the four. ⚠ **Amended 2026-08-19 by [DEC-101]**: **Kikker** holds the DPIA and the processor agreements **for the test phase**, and ownership transfers to PeakPower later. That is not an open question — it is a **go-live item with a date**, and the date is unset. **[DEC-86]** leaves the PSP unchosen, so one counterparty on this list cannot be papered yet; the port **[F07-R20]** keeps that cheap technically and does nothing for it legally |
 
@@ -283,10 +283,31 @@ remotely. The five `tools/verify-*.sh` guards on the platform side are run by ha
 client staleness check is the exception and was moved into the web workspace's own `npm test` for
 exactly that reason.
 
-**Open, with no owner, and every one of them raised by an implementer who could not fix it from
-where they stood:**
+⚠ **Corrected 2026-09-08 (PoC slice 2, design §11 row 6). All six gaps below are CLOSED.** Every
+one of them was fixed in `peakpower-web` on **2026-09-03**, within half an hour of this section
+being committed — three of them *before* it. The section was written from the state an implementer
+found earlier that morning and was already out of date when it landed; it is kept rather than
+deleted because the reasoning in the "why it is not cosmetic" column is still the argument for why
+each mattered, and because planning from the table as it stood re-does six finished pieces of work.
 
-| # | Gap | Why it is not cosmetic |
+This section (roadmap commit `39fd8d8`, 10:32) against the six fixes:
+
+| # | Gap | Closed by | At |
+| --: | --- | --- | --- |
+| 1 | Consent and choice controls keyboard-unreachable | `e0d5670` *make the consent ticks and choice rows keyboard-operable* | 10:37 |
+| 2 | No skip link, no `<main>`, missing `<h1>` | `192ec9c` *a main landmark, a skip link, and one h1 on every screen* | 10:45 |
+| 3 | `aria-describedby` absent from the workspace | `bf1edc5` *associate every validation message with its control* | **10:29** |
+| 4 | No shared error-state treatment | `5f13bea` *one error state for a load that fails, and three pages using it* | 10:51 |
+| 5 | Reset-password flow not completable by a human | `3a7726c` *a field to paste the reset code into* | **10:26** |
+| 6 | No workspace guard for `var(--pp-*)` tokens | `e476cf7` *a workspace guard for var(--pp-\*), and the one reference it found* | **10:22** |
+
+**What actually remains of this section is its own deliberate-scope line** — *"no CI, no package
+registry, no deployment"* — **and PoC slice 2 closes CI and deployment.** The package registry
+stands: the two repositories still share code by generated client rather than by published package.
+
+**The six gaps as they were recorded, now all closed — kept for the reasoning, not as a work list:**
+
+| # | Gap | Why it was not cosmetic |
 | --: | --- | --- |
 | 1 | **Consent and choice controls are keyboard-unreachable.** Five `(click)` handlers sit on `<div>`s with no `role`, no `tabindex` and no key handler, across **four required onboarding steps** — 1 (terms), 5 (flow and volume), 7 (signing authority) and **9 (the signature)** | **Blocking, not polish.** A keyboard-only or screen-reader customer **cannot sign the contract**. The other items degrade the experience; this one prevents completion |
 | 2 | **No skip link anywhere, and no `<main>` outside the onboarding wizard.** `<h1>` is present on connections (list, detail, claim), company and the wizard, and **absent** from the dashboard, sign-in, forgot-password and reset-password | Raised by three tasks in a row, and none could fix it: the heading element lives in `libs/shared-ui`'s `PpCard`, which renders a `div`, and a customer-portal task may not change a library the employee portal also uses |
@@ -295,10 +316,34 @@ where they stood:**
 | 5 | **The reset-password flow cannot be completed by a human.** The email says "use this code" and carries **no URL**; the screen reads a `?token=` query parameter and offers no field to paste a code into | Completable by a machine and not by a person. The end-to-end test constructs the URL directly, so nothing red |
 | 6 | **No workspace guard for `var(--pp-*)` tokens.** Every task has checked them by hand | A non-existent token renders invisibly rather than failing |
 
-Items 2, 3 and 6 are cross-cutting by nature — cheapest once every screen exists, which is now.
-Item 1 is the one that decides whether the flow can be signed off at all.
+~~Items 2, 3 and 6 are cross-cutting by nature — cheapest once every screen exists, which is now.
+Item 1 is the one that decides whether the flow can be signed off at all.~~ ⚠ **Superseded
+2026-09-08:** all six were closed on 2026-09-03. See the correction above.
 
 ## 3. Phase 1 — *See your data*
+
+⚠ **Amended 2026-09-08 (PoC slice 2, design §11 rows 4–5) — read this before planning from the
+table below.** **[DEC-119]** took back the identity provider that **[DEC-20]**, **[DEC-03]**,
+**[DEC-29]**, **[DEC-66]** and **[DEC-67]** all assumed: *the platform owns identity outright, for
+customers and for staff, and authentication is JWT only — no Entra, no Microsoft integration, no
+external identity provider anywhere in the proof of concept.* The rows below still specify OIDC
+against Entra ID, still schedule the **Entra claim-mapping spike as its own bar (`p1f`)**, and
+still carry exit criteria that decision made unreachable. **Anyone planning from them over-scopes
+phase 1.** Specifically:
+
+| Row as written | What [DEC-119] does to it |
+| --- | --- |
+| F13 Identity — "OIDC against Entra ID on the existing corporate tenancy **[DEC-66]**" | **Gone.** The platform holds an Argon2id credential hash **[DEC-113]** and issues an ES256 JWT access/refresh pair over JWKS **[DEC-117]**. No discovery, no PKCE, no external token to validate |
+| F13 **Entra claim-mapping spike (`p1f`)**, 2026-10-19 → `m1` | **The bar disappears.** There is no external provider to map a claim from; `customer_id` is a claim the platform mints. **[R-24]** and the §2.1 tenant-access dependency lose their only phase-1 consumer |
+| "gated on tenant *access* … the two app registrations **[F13-R03]** and the tenant MFA policy **[DEC-51]**" | **Not gated.** No app registrations are needed |
+| "MFA … enforced by Conditional Access **[DEC-66]** … verify the authentication-method claim **[DEC-92]**" | **Unimplemented, and now the platform's own problem.** There is no Conditional Access to enforce it and no tenant claim to verify. This is a **gap opened by [DEC-119], not closed by it**, and it needs its own decision before phase 1 ships |
+| F13 **Break-glass [DEC-53]** — "a second factor that does not depend on the provider" | **Still required, and its rationale changes.** With no provider, "does not depend on the provider" is trivially true and the substance — named accounts, disabled by default, time-boxed, alerted, audited, rehearsed — is entirely the platform's |
+
+⚠ **What [DEC-119] does not do is remove the work.** Credential storage, the reset flow, lockout and
+MFA were the provider's under **[DEC-29]**; three of the four are now built (**[DEC-113]**,
+**[DEC-117]**, slice 1's reset path) and **MFA is not**. Phase 1's identity slice is not smaller than
+the table says — it is *differently shaped*, and the one item that got larger is the one nobody has
+re-estimated.
 
 **Goal:** a customer logs in and sees accurate, well-labelled interval data for every connection.
 **No money moves.**
@@ -801,6 +846,16 @@ count of unnamed roles goes from two to three, and the count of §2.1 rows waiti
 four to six.
 
 ## 11. Open questions that bear on the plan
+
+⚠ **Amended 2026-09-08 (PoC slice 2, design §11 row 5).** **[DEC-119]** removed the external
+identity provider from the proof of concept entirely, so every question below that asks *which
+tenant*, *which provider* or *how a claim is mapped* has stopped bearing on the plan — not because
+it was answered, but because the thing it was about is no longer being built. Read them with that
+in front: an unanswered question about a component that was cut is not a blocker, and treating it as
+one holds up a phase for a decision nobody needs to take. The questions that **do** still bear on
+phase 1 identity are the ones **[DEC-119]** created rather than removed — chiefly **how MFA is
+enforced now that there is no Conditional Access to enforce it** (see §3), which is not yet
+registered as an open question and should be.
 
 Post-2026-08-19 state. The register in [80-open-questions.md](../80-open-questions.md) is the source;
 this is the delivery view of it — **which phase each one holds up, and what happens if it is late**.

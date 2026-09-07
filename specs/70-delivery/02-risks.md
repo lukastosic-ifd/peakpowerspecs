@@ -73,6 +73,20 @@ direction; nothing here is re-scored silently.
 the only one, so the score, the owner and the substance are unchanged and the scope of the sentence is
 not.*
 
+⚠ **Joint highest, not the highest.** At 20 this row ties **[R-10]**, which rose from 9 to 20 on
+2026-08-19. Three documents still described R-01 as "the highest-scoring risk" until 2026-09-08;
+all three now say joint (PoC slice 2, design §11 row 7).
+
+⚠ **Re-examined again 2026-09-08 after PoC slice 2, and held at 20.** The slice ingests generated
+PVNed-format documents through the real webhook, parser, validator and versioning pipeline, and
+that is genuinely proven. What it does **not** touch is every input to this score: the endpoint,
+the authentication mechanism, the acknowledgement form, the retry behaviour and the nine
+documentation inconsistencies are exactly as unvalidated as they were, and the generator and the
+parser were written by the same team from the same reconstructed source. A green ingestion suite is
+**not** evidence about PVNed. The full argument is
+`docs/what-slice-2-does-not-prove.md` in `peakpower-platform`, which the slice's design §7.25
+requires to exist for this reason. **Nothing in slice 2 lowers this row.**
+
 Everything the platform shows, trades against and invoices comes through one third-party push
 integration. If there is no test environment ([OQ-05]), the first real document arrives in
 production and every quirk is discovered live.
@@ -1267,7 +1281,7 @@ R-03), of which **17 score 12 or above**.
 
 | ID | Risk | L | I | Score | Mitigation summary | Owner |
 | --- | --- | :-: | :-: | :-: | --- | --- |
-| **R-01** | ~~PVNed~~ **BRP** integration cannot be tested pre-production | 4 | 5 | 🔴 20 | Deferred by [DEC-21], not closed — generate against the sample and XSD, through the real parser; close [OQ-65] first. Document half narrowed by [DEC-38] [DEC-65]; **transport half untouched**. ⚠ 2026-08-19: [DEC-69] makes the source a **configurable BRP** — build the seam in the PoC; [DEC-98] reverses [DEC-57] and gives back a late recovery route | Lead |
+| **R-01** | ~~PVNed~~ **BRP** integration cannot be tested pre-production | 4 | 5 | 🔴 20 *(joint highest, with [R-10])* | ⚠ **Held at 20 on 2026-09-08 after PoC slice 2** — the pipeline is proven and the format is not; see `docs/what-slice-2-does-not-prove.md`. Deferred by [DEC-21], not closed — generate against the sample and XSD, through the real parser; close [OQ-65] first. Document half narrowed by [DEC-38] [DEC-65]; **transport half untouched**. ⚠ 2026-08-19: [DEC-69] makes the source a **configurable BRP** — build the seam in the PoC; [DEC-98] reverses [DEC-57] and gives back a late recovery route | Lead |
 | **R-10** | **The bookkeeping program is unnamed, and the invoice depends on it entirely** | 4 | 5 | 🔴 20 | **Was 9. [OQ-69] is the register's only blocking question** — [DEC-88] [DEC-89] [DEC-105] [DEC-108] [DEC-109] moved numbering, the document, its email, settlement reconciliation and customer records out; [DEC-74] [DEC-76] added to the mapping [DEC-107], which still has no owner. Name it in phase 0; port + stored draft + stub | Finance / IT |
 | **R-28** | **Full imbalance cost sits with PeakPower, and nothing measures it** | 4 | 4 | 🟠 16 | **New** — [OQ-15] confirms [DEC-25]: *"we take the full imbalance risk"*. Store `A12` **and report it**; measure deviation per customer; revisit the first month imbalance cost exceeds the spread earned [DEC-80] | Trading / MD |
 | **R-04** | Wallet correctness defect | 3 | 5 | 🟠 15 | Append-only ledger; locking; reconciliation; test gate. ⚠ 2026-08-19: [OQ-83] closed by [DEC-78] (reservation = debit, one stored number); [DEC-77] removes `INVOICE_DEBIT`; **[DEC-83] puts the payout path back**; [DEC-71] routes **every** trade of an enabled company through approval | Lead |

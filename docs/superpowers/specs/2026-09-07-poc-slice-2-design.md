@@ -595,6 +595,11 @@ Negative fixtures for the adapter are **hand-written and checked in**, never gen
 
 Rows 1–3 must land **before step 3** — migration 9 is written against them.
 
+⚠ **Status, 2026-09-08.** Rows **1–3** landed in plan 2 as **[DEC-143]**. Rows **4–8** and the new
+row **9** landed in plan 8: roadmap §3 and §11 carry a `[DEC-119]` banner, §2.2 records that all six
+slice-1 gaps were closed on 2026-09-03, three files now call `[R-01]` **joint** highest with
+`[R-10]`, and **[DEC-144]** defines the platform's working-day calendar per **S2-D8**.
+
 | # | Document | Change |
 | --: | --- | --- |
 | 1 | `specs/00-overview/04-assumptions-and-decisions.md` | **New decision** resolving the `interval_data_version` source-column conflict per **S2-D2** |
@@ -605,6 +610,7 @@ Rows 1–3 must land **before step 3** — migration 9 is written against them.
 | 6 | `specs/70-delivery/01-roadmap-and-phasing.md` §2.2 | **Correct all six slice-1 gaps: every one was closed in `peakpower-web` on 2026-09-03, within half an hour of §2.2 being committed** (roadmap `39fd8d8` 10:32; fixes `e476cf7` 10:22, `3a7726c` 10:26, `bf1edc5` 10:29, `e0d5670` 10:37, `192ec9c` 10:45, `5f13bea` 10:51). What actually remains is the section's own deliberate-scope line — "no CI, no package registry, no deployment" — of which this slice closes CI and deployment. Planning from §2.2 as-is re-does six finished pieces of work |
 | 7 | `specs/70-delivery/02-risks.md`, `[OQ-65]`'s row, and the PVNed integration spec | Two files still call `[R-01]` "the highest-scoring risk"; it is **joint** highest with `[R-10]` since that rescore |
 | 8 | `specs/10-features/F02-metering-data-ingestion.md` `[F02-R23]`, and a **new decision** in the register | **Define "the platform's working-day calendar."** `[F02-R23]` invokes it with the definite article and nothing defines it — `[OQ-02]`/`[DEC-19]`/`[DEC-14]` settle the **peak** calendar, which is a different object with the opposite treatment of holidays (a weekday holiday *is* a peak day). Record **S2-D8**: Monday–Friday, empty exclusion list, holidays ignored, reusing `[DEC-14]`'s data-driven mechanism; and note that `[DEC-98]` is what makes ignoring them safe, since a post-window correction now reopens the date rather than being locked out |
+| 9 | `specs/20-architecture/04-database-design.md` §3.2, `metering.daily_position` and `customer.metering_point` | **Three corrections the shared contract took and this table did not carry.** (a) `daily_position`'s day column is **`delivery_date`**, not the published DDL's `local_date` — one word for one thing across seven tables, and §4.1's own prose already says "delivery date". (b) `daily_position` **drops** `block_kwh`, `covered_kwh`, `uncovered_kwh`, `surplus_kwh` and `spot_cost_eur` (all Phase 2, **S2-D6**) and **gains** `offtake_kwh` and `export_kwh`, which §4.1 is the argument for. (c) `metering_point` **gains** `production_expectation_set_by` and `production_expectation_set_at`: **[F02-R33]** needs the declared zero traceable to its source, setter and date **[F01-R40]**, slice 1 shipped only `expectation_source`, and §10.1's `productionDeclaration` has nothing to carry without them. Shared contract §16 items 1, 2 and 9; all three are in migration 9 already, so this row makes the specification match what shipped rather than proposing a change to it |
 
 ---
 

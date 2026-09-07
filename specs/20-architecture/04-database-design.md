@@ -547,17 +547,36 @@ CREATE TABLE metering.inbound_message (
 CREATE INDEX ix_msg_hash_recent ON metering.inbound_message (payload_hash, received_at DESC);
 CREATE INDEX ix_msg_brp ON metering.inbound_message (brp_id, received_at DESC);
 
+-- ⚠ Corrected by [DEC-143]. The previous form had document_id, document_created and
+--   inbound_message_id all NOT NULL and no `source` column, which made [F02-R36]'s manual
+--   version unstorable. `source` is the discriminator; the two checks below are what stop it
+--   becoming a column anybody can set to anything.
 CREATE TABLE metering.interval_data_version (
     id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     metering_point_id  uuid NOT NULL REFERENCES customer.metering_point(id),
+    customer_id        uuid NOT NULL REFERENCES customer.customer(id),   -- S2-D1
     delivery_date      date NOT NULL,
     direction          text NOT NULL CHECK (direction IN ('CONSUMPTION','PRODUCTION')),
-    document_id        text NOT NULL,
-    document_created   timestamptz NOT NULL,
+    source             text NOT NULL CHECK (source IN ('BRP_FEED','MANUAL')),
+    document_id        text,
+    document_created   timestamptz,
     received_at        timestamptz NOT NULL,
-    inbound_message_id uuid NOT NULL REFERENCES metering.inbound_message(id),
+    inbound_message_id uuid REFERENCES metering.inbound_message(id),
+    correlation_id     uuid NOT NULL,
     interval_count     smallint NOT NULL CHECK (interval_count IN (92, 96, 100)),
-    is_current         boolean NOT NULL DEFAULT true
+    is_current         boolean NOT NULL DEFAULT true,
+    created_at         timestamptz NOT NULL DEFAULT now(),
+
+    -- A BRP_FEED version is the document it came from, so all three must be present.
+    CONSTRAINT ck_idv_brp_feed_has_message CHECK (
+        source <> 'BRP_FEED'
+        OR (inbound_message_id IS NOT NULL
+            AND document_id IS NOT NULL
+            AND document_created IS NOT NULL)),
+
+    -- A MANUAL version has no document and no message.  [F02-R36]
+    CONSTRAINT ck_idv_manual_has_no_message CHECK (
+        source <> 'MANUAL' OR inbound_message_id IS NULL)
 );
 
 -- exactly one current version per (point, date, direction)   [M4]
@@ -594,7 +613,7 @@ row one **[F02-R44]**. Three schema consequences, all small:
 | Consequence | Where |
 | --- | --- |
 | A metering point is assigned to **exactly one BRP at a time** | `customer.metering_point.brp_id`, `NOT NULL`. **The cardinality of the column *is* the constraint** — one column can hold one value, so no exclusion constraint, no assignment table and no "active" flag is needed to say "one at a time" **[F02-R42]** |
-| A stored document keeps the BRP that produced it | `metering.inbound_message.brp_id`, `NOT NULL`. `interval_data_version` inherits it through `inbound_message_id`, which is already `NOT NULL`, so the version needs no column of its own and cannot disagree with the message it came from **[F02-R43]**, **[DEC-07]** |
+| A stored document keeps the BRP that produced it | `metering.inbound_message.brp_id`, `NOT NULL`. `interval_data_version` reaches it through `inbound_message_id`, so the version needs no column of its own and cannot disagree with the message it came from **[F02-R43]**, **[DEC-07]**. ⚠ **[DEC-143]** makes that foreign key NULLABLE, because a `MANUAL` version has no message and no BRP; `ck_idv_brp_feed_has_message` is what keeps it `NOT NULL` in substance for every `BRP_FEED` row |
 | Reassignment reads **forward** | Nothing is rewritten. `brp_assigned_at` records when the current assignment started; the change event — actor, time, reason — is an ordinary `audit` row **[DEC-17]**, **[F02-R43]** |
 
 ⚠ **The credential column is a reference, never a secret.** A BRP is identified **by the credential

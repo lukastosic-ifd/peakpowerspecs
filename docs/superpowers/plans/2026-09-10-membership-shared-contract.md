@@ -405,7 +405,7 @@ plan omits one:
 
 | Probe | Plan | Must prove |
 | --- | --- | --- |
-| Cross-tenant | 1 | A valid token for A cannot read B by any route — forged claim, replayed token, **and a pre-switch refresh cookie presented after a switch** (design §10's third vector) |
+| Cross-tenant | 1 | A valid token for A cannot read B by any route — forged claim, replayed token, **and a pre-switch refresh cookie presented after a switch** (design §10's third vector). ⚠ *Clarified 2026-09-12 at plan 2's pre-flight:* the property is that the pre-switch cookie can **never yield access to B** — it stays bound to A and re-proves membership in A, so it mints only A tokens and is refused once A's membership is gone. It is **not** a requirement to revoke that cookie on switch: the switch never sees it (RefreshCookie.Path is /api/v1/auth/refresh), so revoking would mean signing out the account's other devices in the old business. |
 | No-membership | 1 | A company named without membership is refused **before** `app.customer_id` is honoured |
 | Escalation | 1 | A `trader` cannot `UPDATE … SET role='admin'` nor `INSERT` naming another company — asserting the **grant and the `WITH CHECK`**, not the outcome |
 | **Removal** | 1 | A `viewer` cannot `DELETE FROM customer_membership` by any predicate — asserting the **absent `DELETE` privilege**, because no policy can guard a `DELETE` |

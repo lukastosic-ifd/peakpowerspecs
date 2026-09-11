@@ -267,8 +267,15 @@ preference column. Column scoping lets exactly that through while `password_hash
   that pinning.
 - ⚠ **Setting `app.customer_id` before the proof keeps one batch and stays fail-closed.** The real
   middleware issues its statements as a single `NpgsqlBatch`; a conditional statement could not be
-  batched. A forged claim has no membership row, so step 4 refuses, and meanwhile every policy keyed
-  on that value shows the forged tenant nothing.
+  batched. A forged claim has no membership row, so step 4 refuses and no handler runs.
+  ⚠ **Corrected 2026-09-11 after plan 1's pre-flight.** This is fail-closed because of the
+  REFUSAL, not because the policies hide the declared tenant. Declaring a REAL business you are not
+  in does make that business's rows visible at the database level to the rest of the batch — the
+  migration-2 policies on `customer`, `metering_point`, `wallet` and `audit_record` key directly on
+  `app.customer_id`. What keeps it safe is that the batch's only other statements, the membership
+  read and the account read, return nothing for a non-member, and the middleware answers 401 before
+  any handler executes. The earlier wording — that the policies show the forged tenant *nothing* —
+  holds only for a business that does not exist.
 - ⚠ **Step 5 must run after step 4's setting**, or the new `EXISTS` policy hides the account row and
   every authenticated request 401s. It is a second read on a second table.
 

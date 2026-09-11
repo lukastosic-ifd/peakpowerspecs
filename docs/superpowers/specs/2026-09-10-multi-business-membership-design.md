@@ -319,9 +319,16 @@ the new `app.account_id` line must be added to that pinning.
 middleware issues its statements as **one batch**, and a step that only ran conditionally on an
 earlier step's result could not be batched — the batch shape is the part earlier rounds got wrong
 empirically. Setting the claimed value up front keeps one batch, and costs nothing: if the claim is
-forged there is no membership row, step 4 refuses, and in the meantime every policy keyed on
-`app.customer_id` shows that tenant *nothing*, because the forged tenant has no rows the caller can
-reach. The proof is step 4's refusal, not the withholding of the setting.
+forged there is no membership row, step 4 refuses, and no handler runs. The proof is step 4's
+refusal, not the withholding of the setting.
+
+⚠ **Corrected 2026-09-11.** An earlier revision added that every policy keyed on `app.customer_id`
+shows the forged tenant *nothing*. That is true only for a business that does not exist. Declaring a
+REAL business you are not in makes its rows visible at the database level to the rest of that batch,
+because the migration-2 policies key directly on `app.customer_id`. The safety is the refusal: the
+batch's only other statements — the membership read and the account read — return nothing for a
+non-member, and the middleware answers 401 before any handler executes. Plan 1's pre-flight found
+this; its probe had been written to assert the false version.
 
 ⚠ Step 5's placement is load-bearing and r1 and r2 both omitted it from the path entirely. It must run
 **after** `app.customer_id` is set, or the new `EXISTS` policy hides the account row and every

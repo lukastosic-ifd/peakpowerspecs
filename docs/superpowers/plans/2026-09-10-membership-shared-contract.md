@@ -140,6 +140,19 @@ ALTER TABLE customer.customer_account DROP COLUMN is_admin;
 three policies, leaving `customer_account` with RLS enabled and **no policy** — every authenticated
 request then 401s, because the middleware's own account read returns nothing.
 
+⚠ *Amended 2026-09-15 at plan 1's final review — migration 15 as shipped differs from this block in
+two ways:*
+1. **The membership foreign keys are named** — `fk_customer_membership_customer_account_account_id`
+   and `fk_customer_membership_customer_customer_id`. A bare `REFERENCES` gets Postgres's default
+   name, which differs from the name in the EF model snapshot, so the next EF-generated migration that
+   drops or alters the key fails with `42704`. `MembershipSchemaTests` now compares every foreign key
+   the snapshot names against `pg_constraint`.
+2. **`Down` does not restore a repair promotion.** It rebuilds `is_admin` as `role = 'admin'` only
+   where no `system:migration-15` audit row records that membership's promotion, and only then
+   deletes those audit rows. Before this, a downgrade kept the §4.1 departure and erased its only
+   record. A round-trip test (migrate to 14, seed, Up, Down) pins the catalogue and every account's
+   `is_admin`.
+
 ### 4.1 The first-admin repair
 
 `is_admin` defaults false, so a company whose accounts are all non-admin gets **no admin membership**
@@ -161,6 +174,13 @@ AND NOT EXISTS (SELECT 1 FROM customer.customer_membership x
 Each promotion writes an `audit.audit_record` naming a migration actor. ⚠ `[F13-R41]` forbids a
 *"first account of a company is admin"* rule, so this departure is auditable rather than silent.
 Companies with **zero** active accounts are listed in the migration output and left alone.
+
+⚠ *Amended 2026-09-15 at plan 1's final review:* the check above counts **any** admin row, whatever
+the account's status, so a business whose only admin is `DEACTIVATED` or `INVITED` gets no promotion
+and still has nobody who can pass `CompanyAdmin`. The promotion rule is **unchanged** — promoting
+someone over a deactivated admin would be a privilege grant nobody decided — but migration 15 raises
+a **second NOTICE** listing every business with no `ACTIVE`, non-removed admin, so support has the
+list. Recorded as open item 4 in §12.
 
 ---
 
@@ -236,6 +256,16 @@ spent token, which is the statement migration 3 narrowed this table to prevent. 
 therefore also adds `trg_refresh_token_evidence_monotonic`, refusing any update that nulls a
 non-null value in those three columns, and the existing schema test that expects `42501` on that
 statement moves to expecting `23001`. The trigger mechanism has precedent in migration 10.
+
+⚠ *Amended 2026-09-15 at plan 1's final review:* the first line ships as
+`REVOKE INSERT, UPDATE, DELETE ON customer.customer_account FROM app_customer_role;`. No
+authenticated customer path creates an account — onboarding and plan 4's accept run on the owner
+connection — and the policy's `WITH CHECK` already made the grant useless, since a new account has no
+membership. The insert test now asserts the missing privilege, not merely a refusal. ⚠
+`app_employee_role` **still holds `DELETE` on `customer_account`** (migration 2's grant on every
+table, under a `USING (true)` back-office policy), and the §4 `ON DELETE CASCADE` means a back-office
+delete would remove that person's memberships in every business. No route deletes an account today;
+open item 5 in §12.
 
 ⚠ A blanket `REVOKE UPDATE` on `customer_account` is correct against every call site that exists
 today and **wrong** against plan 2's `active-business`, which is authenticated and must write the
@@ -427,6 +457,17 @@ plan omits one:
    flow with an employee actor.
 3. Whether the member list shows colleagues' other businesses. The §5 `OR` makes them readable; the
    explicit `AND customer_id = @active` predicate every admin query must carry prevents it.
+4. *(added 2026-09-15)* Whether the first-admin repair should promote over a `DEACTIVATED` or
+   `INVITED` sole admin. Today it does not, and migration 15's second NOTICE names those businesses.
+5. *(added 2026-09-15)* Whether `app_employee_role` keeps `DELETE` on `customer_account`. It is the
+   one remaining path that destroys membership history (by cascade). Revoking it is safe against
+   today's code, which never deletes an account; keeping it is the natural home for a future right-to-
+   erasure flow, which would have to remove memberships anyway. A product and compliance decision.
+6. *(added 2026-09-15, not this feature's)* Migration 9 (`IngestionAndIntervalData`, already on
+   `main`) created 18 foreign keys with bare `REFERENCES`, whose names differ from the model snapshot.
+   Any EF-generated migration that drops or alters one fails with `42704` until a rename migration
+   lands. `MembershipSchemaTests` pins the 18 as an exact list, so a rename that forgets the list
+   fails loudly.
 
 ⚠ **`[OQ-105]`** — the back office has no membership screen at all. Support cannot answer *"which
 businesses is this person in?"* without SQL. Recorded, not designed.

@@ -509,10 +509,6 @@ for the Int32 constant `403` however it was spelled.
    laptop, who switches the laptop to B, has to sign in again on the phone. A device list, or a
    refresh-token column naming the session rather than only the account and the business, would let
    us do better. Recorded, not designed.
-3. **`TenantScopeMiddleware`** (the tenancy probe app's, not production wiring) must perform the
-   same step-3 membership proof or the probe covers half the new predicate. Design §4.4 assigns
-   that; plan 1 owns the middleware. If it is still unchanged when this plan lands, raise it rather
-   than fixing it here.
 
 ---
 
@@ -5716,8 +5712,5 @@ All three of shared contract §11's plan-2 probes exist and have each been seen 
 - **The business the switch leaves keeps a live refresh-token row** until it expires. Nobody holds
   its plaintext — the cookie slot was overwritten — but it is a row, and a device list or an
   explicit "sign out of this device" would let us do better. Recorded, not designed.
-- **`TenantScopeMiddleware`** (the tenancy probe app's, not production wiring) is plan 1's to teach
-  the step-3 membership proof. If it is still unchanged, the probe app exercises half the new
-  predicate and stays green over the other half.
 - **`[OQ-105]`** — the back office still has no membership screen, and there are now more
   memberships to ask about than there were.

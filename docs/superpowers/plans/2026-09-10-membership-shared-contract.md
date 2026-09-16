@@ -468,6 +468,24 @@ plan omits one:
    Any EF-generated migration that drops or alters one fails with `42704` until a rename migration
    lands. `MembershipSchemaTests` pins the 18 as an exact list, so a rename that forgets the list
    fails loudly.
+7. *(added 2026-09-16, at plan 2's final review)* **There is no "sign out everywhere", and plan 2
+   is what made one necessary.** Two decisions that are each correct alone compose into it: the
+   business switch revokes nothing (plan 2 ruling R-T6-1, and §11's 2026-09-12 clarification
+   above), and sign-out became **per business**, because `customer.refresh_token`'s policy is
+   `customer_id = app.customer_id` and an authenticated connection never sees another business's
+   rows (plan 2 ruling R-T6-4). So a switch from A to B leaves a **live refresh chain in A that no
+   device is holding any more** — its plaintext lived only in the cookie slot the switch overwrote
+   — and a sign-out in B cannot see it. It is reachable: switch back to A and sign out there, or
+   complete a password reset, which is anonymous and therefore still revokes every chain for the
+   account on the owner connection. It is just not reachable by the gesture a person would reach
+   for, and an account that has used several businesses has to sign out of each one. What is
+   missing is an explicit **sign out everywhere** — a security-stamp bump plus an account-wide
+   chain revoke — with a test that a chain in a business the caller is NOT currently acting for is
+   revoked by it. ⚠ **How it runs is part of the open question**, not a detail: it cannot run as
+   `app_customer_role`, whose policy hides the other businesses' rows, and R-T6-4 forbids moving
+   *sign-out itself* to the owner connection ("this codebase rejected that by name") — a new
+   endpoint is a separate decision. ⚠ **No plan owns this yet**, and it is **not plan 3's**: plan 3
+   is the web switcher and ships no platform code.
 
 ⚠ **`[OQ-105]`** — the back office has no membership screen at all. Support cannot answer *"which
 businesses is this person in?"* without SQL. Recorded, not designed.

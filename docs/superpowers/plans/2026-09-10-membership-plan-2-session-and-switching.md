@@ -398,26 +398,27 @@ token.** `RefreshCookie.Path` is `/api/v1/auth/refresh`
 (`/Users/thinhhuynh/PeakPower/peakpower-platform/src/Hosts/PeakPower.Api.Customer/Auth/RefreshCookie.cs:14`),
 so a browser never attaches `pp_refresh` to `/api/v1/auth/active-business` — the same asymmetry
 `SignOutAsync`'s own doc comment records. Task 6 therefore **issues a new refresh token bound to the
-new business and overwrites the cookie**, and it **revokes this account's live refresh tokens for the
-business being left** — by `customer_id`, not by device:
+new business and overwrites the cookie**, and it **marks nothing used and revokes nothing** [ruling
+R-T6-1]. Both alternatives are worse, and that is what this deviation exists to record:
 
-- ⚠ Contract §11's cross-tenant probe requires *"a pre-switch refresh cookie presented after a
-  switch"* to be **refused** (design §10's *"switched-then-reverted refresh token"*). Leaving the
-  abandoned row live means that cookie still refreshes into the old business, which is the exact
-  vector the probe names. Revoking by `customer_id` closes it.
-- Revoking is **not** `MarkUsed`. Marking this account's other rows used-and-replaced would make the
-  next refresh from the person's phone a **replay**, which `RefreshAsync` answers by revoking the
-  whole chain **and bumping the security stamp** — signing them out of every device for pressing a
-  switcher on a laptop. `RefreshToken.Revoke(at)` is `RevokedAt ??= at`: no replay, no stamp bump.
-- It is **not** "sign me out everywhere" either. Only tokens whose `customer_id` is the business
-  being left are touched; a session this person holds for any *other* business is untouched, which
-  is the same per-business shape design §5 gives plan 4's removal.
-- `RevokedAt ??= at` writes null → value, so it satisfies plan 1's
-  `trg_refresh_token_evidence_monotonic` (contract §5.3).
+- **Revoking this account's rows for the business being left** tightens nothing contract §11 asks
+  for. ⚠ Its cross-tenant probe was **clarified on 2026-09-12**, before this plan ran: the property
+  is that a pre-switch cookie can never yield access to **B** — it stays bound to A, re-proves
+  membership in A, mints only A tokens, and is refused once A's membership is gone — and the
+  amendment says in so many words that revoking on switch is *not* required. What revoking would
+  actually do is sign this account out of its other **devices** in the business being left, which
+  this handler never even sees: the cookie is path-scoped away from this route, so the handler
+  cannot tell the caller's own row from anyone else's.
+- **Marking them used** is worse again. `MarkUsed` would make the next refresh from the person's
+  phone a **replay**, which `RefreshAsync` answers by revoking the whole chain **and bumping the
+  security stamp** — signing them out of every device, in every business, for pressing a switcher
+  on a laptop.
 
-So the switch uses the new `INSERT` grant and the **existing** `UPDATE (revoked_at)` grant, and not
-the new `UPDATE (used_at, replaced_by_token_id)` grant. That grant is still correct to have — plan
-4's removal path and any future rotation need it — but plan 2 does not exercise it.
+So the switch uses the new `INSERT` grant on `refresh_token` and no `UPDATE` grant on that table at
+all. The `UPDATE (used_at, replaced_by_token_id)` grant §5.3 adds is still correct to have — plan 4's
+removal path and any future rotation need it — but plan 2 does not exercise it.
+
+⚠ What this decision leaves behind is real, and is recorded rather than hidden: see open item 2.
 
 ### D4 — The switch re-declares `app.customer_id` inside the request
 
@@ -438,15 +439,6 @@ rest of the request, because the JWT has not changed. Task 6's handler touches e
 tables after the re-scope — `customer_account` (whose filter and policy both pass, because the
 account is a live member of *both* businesses) and `refresh_token` (which carries no EF filter at
 all; it is on `QueryFilterModelTests.ExemptEntityTypes`). The handler's own comment says so.
-
-⚠ **The revocation of D3 runs BEFORE the move, and as raw SQL.** `refresh_token`'s policy is
-`customer_id = app.customer_id` and `USING` is what decides which rows an `UPDATE` may target, so
-the rows for the business being left are visible only while `app.customer_id` still names it. A
-tracked EF update would be flushed by the single `SaveChangesAsync` at the end — after the move —
-and match zero rows. One `ExecuteSqlInterpolatedAsync` before `MoveToAsync` executes immediately, in
-the request's own transaction (`CustomerSessionMiddleware` opens it at
-`CustomerSessionMiddleware.cs:61` and commits at `:123`), under the old scope, through the existing
-`UPDATE (revoked_at)` grant.
 
 ### D5 — Signatures the contract does not pin, and which plan 1 chooses
 
@@ -503,12 +495,18 @@ for the Int32 constant `403` however it was spelled.
 1. **`[OQ-105]`** — the back office has no membership screen. Support cannot answer *"which
    businesses is this person in?"* without SQL. Unchanged by this plan and made slightly worse by
    it, since there are now more memberships to ask about.
-2. **A switch signs this login out of the business it left, on every device.** The revocation D3
-   requires is by `customer_id`, and the switch cannot tell one device's row from another's — the
-   cookie is path-scoped away from this route. Somebody signed into business A on a phone and a
-   laptop, who switches the laptop to B, has to sign in again on the phone. A device list, or a
-   refresh-token column naming the session rather than only the account and the business, would let
-   us do better. Recorded, not designed.
+2. **Signing out ends the sessions of the business you are in, and nothing ends them all.** Two
+   decisions compose into it, neither wrong alone: the switch revokes nothing (D3), and sign-out is
+   per business under migration 15's `refresh_token` policy (ruling R-T6-4). A switch from A to B
+   therefore leaves a **live refresh chain in A that no device is holding any more** — its plaintext
+   lived only in the cookie slot the switch overwrote — and a sign-out in B never sees it. It is
+   reachable: switch back to A and sign out there, or complete a password reset, which is anonymous
+   and still revokes every chain for the account on the owner connection. It is just not reachable
+   by the gesture a person would reach for, and somebody who has used three businesses has to sign
+   out of three. What is missing is an explicit "sign out everywhere", and no plan owns one — it is
+   **not** plan 3's, which is the web switcher and ships no platform code. Shared contract §12 item
+   7 carries the full statement. Contract §11 is not violated by any of this: the abandoned cookie
+   still only ever mints tokens for A.
 
 ---
 

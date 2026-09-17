@@ -136,11 +136,26 @@ CREATE TABLE customer.customer (
 CREATE UNIQUE INDEX ux_customer_kvk_active
     ON customer.customer (kvk_number) WHERE status <> 'CLOSED';
 
--- One person's login at one company. Several per company; all equal  [DEC-16], with exactly one
--- flag on top  [DEC-71].
+-- ⚠ Amended 2026-09-10 by [DEC-152]. One person's login, full stop: an account is no longer AT a
+--    company. Its relationship to each business is a customer_membership row (below), carrying the
+--    role. Was: "One person's login at one company. Several per company; all equal [DEC-16], with
+--    exactly one flag on top [DEC-71]."
 CREATE TABLE customer.customer_account (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    customer_id         uuid NOT NULL REFERENCES customer.customer(id),
+    -- ⚠ DROPPED 2026-09-10 by [DEC-152], in migration 15, and dropped LAST in that migration:
+    --   three row-level-security policies depend on it, and DROP COLUMN ... CASCADE would silently
+    --   take all three, leaving customer_account with RLS enabled and NO policy - after which every
+    --   authenticated request 401s, because the middleware's own account read returns nothing.
+    --   Was: customer_id         uuid NOT NULL REFERENCES customer.customer(id),
+
+    -- ⚠ ADDED 2026-09-10 by [DEC-152]. Where sign-in lands. A PREFERENCE, NEVER A TENANCY KEY.
+    --   ⚠ It must not be called last_customer_id: the RLS coverage guards discover tenant columns
+    --   by the suffix customer_id (right(column_name, 11)) and CLR properties by
+    --   EndsWith("CustomerId"), so that spelling would keep this table inside tenancy discovery
+    --   keyed on something that is not a tenancy key - a guard reporting coverage it does not have.
+    --   Granted column-scoped: GRANT UPDATE (last_active_business_id) TO app_customer_role, after a
+    --   blanket REVOKE INSERT, UPDATE, DELETE, so password_hash and security_stamp stay unreachable.
+    last_active_business_id uuid NULL REFERENCES customer.customer(id),
     username            citext NOT NULL,
     first_name          text NOT NULL,
     last_name           text NOT NULL,
@@ -151,10 +166,13 @@ CREATE TABLE customer.customer_account (
         -- PENDING_APPROVAL is new: adding a user is a four-eyes action  [DEC-71], [F01-R15]
         CHECK (status IN ('PENDING_APPROVAL','INVITED','ACTIVE','DEACTIVATED')),
 
-    -- The whole of the role model  [DEC-71], [F01-R47]. It grants exactly one capability:
-    -- approving or declining ANOTHER admin's sensitive action. It is not a permission on data,
-    -- on trading or on spending, and a non-admin keeps every ordinary privilege  [DEC-16], [DEC-18].
-    is_admin            boolean NOT NULL DEFAULT false,
+    -- ⚠ DROPPED 2026-09-10 by [DEC-152], in migration 15. The role is a property of the
+    --   MEMBERSHIP, not of the account: one person is an admin of one business and a viewer of
+    --   another. It is backfilled into customer_membership.role BEFORE the drop
+    --   (admin -> 'admin', otherwise 'trader'), and the drop is sequenced after the policy swap.
+    --   Was: is_admin            boolean NOT NULL DEFAULT false,
+    --   with: "The whole of the role model [DEC-71], [F01-R47]. It grants exactly one capability:
+    --   approving or declining ANOTHER admin's sensitive action."
 
     -- ⚠ Added 2026-09-03. The platform holds the credential  [DEC-113], and the stamp is what makes
     --   revocation of a stateless token immediate  [DEC-117], [F01-R16]. `password_hash` is Argon2id,
@@ -181,11 +199,163 @@ CREATE TABLE customer.customer_account (
     CHECK (status <> 'DEACTIVATED' OR deactivated_at IS NOT NULL)
 );
 
--- Two admins are the precondition for the mode, so the count has to be cheap to take  [F01-R43],
--- [F01-R50]: enabling four-eyes with one admin is refused, and so is deactivating the second-to-last.
-CREATE INDEX ix_account_admin ON customer.customer_account (customer_id)
-    WHERE is_admin AND status = 'ACTIVE';
+-- ⚠ Dropped with its columns 2026-09-10 by [DEC-152]. The admin count moves to the membership
+--    table, where ix_customer_membership_customer_id serves it.
+--    Was: CREATE INDEX ix_account_admin ON customer.customer_account (customer_id)
+--             WHERE is_admin AND status = 'ACTIVE';
+```
 
+⚠ **New 2026-09-10 [DEC-152], migration 15.** The relationship between a person and a business, and
+the sole authority on what they may do there. Transcribed from the migration, not from shared
+contract §4's own DDL: the two foreign keys are **named**, exactly as the EF model snapshot records
+them, because nothing at runtime compares a bare-`REFERENCES` constraint's Postgres-assigned name
+against the snapshot's — that drift would stay silent until the first EF-generated migration that
+touches one of these keys.
+
+```sql
+CREATE TABLE customer.customer_membership (
+    account_id  uuid NOT NULL,
+    customer_id uuid NOT NULL,
+    role        text NOT NULL CHECK (role IN ('admin', 'trader', 'viewer')),
+    created_at  timestamptz NOT NULL,
+    removed_at  timestamptz NULL,
+    CONSTRAINT pk_customer_membership PRIMARY KEY (account_id, customer_id),
+    CONSTRAINT fk_customer_membership_customer_account_account_id
+        FOREIGN KEY (account_id)  REFERENCES customer.customer_account(id) ON DELETE CASCADE,
+    CONSTRAINT fk_customer_membership_customer_customer_id
+        FOREIGN KEY (customer_id) REFERENCES customer.customer(id)         ON DELETE RESTRICT
+);
+CREATE INDEX ix_customer_membership_customer_id ON customer.customer_membership (customer_id);
+
+ALTER TABLE customer.customer_membership ENABLE ROW LEVEL SECURITY;
+-- ⚠ The REVOKE is the whole protection. Migration 2's ALTER DEFAULT PRIVILEGES grants
+--   SELECT, INSERT, UPDATE, DELETE on every table a later migration creates in this schema;
+--   without this line every signed-in customer holds full DML on the sole proof of tenancy.
+--   This repository has already found that trap live, on refresh_token.
+REVOKE ALL ON customer.customer_membership FROM app_customer_role, app_employee_role;
+-- ⚠ NO DELETE GRANT, EVER, TO EITHER ROLE. PostgreSQL evaluates WITH CHECK for INSERT and for
+--   an UPDATE's new row and NEVER for DELETE, which USING alone governs - and this USING carries
+--   a permissive `OR account_id = me` arm (below) so the business switcher can read across
+--   businesses. With DELETE granted, a plain viewer acting for business B could run
+--   `DELETE FROM customer_membership WHERE customer_id = <B>` and wipe every membership in B,
+--   admins included, and ANY member could run `DELETE ... WHERE account_id = <self>` to drop
+--   memberships in businesses their token does not even name. No policy can close either hole.
+--   Removal is an UPDATE setting removed_at, which WITH CHECK does guard. A test asserts the
+--   ABSENT privilege. ⚠ This is only half the fence: DELETE is ALSO revoked on customer_account,
+--   because its ON DELETE CASCADE to this table runs as the table OWNER, not as the connected
+--   role - a customer connection that still held DELETE on customer_account could cascade-delete
+--   memberships it may never touch directly. See the customer_account grant, above.
+GRANT SELECT, INSERT, UPDATE ON customer.customer_membership TO app_customer_role;
+GRANT SELECT, INSERT, UPDATE ON customer.customer_membership TO app_employee_role;
+
+-- ⚠ SET search_path is not decoration: a SECURITY DEFINER function with a mutable search_path
+--   lets the caller choose which customer_membership it means.
+CREATE FUNCTION customer.is_admin_of(account uuid, business uuid) RETURNS boolean
+    LANGUAGE sql SECURITY DEFINER STABLE
+    SET search_path = customer, pg_temp AS $fn$
+    SELECT EXISTS (SELECT 1 FROM customer.customer_membership
+                   WHERE account_id = account AND customer_id = business
+                     AND role = 'admin' AND removed_at IS NULL) $fn$;
+REVOKE EXECUTE ON FUNCTION customer.is_admin_of(uuid, uuid) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION customer.is_admin_of(uuid, uuid) TO app_customer_role;
+
+CREATE POLICY customer_customer_membership_tenant_isolation ON customer.customer_membership
+    FOR ALL TO app_customer_role
+    USING      (account_id  = NULLIF(current_setting('app.account_id',  true), '')::uuid
+             OR customer_id = NULLIF(current_setting('app.customer_id', true), '')::uuid)
+    WITH CHECK (customer_id = NULLIF(current_setting('app.customer_id', true), '')::uuid
+            AND customer.is_admin_of(NULLIF(current_setting('app.account_id', true), '')::uuid,
+                                     NULLIF(current_setting('app.customer_id', true), '')::uuid));
+
+CREATE POLICY customer_customer_membership_back_office ON customer.customer_membership
+    FOR ALL TO app_employee_role USING (true) WITH CHECK (true);
+```
+
+⚠ **The permissive `OR` in `USING` is deliberate and is a disclosure to manage.** The switcher has to
+read a person's memberships **across** businesses, which the tenant predicate alone forbids; the price
+is that a colleague's memberships elsewhere are technically readable while acting for this business.
+**Every admin query therefore carries an explicit `AND customer_id = @active`** — above all the floor
+count, which would otherwise read *two* for a business that has *one*.
+
+⚠ **The three policies that keyed on `customer_account.customer_id` are replaced, not dropped.**
+`customer_account` and `password_reset_token` take an `EXISTS` through the membership table;
+`refresh_token` gains **its own `customer_id` column** and takes the uniform
+`customer_id = <app.customer_id>` shape instead. That asymmetry is load-bearing: under an
+`EXISTS`-through-membership policy, a removal that revokes the member's tokens in the same
+transaction would see its own removal, find no active membership, and **revoke zero rows silently**.
+
+⚠ **New 2026-09-16 [migration 17].** `customer.customer_invitation` — one admin asking one email
+address to join one business, in one role, once, within **fourteen days** **[F13-R21]**.
+`password_reset_token`'s shape, deliberately (32 CSPRNG bytes, a SHA-256 digest stored, the plaintext
+mailed once and never persisted, single use), with two differences: this table carries its own
+`customer_id` rather than an account join, and the life is fourteen days, not the reset flow's hour.
+
+```sql
+CREATE TABLE customer.customer_invitation (
+    id                    uuid NOT NULL DEFAULT gen_random_uuid(),
+    customer_id           uuid NOT NULL,
+    email                 citext NOT NULL,
+    role                  text NOT NULL,
+    token_hash            varchar(64) NOT NULL,
+    invited_by_account_id uuid NULL,        -- provenance only, deliberately no FK - see below
+    issued_at             timestamptz NOT NULL,
+    expires_at            timestamptz NOT NULL,
+    accepted_at           timestamptz NULL,
+    CONSTRAINT pk_customer_invitation PRIMARY KEY (id),
+    -- Restrict, not Cascade: a business is never deleted on this platform (it is CLOSED), and if
+    -- one ever were, the invitations it sent are part of the record of why its people have logins.
+    CONSTRAINT fk_customer_invitation_customer_customer_id
+        FOREIGN KEY (customer_id) REFERENCES customer.customer(id) ON DELETE RESTRICT
+);
+-- No foreign key on invited_by_account_id: provenance for an audit question, not a navigable
+-- relationship, the same choice customer.approval_request's requested_by is NOT - contrast
+-- deliberately drawn, because a Restrict FK here would make deleting a colleague fail on
+-- invitations nobody thinks of as belonging to them.
+
+ALTER TABLE customer.customer_invitation
+    ADD CONSTRAINT ck_customer_invitation_role CHECK (role IN ('admin', 'trader', 'viewer'));
+ALTER TABLE customer.customer_invitation
+    ADD CONSTRAINT ck_customer_invitation_window
+    CHECK (expires_at > issued_at AND (accepted_at IS NULL OR accepted_at >= issued_at));
+
+CREATE INDEX ix_customer_invitation_customer_id ON customer.customer_invitation (customer_id);
+-- The accept endpoint's only lookup key, since the plaintext token is never stored. UNIQUE
+-- because two rows sharing a digest would make redemption ambiguous.
+CREATE UNIQUE INDEX ix_customer_invitation_token_hash ON customer.customer_invitation (token_hash);
+-- The admin surface's "who is outstanding?" read - partial, on rows still live.
+CREATE INDEX ix_customer_invitation_pending ON customer.customer_invitation (customer_id, email)
+    WHERE accepted_at IS NULL;
+
+REVOKE ALL ON customer.customer_invitation FROM app_customer_role, app_employee_role;
+-- SELECT + INSERT only for the customer role: INSERT issues an invitation, SELECT is what
+-- GET /api/v1/company/memberships reads. No UPDATE - nothing authenticated marks an invitation
+-- accepted, because both accept paths are anonymous and run on the owner connection. No DELETE,
+-- for the same reason customer_membership has none: PostgreSQL never evaluates WITH CHECK for a
+-- DELETE, so no policy can guard one, and a granted DELETE would let any admin erase the evidence
+-- that an invitation was ever sent.
+GRANT SELECT, INSERT ON customer.customer_invitation TO app_customer_role;
+-- SELECT only for the employee role, so support can answer "was she invited?". No write: the
+-- back office has no membership screen at all [OQ-105], and this migration does not invent one.
+GRANT SELECT         ON customer.customer_invitation TO app_employee_role;
+
+ALTER TABLE customer.customer_invitation ENABLE ROW LEVEL SECURITY;
+
+-- The WITH CHECK carries the admin term as well as the tenancy one, copying customer_membership's
+-- shape: CompanyAdmin proves "an admin of the business in my token" in the authorization
+-- middleware, and this proves it again in the database, against the business the connection is
+-- actually scoped to. A handler that forgot its own customer_id predicate is caught here.
+CREATE POLICY customer_customer_invitation_tenant_isolation ON customer.customer_invitation
+    FOR ALL TO app_customer_role
+    USING      (customer_id = NULLIF(current_setting('app.customer_id', true), '')::uuid)
+    WITH CHECK (customer_id = NULLIF(current_setting('app.customer_id', true), '')::uuid
+            AND customer.is_admin_of(NULLIF(current_setting('app.account_id',  true), '')::uuid,
+                                     NULLIF(current_setting('app.customer_id', true), '')::uuid));
+
+CREATE POLICY customer_customer_invitation_back_office ON customer.customer_invitation
+    FOR ALL TO app_employee_role USING (true) WITH CHECK (true);
+```
+
+```sql
 -- Bank accounts are added and deactivated, never edited  [DEC-71], [DEC-61], [F01-R44].
 CREATE TABLE customer.customer_bank_account (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -241,9 +411,11 @@ CREATE TRIGGER trg_bank_account_immutable BEFORE UPDATE ON customer.customer_ban
 CREATE TABLE customer.approval_request (
     id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id           uuid NOT NULL REFERENCES customer.customer(id),
+    -- ⚠ 'ADD_USER' removed 2026-09-10 by [DEC-152]: membership changes bypass four-eyes
+    --   entirely [F01-R49], so no membership write ever raises an approval. Four arms, not five.
     action                text NOT NULL CHECK (action IN (
                               'ADD_BANK_ACCOUNT','DEACTIVATE_BANK_ACCOUNT',
-                              'ADD_USER','TRADE','WITHDRAWAL')),
+                              'TRADE','WITHDRAWAL')),
     subject_id            uuid NOT NULL,        -- the bank account, account, trade or withdrawal
     requested_by_account_id uuid NOT NULL REFERENCES customer.customer_account(id),
     requested_at          timestamptz NOT NULL DEFAULT now(),
@@ -381,7 +553,7 @@ required a versioned reference table of amounts. **[DEC-71]** replaces it: four-
 | Object | Column / table | Note |
 | --- | --- | --- |
 | The mode | `customer.four_eyes_enabled` | One boolean, default off, set by a PeakPower employee **[DEC-16]**, **[F01-R42]**. All five actions or none — there is no per-action override |
-| Eligibility to approve | `customer_account.is_admin` | One boolean, default off. It grants **only** the second pair of eyes **[F01-R47]** |
+| Eligibility to approve | ~~`customer_account.is_admin`~~ `customer_membership.role = 'admin'` | ⚠ **Moved 2026-09-10 by [DEC-152].** The column is dropped; eligibility is a **membership** role, per business, read from the database on every request rather than carried in a token. It no longer grants *only* the second pair of eyes — `admin` also gates invitations, role changes, removals and entitlements **[DEC-150]** **[F01-R47]** |
 | The record | `customer.approval_request` | Action, subject, initiating account, approving account, decision, timestamps **[F01-R48]** |
 | ~~The threshold~~ | ~~`trading.four_eyes_threshold`~~ | ⚠ **Not built** — §3.4 |
 
@@ -390,9 +562,12 @@ this trade large enough to need approval". It can only answer "was the mode on f
 which is exactly what **[DEC-71]** decided the question is. Reinstating a threshold later means a new
 table and a re-pin on every trade, not a column.
 
-**The five actions in scope** are `ADD_BANK_ACCOUNT`, `DEACTIVATE_BANK_ACCOUNT`, `ADD_USER`, `TRADE`
-and `WITHDRAWAL`. **Deposits are deliberately absent** from the enum: a customer can transfer money
-or use iDEAL unaided, so gating a deposit gates nothing **[DEC-71]**, **[DEC-106]**.
+⚠ **Amended 2026-09-10 by [DEC-152]: four actions, not five.** **The actions in scope** are
+`ADD_BANK_ACCOUNT`, `DEACTIVATE_BANK_ACCOUNT`, `TRADE` and `WITHDRAWAL`. ~~`ADD_USER`~~ left the enum
+because membership changes bypass four-eyes entirely **[F01-R49]** — and note that api-contracts §2.10
+spells the same arm `USER_ADD`; both lose it, and the two spellings are a separate defect, not
+reconciled here. **Deposits are deliberately absent** from the enum: a customer can transfer money or
+use iDEAL unaided, so gating a deposit gates nothing **[DEC-71]**, **[DEC-106]**.
 
 `CHECK (decided_by_account_id <> requested_by_account_id)` is the whole control, in one line, in the
 database. It is checkable only because **[DEC-17]** already records the acting account on every
@@ -407,11 +582,20 @@ the proof of concept was to run unauthenticated **[DEC-20]**; it does not.
 ```sql
 -- A rotating, single-use refresh token, stored HASHED  [DEC-117]. The plaintext lives only in the
 -- HttpOnly SameSite=Strict cookie scoped to the refresh endpoint; it is never returned in a body.
--- Scoped by ACCOUNT, not by company — which is why its RLS policy joins through customer_account
--- rather than carrying a customer_id of its own.
+-- ⚠ Was scoped by ACCOUNT alone, its RLS policy joining through customer_account. AMENDED
+--   2026-09-10 by [DEC-152], migration 15 — see customer_id below.
 CREATE TABLE customer.refresh_token (
     id                   uuid PRIMARY KEY,
     customer_account_id  uuid NOT NULL REFERENCES customer.customer_account(id),
+
+    -- ⚠ ADDED 2026-09-10 by [DEC-152], migration 15, and NOT the EXISTS-through-membership shape
+    --   customer_account and password_reset_token take. A removal that revokes the member's
+    --   tokens in the SAME transaction as the removal would, under an EXISTS through membership,
+    --   see its own removal, find no active membership, and revoke ZERO ROWS silently — a stolen
+    --   cookie bound to business A would stay a valid session for business B. This column and a
+    --   uniform customer_id = <app.customer_id> policy close that hole.
+    customer_id          uuid NOT NULL REFERENCES customer.customer(id),
+
     token_hash           varchar(64) NOT NULL,
     issued_at            timestamptz NOT NULL,
     expires_at           timestamptz NOT NULL,      -- issued_at + 14 days
@@ -422,8 +606,40 @@ CREATE TABLE customer.refresh_token (
 
 CREATE INDEX ix_refresh_token_customer_account_id
     ON customer.refresh_token (customer_account_id);
+CREATE INDEX ix_refresh_token_customer_id
+    ON customer.refresh_token (customer_id);
+
+-- ⚠ Added 2026-09-10 by [DEC-152], migration 15. The evidence columns above — used_at, revoked_at,
+--   replaced_by_token_id — may be SET and never CLEARED. The business-switch grant this migration
+--   adds (INSERT, and UPDATE of used_at/replaced_by_token_id, to app_customer_role) reopens a hole
+--   migration 3 had closed: with all three columns writable, `UPDATE ... SET used_at = NULL,
+--   revoked_at = NULL, replaced_by_token_id = NULL` names only granted columns and the FOR ALL
+--   policy's USING arm passes for the caller's own row, so nothing else refuses it — a plain
+--   UPDATE would unmark a used, revoked, replaced token and hand it back as a live credential. A
+--   GRANT cannot express "set, never clear"; a trigger can, and it binds the OWNER too,
+--   deliberately, because the Worker, the seeders and every test fixture write on the owner
+--   connection. What stays legal is NULL -> a value, exactly what a rotation and a sign-out do.
+CREATE FUNCTION customer.refresh_token_evidence_is_monotonic() RETURNS trigger AS $rt$
+BEGIN
+    IF (OLD.used_at IS NOT NULL AND NEW.used_at IS NULL)
+    OR (OLD.revoked_at IS NOT NULL AND NEW.revoked_at IS NULL)
+    OR (OLD.replaced_by_token_id IS NOT NULL AND NEW.replaced_by_token_id IS NULL) THEN
+        RAISE EXCEPTION
+            'customer.refresh_token records evidence: used_at, revoked_at and replaced_by_token_id may be set, never cleared'
+            USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+END;
+$rt$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_refresh_token_evidence_monotonic BEFORE UPDATE ON customer.refresh_token
+    FOR EACH ROW EXECUTE FUNCTION customer.refresh_token_evidence_is_monotonic();
 
 -- The platform owns password reset  [DEC-113]. Same shape, same hashing, no rotation chain.
+-- ⚠ Unlike refresh_token above, this table keeps the ACCOUNT join: its RLS policy is re-pointed
+--   2026-09-10 by [DEC-152], migration 15, to an EXISTS through customer_membership rather than
+--   through the now-dropped customer_account.customer_id, but it gains no customer_id column
+--   of its own.
 CREATE TABLE customer.password_reset_token (
     id                   uuid PRIMARY KEY,
     customer_account_id  uuid NOT NULL REFERENCES customer.customer_account(id),
@@ -1464,15 +1680,47 @@ caught. Both once matched a property named **exactly** `CustomerId`; both now ma
 the exact-name predicate that table would have been invisible rather than exempt — and an invisible
 table is not a decision, it is an omission nobody made.
 
-⚠ **`refresh_token` and `password_reset_token` are scoped by ACCOUNT, not by company**, so neither
-carries a `customer_id` and neither is exempt: migration 3 gives each a policy whose predicate joins
-through `customer_account.customer_id`. They are held to the same two-policy bar as everything else,
+⚠ **`refresh_token` and `password_reset_token` were scoped by ACCOUNT, not by company**, so neither
+carried a `customer_id` and neither was exempt: migration 3 gave each a policy whose predicate joined
+through `customer_account.customer_id`. They were held to the same two-policy bar as everything else,
 by a separate account-owned discovery pass.
+
+⚠ **Amended 2026-09-10 by [DEC-152], migration 15 — and the two tables now diverge.**
+`password_reset_token` keeps the account join, re-pointed through `customer_membership` (an `EXISTS`
+on `customer_account_id`) rather than through the now-dropped `customer_account.customer_id`; it
+still carries no `customer_id` of its own. `refresh_token` does **not** take that shape: it gains its
+**own** `customer_id` column and a uniform `customer_id = <app.customer_id>` predicate instead. The
+asymmetry is load-bearing, not an inconsistency — under an `EXISTS`-through-membership policy, a
+removal that revokes the member's refresh tokens in the **same transaction** as the removal would see
+its own removal, find no active membership, and revoke **zero rows silently**, turning a revocation
+into a re-pointing. `password_reset_token` carries no such same-transaction removal path, so the
+`EXISTS` shape costs it nothing.
+
+⚠ **`customer.customer`'s own tenant policy widens 2026-09-10, migration 16, and narrows the command
+while it does.** The pre-membership policy was `FOR ALL`, partition-shaped: one account, one company,
+so two tenants' reachable rows never overlapped. Under membership they **overlap** — a shared member
+reaches every business they belong to — so widening the `USING` arm of a `FOR ALL` policy would hand
+an admin of B the ability to *write* A's row. Migration 16 instead `DROP POLICY` + `CREATE POLICY`s a
+**`FOR SELECT`**-only replacement: `USING (id = app.customer_id OR id IN (SELECT customer_id FROM
+customer_membership WHERE account_id = app.account_id AND removed_at IS NULL))`. `app_customer_role`
+is left with **no policy at all** for `INSERT`, `UPDATE` or `DELETE` on `customer.customer`, which
+PostgreSQL reads as **zero rows** — and that costs nothing, because every write to this table already
+runs on the owner connection (the anonymous onboarding wizard) or through the employee host's
+back-office policy.
 
 ⚠ **The admin flag is not an RLS concept.** `is_admin` **[DEC-71]** decides who may *approve*, which
 is an authorisation check in the domain **[F13-R43]**, re-validated against the account record on
 every request. Row-level security answers "whose rows are these", and the answer is the same for an
 admin and a non-admin of the same company.
+
+⚠ **Amended 2026-09-10 by [DEC-152], and half of it is now the opposite.** The conclusion still
+holds — row-level security answers *"whose rows are these"*, and the answer is the same for an `admin`
+and a `viewer` of the same business. What is no longer true is the premise: `customer.is_admin_of()`
+**is** consulted by a policy, in `customer_membership`'s `WITH CHECK`, because a write to that table
+is the one place *"who may change this"* and *"whose rows are these"* are the same question. That is
+also why the function is `SECURITY DEFINER` with a **pinned `search_path`** and why the `DELETE`
+privilege is withheld rather than guarded: a policy can express the admin test on an `INSERT` and on
+an `UPDATE`'s new row, and on a `DELETE` it cannot express it at all.
 
 ## 7. Migrations
 
@@ -1557,7 +1805,7 @@ ALTER TABLE billing.surcharge RENAME COLUMN rate TO rate_eur_per_kwh;
 | --- | --- | --- |
 | `metering.brp` **[DEC-69]** | New table, **created before** the column that references it | Seeded with **one row, PVNed** **[F02-R44]**, in the same migration — because `customer.metering_point.brp_id` is `NOT NULL` and every existing point has to point somewhere. Backfilling to the PVNed row is correct here and only here: it is the only BRP that has ever delivered a document |
 | `customer.metering_point.brp_id` **[DEC-69]** | Add nullable → backfill to PVNed → `SET NOT NULL`, across one release | Expand/contract, but the backfill is safe enough to run in the same release: the value is knowable for every row without asking anyone |
-| `customer.customer.four_eyes_enabled`, `customer_account.is_admin` **[DEC-71]** | Additive, `NOT NULL DEFAULT false` | Both default **off**, so no company changes behaviour on deploy. ⚠ A company cannot enable the mode until it has **two** admins **[F01-R43]** — that is an application guard, not a constraint, because it counts rows in another table |
+| `customer.customer.four_eyes_enabled`, ~~`customer_account.is_admin`~~ **[DEC-71]** | Additive, `NOT NULL DEFAULT false` | Both default **off**, so no company changes behaviour on deploy. ⚠ A company cannot enable the mode until it has **two** admins **[F01-R43]** — an application guard, not a constraint, because it counts rows in another table. ⚠ **`is_admin` is dropped 2026-09-10 by [DEC-152]**; see the row below |
 | `customer.approval_request` **[DEC-71]** | New table | Empty on deploy and correctly so: there is no historic approval to reconstruct, and inventing rows for past trades would fabricate a control that was not applied |
 | `customer.customer_bank_account` **[DEC-71]**, **[DEC-61]** | New table + **backfill from the three `customer` columns** + drop, across separate releases | ⚠ The one genuinely breaking move this round. Existing `iban`/`bic`/`bank_account_holder` become one `ACTIVE` row per customer that has them, with `added_by_account_id` set to the account that last edited the customer — **or the migration fails loudly** rather than inventing an actor, because the whole table exists to say who added an account |
 | `trading.trade.total_power_mw`, `trading.block_allocation.power_mw` **[DEC-70]** | `DROP CONSTRAINT` + `ADD CONSTRAINT … NOT VALID`, then `VALIDATE` | ⚠ **Check the existing rows before validating.** Every row written under **[DEC-32]** is a multiple of 0,1 MW, therefore also a multiple of 0,01 MW, therefore passes — the change is a **loosening**. If a row fails, it was written outside the old constraint and the migration has found a real defect |
@@ -1572,6 +1820,22 @@ ALTER TABLE billing.surcharge RENAME COLUMN rate TO rate_eur_per_kwh;
 | `billing.invoice.kind` **[DEC-99]** | Constraint swap: `ANNUAL_TRUE_UP` → `CORRECTION` | No row can carry `ANNUAL_TRUE_UP` — the true-up was never built **[DEC-24]** — so the swap is free |
 | ~~`billing.surcharge`~~ **[DEC-73]** | ~~Rename + widen — §7.1~~ | ⚠ **Not built, so not migrated.** If a `surcharge` table exists in a deployed environment, it is dropped in the contract release after its readers go |
 | `market.price_indication_markup` **[DEC-80]** | New table, **seeded with 2%** | Unlike every other reference table here, this one **must not ship empty**: with no row in force there is no markup, and rendering falls back to the raw quote — exactly what **[DEC-80]** forbids **[F04-R18]** |
+
+### 7.4 The 2026-09-10 multi-business membership migrations
+
+⚠ **A deliberate departure from §7's own rule, stated rather than silent.** §7 asks for
+expand/contract **across separate releases** for anything breaking. Migration 15 below does not do
+that: it adds, backfills, re-points and drops inside **one** migration, in one strictly-ordered
+transaction. That is safe here **only** because the whole membership feature ships on an unreleased
+branch — there is no prior release's traffic to keep working against the old shape mid-rollout, which
+is the entire reason expand/contract exists. The same departure would be a defect against a table
+already carrying production traffic.
+
+| Change | Form | Note |
+| --- | --- | --- |
+| `customer.customer_membership` + the `customer_account` column drop **[DEC-152]** | New table + backfill + policy swap + **`DROP COLUMN`**, all in migration **15** (2026-09-11), in that order | ⚠ **The one irreversible move of this round, and the order is the whole of it.** Add `last_active_business_id` *before* anything writes to it; create the table with its `REVOKE`, its grants and both policies; backfill one membership per account (`is_admin ? 'admin' : 'trader'`); run the **first-admin repair**; backfill the preference column; swap the three dependent policies and give `refresh_token` its own `customer_id`; and **only then** drop `customer_id` and `is_admin`. Dropping earlier errors on dependent objects, and `CASCADE` would silently take all three policies — leaving `customer_account` with RLS enabled and no policy, after which every authenticated request 401s. ⚠ **The backfill creates businesses with no admin**: `is_admin` defaulted false, so a company whose accounts were all non-admin gets none, violating the floor on deploy and leaving a business that can never invite anybody. The repair promotes the **active account with the lowest `id`** — ordered by `id`, not by `created_at`, because `customer_account` has **no `created_at`** column at all — and **writes an `audit.audit_record` per promotion**, because **[F13-R41]** forbids a *"first account of a company is admin"* rule by name. ⚠ **The ordering is a tiebreak, not a chronology claim.** `customer_account.id` is `DEFAULT gen_random_uuid()` — a random UUIDv4, not a time-ordered UUIDv7 — so "lowest id" picks *an* active account deterministically, not necessarily the *oldest* one. A business whose only admin is `DEACTIVATED` or `INVITED` is **not** repaired over — promoting someone over a deactivated admin is a privilege grant nobody decided, while reactivating that admin is a back-office action support can already take. Two separate `RAISE NOTICE`s name, respectively, businesses with no active account at all and businesses with no *active* admin (a superset, since it also catches the not-repaired-over case) — and EF migrations do **not** surface `RAISE NOTICE` output, so "listed in the migration output" describes what the SQL does, not what an operator sees without querying for it |
+| `customer_customer_tenant_isolation` on `customer.customer` **[DEC-152]** | `DROP POLICY` + `CREATE POLICY`, migration **16** (2026-09-15) | The old policy was `FOR ALL`, partition-shaped. Under membership, two tenants' reachable rows **overlap** — a shared member reaches every business they belong to — so widening a `FOR ALL` policy's `USING` arm would hand an admin of B the ability to *write* A's row. The replacement narrows the **command** to `FOR SELECT` and widens `USING` with a membership arm instead; `app_customer_role` is left with no policy at all for `INSERT`/`UPDATE`/`DELETE`, which costs nothing since every write to this table already runs on the owner connection or the employee back-office policy — §6 |
+| `customer.customer_invitation` **[DEC-152]** | New table, migration **17** (2026-09-16) | One admin asking one email address to join one business, in one role, once, within **fourteen days** **[F13-R21]** — `password_reset_token`'s shape, keyed on `customer_id` rather than `customer_account_id`. `app_customer_role` gets `SELECT, INSERT` only; `app_employee_role` gets `SELECT` only, because the back office has no membership screen at all **[OQ-105]**. **No `DELETE` grant to either role**, for the same reason `customer_membership` has none — §3.1 |
 
 ## 8. Retention & archival
 

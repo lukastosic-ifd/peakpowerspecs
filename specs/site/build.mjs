@@ -88,7 +88,10 @@ const features = featureFiles.map((d) => {
   const meta = d.md.match(/\*\*Portal:\*\*\s*([^·]+)·\s*\*\*Priority:\*\*\s*([^·]+)·\s*\*\*Phase:\*\*\s*([^·]+)·\s*\*\*Size:\*\*\s*(\S+)/);
   const code = d.title.match(/^(F\d\d)/);
   const reqs = [...d.md.matchAll(/\|\s*(F\d\d-R\d\d)\s*\|/g)].length;
-  const oqs = [...new Set([...d.md.matchAll(/OQ-(\d\d)/g)].map((m) => `OQ-${m[1]}`))];
+  // ⚠ \d{2,}, not \d\d. Two digits silently dropped OQ-101..105 from the board, and in this
+  // feature parser it was worse than dropping: fed "OQ-105" the two-digit form captured
+  // "OQ-10" and linked the feature to a different row. Fixed 2026-09-10 with [OQ-105].
+  const oqs = [...new Set([...d.md.matchAll(/OQ-(\d{2,})/g)].map((m) => `OQ-${m[1]}`))];
   return {
     code: code ? code[1] : d.id,
     id: d.id,
@@ -110,7 +113,7 @@ if (oqDoc) {
   for (const line of oqDoc.md.split('\n')) {
     const h = line.match(/^##\s+(.+)$/);
     if (h) { group = h[1].replace(/[🔴🟠🟡🟢]/g, '').trim(); continue; }
-    const m = line.match(/^\|\s*\*\*(OQ-\d\d)\*\*\s*\|\s*(🔴|🟠|🟡|🟢)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/u);
+    const m = line.match(/^\|\s*\*\*(OQ-\d{2,})\*\*\s*\|\s*(🔴|🟠|🟡|🟢)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$/u);
     if (!m) continue;
     const [, ref, emoji, question, impact, owner] = m;
     questions.push({

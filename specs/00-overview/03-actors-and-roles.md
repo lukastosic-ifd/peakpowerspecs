@@ -80,7 +80,8 @@ and four-eyes* below, rule **FE-1**.
 
 **All accounts of one company are equal [DEC-16].** Every account sees the same data, can raise a
 trade request, can accept or reject an offer, can top up the wallet, and can read the full ledger and
-every invoice. There is no viewer/trader/approver split inside a company.
+every invoice. ~~There is no viewer/trader/approver split inside a company.~~ ⚠ **Reversed 2026-09-10
+by [DEC-152]** — see below.
 
 This is a deliberate product decision, not a simplification deferred for later. The customer decides
 internally who does what; the platform's job is to record **who actually did it**.
@@ -88,18 +89,36 @@ internally who does what; the platform's job is to record **who actually did it*
 ⚠ **Amended 2026-08-19 by [DEC-71].** Everything above still describes what an account may *do* — a
 non-admin account keeps every ordinary privilege in that list, and data visibility is identical for
 all accounts. What is no longer true is that accounts are indistinguishable: each one carries an
-**admin** flag. There is still no viewer/trader/approver split; there are two levels, not four, and
-the second exists for one purpose only. Everything **[DEC-16]** said about *who creates and
-deactivates accounts* — PeakPower employees, never the customer — is unchanged.
+**admin** flag. ~~There is still no viewer/trader/approver split; there are two levels, not four, and
+the second exists for one purpose only.~~ ⚠ **Reversed 2026-09-10 by [DEC-152]** — see below.
+Everything **[DEC-16]** said about *who creates and deactivates accounts* — PeakPower employees, never
+the customer — is unchanged.
+
+⚠ **Amended again 2026-09-10 by [DEC-152], and this time the split is real.** *"There is no
+viewer/trader/approver split inside a company"* is **no longer true**: a membership carries a
+`membershipRole` of `admin`, `trader` or `viewer`. Two things keep the spirit of what is written
+above intact. **Data visibility is still identical for every member** — `trader` and `viewer` gate
+nothing at all and exist to be recorded and displayed **[F01-R14]** — so nobody in a company sees a
+smaller product than a colleague. And exactly **one** role gates anything: `admin`, which now covers
+invitations, role changes, removals and entitlements **[DEC-150]** as well as four-eyes eligibility.
+What is reversed outright is the second half of **[DEC-16]** quoted above: account administration is
+**no longer** PeakPower's alone — a customer admin brings colleagues in and takes them out of their
+own business, while PeakPower keeps its F12 path.
 
 #### The admin flag and four-eyes [DEC-71]
 
-A customer account is either an **admin account** or an ordinary account. That is the whole role
+A customer account is either an **admin account** or an ordinary account. ~~That is the whole role
 model inside a customer company: exactly two levels, and it exists for one reason — four-eyes cannot
-be expressed without a second population to draw the approver from. It is not a permission ladder and
-it is not the intra-company role model **[DEC-16]** rejected. A non-admin account keeps every
-privilege it had: same data, same trade requests, same offer acceptance, same wallet top-ups, same
-ledger and invoices.
+be expressed without a second population to draw the approver from.~~ ⚠ **Reversed 2026-09-10 by
+[DEC-152].** A customer account instead carries a **`membershipRole`** of `admin`, `trader` or
+`viewer` — three levels, not two. `trader` and `viewer` gate nothing and exist only to be recorded and
+displayed **[F01-R14]**, so for **four-eyes purposes** the acting population is still admin-or-not,
+which is what the struck sentence got right; what it no longer gets right is *"the whole role
+model"* and *"one reason"* — `admin` also gates invitations, role changes, removals and entitlements
+outside four-eyes entirely **[DEC-150]**. It is not a permission ladder and it is not the
+intra-company role model **[DEC-16]** rejected: `trader` and `viewer` still differ from each other in
+nothing but the label. A non-admin account keeps every privilege it had: same data, same trade
+requests, same offer acceptance, same wallet top-ups, same ledger and invoices.
 
 A **customer company** has four-eyes either **enabled** or **disabled**. There is **no threshold** —
 not in euros, not in megawatts — so there is no threshold table to build, no default to ship and no
@@ -114,7 +133,7 @@ these actions take effect only after a **second admin** approves them:
 | Add a bank account | required | It creates a new destination for money leaving the company. A bank account **cannot be edited once added** — it can only be deactivated **[DEC-71]** — so adding is the only moment the control can sit on |
 | Deactivate a bank account | required | It removes a payout destination and forces the next withdrawal onto whatever remains |
 | Execute a trade | required | It commits the company's money, and once the delivery month starts the hedge cannot be changed **[DEC-78]**. For a trade the gate sits **after acceptance and before PeakPower executes**, so the wallet reservation is already held and the offer's reaction window is the only clock — see [F05](../10-features/F05-energy-block-trading.md) |
-| Add a user | required | A new account holds every ordinary privilege the moment it exists, so adding one changes who may spend |
+| ~~Add a user~~ | ~~required~~ | ~~A new account holds every ordinary privilege the moment it exists, so adding one changes who may spend~~ ⚠ **Reversed 2026-09-10 by [DEC-152] — removed from this list, not merely re-approved.** Membership changes bypass four-eyes entirely: a customer `admin` invites, re-roles and removes colleagues of their own business unilaterally, with no second admin's approval. The cost of the bypass was priced and re-confirmed rather than overlooked — see the **[DEC-152]** row |
 | Withdraw funds | required | A manual outbound bank payment **[DEC-83]** — the only path that moves money out of the platform |
 | **Deposit funds** | **not required** | Deliberately excluded. One person can wire money or use iDEAL on their own **[DEC-106]**, so gating a deposit gates nothing while costing a second person's time |
 

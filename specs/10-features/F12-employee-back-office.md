@@ -310,7 +310,7 @@ removed. What remains is review, push, and the status of the push.
 | Screen | Mockup | 2026-08-19 |
 | --- | --- | --- |
 | Operations home | [`employee-home.svg`](../60-mockups/employee-home.svg) | ⚠ Counters changed **[F12-R01]**: the wallets-below-threshold tile is gone **[DEC-90]**; withdrawal requests **[DEC-83]** and unmatched payments **[DEC-106]** are new |
-| Customer administration — accounts and bank details | [`employee-customer-admin.svg`](../60-mockups/employee-customer-admin.svg) | ⚠ Gains the **four-eyes mode** toggle and the **admin** flag per account **[F12-R39]**, **[F12-R40]**, and the **BRP assignment** on the EAN list **[F12-R50]** |
+| Customer administration — accounts and bank details | [`employee-customer-admin.svg`](../60-mockups/employee-customer-admin.svg) | ⚠ Gains the **four-eyes mode** toggle and ~~the **admin** flag per account~~ **`membershipRole` per account** **[F12-R39]** — ⚠ **corrected 2026-09-10, no admin flag** — **[F12-R40]**, and the **BRP assignment** on the EAN list **[F12-R50]** |
 | Trade desk | [`employee-trade-desk.svg`](../60-mockups/employee-trade-desk.svg) | ⚠ The same-period warning is removed **[DEC-91]**; the awaiting-approval queue keeps its column but loses the threshold **[F12-R34]** |
 | Trade detail & pricing | [`employee-trade-detail.svg`](../60-mockups/employee-trade-detail.svg) | ⚠ The four-eyes banner is now mode-driven, not value-driven **[F12-R35]** |
 | Wallet administration | [`employee-wallet-admin.svg`](../60-mockups/employee-wallet-admin.svg) | ⚠ Loses the manual-adjustment action **[DEC-85]** and the threshold rules **[DEC-90]**; gains the two worklists **[F12-R53]**, **[F12-R56]** |

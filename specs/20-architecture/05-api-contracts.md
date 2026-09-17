@@ -32,7 +32,7 @@ deleted, with the decision that removed it.
 | Concurrency | `If-Match` with an ETag on updates that can conflict |
 | Correlation | `X-Correlation-Id` accepted and echoed; generated if absent |
 | Authentication strength | A customer token must **evidence multi-factor authentication** **[DEC-92]** — §1.2. ⚠ **Suspended 2026-09-03 by [DEC-119]:** the token carries `amr: ["pwd"]` and **nothing rejects on it** |
-| Roles | ~~Every customer token carries `customer.user`; an admin carries `customer.admin` beside it~~ ⚠ **Corrected 2026-09-03:** there is **no `roles` claim**. The role model is a boolean `is_admin` claim **[DEC-71]**, **[F13-R43]** — §1.2 |
+| Roles | ~~Every customer token carries `customer.user`; an admin carries `customer.admin` beside it~~ ⚠ **Corrected 2026-09-03:** there is **no `roles` claim**. ~~The role model is a boolean `is_admin` claim **[DEC-71]**, **[F13-R43]**~~ — §1.2. ⚠ **Removed 2026-09-10 by [DEC-152]: there is no `is_admin` claim either, nor a role claim of any kind.** The token carries no role at all; `customer.customer_membership`, read fresh on every request, is the sole authority |
 | VAT | Every amount is **ex-VAT** **[DEC-26]**, **[DEC-76]** — the platform computes no VAT at all. The single exception is a trade reservation and the debit it becomes, which are VAT-**inclusive** **[DEC-78]** and always carry the `vatRate` they used |
 
 ### 1.1 Error shape
@@ -61,7 +61,7 @@ than assumed from the tenant that issued it.
 | --- | --- | --- |
 | `customer_id` | the **company** | Scopes every read and write **[F13-R14]**. Never a path parameter on the customer API |
 | ~~`account_id`~~ `sub` | the **person** | Stamped on every write as the acting account **[DEC-17]**. Never scopes. ⚠ **Renamed 2026-09-03**: the claim is the standard `sub`, not `account_id`; the meaning is unchanged |
-| ~~`roles`~~ `is_admin` | ~~`customer.user`, plus `customer.admin` for an admin~~ `"true"` / `"false"` **[F13-R43]** | Decides who may raise and who may approve a four-eyes action **[DEC-71]**, §2.10. Nothing else branches on it — an admin reads and writes exactly what a non-admin does **[F13-R41]**. ⚠ **Corrected 2026-09-03:** there is no `roles` claim and no `customer.*` role vocabulary. The flag is one boolean claim, and `ICustomerContext` reads that |
+| ~~`roles`~~ ~~`is_admin`~~ **(no role claim)** | ~~`customer.user`, plus `customer.admin` for an admin~~ ~~`"true"` / `"false"`~~ **nothing** | ⚠ **Removed 2026-09-10 by [DEC-152]: the token carries no role of any kind.** The database is the sole authority. On every request the middleware reads `customer.customer_membership` for the account and the claimed business and puts the resulting `membershipRole` on `ICustomerContext` — and a **claimed business with no active membership row is refused before `app.customer_id` is honoured**, so the customer-id claim is now a *claim* proven per request rather than a fact carried in the token. ⚠ **`ICustomerContext.IsAdmin` is removed, not kept alongside the role.** Two sources of truth for one fact is how a demoted admin keeps admin rights for the rest of a fifteen-minute token. ⚠ **The property gained** is that demotion and removal take effect on the **next request** rather than at expiry — which is what **[DEC-117]**'s `stamp` comparison bought for the flag, now got structurally instead. Original text: *"Decides who may raise and who may approve a four-eyes action **[DEC-71]**, §2.10. Nothing else branches on it — an admin reads and writes exactly what a non-admin does **[F13-R41]**. ⚠ Corrected 2026-09-03: there is no `roles` claim and no `customer.*` role vocabulary. The flag is one boolean claim, and `ICustomerContext` reads that."* |
 | `amr` | the authentication methods used | ~~Rejects the call unless one of them is a second factor~~ ⚠ **Corrected 2026-09-03 by [DEC-119]: evidence only.** The claim is issued as `["pwd"]` — a password, not a second factor — and **nothing anywhere rejects on it**. The verification **[DEC-92]**, **[F13-R45]** describes is recorded, not built; see [Security §3.1.0](07-security.md) |
 | `stamp` | `customer_account.security_stamp` | ⚠ **Added 2026-09-03 by [DEC-117].** Compared to the account's stored stamp on **every** request. It costs nothing measurable — the request already opens a transaction to `SET LOCAL app.customer_id` — and it is what makes **[F01-R16]**'s *immediate* revocation literally true against a stateless 15-minute token |
 
@@ -109,6 +109,12 @@ before the flag was cleared would otherwise still approve. `four_eyes_enabled` i
 a claim: it is company reference data, read server-side, so turning the mode on takes effect on the
 next request rather than on the next token.
 
+⚠ **The whole paragraph above is withdrawn 2026-09-10 by [DEC-152], and is kept because it is the
+argument that has to be re-made if a role ever returns to a token.** There is no `is_admin` claim to
+re-validate, no re-validation to achieve by a different mechanism, and no admin vocabulary on this
+API. `four_eyes_enabled` is still deliberately not a claim, for the reason given — it is company
+reference data read server-side — and that half of the paragraph survives unchanged.
+
 ⚠ **Interaction with [DEC-67].** The claim-mapping spike now has **three** claims to map instead of
 two. The marginal cost inside the spike is small — one more app-role assignment on the same app
 registration — but it is a third thing that can only be proven against the **corporate tenancy**, not
@@ -138,10 +144,11 @@ token.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/auth/sign-in` | Username and password for an access token (15 min) and a rotating refresh cookie. `200` or `401`, and the `401` is **byte-identical** for a wrong password, an unknown username and a deactivated account — one branch, one constant response, deliberately no oracle |
-| `POST` | `/auth/refresh` | Rotates the HttpOnly `pp_refresh` cookie. No request body: the cookie **is** the credential |
-| `POST` | `/auth/sign-out` | Revokes the refresh chain and clears the cookie. `204` |
-| `GET` | `/auth/me` | The signed-in account |
+| `POST` | `/auth/sign-in` | Username and password for an access token (15 min) and a rotating refresh cookie. `200` or `401`; the `401` is **byte-identical** for a wrong password, an unknown username and a deactivated account — one branch, one constant response, deliberately no oracle. ⚠ **Amended 2026-09-10 by [DEC-152]: which business it signs into.** The account can belong to several now: sign-in lands in `last_active_business_id` if that membership is still live, otherwise the **oldest** membership by `created_at`, tied by `id` — never an arbitrary one (`AuthEndpoints.cs:751-767` @ debadda0). A right password on an account with **no live membership anywhere** is a *different*, named `401` — `no-business-access` (`:981-991`) — deliberately not folded into the constant response above: the password was right, so nothing should imply otherwise |
+| `POST` | `/auth/refresh` | Rotates the HttpOnly `pp_refresh` cookie. No request body: the cookie **is** the credential. ⚠ **Amended 2026-09-10 by [DEC-152]: refresh re-proves membership.** Every rotation re-checks that the account still holds a live membership in the chain's own business (`:390-414`) — without it a removed member's refresh would loop forever, quietly re-minting for a business already left. A chain whose business the account has left gets a **terminal** `401`, `…/problems/membership-revoked` (`:853-861`), distinct from the ordinary `session-expired` `401` every other refusal shares — the one refusal a client must react to by signing out, not by retrying |
+| `POST` | `/auth/sign-out` | ⚠ **Narrowed 2026-09-10 by [DEC-152]: per business, not every session for this account.** Revokes the refresh chain **for the business the presented token is currently acting for** — `customer.refresh_token`'s policy is `customer_id = app.customer_id`, and an authenticated connection never sees another business's rows (`:313-333`). `204`. An account signed into several businesses signs out of each one separately; the missing "sign out everywhere" gesture is registered debt on **[DEC-152]**, next to **[OQ-105]** |
+| `GET` | `/auth/me` | The signed-in account. ⚠ **Amended 2026-09-10 by [DEC-152]: loses `isAdmin`, gains `membershipRole` and `memberships`.** The body is `{ accountId, customerId, firstName, lastName, email, membershipRole, memberships: [{ customerId, tradeName, membershipRole }] }` — `customerId` is the **active** business (`ICustomerContext.CustomerId`, proven this request), `membershipRole` is read off `ICustomerContext.Role` and never re-queried (`:256-263`), and `memberships` lists every business this login belongs to, for the switcher below |
+| `POST` | `/auth/active-business` | ⚠ **New 2026-09-10 [DEC-152]** — switch this session to another business the same login belongs to: `{ customerId }`, authenticated. **Mints a whole new session** (the same body sign-in and refresh answer with) rather than flipping a flag, and **revokes nothing**: the pre-switch cookie stays bound to the business it was issued for, still re-proves membership in it and still mints only tokens for it — switching is additive, not a replacement (`:619-723`, the reasoning at `:695-705`). `404`, never `403` **[F13-R19]**, for a business this login holds no live membership in — indistinguishable from one that does not exist; `400` for a request naming no business at all |
 | `POST` | `/auth/password-reset/requests` | Always `202`, whether or not the address exists **[DEC-113]** |
 | `POST` | `/auth/password-reset/completions` | Token plus new password. `204`, and every session for that account dies with it |
 | `GET` | `/.well-known/jwks.json` | The ES256 verification key **[DEC-117]**. Anonymous by definition |
@@ -662,14 +669,32 @@ threshold **[DEC-100]**, **[F10-R50]**.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/company` | Read-only company profile: legal name, KvK, VAT, registered bank account, addresses, contact |
-| `GET` | `/company/accounts` | Colleagues who can also act — name, job title, email, status **[OQ-80]**, and each account's **admin** flag **[DEC-71]**, **[F01-R21]** |
+| `GET` | `/company/accounts` | Colleagues who can also act — name, job title, email, status **[OQ-80]**, and each account's ~~**admin** flag~~ **`membershipRole`** **[F01-R21]**. ⚠ **Corrected 2026-09-10 by [DEC-152]: there is no admin flag.** Open to **every** member, unchanged — `CompanyEndpoints.cs:77` @ debadda0 (`MapGet("/accounts")`), `.RequireAuthorization()` with **no policy** at `:104`. `admin` gates no read here; the read it gates is `/company/memberships` below |
 | `GET` | `/company/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — the company's bank accounts with status (`PENDING_APPROVAL` \| `ACTIVE` \| `DEACTIVATED`) **[F01-R44]**. Read-only here: a bank account is added and deactivated by a PeakPower employee **[DEC-16]** and, under four-eyes, approved by a second admin §2.10 |
+| `GET`/`PATCH`/`DELETE` | `/company/memberships`, `/company/memberships/{accountId}` | ⚠ **New 2026-09-10 [DEC-152]** — the member list, a role change and a removal, **all three `CompanyAdmin`** (`MembershipEndpoints.cs:75`/`:85`/`:102` @ debadda0, the `.RequireAuthorization` lines; routes at `:61`/`:83`/`:100`). ⚠ **Not "`GET` open to every member"**: every member instead keeps `GET /company/accounts` above, which already carries the colleague's `membershipRole`; this list additionally names who has been **invited** and is admin-only for that reason. `GET` returns the whole `CompanyMembershipsResponse`; `PATCH` replaces one row but answers with the **whole list**, not the one row, so a screen never merges a partial response; `DELETE` answers `204` with no body. Both are `404` for a membership not this business's or already removed — byte-identical to an unknown `accountId` **[F13-R19]** — and `409` for the **admin floor**: demoting or removing the company's last admin, or a four-eyes company's second one; `DELETE` alone also refuses removing **your own** membership under the same status and body. ⚠ The `DELETE` **verb is a soft delete**: the SQL is an `UPDATE` setting `removed_at`, because PostgreSQL never evaluates `WITH CHECK` for a `DELETE` and there is no `DELETE` grant to guard |
+| `POST` | `/company/invitations`, `/company/invitations/accept` | ⚠ **New 2026-09-10 [DEC-152]** — issue (**`CompanyAdmin`**, `InvitationEndpoints.cs:49`/`:51` @ debadda0) and redeem (**anonymous**, `:67`/`:69`, on the owner connection: the invitation token is the authorisation, not tenancy). Issue answers **`202` always**, indistinguishable for a known and an unknown address in status, body and timing; its only other response is a **validation `400`** on the request itself, which never touches the address's standing. Accept answers the created `CompanyInvitationAcceptedResponse`, a **validation `400`** for the profile fields an address with no login must supply, or a single **`409`** — an unknown, a spent and an expired invitation token are one indistinguishable body |
 
-All three are read-only. Company details, accounts and bank accounts are maintained by PeakPower
-employees **[DEC-16]**, so there is no write endpoint here at all. ⚠ **[DEC-71] does not change
-that** — it adds an **approval** the customer's second admin gives §2.10, not an administration
-screen. A bank account **cannot be edited once added**; correcting an IBAN is *deactivate the old, add
-the new*, two audited events with two named actors **[F01-R44]**, **[F01-R46]**.
+~~All three are read-only. Company details, accounts and bank accounts are maintained by PeakPower
+employees **[DEC-16]**, so there is no write endpoint here at all.~~ ⚠ **Reversed 2026-09-10 by
+[DEC-152].** This URL space now carries **four customer-initiated writes** — the two invitation
+routes and the role change and removal above — and they are administration, not approval: a customer
+**admin** brings a colleague into their own business and takes them out again, which is precisely the
+self-service **[DEC-16]** refused.
+
+⚠ **This paragraph was already untrue before [DEC-152], and that is recorded rather than quietly
+fixed.** **[DEC-150]** put `GET`/`POST /api/v1/company/entitlements` in this same URL space on
+2026-09-08 — an admin of a company switching that company's own entitlements on and off — and §2.7 was
+never amended. It is listed here now, so the section's inventory is complete:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET`/`POST` | `/company/entitlements` | ⚠ **Missing since 2026-09-08 [DEC-150]** — the shelf a company switches on. `GET` is open to every member (the rail is computed from the held set, so a 403 would take away navigation rather than a privilege); `POST` is **`CompanyAdmin`** and audited in both directions |
+
+⚠ **[DEC-71] still does not change that** — the approval a second admin gives §2.10 is a different
+mechanism from an administration screen, and *"add a user"* has now left that approval list
+altogether. What is unchanged: company **details** are still maintained by PeakPower employees, and a
+bank account **cannot be edited once added** — correcting an IBAN is *deactivate the old, add the
+new*, two audited events with two named actors **[F01-R44]**, **[F01-R46]**.
 
 ### 2.8 Notifications & profile
 
@@ -716,10 +741,13 @@ platform tells fewer people than it allows to act, and accepts that a missed off
 
 ### 2.10 Approvals — four-eyes **[DEC-71]**
 
-⚠ **New section 2026-08-19.** **[DEC-71]** puts **five** actions behind a second admin's approval when
-the customer company has four-eyes enabled. Only one of them — *execute a trade*, meaning accept an
-offer — already had verbs on this API §2.4. The other four had none, because they were not customer
-actions at all: PeakPower employees add bank accounts and users **[DEC-16]**. The approval is
+⚠ **New section 2026-08-19.** ⚠ **Amended 2026-09-10 by [DEC-152]: four actions, not five.**
+**[DEC-71]** puts ~~five~~ **four** actions behind a second admin's approval when the customer company
+has four-eyes enabled. Only one of them — *execute a trade*, meaning accept an offer — already had
+verbs on this API §2.4. The other ~~four~~ **three** had none, because they were not customer actions
+at all: PeakPower employees add bank accounts **[DEC-16]**. ⚠ *Adding a user* was the fourth of those,
+and it has left in both directions at once — it is now a **customer** action (§2.7) **and** it is no
+longer an approvable one. The approval is
 therefore a **customer-side gate on an employee-side action**, and it needs a surface of its own.
 
 | Method | Path | Purpose |
@@ -756,20 +784,34 @@ therefore a **customer-side gate on an employee-side action**, and it needs a su
 ```
 
 `action` is one of **`TRADE_ACCEPT`**, **`BANK_ACCOUNT_ADD`**, **`BANK_ACCOUNT_DEACTIVATE`**,
-**`USER_ADD`**, **`WITHDRAWAL`** — the five and no others. **`DEPOSIT` is deliberately not in the
-enumeration** **[DEC-71]**: a customer can wire money or use iDEAL on their own, so gating a deposit
-gates nothing that is not already ungated.
+**`WITHDRAWAL`** — ⚠ **four and no others, since 2026-09-10 [DEC-152]**. ~~**`USER_ADD`**~~ left the
+list: membership changes bypass four-eyes entirely **[F01-R49]**, so no membership write ever raises
+an approval and no `approval_request` row ever carries that action. **`DEPOSIT` is deliberately not in
+the enumeration** **[DEC-71]**: a customer can wire money or use iDEAL on their own, so gating a
+deposit gates nothing that is not already ungated.
+
+⚠ **The closed list is the whole value of this field, which is why removing an arm is recorded here
+and not only on [DEC-152].** *"The five and no others"* was a contract a client could switch on
+exhaustively; *"four and no others"* is the same contract with one arm fewer, and a client that still
+handles `USER_ADD` is handling a value the API can no longer emit. ⚠ **The domain enum moves with
+it** — `FourEyesAction` in `PeakPower.Domain` drops its `AddUser` arm, and the two tests that pin the
+arm list move with that. ⚠ **Note the two spellings, which have always disagreed and still do**: this
+section says `USER_ADD` while the database's `approval_request` `CHECK` and the domain enum say
+`ADD_USER`. Both lose the arm; neither vocabulary is corrected to the other here, because that is a
+separate defect and conflating them would hide it.
 
 Three shape decisions, each with a reason.
 
 - **One queue to read, action-native verbs to act — with one exception.** `TRADE_ACCEPT` items appear
   in this queue for visibility, and are decided on `POST /trades/{id}/approve` §2.4, because the trade
   has a clock, a reservation and a state machine that the generic endpoint would have to reimplement
-  **[F05-R61]**, **[F05-R62]**. The other four actions are decided here. Both paths write the **same
+  **[F05-R61]**, **[F05-R62]**. The other ~~four~~ **three** actions are decided here. Both paths write the **same
   approval record**, so the audit trail is one trail and not two **[DEC-17]**.
 - **`expiresAt` is `null` for everything except a trade.** The trade's approval window is the offer's
-  own `expires_at` and there is no second clock **[F05-R61]**. A pending bank account or user addition
-  has no deadline — it waits, and the record shows how long it has waited. ⚠ A withdrawal held pending
+  own `expires_at` and there is no second clock **[F05-R61]**. A pending bank account ~~or user
+  addition~~ has no deadline — it waits, and the record shows how long it has waited. ⚠ **`or user
+  addition` struck 2026-09-10 by [DEC-152]**: membership changes bypass four-eyes entirely, so there
+  is no pending user addition left to wait on. ⚠ A withdrawal held pending
   keeps the customer's own money reserved **[F07-R29]**, which is a cost the *customer* bears for
   their own mode; the platform does not time it out and quietly release it.
 - **Nothing here is an employee action.** There is no approve, decline or override endpoint on the
@@ -913,11 +955,11 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET`/`POST`/`PATCH` | `/customers`, `/customers/{id}` | Administration |
 | `POST` | `/customers/{id}/metering-points` | Attach an EAN |
 | `GET` | `/customers/{id}/accounts` | List the company's accounts |
-| `POST` | `/customers/{id}/accounts` | Create an account and send the invitation |
-| `PATCH` | `/accounts/{accountId}` | Edit name, job title, phone, email. Username is immutable |
-| `POST` | `/accounts/{accountId}/deactivate` | Deactivate and revoke sessions |
-| `POST` | `/accounts/{accountId}/resend-invitation` | Reissue; invalidates the previous link. ⚠ Under four-eyes **no invitation is sent** until the second admin approves the addition **[F01-R49]** |
-| `PATCH` | `/accounts/{accountId}/admin` | ⚠ **New 2026-08-19 [DEC-71]** — set or clear the account's **admin** flag **[F01-R47]**, **[F12-R39]**. Refused when it would leave a four-eyes company with fewer than two active admins **[F01-R50]** |
+| `POST` | `/customers/{id}/accounts` | Create an account and its membership together. ⚠ **Corrected 2026-09-10 by [DEC-152]: also names a role.** The request carries **`membershipRole`**; the handler writes the account and the `customer_membership` row in one transaction (`AccountEndpoints.cs:30`/`:125` @ debadda0). ~~and send the invitation~~ — ⚠ **struck: no route sends one, see the resend row below** |
+| `PATCH` | ~~`/accounts/{accountId}`~~ **`/customers/{id}/accounts/{accountId}`** | Edit name, job title, phone, email and **`membershipRole`**. Username is immutable. ⚠ **Corrected 2026-09-10 by [DEC-152]: the route nests under the company** (`AccountEndpoints.cs:40`), and the role edit is **this** route, not a separate one — see the struck row below. There is **no admin-floor check on this path**: `CustomerMembership.ChangeRole` is a bare setter (`CustomerMembership.cs:86`) and `UpdateAsync` calls it unconditionally, unlike the customer-side `PATCH /company/memberships` above, which does check the floor |
+| `POST` | ~~`/accounts/{accountId}/deactivate`~~ **`/customers/{id}/accounts/{accountId}/deactivate`** | Deactivate and revoke sessions. ⚠ **Corrected 2026-09-10 by [DEC-152]: the route nests under the company** (`AccountEndpoints.cs:49`) |
+| ~~`POST`~~ | ~~`/accounts/{accountId}/resend-invitation`~~ | ~~Reissue; invalidates the previous link. Under four-eyes no invitation is sent until the second admin approves the addition [F01-R49]~~ ⚠ **Removed 2026-09-10 by [DEC-152] — not shipped.** No route on this host sends, reissues or invalidates an invitation; the back office's own `CreateAsync` sends no email at all. The open item this leaves is already registered on **[DEC-152]**: whether the back office keeps its own account-creation path or becomes the same invitation flow with an employee actor |
+| ~~`PATCH`~~ | ~~`/accounts/{accountId}/admin`~~ | ~~set or clear the account's admin flag [F01-R47], [F12-R39]. Refused when it would leave a four-eyes company with fewer than two active admins [F01-R50]~~ ⚠ **Removed 2026-09-10 by [DEC-152]: there is no admin flag, and no route this narrow.** `membershipRole` is set on the general edit route above instead, and — unlike this row's original claim — **that route enforces no admin-floor refusal** (see its own note) |
 | `POST` | `/customers/{id}/four-eyes/enable` \| `/disable` | ⚠ **New 2026-08-19 [DEC-71]** — turn the mode on or off for a company **[F12-R40]**. Enabling with **fewer than two active admin accounts is refused** **[F12-R41]**. Audited before/after **[DEC-17]**; it takes effect for actions started after it, and does not release a trade already `AWAITING_APPROVAL` |
 | `GET`/`POST` | `/customers/{id}/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — add a bank account. **No `PATCH`**: a bank account cannot be edited, only added or deactivated **[F01-R44]**. Under four-eyes it lands `PENDING_APPROVAL` §2.10 **[F01-R45]** |
 | `POST` | `/bank-accounts/{id}/deactivate` | ⚠ **New 2026-08-19 [DEC-71]** — the other half of the pair; also a four-eyes action. A company holds **at most one `ACTIVE`** account, so replacing one activates the new and deactivates the old together **[F01-R46]** |

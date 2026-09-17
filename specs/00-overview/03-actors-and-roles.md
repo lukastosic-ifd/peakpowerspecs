@@ -392,17 +392,29 @@ account of any company can do within its own company.
    ([OQ-09] asks whether high-value trades should require a second approver).~~
    ⚠ **Reversed 2026-08-19 by [DEC-71].** Four-eyes is in scope, as a **per-customer-company mode
    with no threshold** — which also **replaces [DEC-33]** and **closes [OQ-85]**, the question that
-   existed to supply the threshold figure. When a company has it enabled, the five actions listed
+   existed to supply the threshold figure. When a company has it enabled, the **four** actions listed
    under *The admin flag and four-eyes* (§2.1) take effect only after a **different admin account of
-   the same company** approves them; deposits are excluded. What this rule got right was the
-   mechanism — **[DEC-17]** attribution is what carries the approval trail. What it got wrong was the
-   release.
+   the same company** approves them; deposits are excluded. ⚠ **Amended 2026-09-10 by [DEC-152]:**
+   this rule said **five** when four-eyes shipped on 2026-08-19; **add a user** is reversed out of that
+   table entirely, not merely re-approved — a customer `admin` now invites, re-roles and removes
+   colleagues of their own business unilaterally, with no second admin's approval **[DEC-150]** —
+   leaving **four**. What this rule got right was the mechanism — **[DEC-17]** attribution is what
+   carries the approval trail. What it got wrong was the release, and now also the count.
 5. **A company with four-eyes enabled always has at least two active admin accounts** **[DEC-71]**.
    Rules **FE-1** to **FE-4** in §2.1 are binding on the feature specs, not advisory: no enabling
    below two admins, no deactivation that drops below two, refusal **at submission** if a company
    ends up with one anyway, and no escalation path that lets PeakPower approve on the customer's
    behalf. A control that cannot be satisfied must fail loudly at the moment it is invoked, not
    silently at expiry.
-6. **The admin flag grants approval, nothing else** **[DEC-71]**. It is not seniority, not wider data
+6. ~~**The admin flag grants approval, nothing else** **[DEC-71]**. It is not seniority, not wider data
    access and not a prerequisite for any ordinary action — **[DEC-16]** still gives a non-admin
-   account every ordinary privilege.
+   account every ordinary privilege.~~
+   ⚠ **Reversed 2026-09-10 by [DEC-152].** There is no admin *flag* to grant it any more —
+   `is_admin` leaves both the account record and the token, replaced by a **`membershipRole`** of
+   `admin`, `trader` or `viewer` per business (§2.1 above). `admin` still grants approval, but that is
+   no longer its only effect: it also gates invitations, role changes, removals and entitlements
+   outside four-eyes entirely **[DEC-150]** — ordinary writes a non-admin account cannot perform,
+   which is exactly the "prerequisite for an ordinary action" this rule said did not exist. What
+   survives: `admin` still grants **no additional read** — every member of a business sees identical
+   business data **[F01-R14]** — and `trader`/`viewer` still differ from each other in nothing but the
+   label, so within that pair the role remains a record, not a ladder.

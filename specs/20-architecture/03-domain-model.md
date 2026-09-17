@@ -65,7 +65,8 @@ erDiagram
 
 | Aggregate root | Contains | Transaction boundary rationale |
 | --- | --- | --- |
-| **Customer** (company) | metering points, labels, **accounts**, **bank accounts** | Master data changes together. The four-eyes mode and the admin flags that make it satisfiable must be checked against each other under one lock **[DEC-71]** |
+| **Customer** (company) | metering points, labels, ~~**accounts**~~, **bank accounts** | Master data changes together. The four-eyes mode and the admin roles that make it satisfiable must be checked against each other under one lock **[DEC-71]**. ⚠ **Amended 2026-09-10 by [DEC-152]: accounts leave this aggregate.** An account is now its own root (below), because it outlives any one company and belongs to several at once — the reason it lived here, *"an account only ever exists in the context of one company"*, is the thing that was reversed. The **admin floor** is still checked under one lock, but the lock is over the business's membership rows rather than over `Customer` |
+| **CustomerAccount** (person) | **memberships** | ⚠ **New root, 2026-09-10 [DEC-152].** A login, with one `CustomerMembership` per business. It is a root and not an entity because the switcher must read **across** businesses, which nothing inside a single `Customer` can do — and because a membership's own invariants (the role, the soft delete, the floor) are checked against a business, not against the person |
 | **Wallet** | entries, reservations, **deposit intents**, **withdrawal requests** | Balance invariants require a single lock. A deposit match and a withdrawal payout both move the balance, so they commit inside the wallet **[DEC-106]**, **[DEC-83]** |
 | **Trade** | lines, offer, events | State machine and audit must be atomic |
 | **Block** | allocations | Allocation sum invariant |
@@ -237,8 +238,18 @@ Kept readable because trades accepted before 2026-08-19 were pinned against them
 
 ## 3. The Customer aggregate
 
-A customer **is a company**. Accounts are entities inside it, not a separate aggregate, because an
-account only ever exists in the context of one company and the two change together.
+A customer **is a company**. ~~Accounts are entities inside it, not a separate aggregate, because an
+account only ever exists in the context of one company and the two change together.~~
+
+⚠ **Reversed 2026-09-10 by [DEC-152], and the reason given above is exactly the premise that fell.**
+An account exists in the context of **several** companies at once, so it is its own aggregate root
+and the relationship between the two is an explicit `CustomerMembership`. `Customer` keeps its
+metering points, its labels and its bank accounts; `Customer._accounts` becomes a read over the
+membership table rather than a collection the company owns. ⚠ **The consequence to hold on to** is
+that a change to a person — their name, their password, their security stamp — is now **one
+transaction against one root**, not a write into whichever company happened to be loaded; and an
+admin of business B cannot reach the `password_hash` or `security_stamp` of somebody who is also in
+business A, which is a probe the tenancy work carries by name.
 
 ```csharp
 public sealed class Customer : AggregateRoot
@@ -272,10 +283,15 @@ public sealed class Customer : AggregateRoot
     //   There is deliberately no EditBankAccount. Correcting a typo means adding the right
     //   account and deactivating the wrong one, which leaves both visible in the audit trail.
 
-    private readonly List<CustomerAccount> _accounts = [];
-    public IReadOnlyList<CustomerAccount> Accounts => _accounts;
-    public IEnumerable<CustomerAccount> ActiveAccounts => _accounts.Where(a => a.IsActive);
-    public IEnumerable<CustomerAccount> ActiveAdmins => ActiveAccounts.Where(a => a.IsAdmin);
+    // ⚠ Reversed 2026-09-10 by [DEC-152]. Accounts are no longer entities of this aggregate:
+    //   CustomerAccount is its own root and reaches this company through CustomerMembership.
+    //   ActiveAdmins is the floor count and is READ THROUGH THE MEMBERSHIP TABLE, scoped to
+    //   THIS company - a member's admin role in another business must never count here.
+    //   Original:
+    //     private readonly List<CustomerAccount> _accounts = [];
+    //     public IReadOnlyList<CustomerAccount> Accounts => _accounts;
+    //     public IEnumerable<CustomerAccount> ActiveAccounts => _accounts.Where(a => a.IsActive);
+    //     public IEnumerable<CustomerAccount> ActiveAdmins => ActiveAccounts.Where(a => a.IsAdmin);
 
     private readonly List<MeteringPoint> _meteringPoints = [];
     public IReadOnlyList<MeteringPoint> MeteringPoints => _meteringPoints;
@@ -287,17 +303,32 @@ public sealed class Customer : AggregateRoot
     public Result RevokeAdmin(CustomerAccountId id, Actor by);   // guard: not the second-to-last (C9)
 
     /// The whole of the approver rule  [DEC-71]: a different admin of the same company.
+    /// ⚠ Amended 2026-09-10 by [DEC-152]. `ActiveAdmins` no longer exists on `Customer` (§3);
+    /// "a different admin of the same company" is now a `CustomerMembership` with
+    /// `Role == Admin`, `IsActive` and `CustomerId == this.Id` — scoped to THIS company, for
+    /// the same reason C20's floor count carries an explicit `customer_id` predicate: a
+    /// member's admin role in a different business must never qualify here.
+    /// Original:
+    ///     && ActiveAdmins.Any(a => a.Id == approver)
+    ///     && ActiveAdmins.Any(a => a.Id == requester);
     public bool CanApproveFor(CustomerAccountId requester, CustomerAccountId approver) =>
         FourEyesEnabled
         && requester != approver
-        && ActiveAdmins.Any(a => a.Id == approver)
-        && ActiveAdmins.Any(a => a.Id == requester);
+        && IsActiveAdminHere(approver)
+        && IsActiveAdminHere(requester);
+        // IsActiveAdminHere(id) := Memberships of `id` at CustomerId == this.Id with
+        //     Role == MembershipRole.Admin && IsActive
 }
 
 public sealed class CustomerAccount : Entity
 {
     public CustomerAccountId Id { get; }
-    public CustomerId CustomerId { get; }
+    // ⚠ Removed 2026-09-10 by [DEC-152], with the column (migration 15). An account belongs to
+    //   no single company. Was: public CustomerId CustomerId { get; }
+    public CustomerId? LastActiveBusinessId { get; private set; }   // a PREFERENCE, never a tenancy key
+    private readonly List<CustomerMembership> _memberships = [];
+    public IReadOnlyList<CustomerMembership> Memberships => _memberships;
+    public void RecordActiveBusiness(CustomerId id);
     public Username Username { get; }              // immutable after creation
     public PersonName Name { get; private set; }   // first + last
     public string? JobTitle { get; private set; }  // "role in the company" — descriptive only
@@ -314,15 +345,53 @@ public sealed class CustomerAccount : Entity
     public Guid SecurityStamp { get; private set; }            // bumped by every mutator, and by reset
     public DateTimeOffset? LastLoginAt { get; private set; }
 
-    /// ⚠ Amended 2026-08-19 by [DEC-71], which qualifies [DEC-16]. The one and only
-    /// privilege bit on an account. It grants nothing on its own: it decides who may
-    /// raise and who may approve a four-eyes action, and nothing else branches on it.
-    public bool IsAdmin { get; private set; }
+    /// ⚠ Removed 2026-09-10 by [DEC-152], with the column (migration 15). The role is a
+    /// property of the MEMBERSHIP, not of the account: one person is an admin in one
+    /// business and a viewer in another, which a bit on the account cannot express.
+    /// Was: public bool IsAdmin { get; private set; }
 
     public bool IsActive => Status == AccountStatus.Active;
     public string FullName => $"{Name.First} {Name.Last}";
-    // No permission or role property beyond IsAdmin. Still by design  [DEC-16], see §10.
+    // No permission or role property on the ACCOUNT at all  [DEC-152]. The role lives on
+    // CustomerMembership, is read from the database on every request, and is never in a token.
 }
+
+/// ⚠ New 2026-09-10 [DEC-152]. The relationship between a person and a business, and the
+/// sole authority on what they may do there. NEVER deleted: removal sets RemovedAt, because
+/// PostgreSQL evaluates WITH CHECK for INSERT and for an UPDATE's new row and never for
+/// DELETE - so a granted DELETE would be governed by USING alone, which carries no admin
+/// term. Re-inviting a removed person clears the column rather than inserting a duplicate,
+/// which the composite key would refuse anyway.
+///
+/// ⚠ Doc convention, not a divergence. This document uses typed ids (`CustomerAccountId`,
+/// `CustomerId`) for every type, including ones the platform ships as `Guid` — exactly as
+/// `Customer.Id` and `CustomerAccount.Id` already do above. The shipped `CustomerMembership`
+/// is `Guid AccountId` / `Guid CustomerId` (`CustomerMembership.cs:42`/`:44`), and
+/// `RecordActiveBusiness` takes a `Guid` (`CustomerAccount.cs:92`); nothing here is cosmetic
+/// evidence of a design that failed to ship.
+public sealed class CustomerMembership
+{
+    public CustomerAccountId AccountId { get; }
+    public CustomerId CustomerId { get; }
+    public MembershipRole Role { get; private set; }     // db + wire: 'admin' | 'trader' | 'viewer'
+    public DateTimeOffset CreatedAt { get; }
+    public DateTimeOffset? RemovedAt { get; private set; }
+
+    public bool IsActive => RemovedAt is null;
+
+    // Result<T>, not the bare type: the house pattern for a factory that can refuse.
+    public static Result<CustomerMembership> Create(CustomerAccountId account, CustomerId business,
+                                                    MembershipRole role, DateTimeOffset at);
+    public void ChangeRole(MembershipRole role);
+    public void Remove(DateTimeOffset at);
+    public void Restore(DateTimeOffset at);
+}
+
+/// Lowercase in the database and on the wire [DEC-152], which is the one place this schema
+/// departs from the SCREAMING_SNAKE enum convention, by an explicit conversion rather than by
+/// accident. `trader` and `viewer` collide with the EMPLOYEE vocabulary [F13-R12]; the
+/// collision is accepted and any code naming both spells membershipRole and employeeRole.
+public enum MembershipRole { Admin, Trader, Viewer }
 
 /// Immutable once added  [DEC-61], [DEC-71]. There is no setter on any field.
 public sealed class BankAccount : Entity
@@ -375,11 +444,13 @@ public enum ProductionExpectation { Unknown = 0, Expected = 1, Never = 2 }
 | C2 | Usernames are unique **platform-wide**, not merely within a company | Unique index; checked by the application service across customers |
 | C3 | `Username` is immutable after creation | `init`-only, no setter |
 | C4 | An account is deactivated, never removed, so historical actors stay resolvable | No delete path |
-| C5 | `JobTitle` grants nothing — no code branches on it. ⚠ **Amended 2026-08-19 by [DEC-71]**: `IsAdmin` is now the one thing code *does* branch on, and `JobTitle` stays purely descriptive | Enforced by review and by there being no permission type to branch to other than `IsAdmin` |
+| C5 | `JobTitle` grants nothing — no code branches on it. ~~⚠ **Amended 2026-08-19 by [DEC-71]**: `IsAdmin` is now the one thing code *does* branch on, and `JobTitle` stays purely descriptive~~ ⚠ **Amended 2026-09-10 by [DEC-152]:** `IsAdmin` is gone from `CustomerAccount` — the thing code branches on is `CustomerMembership.Role`, scoped to a business — and `JobTitle` still stays purely descriptive | Enforced by review and by there being no permission property on the account at all; the role lives on the membership |
 | C6 | The IBAN is structurally valid and passes mod-97 | `Iban.Create` is the only constructor |
-| C7 | An account belongs to exactly one customer and cannot be moved | No setter for `CustomerId` |
+| ~~C7~~ | ~~An account belongs to exactly one customer and cannot be moved~~ ⚠ **Reversed 2026-09-10 by [DEC-152].** An account belongs to **any number** of customers, one `CustomerMembership` each, and it is **still never moved** — a membership is added or soft-removed, never re-pointed. The invariant that replaces it: **a membership's `(AccountId, CustomerId)` pair is immutable; only `Role` and `RemovedAt` change** | Composite primary key; no setter for either id; `ChangeRole`, `Remove` and `Restore` are the only mutators |
+| **C19** | ⚠ **New 2026-09-10 [DEC-152].** A membership is **never deleted**. Removal sets `RemovedAt`; every predicate that means *"active"* carries `RemovedAt IS NULL` | **No `DELETE` grant to any application role** — a policy cannot guard a `DELETE`, so the privilege is withheld rather than argued about, and a test asserts the **absent privilege** |
+| **C20** | ⚠ **New 2026-09-10 [DEC-152].** A business never falls below its **admin floor** — **two** active admins for a four-eyes business **[F01-R43]**, one otherwise. Removal and demotion are both refused at the boundary | Check-then-act serialised by `SELECT … FOR UPDATE` over **that business's** membership rows, inside the request's own transaction. ⚠ The count carries an explicit `AND customer_id = @active`: the membership policy's permissive `OR` would otherwise let an admin's role in a *different* business inflate the count |
 | C8 | Four-eyes cannot be **enabled** while the company has fewer than **two active admin accounts**, because the rule would then be unsatisfiable and every sensitive action would deadlock **[DEC-71]** | Guard in `EnableFourEyes`, evaluated under the aggregate lock |
-| C9 | While four-eyes is on, the **second-to-last active admin cannot be deactivated** and their admin flag cannot be revoked — the company may not fall below two | Guard in `DeactivateAccount` and `RevokeAdmin`; the same count as C8, checked on the way down |
+| C9 | ~~While four-eyes is on, the second-to-last active admin cannot be deactivated and their admin flag cannot be revoked — the company may not fall below two~~ ⚠ **Superseded 2026-09-10 by [DEC-152]'s C20.** There is no account-level admin flag left to revoke; the floor is now enforced on `CustomerMembership.Remove`/`ChangeRole`, scoped to this business, not on `DeactivateAccount`/`RevokeAdmin` | ~~Guard in `DeactivateAccount` and `RevokeAdmin`; the same count as C8, checked on the way down~~ See C20 |
 | C10 | An approver is an **active admin of the same company** and is **not** the account that raised the action **[DEC-71]** | `Customer.CanApproveFor`, called with ids taken from the token, never from the request body **[DEC-17]** |
 | C11 | A bank account is **immutable once added**. It may be added and deactivated; it may never be edited **[DEC-61]**, **[DEC-71]** | No setters; there is no `EditBankAccount` method to call |
 | C12 | A deactivated bank account is never reactivated and never removed, so a past withdrawal payout stays resolvable to the account it went to | `DeactivatedAt` is write-once; no delete path |
@@ -397,7 +468,7 @@ which the rule starts.
 | Execute a trade | **In the `Trade` aggregate**, as the `AwaitingApproval` state (§4) | Money is reserved at acceptance and must stay reserved across the approval. A separate record would leave the reservation orphaned from the thing it secures — see §10 |
 | Add a bank account | `FourEyesRequest` | Nothing is reserved and nothing expires; the request is the whole state |
 | Deactivate a bank account | `FourEyesRequest` | Same |
-| Add a user | `FourEyesRequest` | Same |
+| ~~Add a user~~ | ⚠ **Removed 2026-09-10 by [DEC-152]** | Membership changes bypass four-eyes entirely **[F01-R49]**, so there is no request to raise. **Four actions remain**, and `FourEyesAction` drops its `AddUser` arm with this row |
 | Withdraw funds | `FourEyesRequest`, linked to the `WithdrawalRequest` (§5.3) | The wallet debit happens on payout, not on request, so there is no reservation to carry **[DEC-83]** |
 
 **Deposits are explicitly out of scope** and this is deliberate, not an omission: a customer can
@@ -409,11 +480,13 @@ public sealed class FourEyesRequest : AggregateRoot
 {
     public FourEyesRequestId Id { get; }
     public CustomerId CustomerId { get; }
-    // ⚠ Corrected 2026-09-03 to the five arms the database defines. `Trade` was missing, and
+    // ⚠ Corrected 2026-09-03 to the arms the database defines. `Trade` was missing, and
     //   `Withdraw` is spelled `Withdrawal` — the database spelling is normative in both cases,
     //   and WITHDRAWAL is what the CHECK constraint in customer.approval_request accepts.
+    // ⚠ Amended 2026-09-10 by [DEC-152]: FOUR arms, not five. `AddUser` is removed because
+    //   membership changes bypass four-eyes [F01-R49]. The domain enum moved with this comment.
     public FourEyesAction Action { get; }        // AddBankAccount | DeactivateBankAccount
-                                                 // | AddUser | Trade | Withdrawal
+                                                 // | Trade | Withdrawal
     public string SubjectRef { get; }            // the id of the thing being acted on
     public string PayloadJson { get; }           // the proposed change, frozen at request time
     public CustomerAccountId RequestedByAccountId { get; }
@@ -437,7 +510,8 @@ public sealed class FourEyesRequest : AggregateRoot
 | C18 | `Decline` requires a non-empty reason | Guard in the method, matching `T5` |
 
 ⚠ **One gap, recorded rather than closed silently.** `DisableFourEyes` is not in **[DEC-71]**'s list
-of five actions, and as the model stands one admin can therefore switch the mode off and then act
+of ~~five~~ **four** actions ⚠ **the fifth, "Add a user", left the table 2026-09-10 by [DEC-152]** —
+and as the model stands one admin can therefore switch the mode off and then act
 alone. Whether disabling the mode should itself need a second admin is not decided — it is carried
 with the **[DEC-71]** source tension (OQ-09's comment and OQ-85's answer list different action sets,
 and the ledger asks for both to be confirmed at the next session). The model does not assume an

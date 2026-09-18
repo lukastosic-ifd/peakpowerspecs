@@ -270,10 +270,12 @@ actor with a name rather than a line in a runbook. **Closes [OQ-63]**.
 | **Who** | **Thinh** — a single named operator, no rota, no second line **[DEC-104]** |
 | **Goals** | The platform is up, background jobs finish, the BRP and bookkeeping integrations stay connected, P1 alerts get answered |
 | **Frequency** | Event-driven. Quiet until an integration fails, a job stalls or a payment stops matching |
-| **Platform role** | `employee.admin` — the operator holds no separate role in the permission model. The rest of the job (infrastructure, deployments, alerting) sits outside the platform's role model entirely |
+| **Platform role** | `employee.admin` — ~~the operator holds no separate role in the permission model~~ ⚠ **Amended 2026-09-18 by [DEC-155]** — the back office now has a built **admin / ordinary** distinction (`employee.employee.is_admin`), and an **admin** operator manages the staff roster — invite, rename, promote/demote, deactivate, reactivate, resend-invite — through the admin-gated `/api/v1/operators` endpoints; an ordinary operator keeps every other back-office privilege and only staff management is gated. The rest of the job (infrastructure, deployments, alerting) still sits outside the platform's role model entirely |
 | **Key screens** | Integration health & message log, background job dashboard, message replay, audit log |
 
 ⚠ **Recorded as a risk, not solved here: one operator is a single point of failure for P1 alerts.**
+⚠ **[DEC-155]** softens the *provisioning* half — a second operator can now be added and made admin at
+runtime, without a Migrator run — but not the on-call half: one person is still one pager.
 There is no contractual customer SLA **[DEC-103]**, so availability targets are internal engineering
 goals rather than commitments with a remedy — that lowers the *contractual* cost of an unanswered
 alert, not the operational one. The escalation shape stays open in [OQ-89] (break-glass time box and
@@ -369,7 +371,7 @@ account of any company can do within its own company.
 | **Set the price-indication markup percentage — default 2% [DEC-80]** | — | — | — | ✅ | — | ✅ |
 | **Configure a BRP — endpoint, credentials, document format [DEC-69]** | — | — | — | — | — | ✅ |
 | ~~Manage wallet threshold rules (global)~~ ⚠ **Reversed 2026-08-19 by [DEC-90]** — no thresholds and no low-balance alerts; the pre-trade check **[DEC-41]** is the only reader of the balance | — | — | — | — | ~~✅~~ | ~~✅~~ |
-| Manage employee users & roles | — | — | — | — | — | ✅ |
+| **Manage employee users & roles** — ⚠ **built 2026-09-18 by [DEC-155]** as the `is_admin` capability (admin-gated staff invite/rename/promote/demote/deactivate/reactivate/resend, proven per request from the DB); the four `employee.*` columns stay the aspirational provider-era vocabulary **[F13-R12]**, so the *built* split is admin-or-not, not viewer/trader/finance/admin | — | — | — | — | — | ✅ |
 | **Create / deactivate customer accounts** | — | — | — | ✅ | — | ✅ |
 | **Retrieve own company's usage over the customer API [DEC-97]** — net usage only, nothing priced **[DEC-81]** | ✅ | ✅ | — | — | — | — |
 | View integration health & message log | — | — | ✅ | ✅ | ✅ | ✅ |

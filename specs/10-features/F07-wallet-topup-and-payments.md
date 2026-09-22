@@ -6,6 +6,13 @@
 
 ## 1. Summary
 
+> ⚠ **Built 2026-09-22 by [DEC-156]** — F07 is implemented on **test money [DEC-28]** with a **simulated**
+> payment provider behind a method-agnostic port (no PSP chosen — **[DEC-86]**): iDEAL deposits credit through a
+> **fail-closed, signed, DB-idempotent webhook** (a PSP retry cannot double-credit); bank-transfer deposits issue
+> a `PP-DEP-…` reference matched from a **simulated** incoming feed (reference → auto, IBAN → proposed, else an
+> unmatched queue). Withdrawals reserve → optional four-eyes → a manual employee payout that **re-resolves the
+> destination from the registered IBAN** (theft-proof). The real PSP + real bank feed remain the deferred piece.
+
 Two ways to put money in the wallet, and **only** two **[DEC-58]**:
 
 1. **iDEAL via a payment provider** (CM.com is the candidate) — funds land in the wallet within

@@ -6,6 +6,14 @@
 
 ## 1. Summary
 
+> ⚠ **Built 2026-09-22 by [DEC-156]** — F06 is now implemented end to end on **test money [DEC-28]**: real
+> settled/reserved/available balances, the append-only `wallet.ledger_entry` (monotonic per-wallet sequence
+> under a row lock, entry+balance in one transaction, non-negative by domain guard **and** DB `CHECK`), a Worker
+> reconciliation job raising `LEDGER_MISMATCH`, withdrawals with the platform's first four-eyes approval runtime,
+> and the customer **"Wallet"** page + back-office wallet admin. Trade ledger entries stay declared-but-unwired
+> (trading is a separate repo). Residuals: **[OQ-106]** (a SQL-injection-only four-eyes bypass, own-account,
+> no theft) and **[OQ-107]** (a read-thin back-office surface).
+
 Every customer **company** has one prepaid EUR wallet **[AS-02]**, shared by all of its accounts. It
 funds trades, absorbs invoices, and is the single place a customer can answer "where did my money
 go" — and, because every movement names the account that caused it, "who spent it". The ledger behind it is append-only:

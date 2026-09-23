@@ -118,7 +118,10 @@ model"* and *"one reason"* — `admin` also gates invitations, role changes, rem
 outside four-eyes entirely **[DEC-150]**. It is not a permission ladder and it is not the
 intra-company role model **[DEC-16]** rejected: `trader` and `viewer` still differ from each other in
 nothing but the label. A non-admin account keeps every privilege it had: same data, same trade
-requests, same offer acceptance, same wallet top-ups, same ledger and invoices.
+requests, same offer acceptance, same wallet top-ups, same ledger and invoices. ⚠ **Amended
+2026-09-23 by [DEC-160]** — "same wallet top-ups" no longer holds without qualification: depositing
+(iDEAL, bank transfer, and completing the company's own simulated checkout) is admin and trader; a
+viewer may not. Every other privilege in this list is unchanged.
 
 A **customer company** has four-eyes either **enabled** or **disabled**. There is **no threshold** —
 not in euros, not in megawatts — so there is no threshold table to build, no default to ship and no
@@ -354,7 +357,8 @@ account of any company can do within its own company.
 | View any wallet & ledger | — | — | ✅ | ✅ | ✅ | ✅ |
 | Register a manual bank deposit — fallback only **[DEC-106]** | — | — | — | — | ✅ | ✅ |
 | ~~Manual wallet adjustment (with mandatory reason)~~ ⚠ **Reversed 2026-08-19 by [DEC-85]** — chargebacks and reversals are handled in the bookkeeping program; the adjustment-with-a-reason path leaves the platform | — | — | — | — | ~~✅~~ | ~~✅~~ |
-| Initiate a deposit for own company — iDEAL **or bank transfer with a platform-issued reference [DEC-106]** | ✅ | ✅ | — | — | — | — |
+| Initiate a deposit for own company, or complete its own simulated checkout — iDEAL **or bank transfer with a platform-issued reference [DEC-106]**, **[DEC-159]** — **admin or trader** ⚠ **Amended 2026-09-23 by [DEC-160]** | ✅ | ✅ | — | — | — | — |
+| Initiate a deposit for own company, or complete its own simulated checkout — **viewer** ⚠ **Amended 2026-09-23 by [DEC-160]** — the first row in this table where `customer.user` does not mean every non-admin account | — | — | — | — | — | — |
 | **Request a withdrawal to the company bank account ⚖ [DEC-83]** | ✅ | ✅ | — | — | — | — |
 | **Pay out an approved withdrawal, manually [DEC-83]** | — | — | — | — | ✅ | ✅ |
 | **Add / deactivate a bank account, customer-side ⚖ [DEC-71]** — a bank account **cannot be edited once added**, only deactivated | ✅ | ✅ | — | — | — | — |

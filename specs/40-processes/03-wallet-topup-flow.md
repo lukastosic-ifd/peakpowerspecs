@@ -184,7 +184,7 @@ and `PSP` is the participant that is not chosen yet.
 
 ⚠ **In the demo, [DEC-159]**: the simulated provider's `redirectUrl` (step 4) points at the portal's
 own **PeakPower test checkout**, not `payments.simulated.peakpower.dev` (a domain that never existed)
-and not a real bank. From there, **Complete test deposit** / **Simulate a failed deposit** settle
+and not a real bank. From there, **Complete deposit** / **Simulate a failed deposit** settle
 through this same webhook-authoritative core — the simulated PSP's own action, not the browser — and
 the return page stays exactly as cosmetic as it is drawn here.
 

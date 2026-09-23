@@ -556,7 +556,9 @@ Two things this decision does **not** settle, and they are the ones to plan arou
   nothing, and every account of a business still sees identical data **[F01-R14]**. What is still out
   of scope is any **behavioural** difference between `trader` and `viewer`, a way to leave a business
   on your own initiative, transferring a business, and a **back-office membership screen** —
-  **[OQ-105]**.
+  **[OQ-105]**. ⚠ **Amended 2026-09-23 by [DEC-160]** — one behavioural difference now exists:
+  depositing (iDEAL, bank transfer, and completing the company's own simulated checkout) is admin
+  and trader; a viewer may not.
 - **Migration or import from an existing customer-facing identity solution** — there is none
   **[DEC-110]**. No user import, no password migration, no dual run.
 - **An external penetration test before go-live** — not budgeted **[DEC-102]**; **[NFR-36]** is amended

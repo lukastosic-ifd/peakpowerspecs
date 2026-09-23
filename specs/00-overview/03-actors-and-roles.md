@@ -101,6 +101,8 @@ above intact. **Data visibility is still identical for every member** — `trade
 nothing at all and exist to be recorded and displayed **[F01-R14]** — so nobody in a company sees a
 smaller product than a colleague. And exactly **one** role gates anything: `admin`, which now covers
 invitations, role changes, removals and entitlements **[DEC-150]** as well as four-eyes eligibility.
+⚠ **Narrowed 2026-09-23 by [DEC-163]** — depositing is a second exception: it gates on admin-or-trader,
+not on `admin` alone; see *The admin flag and four-eyes* below.
 What is reversed outright is the second half of **[DEC-16]** quoted above: account administration is
 **no longer** PeakPower's alone — a customer admin brings colleagues in and takes them out of their
 own business, while PeakPower keeps its F12 path.
@@ -119,9 +121,11 @@ outside four-eyes entirely **[DEC-150]**. It is not a permission ladder and it i
 intra-company role model **[DEC-16]** rejected: `trader` and `viewer` still differ from each other in
 nothing but the label. A non-admin account keeps every privilege it had: same data, same trade
 requests, same offer acceptance, same wallet top-ups, same ledger and invoices. ⚠ **Amended
-2026-09-23 by [DEC-160]** — "same wallet top-ups" no longer holds without qualification: depositing
+2026-09-23 by [DEC-163]** — two clauses in the sentence above no longer hold without qualification:
+"differ from each other in nothing but the label" and "same wallet top-ups". Depositing
 (iDEAL, bank transfer, and completing the company's own simulated checkout) is admin and trader; a
-viewer may not. Every other privilege in this list is unchanged.
+viewer may not. Every other privilege in this list, and every other respect in which `trader` and
+`viewer` differ only by label, is unchanged.
 
 A **customer company** has four-eyes either **enabled** or **disabled**. There is **no threshold** —
 not in euros, not in megawatts — so there is no threshold table to build, no default to ship and no
@@ -357,8 +361,8 @@ account of any company can do within its own company.
 | View any wallet & ledger | — | — | ✅ | ✅ | ✅ | ✅ |
 | Register a manual bank deposit — fallback only **[DEC-106]** | — | — | — | — | ✅ | ✅ |
 | ~~Manual wallet adjustment (with mandatory reason)~~ ⚠ **Reversed 2026-08-19 by [DEC-85]** — chargebacks and reversals are handled in the bookkeeping program; the adjustment-with-a-reason path leaves the platform | — | — | — | — | ~~✅~~ | ~~✅~~ |
-| Initiate a deposit for own company, or complete its own simulated checkout — iDEAL **or bank transfer with a platform-issued reference [DEC-106]**, **[DEC-159]** — **admin or trader** ⚠ **Amended 2026-09-23 by [DEC-160]** | ✅ | ✅ | — | — | — | — |
-| Initiate a deposit for own company, or complete its own simulated checkout — **viewer** ⚠ **Amended 2026-09-23 by [DEC-160]** — the first row in this table where `customer.user` does not mean every non-admin account | — | — | — | — | — | — |
+| Initiate a deposit for own company, or complete its own simulated checkout — iDEAL **or bank transfer with a platform-issued reference [DEC-106]**, **[DEC-162]** — **admin or trader** ⚠ **Amended 2026-09-23 by [DEC-163]** | ✅ | ✅ | — | — | — | — |
+| Initiate a deposit for own company, or complete its own simulated checkout — **viewer** ⚠ **Amended 2026-09-23 by [DEC-163]** — the first row in this table where `customer.user` does not mean every non-admin account | — | — | — | — | — | — |
 | **Request a withdrawal to the company bank account ⚖ [DEC-83]** | ✅ | ✅ | — | — | — | — |
 | **Pay out an approved withdrawal, manually [DEC-83]** | — | — | — | — | ✅ | ✅ |
 | **Add / deactivate a bank account, customer-side ⚖ [DEC-71]** — a bank account **cannot be edited once added**, only deactivated | ✅ | ✅ | — | — | — | — |

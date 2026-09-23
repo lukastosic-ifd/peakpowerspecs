@@ -239,6 +239,8 @@ view, and reconstructing which instrument a customer was looking at when a trade
 | `CheckDayAheadCompletenessJob` | 20:00 Europe/Amsterdam | Alerts on gaps for the next day |
 | `BackfillDayAheadPricesJob` | **On demand, operator-triggered, over a bounded date range [DEC-75]** | Not a schedule. It exists because the history is available, and it is also the path a late metering correction **[DEC-99]** takes when it needs a price for a month already closed. Rate-limited so a wide range cannot starve the daily fetch |
 
+⚠ **As-built roll rule, found 2026-09-23 by reading the code for this close-out.** `PollMontelIndicationsJob`'s table row above does not say what happens when a product's delivery period **rolls** — M+1 becoming a new month, or the equivalent for a quarter or year. The built poller does not leave a roll to the ordinary 5-minute/hourly cadence: it detects one by comparing each active product's currently resolved delivery period against the latest delivery period stored for it, and a mismatch forces an immediate poll on the next one-minute tick, exactly as if the source had never been polled before — in effect, it polls again as soon as the last poll predates the current Amsterdam period's start, for whichever period type (month, quarter or year) just rolled. This is not documented elsewhere in this set and is recorded here because a reader relying only on the table above would assume a roll waits up to an hour to be reflected.
+
 **[DEC-36] replaces the four-attempt schedule.** The previous 13:00 / 14:00 / 15:00 / 18:00 sequence
 existed only because the publication time was unknown; three of those four attempts were speculative
 polls against an unpublished curve. With the time known, the design is **one scheduled fetch plus
@@ -286,9 +288,11 @@ price_indication_observation
 rather than `product_code`, splits `resolved_delivery_period` into `delivery_start`/`delivery_end`
 (`DeliveryPeriod` is a value object, not stored as one string), and adds `source varchar(32)` —
 `'SIMULATED'` for **[DEC-159]**'s fixture, a future real value once one exists — which is what the
-least-privilege `price_indication_latest` view and the served-rows sample-honesty filter (**[DEC-159]**,
-Constraint 7) both key on. `ticker` is `NULL` for every `SIMULATED` row, since a simulated observation
-was never resolved against a real Montel symbol.
+least-privilege `price_indication_latest` view and the served-rows sample-honesty filter both key on:
+both serve only rows whose `source` matches the currently configured provider, so a row from a source
+the platform is no longer configured for is never returned as live (**[DEC-159]**). `ticker` is `NULL`
+for every `SIMULATED` row, since a simulated observation was never resolved against a real Montel
+symbol.
 
 There is **no markup column and no adjusted-price column** in that table, and none in `day_ahead_price`
 either. Everything stored here is the value the provider gave — see §5.2. ⚠ **This reconciles with
@@ -459,12 +463,14 @@ more weight than it did, not less.
 
 ## 8. Open questions
 
-Post-2026-08-19 state. One question remains against this integration, and it is a partial.
+Post-2026-08-19 state. ⚠ **Amended 2026-09-23.** Two questions remain against this integration: one is
+a partial ([OQ-23]), the other is fully open and does not block Phase 1's build ([OQ-108]).
 
 | Ref | Status | Question |
 | --- | :--: | --- |
 | ~~[OQ-16]~~ | ✅ | ~~What resolution does Montel deliver for the NL day-ahead curve, and is history available for backfill?~~ **CLOSED.** The arrival time was settled by **[DEC-36]** (18:00 Amsterdam, §4); **[DEC-75]** settles the rest — **history is available for backfill**, so there is no backfill cliff and retrospective settlement is bounded by the licence rather than by the data (§4, §7). The **resolution** half was never separately answered and no longer needs to be: §5 stores hourly and 15-minute identically, so it is absorbed on arrival |
 | **[OQ-23]** | ⏸ | **Still open in part.** ~~Exact ticker symbols for the six products~~ — the symbols **were never supplied** (§3), and a second half has been added to the row: **the sources disagree on which side of the market is quoted and marked up** — [OQ-23]'s answer says *ask* + 2%, [OQ-25]'s comment says *bid* + percentage, and the comment governs **[DEC-80]**. Both must be confirmed together; a symbol confirmed without its side is a silent pricing error. First place to look: the existing Montel service **[DEC-96]**, §2.1. ⚠ **Widened 2026-09-23 by [DEC-161]** — the row is now 24 symbols, not six (§3), and carries two further items: the **sign convention** for a negative quote ([F04](../10-features/F04-price-indications.md) §8), and **licence/service coverage of the far offsets** (M+3…M+6, Q+3…Q+4, Cal+2 — fourteen products) that must be confirmed before those can go live. All four items — symbols, side, sign, far-offset coverage — must arrive together; see [80-open-questions.md](../80-open-questions.md) |
+| **[OQ-108]** | 🟠 | **New 2026-09-23 by [DEC-161] (6).** Confirm the real market-window values — trading days, open time, close time — against the **placeholder** window this integration polls to (§4: Monday–Friday 08:00–18:00 Europe/Amsterdam). Fully open, not a partial: unlike [OQ-23] it is not one of the five named [F04](../10-features/F04-price-indications.md) live-gate conditions, confirming it is cheap and blocks nothing else, and it is deliberately tracked separately from the ticker-symbol wait. See [80-open-questions.md](../80-open-questions.md) |
 | ~~[OQ-24]~~ | ✅ | ~~Licence terms for onward display and export.~~ **CLOSED on both halves.** Display: **[DEC-27]** — portal yes, public no. Export: **[DEC-81]** — no export, no history, no price API **[DEC-97]**, decided rather than merely presumed (§7). ⚠ What replaces it in the licence conversation is **retention and backfill depth**, which **[DEC-75]** makes a live question for the first time |
 | ~~[OQ-25]~~ | ✅ | ~~Are indications shown raw, or with a PeakPower spread?~~ **CLOSED — never raw** **[DEC-80]**: quote plus a **configurable markup, default 2%**, applied at display only, and never firm unless PeakPower says so. The stored value stays raw and settlement stays raw (§5.2) |
 | ~~[OQ-35]~~ | ✅ | ~~Is the raw day-ahead price used for settlement, or a price plus a spread?~~ **Closed by [DEC-44]** — the **raw** price, no spread (§5.1). ⚠ **Confirmed and widened 2026-08-19**: the first half of [DEC-44] is confirmed, its second half is **reversed by [DEC-87]**, and the raw curve now settles **three** legs rather than two — uncovered purchase, unused block cover and physical export |

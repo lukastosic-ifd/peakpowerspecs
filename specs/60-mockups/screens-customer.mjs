@@ -413,8 +413,10 @@ export function priceIndications() {
   ['Month', 'Quarter', 'Year'].forEach((label, i) => {
     b += text(segX + i * segW + segW / 2, segY + segH / 2 + 4.5, label, { size: 12, weight: i === 0 ? 700 : 500, fill: i === 0 ? C.text : C.muted, anchor: 'middle' });
   });
-  // sample note — fixed wording [DEC-161], shown because the configured provider is the simulated fixture [DEC-159]
-  b += text(cx + cw, ySelector + 24, 'Sample indications — generated for demonstration only. They do not reflect PeakPower’s pricing.', { size: 10, fill: C.faint, anchor: 'end' });
+  // sample note — fixed wording [DEC-161], shown because the configured provider is the simulated fixture [DEC-159].
+  // As-built drift fixed 2026-09-23: the built SAMPLE_NOTE (prices-page.ts) uses the plain ASCII
+  // apostrophe, not U+2019 — this literal must match it character for character.
+  b += text(cx + cw, ySelector + 24, 'Sample indications — generated for demonstration only. They do not reflect PeakPower\'s pricing.', { size: 10, fill: C.faint, anchor: 'end' });
 
   // forward-curve chart — x = delivery periods of one granularity, y = today’s marked-up €/MWh [DEC-160]
   b += panel(cx, yChart, cw, CHART_H, 'Base & Peak — forward curve · Month', { subtitle: 'Delivery period on the x-axis · today’s price per MWh', right: 'Indication — not an offer' });

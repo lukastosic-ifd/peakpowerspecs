@@ -431,11 +431,13 @@ reasoning, [OQ-69] is a product nobody has chosen. It cannot be closed by thinki
 7. **Continuously** — the P3s, resolved during build: **[OQ-95]**, **[OQ-47]**, **[OQ-54]** and
    **[OQ-57]**.
 
-⚠ **[OQ-23] is not in this list because it is not open** — it is a ⏸ partial. It still needs the six
-Montel ticker symbols and a confirmation of **bid** versus **ask** **[DEC-80]** before the price board
-is useful, and the request goes out with the reading task **[DEC-96]** left on the existing Montel
-service. **[OQ-22]** and **[OQ-49]** are ⏸ for the same reason and are settled by the charting spike,
-not by a decision.
+⚠ **[OQ-23] is not in this list because it is not open** — it is a ⏸ partial. ⚠ **Widened 2026-09-23 by
+[DEC-161]**: it now needs four things before the price board is useful, not two — the **24** Montel
+ticker symbols (widened from six), a confirmation of **bid** versus **ask** **[DEC-80]**, the **sign
+convention** for a negative quote, and **licence/service coverage of the far offsets** (M+3…M+6,
+Q+3…Q+4, Cal+2) — and the request goes out with the reading task **[DEC-96]** left on the existing
+Montel service. **[OQ-22]** and **[OQ-49]** are ⏸ for the same reason and are settled by the charting
+spike, not by a decision.
 
 ### Three that need external parties and therefore have lead time
 

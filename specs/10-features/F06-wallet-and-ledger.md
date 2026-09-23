@@ -13,6 +13,10 @@
 > and the customer **"Wallet"** page + back-office wallet admin. Trade ledger entries stay declared-but-unwired
 > (trading is a separate repo). Residuals: **[OQ-106]** (a SQL-injection-only four-eyes bypass, own-account,
 > no theft) and **[OQ-107]** (a read-thin back-office surface).
+>
+> ⚠ **Amended 2026-09-23 by [DEC-158]** — the customer-facing label reverts to **"Balance"**; the deposit-flow
+> copy uses **"deposit"** rather than "pay/payment". Display text only — the `wallet` domain term, the
+> `/wallet` route and the DTOs/API named above are unchanged.
 
 Every customer **company** has one prepaid EUR wallet **[AS-02]**, shared by all of its accounts. It
 funds trades, absorbs invoices, and is the single place a customer can answer "where did my money

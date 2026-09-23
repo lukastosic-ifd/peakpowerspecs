@@ -634,7 +634,7 @@ export function tradeHistory() {
 
 /* ─────────────────────────────────────────────────────── wallet & ledger */
 export function walletLedger() {
-  const s = shell({ portal: 'customer', title: 'Wallet', crumb: 'Vandersteen Koeling B.V. · EUR', nav: NAV, active: 5, user: USER, actions: [{ label: 'Top up' }, { label: 'Statement', variant: 'secondary', w: 106 }] });
+  const s = shell({ portal: 'customer', title: 'Balance', crumb: 'Vandersteen Koeling B.V. · EUR', nav: NAV, active: 5, user: USER, actions: [{ label: 'Top up' }, { label: 'Statement', variant: 'secondary', w: 106 }] });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
@@ -697,7 +697,7 @@ export function walletLedger() {
 
 /* ───────────────────────────────────────────────────────── wallet top-up */
 export function walletTopup() {
-  const s = shell({ portal: 'customer', title: 'Top up your wallet', crumb: 'Wallet › Add funds', nav: NAV, active: 5, user: USER });
+  const s = shell({ portal: 'customer', title: 'Top up your balance', crumb: 'Balance › Add funds', nav: NAV, active: 5, user: USER });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
@@ -716,7 +716,7 @@ export function walletTopup() {
   const quick = ['€ 10.000', '€ 25.000', '€ 50.000', '€ 100.000'];
   quick.forEach((q, i) => { b += badge(cx + 18 + i * 100, cy + 254, q, 'muted', { w: 90, h: 26, size: 12 }); });
   b += field(cx + 18, cy + 316, colW - 36, 'YOUR BANK', 'ING', { });
-  b += button(cx + 18, cy + 384, colW - 36, 'Pay € 12.472,56 with iDEAL', 'primary', { h: 44 });
+  b += button(cx + 18, cy + 384, colW - 36, 'Deposit € 12.472,56 with iDEAL', 'primary', { h: 44 });
   b += text(cx + colW / 2, cy + 448, 'You will be redirected to your bank and returned here.', { size: 11, fill: C.faint, anchor: 'middle' });
   b += text(cx + colW / 2, cy + 466, 'PeakPower never sees your bank credentials.', { size: 11, fill: C.faint, anchor: 'middle' });
 
@@ -743,11 +743,11 @@ export function walletTopup() {
 
   const ry = cy + 344;
   b += rect(bx + 18, ry, colW - 36, 62, { fill: C.accentBg, stroke: '#5eead4', r: 8 });
-  b += text(bx + 32, ry + 20, 'PAYMENT REFERENCE — ISSUED FOR THIS DEPOSIT, ALWAYS INCLUDE IT', { size: 9.5, fill: '#0f766e', weight: 700 });
+  b += text(bx + 32, ry + 20, 'DEPOSIT REFERENCE — ISSUED FOR THIS DEPOSIT, ALWAYS INCLUDE IT', { size: 9.5, fill: '#0f766e', weight: 700 });
   b += text(bx + 32, ry + 46, 'PP-5233-BW', { size: 22, weight: 700, fill: '#0f766e', mono: true });
   b += text(bx + colW - 32, ry + 44, 'copy', { size: 11, fill: '#0f766e', weight: 600, anchor: 'end' });
 
-  b += note(bx + 18, cy + 412, colW - 36, 'We match the incoming payment on this reference and email you when it lands.', 'muted');
+  b += note(bx + 18, cy + 412, colW - 36, 'We match the incoming deposit on this reference and email you when it lands.', 'muted');
   b += text(bx + 32, cy + 474, 'No reference given? We fall back to your registered IBAN.', { size: 10.5, fill: C.faint });
   b += text(bx + colW / 2, cy + 500, 'Download instructions as PDF', { size: 11.5, fill: C.accent, weight: 600, anchor: 'middle' });
 

@@ -22,7 +22,7 @@ deleted, with the decision that removed it.
 | Content type | `application/json`; `application/problem+json` for errors |
 | Errors | RFC 7807 problem details |
 | Dates | ISO 8601 with offset. Delivery dates are plain `YYYY-MM-DD` (Amsterdam) |
-| Money | `{ "amount": "1234.56", "currency": "EUR" }` — **string** to avoid float parsing |
+| Money | `{ "amount": "1234.56", "currency": "EUR" }` — **string** to avoid float parsing, as originally specified. ⚠ **Note added 2026-09-23 by [DEC-161], correcting rather than reusing this row's original framing.** Every customer-facing money field this platform has actually built is a **bare `decimal`**, not the string-wrapped envelope above — there is no `{ amount, currency }` type anywhere in `PeakPower.Contracts`. `WalletSummaryResponse.SettledBalance`/`ReservedAmount`/`AvailableBalance` and the wallet deposit/withdrawal `Amount` fields are all plain, **non-nullable** decimals. `ConsumptionIntervalDto.PriceEurPerKwh`/`CostEur` and `ConsumptionSummaryDto.TotalCostEur` are the one built exception that is **nullable**: a range with nothing measured or priced totals `null`, never `0.00`. The price-indications payload (§2.3) follows the bare-decimal convention and, like the consumption fields, is nullable: `price` is a bare, nullable `decimal` at 4 dp, with `currency` as a separate sibling field, because a string-wrapped amount has no honest representation for `UNAVAILABLE` (`"0.00"` reads as a real price, not as an absence). It is not an exception to the bare-decimal shape — only the wallet balance/amount fields are non-nullable; nullability, not the envelope, is what genuinely varies across this platform's built DTOs. This row's original text was aspirational rather than descriptive of anything built |
 | Energy | `{ "value": "744.000000", "unit": "MWH" }` |
 | Volume granularity | Requested power is MW with a **minimum of 0,01 MW and in multiples of 0,01 MW** **[DEC-70]** — §2.4.1 |
 | Prices | Every customer-facing indication is the quote **× (1 + markup)** **[DEC-80]**; there is **no price history and no price export** on any customer surface **[DEC-81]** — §2.3 |
@@ -251,39 +251,79 @@ support request away from being turned on.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/prices/indications` | Price board — one entry per active product. The price is the raw quote **× (1 + markup)** **[DEC-80]**, **[F04-R17]** |
+| `GET` | `/prices/indications` | Price board — one entry per active product (**24** as of **[DEC-161]**). The price is the raw quote **× (1 + markup)** **[DEC-80]**, **[F04-R17]** |
 | ~~`GET`~~ | ~~`/prices/indications/{productCode}/history?from=&to=`~~ | ~~Trend~~ ⚠ **Removed 2026-08-19 by [DEC-81]** — customers see the **current** curve and nothing from which an earlier price can be recovered **[F04-R20]**. The observation series is still stored, for **[F04-R10]** and staleness **[F04-R06]**; it is internal |
 | `GET` | `/prices/day-ahead?from=&to=` | Day-ahead curve. **Portal surface only** — it is not on the usage API and there is no export of it **[DEC-81]**, **[NFR-67]** |
+
+⚠ **Amended 2026-09-23 by [DEC-161] — payload and roll example replaced.** Additive to §2.3 as it
+stood on 2026-08-19, reconciled with the binding interfaces built for Phase 1 of the forward-curve
+work:
 
 ```jsonc
 // GET /api/v1/prices/indications
 {
-  "disclaimer": "Indicative prices. Not an offer. A binding price is issued only in response to a trade request.",
+  "disclaimer": "A PeakPower indication. A firm price is given only in response to a trade request.",
+  "isSampleData": true,
   "products": [
     {
       "code": "NL_POWER_BASE_M1",
-      "displayName": "Base — next month",
+      "displayName": "Base — month +1",
       "shape": "BASE",
       "periodType": "MONTH",
-      "deliveryPeriod": "2026-09",
-      "price": { "amount": "78.4500", "currency": "EUR" },
+      "deliveryPeriod": "2026-08",
+      "deliveryStart": "2026-08-01",
+      "deliveryEnd": "2026-09-01",
+      "displayOrder": 1,
+      "price": 78.4482,
+      "currency": "EUR",
       "unit": "MWH",
       "observedAt": "2026-07-30T14:22:11+02:00",
-      "isStale": false
+      "status": "FRESH"
+    },
+    {
+      "code": "NL_POWER_BASE_Q1",
+      "displayName": "Base — quarter +1",
+      "shape": "BASE",
+      "periodType": "QUARTER",
+      "deliveryPeriod": "2026-Q4",
+      "deliveryStart": "2026-10-01",
+      "deliveryEnd": "2027-01-01",
+      "displayOrder": 13,
+      "price": null,
+      "currency": "EUR",
+      "unit": "MWH",
+      "observedAt": null,
+      "status": "UNAVAILABLE"
     }
   ]
 }
 ```
 
-⚠ **Two fields left this payload on 2026-08-19.**
+⚠ **The roll example is corrected.** Observed on **2026-07-30**, `M1` (`relative_offset 1`, the next
+whole calendar month) resolves to **2026-08**, not 2026-09 as an earlier draft of this example showed;
+`Q1` resolves to **2026-Q4**, the next whole quarter after the quarter containing 30 July — the second
+product is `NL_POWER_BASE_Q1` (quarter **offset 1**, not `NL_POWER_BASE_Q4`, which is the *code* of the
+quarter **+4** product and names a different instrument entirely), at `displayOrder` **13**: the seeded
+order groups Month (offsets 1–6, `displayOrder` 1–12, Base before Peak at each offset), then Quarter
+(offsets 1–4, `displayOrder` 13–20), then Year (offsets 1–2, `displayOrder` 21–24) — see
+[database design](04-database-design.md) §7.5 and the seed migration it records. Period-code formats:
+a month is `YYYY-MM`, a quarter is `YYYY-Qn`, a calendar year is `YYYY`.
+
+⚠ **Two fields left this payload on 2026-08-19, and one boolean left it again on 2026-09-23.**
 
 | Field | Why it is gone |
 | --- | --- |
 | ~~`changeVsPreviousClose`~~ | A price and a delta are two prices: the reader recovers the previous close by subtraction, which is exactly the history **[DEC-81]** withholds **[F04-R04]** |
 | ~~`rawQuote`~~ / ~~`markupPercent`~~ (never shipped, and never will) | The customer-facing number is the marked-up one **[DEC-80]**, **[F04-R17]**. Price and percentage together disclose the raw quote, so neither the raw quote nor the percentage appears on a customer payload. Both are on the **employee** surface **[F04-R21]** |
+| ~~`isStale: boolean`~~ | **Replaced 2026-09-23 by `status: "FRESH" \| "STALE" \| "UNAVAILABLE"`** **[DEC-161]**. A boolean answers "is it old"; it cannot also answer "does it exist at all" without a second field drifting out of sync with the first — `status` answers both: `price` is `null` exactly when `status` is `UNAVAILABLE`; `observedAt` is `null` when there is no observation for the currently resolved period, which is one of the two ways `UNAVAILABLE` arises — the other, no markup in force against an existing observation, still populates `observedAt` |
 
-`price` is therefore the only number on this surface, and it is already marked up. The markup itself
-is reference data with a default of 2%, maintained through the Employee API §3.2 **[F12-R48]**.
+`price` is therefore the only priced number on this surface, and it is already marked up — a plain,
+nullable `decimal` at 4 dp: the bare-decimal shape §1's Money row note now describes for every
+customer-facing money field this platform has built, and the nullable trait it shares specifically
+with the consumption price/cost fields, not with every built money field (see that row). The
+markup itself is reference data with a default of 2%, maintained through the Employee API §3.2
+**[F12-R48]** once **[F04-R18]**'s screen ships; for Phase 1 it is the single seeded row
+(**[DEC-161]**).
 
 ### 2.4 Trading
 

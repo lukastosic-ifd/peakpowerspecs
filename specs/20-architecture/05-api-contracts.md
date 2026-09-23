@@ -542,9 +542,10 @@ New error `type` URIs, all `409`:
 | `GET` | `/wallet/ledger?from=&to=&types=` | Paged ledger |
 | `GET` | `/wallet/ledger/export?…` | CSV / PDF statement. ⚠ **Unaffected by [DEC-89]** — that decision moves the **invoice** document to the bookkeeping program; a wallet statement is not an invoice, is not numbered and states no VAT **[DEC-76]** |
 | ~~`GET`~~ | ~~`/wallet/topup-instructions`~~ | ~~IBAN, BIC, holder, wallet reference~~ ⚠ **Removed 2026-08-19 by [DEC-106]** — the reference is now issued **per deposit intent**, not standing per customer, so a static instruction page would print a code that matches nothing **[F07-R13]**, **[F07-R14]**. The instructions come back from `POST /wallet/deposits` |
-| `POST` | `/wallet/deposits` | ⚠ **New 2026-08-19 [DEC-106]** — create a **deposit intent** with `{ amount, method }`, `method` ∈ `IDEAL` \| `BANK_TRANSFER`. Moves no money and reserves nothing **[F07-R23]** |
+| `POST` | `/wallet/deposits` | ⚠ **New 2026-08-19 [DEC-106]** — create a **deposit intent** with `{ amount, method }`, `method` ∈ `IDEAL` \| `BANK_TRANSFER`. Moves no money and reserves nothing **[F07-R23]**. ⚠ **Amended 2026-09-23 [DEC-160]** — **admin or trader**, not any member; a viewer is refused |
 | `GET` | `/wallet/deposits?state=` | ⚠ **New** — the customer's own pending and credited intents **[F07-R11]** |
-| `GET` | `/wallet/deposits/{id}` | ⚠ **New** — intent state, and the credited entries matched to it **[F07-R26]** |
+| `GET` | `/wallet/deposits/{id}` | Any member, tenant-scoped **[F07-R11]** — the intent, its credited entries **[F07-R26]**, and **`expiresAt`** for an iDEAL intent **[DEC-159]**; for a bank transfer, **`instructions { iban, accountHolder }`** — the BIC is deferred **[OQ-108]**. **404** for another company's id or an unknown one, byte-identical either way |
+| `POST` | `/wallet/deposits/{id}/simulated-checkout` | ⚠ **New 2026-09-23 [DEC-159]** — body `{ outcome: "SUCCEEDED" \| "FAILED" }`. **Admin or trader [DEC-160]**. Settles through the **same idempotent core the webhook uses**; the simulated PSP is acting, not the browser. **200** with the deposit; **404** when the switch is off, the id is unknown, another company's, a bank transfer, or a non-simulated provider — a real PSP's intent 404s here too; **409** when the intent has expired or is already settled the other way; **400** on any outcome but the two named |
 | ~~`POST`~~ | ~~`/wallet/payments`~~ | ~~Start an iDEAL top-up, returns a redirect URL~~ ⚠ **Amended 2026-08-19 by [DEC-106]** — folded into `POST /wallet/deposits` with `method: "IDEAL"`. iDEAL and bank transfer are **peers on one deposit action**, not a default with a fallback behind it **[F07-R01]** |
 | `GET` | `/wallet/payments/{id}` | Payment status (polled after the iDEAL return). Retained: it is the PSP leg, not the deposit intent |
 | `POST` | `/wallet/withdrawals` | ⚠ **New 2026-08-19 [DEC-83]** — request a withdrawal up to `availableBalance`. **Admin only** **[F06-R33]**; the amount is held immediately **[F07-R29]** |
@@ -593,6 +594,11 @@ transaction id instead.
 push all satisfy the contract above and differ only in latency, which is why `GET /wallet/deposits/{id}`
 exists and why the portal states timing honestly rather than promising minutes **[F07-R16]**. No PSP is
 committed to either **[DEC-86]**.
+
+⚠ **The iDEAL create response's `redirectUrl` is `{CustomerPortal:BaseUrl}/wallet/checkout/{depositId}`
+for the simulated provider [DEC-159]** — the same shape as any other provider's redirect, so the
+portal's post-create handling does not branch on which one it got. A real PSP's `redirectUrl` points at
+its own hosted page instead.
 
 ```jsonc
 // POST /api/v1/wallet/withdrawals    Idempotency-Key: 01J9…

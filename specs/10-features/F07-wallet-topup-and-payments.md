@@ -161,6 +161,12 @@ sequenceDiagram
 must still be credited, and a customer who is redirected back before the webhook lands must see
 "processing" rather than a wrong answer.
 
+⚠ **In the demo, [DEC-159]**: the simulated provider's redirect URL is the portal's own **PeakPower
+test checkout** (`/wallet/checkout/{depositId}`), not a bank domain — `payments.simulated.peakpower.dev`
+never existed. The diagram above is unchanged in shape; only the simulated provider's own destination
+differs, and its Complete/Fail actions settle through this same webhook-authoritative core, as the
+**simulated PSP's own action** rather than the browser's.
+
 ### 3.2 Bank-transfer deposit **[DEC-106]**
 
 ```mermaid
@@ -242,15 +248,15 @@ platform can, on its own, move money to a bank account.
 
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
-| F07-R01 | A customer can start a top-up by entering an amount and choosing iDEAL. ⚠ **Amended 2026-08-19 by [DEC-106]** — the entry point is now **one deposit action with a method choice**: the customer starts a deposit, enters an amount, then picks **iDEAL** (this section) or **bank transfer** (**[F07-R23]**). The two methods are peers on that screen; iDEAL is not the default that bank transfer hides behind. | Must |
+| F07-R01 | A customer can start a top-up by entering an amount and choosing iDEAL. ⚠ **Amended 2026-08-19 by [DEC-106]** — the entry point is now **one deposit action with a method choice**: the customer starts a deposit, enters an amount, then picks **iDEAL** (this section) or **bank transfer** (**[F07-R23]**). The two methods are peers on that screen; iDEAL is not the default that bank transfer hides behind. ⚠ **Amended 2026-09-23 by [DEC-160]** — the customer who may do this is an **admin or trader**, not literally any member; a viewer cannot start a deposit. | Must |
 | ~~F07-R02~~ | ~~Minimum and maximum top-up amounts are configurable (defaults €100 and €250 000) **[OQ-32]**.~~ ⚠ **Retired 2026-08-19 by [DEC-84]** — there is **no minimum and no maximum**. The €100 / €250 000 defaults are **removed rather than configured**, because the right deposit is whatever the volume the customer intends to trade costs **[DEC-77]**, and no constant knows that. Replaced by **[F07-R28]**; closes [OQ-32]. | ~~Must~~ |
 | F07-R03 | A `payment` record is created before redirecting, with state `INITIATED`. | Must |
-| F07-R04 | The customer is redirected to the provider and returned to a platform URL that preserves their prior context. | Must |
+| F07-R04 | The customer is redirected to the provider and returned to a platform URL that preserves their prior context. ⚠ **Amended 2026-09-23 by [DEC-159]/[DEC-161]** — the return target is `/wallet/deposits/{id}`; in the demo, the simulated provider's own checkout sits between the redirect and the return, at `/wallet/checkout/{id}`. | Must |
 | F07-R05 | The provider webhook is signature-verified; unverified callbacks are rejected and logged. | Must |
 | F07-R06 | The webhook is idempotent on the provider payment id: repeated deliveries credit once. | Must |
 | F07-R07 | On success the wallet is credited with a `DEPOSIT_IDEAL` entry in the same transaction as the state change. | Must |
 | F07-R08 | Payment states: `INITIATED`, `PENDING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EXPIRED`. | Must |
-| F07-R09 | If the browser returns before the webhook, the UI shows "processing" and polls until resolved or a timeout, then explains what to do. | Must |
+| F07-R09 | If the browser returns before the webhook, the UI shows "processing" and polls until resolved or a timeout, then explains what to do. ⚠ **Amended 2026-09-23 by [DEC-161]** — the visible budget is **60 s**; past it the page reads "Still confirming…" with a **Check again** action, and it never shows failure while the deposit is still in flight. | Must |
 | F07-R10 | A reconciliation job queries the provider for payments stuck in `INITIATED`/`PENDING` beyond a threshold and resolves them. | Must |
 | F07-R11 | The customer's payment history is visible with state and timestamps. | Must |
 | F07-R12 | The suggested top-up amount is prefilled when the customer arrives from a blocked trade — the shortfall, rounded up. | Should |
@@ -291,7 +297,7 @@ PeakPower pays out manually, the platform records. Nothing here initiates a bank
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
 | F07-R29 | A customer account can raise a **withdrawal request** for an amount up to the **available balance**. The requested amount is **held** from that moment — it leaves the available balance and cannot be spent on a trade — using the wallet's existing reserved-amount mechanism [F06](F06-wallet-and-ledger.md) §2. Without the hold, the same euros can be traded and withdrawn **[AS-11]**. | Must |
-| F07-R30 | When the customer company has **four-eyes enabled [DEC-71]**, a withdrawal must be approved by a **different admin account of the same company** before PeakPower sees it; that admin may also decline it, which releases the hold and moves no money. Deposits are explicitly **not** four-eyes actions **[DEC-71]** — anyone may put money in. | Must |
+| F07-R30 | When the customer company has **four-eyes enabled [DEC-71]**, a withdrawal must be approved by a **different admin account of the same company** before PeakPower sees it; that admin may also decline it, which releases the hold and moves no money. Deposits are explicitly **not** four-eyes actions **[DEC-71]** — anyone may put money in. ⚠ **Amended 2026-09-23 by [DEC-160]** — read "anyone" as **admin or trader**; a viewer still may not. | Must |
 | F07-R31 | PeakPower is notified of an approved request; an employee pays it out **manually** by bank transfer and then **records the payout** — value date, bank reference, acting employee — which posts the wallet debit and releases the hold in one transaction. **No invoice and no credit note is raised for a withdrawal, and none for a deposit** **[DEC-106]**: nothing is sold, so there is nothing to invoice and no VAT to state **[DEC-76]**. The bookkeeping program sees both movements through its own bank feed **[DEC-109]**. | Must |
 | F07-R32 | Withdrawal states: `REQUESTED`, `AWAITING_APPROVAL`, `APPROVAL_DECLINED`, `REJECTED`, `PAID`, `CANCELLED`. `CANCELLED` is the customer withdrawing their own request before payout; `REJECTED` is PeakPower refusing it **with a mandatory reason**. Every state change records the acting account **[DEC-17]**, and every state except `PAID` releases the hold. | Must |
 | F07-R33 | The destination is **the company bank account on the customer record [DEC-61]** and cannot be typed in on the request. A customer who wants a different account changes it first — which is itself a four-eyes action **[DEC-71]** and cannot be edited, only replaced by adding an account and deactivating the old one. This is what stops a compromised account from redirecting money. | Must |

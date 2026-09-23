@@ -86,7 +86,7 @@ export function customerDashboard() {
   b += panel(ax0, ry, aw, 320, 'Recent activity');
   const acts = [
     ['13 Aug 10:15', 'Funds reserved', '€ 11.374,00 incl. VAT · TRD-1072 · Base Oct-26', 'indigo'],
-    ['12 Aug 09:14', 'Wallet top-up', '€ 25.000,00 via iDEAL', 'green'],
+    ['12 Aug 09:14', 'Deposit received', '€ 25.000,00 via iDEAL', 'green'],
     ['10 Aug 07:41', 'Deposit matched', '€ 60.000,00 · transfer ref PP-5107-TD', 'green'],
     ['06 Aug 09:20', 'Withdrawal paid out', '€ 5.000,00 to your bank account', 'muted'],
     ['05 Aug 16:03', 'Trade failed', 'TRD-1048 · counterparty withdrew', 'danger'],

@@ -288,11 +288,17 @@ price_indication_observation
 rather than `product_code`, splits `resolved_delivery_period` into `delivery_start`/`delivery_end`
 (`DeliveryPeriod` is a value object, not stored as one string), and adds `source varchar(32)` —
 `'SIMULATED'` for **[DEC-159]**'s fixture, a future real value once one exists — which is what the
-least-privilege `price_indication_latest` view and the served-rows sample-honesty filter both key on:
-both serve only rows whose `source` matches the currently configured provider, so a row from a source
-the platform is no longer configured for is never returned as live (**[DEC-159]**). `ticker` is `NULL`
-for every `SIMULATED` row, since a simulated observation was never resolved against a real Montel
-symbol.
+served-rows sample-honesty filter keys on: the customer endpoint filters to rows whose `source`
+matches the currently configured provider **and** to the resolved delivery period, so a row from a
+source the platform is no longer configured for is never returned as live (**[DEC-159]**). The
+least-privilege `price_indication_latest` view carries **no such filter itself** — it is
+`DISTINCT ON (product_id, delivery_start, source)`, the latest row per product/period/source for
+**every** source, not only the configured one; narrowing to the configured source and the resolved
+period is the endpoint's own job, not the view's (see [database design](../20-architecture/04-database-design.md)
+§7.5, **[DEC-161]**). `ticker` is the product's own configured `montel_ticker`, carried onto the
+observation at poll time whatever the source — it is `NULL` for every row in Phase 1 because no
+product has a ticker configured yet (**[OQ-23]**), not specifically because the source is
+`SIMULATED`.
 
 There is **no markup column and no adjusted-price column** in that table, and none in `day_ahead_price`
 either. Everything stored here is the value the provider gave — see §5.2. ⚠ **This reconciles with

@@ -277,7 +277,7 @@ work:
       "price": 78.4482,
       "currency": "EUR",
       "unit": "MWH",
-      "observedAt": "2026-07-30T14:22:11+02:00",
+      "observedAt": "2026-07-30T12:22:11+00:00",
       "status": "FRESH"
     },
     {
@@ -315,7 +315,7 @@ a month is `YYYY-MM`, a quarter is `YYYY-Qn`, a calendar year is `YYYY`.
 | --- | --- |
 | ~~`changeVsPreviousClose`~~ | A price and a delta are two prices: the reader recovers the previous close by subtraction, which is exactly the history **[DEC-81]** withholds **[F04-R04]** |
 | ~~`rawQuote`~~ / ~~`markupPercent`~~ (never shipped, and never will) | The customer-facing number is the marked-up one **[DEC-80]**, **[F04-R17]**. Price and percentage together disclose the raw quote, so neither the raw quote nor the percentage appears on a customer payload. Both are on the **employee** surface **[F04-R21]** |
-| ~~`isStale: boolean`~~ | **Replaced 2026-09-23 by `status: "FRESH" \| "STALE" \| "UNAVAILABLE"`** **[DEC-161]**. A boolean answers "is it old"; it cannot also answer "does it exist at all" without a second field drifting out of sync with the first — `status` answers both: `price` is `null` exactly when `status` is `UNAVAILABLE`; `observedAt` is `null` when there is no observation for the currently resolved period, which is one of the two ways `UNAVAILABLE` arises — the other, no markup in force against an existing observation, still populates `observedAt` |
+| ~~`isStale: boolean`~~ | **Replaced 2026-09-23 by `status: "FRESH" \| "STALE" \| "UNAVAILABLE"`** **[DEC-161]**. A boolean answers "is it old"; it cannot also answer "does it exist at all" without a second field drifting out of sync with the first — `status` answers both: `price` is `null` exactly when `status` is `UNAVAILABLE`, and so is `observedAt` — whatever the cause (no row for the currently resolved period, no markup in force, or no provider configured at all), the customer surface does not distinguish which **[F04-R07]** |
 
 `price` is therefore the only priced number on this surface, and it is already marked up — a plain,
 nullable `decimal` at 4 dp: the bare-decimal shape §1's Money row note now describes for every

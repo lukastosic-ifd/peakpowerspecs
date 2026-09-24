@@ -942,7 +942,7 @@ CREATE TABLE market.price_indication_observation (
     raw_price      numeric(12,4) NOT NULL,                 -- may be negative; never filtered
     currency       char(3) NOT NULL CHECK (currency = 'EUR'),
     unit           varchar(8) NOT NULL CHECK (unit = 'MWH'),
-    ticker         varchar(64) NULL,                       -- as configured at observation time; NULL for SIMULATED  [DEC-159]
+    ticker         varchar(64) NULL,                       -- the product's montel_ticker at poll time, any source; NULL in Phase 1 (unconfigured)  [OQ-23]
     observed_at    timestamptz NOT NULL,
     received_at    timestamptz NOT NULL,
     source         varchar(32) NOT NULL                    -- 'SIMULATED' | future real source ids

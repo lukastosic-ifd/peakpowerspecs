@@ -878,19 +878,98 @@ CREATE TABLE market.day_ahead_price (
 );
 
 -- The customer never sees a raw Montel quote  [DEC-80], [F04-R17]. Every customer-facing indication
--- is quote × (1 + percentage), and the percentage is REFERENCE DATA with a default of 2%, changed by
--- an employee without a release  [F04-R18] — not a constant, not an appsettings value.
+-- is quote × (1 + markup_rate), and the rate is REFERENCE DATA with a default of 2% (0.0200), changed
+-- by an employee without a release  [F04-R18] — not a constant, not an appsettings value.
+--
+-- ⚠ Reconciled 2026-09-23 by [DEC-161]. The percentage/daterange shape below was never migrated —
+-- no prior round created this table — so this is the table as built, not a schema change against
+-- live data: markup_rate is a FRACTION (0.0200 = 2 %), not the 2.0000-per-cent shape [F04] §3.1
+-- originally sketched. It is the only fractional rate column in this schema — there is no VAT rate
+-- column at all [DEC-76], and the energy-tax tiers store an absolute €/kWh rate, not a fraction — so
+-- "matches every other rate column" is not the reason; removing the one × 100 at the boundary where a
+-- scale error is invisible until an invoice disagrees is. validity is a generated tstzrange from
+-- valid_from/valid_to — the platform's established house shape for a validity range, not a first.
+-- customer.metering_point.validity already derives its range the same way, a GENERATED daterange
+-- from valid_from/valid_to (InitialSchema.cs:262-264, its EXCLUDE at :268-271), which is the
+-- precedent this table follows. EF Core has no native range mapping, so both tables add the
+-- generated column via raw SQL and map only valid_from/valid_to in the EF model.
 CREATE TABLE market.price_indication_markup (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),   -- this IS the pinned version id
-    percentage  numeric(6,4) NOT NULL CHECK (percentage > 0),  -- 2.0000 = 2%; > 0, no upper bound
-    validity    daterange NOT NULL,
+    markup_rate numeric(6,4) NOT NULL CHECK (markup_rate > 0),  -- 0.0200 = 2 %; > 0, no upper bound
+    valid_from  timestamptz NOT NULL,
+    valid_to    timestamptz NULL,
     note        text,
-    created_by  text NOT NULL,
-    created_at  timestamptz NOT NULL DEFAULT now(),
+    created_by  varchar(128) NOT NULL,
+    created_at  timestamptz NOT NULL,                         -- no DEFAULT now(); set explicitly by the writer
 
-    -- platform-wide: one value in force at a time, no scope dimension  [F04-R18]
-    EXCLUDE USING gist (validity WITH &&)
+    CHECK (valid_to IS NULL OR valid_to > valid_from)
 );
+-- validity is generated rather than declared inline: EF Core has no native tstzrange mapping, so the
+-- column and its EXCLUDE both land via migrationBuilder.Sql in the same migration, and EF maps only
+-- valid_from/valid_to.
+ALTER TABLE market.price_indication_markup
+    ADD COLUMN validity tstzrange GENERATED ALWAYS AS (tstzrange(valid_from, valid_to, '[)')) STORED;
+ALTER TABLE market.price_indication_markup
+    ADD CONSTRAINT price_indication_markup_validity_excl
+    EXCLUDE USING gist (validity WITH &&);  -- platform-wide: one rate in force at a time  [F04-R18]
+
+-- ⚠ New 2026-09-23 [DEC-161]. Product and observation did not exist in this file before this round —
+-- F04 §7 described them, but no migration had shipped either. 24 seeded rows: 6 months + 4 quarters +
+-- 2 years, × Base/Peak  [DEC-161].
+CREATE TABLE market.price_indication_product (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code            varchar(32) NOT NULL UNIQUE,          -- NL_POWER_BASE_M1 … NL_POWER_PEAK_Y2
+    commodity       varchar(16) NOT NULL DEFAULT 'ELECTRICITY'
+                        CHECK (commodity = 'ELECTRICITY'),  -- gas stays out  [DEC-68]
+    shape           varchar(8) NOT NULL CHECK (shape IN ('BASE', 'PEAK')),
+    period_type     varchar(8) NOT NULL CHECK (period_type IN ('MONTH', 'QUARTER', 'YEAR')),
+    relative_offset smallint NOT NULL CHECK (relative_offset BETWEEN 1 AND 36),
+    montel_ticker   varchar(64) NULL,                      -- empty until [OQ-23] delivers 24 symbols
+    display_name    varchar(64) NOT NULL,
+    display_order   smallint NOT NULL,
+    active          boolean NOT NULL DEFAULT true,
+
+    UNIQUE (shape, period_type, relative_offset)
+);
+
+-- Append-only  [DEC-161]. raw_price is never marked up on the way in — [F04-R01], §5.2 of the Montel
+-- integration doc.
+CREATE TABLE market.price_indication_observation (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id     uuid NOT NULL REFERENCES market.price_indication_product(id),
+    delivery_start date NOT NULL,
+    delivery_end   date NOT NULL CHECK (delivery_end > delivery_start),
+    raw_price      numeric(12,4) NOT NULL,                 -- may be negative; never filtered
+    currency       char(3) NOT NULL CHECK (currency = 'EUR'),
+    unit           varchar(8) NOT NULL CHECK (unit = 'MWH'),
+    ticker         varchar(64) NULL,                       -- the product's montel_ticker at poll time, any source; NULL in Phase 1 (unconfigured)  [OQ-23]
+    observed_at    timestamptz NOT NULL,
+    received_at    timestamptz NOT NULL,
+    source         varchar(32) NOT NULL                    -- 'SIMULATED' | future real source ids
+);
+CREATE INDEX ix_price_indication_observation_lookup
+    ON market.price_indication_observation (product_id, delivery_start, source, observed_at DESC);
+
+CREATE FUNCTION market.price_indication_observation_is_append_only() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'market.price_indication_observation is append-only' USING ERRCODE = 'restrict_violation';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER trg_price_indication_observation_append_only
+    BEFORE UPDATE OR DELETE ON market.price_indication_observation
+    FOR EACH ROW EXECUTE FUNCTION market.price_indication_observation_is_append_only();
+
+-- Least-privilege latest-row view  [DEC-161] (5). One row per product/period/source by construction —
+-- app_customer_role reads this and loses SELECT on the raw table entirely.
+CREATE VIEW market.price_indication_latest AS
+    SELECT DISTINCT ON (product_id, delivery_start, source)
+        product_id, delivery_start, delivery_end, raw_price,
+        currency, unit, observed_at, received_at, source
+    FROM market.price_indication_observation
+    ORDER BY product_id, delivery_start, source, observed_at DESC;
+
+REVOKE SELECT ON market.price_indication_observation FROM app_customer_role;
+-- the view keeps its inherited SELECT — a view's privileges do not follow a REVOKE on its base table
 ```
 
 Precomputing the interval spine turns coverage, invoicing and charting from per-row date arithmetic
@@ -901,10 +980,11 @@ peak interval under the calendar this trade was priced with" is an index lookup.
 the raw quote, which is exactly what **[DEC-80]** forbids and what the Montel licence **[DEC-27]**
 is read as restricting. **[DEC-80]** names no upper bound, so none is enforced. The table is
 effective-dated for the same reason every rate table here is: an indication captured against a trade
-request keeps the percentage in force when it was captured **[F04-R10]**, and a later change must not
+request keeps the rate in force when it was captured **[F04-R10]**, and a later change must not
 restate it. ⚠ Which **side** of the market is marked up is not settled — **[DEC-80]**'s comment says
 *bid*, the answer it came with says *ask* — and it is carried on **[OQ-23]** with the missing ticker
-symbols. The column is the same either way.
+symbols, now 24 of them **[DEC-161]**. The column is the same either way. ⚠ **No row in force at
+render time is `UNAVAILABLE`, never a silent 0%** — see the fixed §7.3 note below.
 
 ### 3.4 Trading
 
@@ -1819,7 +1899,7 @@ ALTER TABLE billing.surcharge RENAME COLUMN rate TO rate_eur_per_kwh;
 | `billing.invoice.pdf_uri`, `vat_total`, `total` **[DEC-89]**, **[DEC-76]** | Drop columns, a release after the readers stop | ⚠ Check the blob container before dropping `pdf_uri`: a stored PDF whose row is gone is unreachable and undeletable. Objects go first, column second |
 | `billing.invoice.kind` **[DEC-99]** | Constraint swap: `ANNUAL_TRUE_UP` → `CORRECTION` | No row can carry `ANNUAL_TRUE_UP` — the true-up was never built **[DEC-24]** — so the swap is free |
 | ~~`billing.surcharge`~~ **[DEC-73]** | ~~Rename + widen — §7.1~~ | ⚠ **Not built, so not migrated.** If a `surcharge` table exists in a deployed environment, it is dropped in the contract release after its readers go |
-| `market.price_indication_markup` **[DEC-80]** | New table, **seeded with 2%** | Unlike every other reference table here, this one **must not ship empty**: with no row in force there is no markup, and rendering falls back to the raw quote — exactly what **[DEC-80]** forbids **[F04-R18]** |
+| `market.price_indication_markup` **[DEC-80]** | New table, **seeded with 2%** | Unlike every other reference table here, this one **must not ship empty**: with no row in force there is no markup, and rendering **renders Unavailable** — exactly what **[F04] §8** and **[DEC-161]** require, and what a silent fallback to the raw quote would breach under **[DEC-80]** ⚠ **Corrected 2026-09-23 by [DEC-161]** — this row previously read "rendering falls back to the raw quote", which was never the intended behaviour and would have breached [DEC-80] silently; the platform has always been required to refuse to render rather than fall back, and this text now says so |
 
 ### 7.4 The 2026-09-10 multi-business membership migrations
 
@@ -1836,6 +1916,22 @@ already carrying production traffic.
 | `customer.customer_membership` + the `customer_account` column drop **[DEC-152]** | New table + backfill + policy swap + **`DROP COLUMN`**, all in migration **15** (2026-09-11), in that order | ⚠ **The one irreversible move of this round, and the order is the whole of it.** Add `last_active_business_id` *before* anything writes to it; create the table with its `REVOKE`, its grants and both policies; backfill one membership per account (`is_admin ? 'admin' : 'trader'`); run the **first-admin repair**; backfill the preference column; swap the three dependent policies and give `refresh_token` its own `customer_id`; and **only then** drop `customer_id` and `is_admin`. Dropping earlier errors on dependent objects, and `CASCADE` would silently take all three policies — leaving `customer_account` with RLS enabled and no policy, after which every authenticated request 401s. ⚠ **The backfill creates businesses with no admin**: `is_admin` defaulted false, so a company whose accounts were all non-admin gets none, violating the floor on deploy and leaving a business that can never invite anybody. The repair promotes the **active account with the lowest `id`** — ordered by `id`, not by `created_at`, because `customer_account` has **no `created_at`** column at all — and **writes an `audit.audit_record` per promotion**, because **[F13-R41]** forbids a *"first account of a company is admin"* rule by name. ⚠ **The ordering IS a chronology claim, not an arbitrary tiebreak.** `customer_account.id` carries `DEFAULT gen_random_uuid()`, but that default is a fallback the application never reaches: `CustomerAccount.Create` mints its own `Guid.CreateVersion7()`, and the EF mapping marks the column `ValueGeneratedNever()` so the client-generated value — never the column default — is what gets written. `CreateVersion7`'s leading 48 bits are a millisecond timestamp laid out in the byte order PostgreSQL's `uuid` comparison uses, so ordering by `id` **is** ordering by creation time for every account this application has ever created — a proxy, and named as one in the migration's own comment. "Lowest id" therefore promotes the **oldest** active account, deterministically. A business whose only admin is `DEACTIVATED` or `INVITED` is **not** repaired over — promoting someone over a deactivated admin is a privilege grant nobody decided, while reactivating that admin is a back-office action support can already take. Two separate `RAISE NOTICE`s name, respectively, businesses with no active account at all and businesses with no *active* admin (a superset, since it also catches the not-repaired-over case) — and EF migrations do **not** surface `RAISE NOTICE` output, so "listed in the migration output" describes what the SQL does, not what an operator sees without querying for it |
 | `customer_customer_tenant_isolation` on `customer.customer` **[DEC-152]** | `DROP POLICY` + `CREATE POLICY`, migration **16** (2026-09-15) | The old policy was `FOR ALL`, partition-shaped. Under membership, two tenants' reachable rows **overlap** — a shared member reaches every business they belong to — so widening a `FOR ALL` policy's `USING` arm would hand an admin of B the ability to *write* A's row. The replacement narrows the **command** to `FOR SELECT` and widens `USING` with a membership arm instead; `app_customer_role` is left with no policy at all for `INSERT`/`UPDATE`/`DELETE`, which costs nothing since every write to this table already runs on the owner connection or the employee back-office policy — §6 |
 | `customer.customer_invitation` **[DEC-152]** | New table, migration **17** (2026-09-16) | One admin asking one email address to join one business, in one role, once, within **fourteen days** **[F13-R21]** — `password_reset_token`'s shape, keyed on `customer_id` rather than `customer_account_id`. `app_customer_role` gets `SELECT, INSERT` only; `app_employee_role` gets `SELECT` only, because the back office has no membership screen at all **[OQ-105]**. **No `DELETE` grant to either role**, for the same reason `customer_membership` has none — §3.1 |
+
+### 7.5 The 2026-09-23 forward price indications migration
+
+⚠ **One migration, 25, sequential in the platform lane** — the last recorded here was **17**
+(§7.4); migrations 18–24 belong to work this register has not caught up on documenting. Neither
+**[OQ-106]** (the withdrawal four-eyes SQL-injection residual, closed) nor **[OQ-107]** (the
+back-office wallet read surface) registers this documentation gap — it is a separate, undocumented
+shortfall of this register, not one either of those open questions carries, and this round does not
+attempt to backfill it.
+
+| Change | Form | Note |
+| --- | --- | --- |
+| `market.price_indication_product`, `market.price_indication_observation` **[DEC-161]** | New tables, migration **25** | Generated with `dotnet ef migrations add PriceIndications`, plus raw SQL the EF model cannot express — the append-only trigger and function, and the view/`REVOKE` below. Seeded with **24 product rows** in the same migration: Base/Peak × M1–M6, Q1–Q4, Y1–Y2, literal UUIDs, `display_order` grouped Month/Quarter/Year then offset ascending then Base before Peak |
+| `market.price_indication_markup` **[DEC-161]** | **New table, migration 25** — created with `CreateTable`, the same as `price_indication_product` and `price_indication_observation` above, not an `ALTER` against a prior shape | ⚠ **Not a reconciliation of a live schema — a first creation.** This table exists only in the design document (§3.3), sketched with a `percentage`/`daterange` shape that no migration ever built; there is no `percentage` column to `DROP`, no `daterange` `EXCLUDE` to swap, and no backfill, because nothing has ever shipped against the old sketch. Migration 25 creates it directly in the reconciled shape: `markup_rate numeric(6,4)`, `valid_from`/`valid_to`, a generated `validity tstzrange` added via `migrationBuilder.Sql` (EF has no native range mapping), and its `EXCLUDE USING gist`. Seeds **one** row: `markup_rate 0.0200`, `valid_from '2026-01-01T00:00:00Z'`, `valid_to NULL`, `note 'Default 2 % per DEC-80'` (the literal, space included — matches the seeded value), `created_by 'migration:PriceIndications'` |
+| `market.price_indication_latest` view + `REVOKE SELECT … FROM app_customer_role` **[DEC-161]** | New view + `REVOKE`, migration **25** | Least privilege (§3.3): the app-customer connection reads the view, never the append-only table directly. ⚠ **The view does not enforce period or source filtering, and neither does the REVOKE.** The view is `DISTINCT ON (product_id, delivery_start, source)` with no other predicate, so it returns the latest row for **every** period ever observed and **every** source, including a period that has since rolled off or a `SIMULATED` row served after the provider is reconfigured. What it guarantees is narrower: **one row per (product, period, source), the latest by construction** — no earlier observation within a single (product, period, source) can leak through. Filtering to the currently resolved period and the configured source is still the endpoint's own job |
+| `PeakPowerDbContextModelSnapshot.cs` | Regenerated in the same commit | EF 10's pending-model-changes check has no suppression; the Designer file and the snapshot are committed together with the migration, not as a follow-up |
 
 ## 8. Retention & archival
 

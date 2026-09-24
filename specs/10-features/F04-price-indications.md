@@ -11,6 +11,27 @@ all until the ticker symbols arrive **[OQ-23]**. Side effect worth naming: the c
 question **[DEC-79]** loses its F04 driver entirely — it is now [F03](F03-consumption-visualisation.md)'s
 alone.
 
+⚠ **Amended 2026-09-23 by [DEC-159], [DEC-160] and [DEC-161] — Phase 1 of the forward-curve build.**
+The current-curve-plus-list shown in §6 is a hand-rolled SVG chart, exactly like every other chart in
+this set, so **[DEC-79]** is still not driven by this feature and the note above still holds — a new
+chart existing does not reopen the charting-library question. The feed behind it is a **simulated test
+fixture**, permitted only in local development and the **[DEC-28]** demo VM **[DEC-159]**; production
+has no default provider and renders **Unavailable**, which is why "none of it can go live" in §3 below
+is now a qualified sentence rather than an absolute one. Depth widens from six products to
+**24** — 6 months + 4 quarters + 2 years, Base and Peak — **[DEC-161]**, which is data, not a size
+change to this document: nothing about the shape of the build grew, only the row count of what was
+already reference data.
+
+⚠ **Phase 1 built 2026-09-23 by [DEC-159]–[DEC-161].** The feed behind this build is a **simulated
+source only**, permitted in local development and the **[DEC-28]** demo VM; production's default is
+**no provider configured**, and every indication there renders `UNAVAILABLE`. Going live to a real
+customer waits on the full **live gate** in **[DEC-161] (2)** — **P4** (feed-health monitoring) *and*
+**P5** (employee reference-data maintenance) *and* **[OQ-23]** (the ticker symbols, bid/ask side, sign
+convention and far-offset coverage) *and* reading **[DEC-96]**'s existing Montel service *and* a
+commercial copy review against business rule 1 — all five together, not any one of them. Drift between
+this document and the as-built code, found by reading the code for this close-out, is recorded with a
+⚠ note at each affected point below and in [02-montel-api](../30-integrations/02-montel-api.md) §4.
+
 ---
 
 ## 1. Summary
@@ -64,17 +85,46 @@ The customer-facing dimension is **shape × delivery period**:
 | **Base** | `NL Base M+1` | `NL Base Q+1` | `NL Base Cal+1` |
 | **Peak** | `NL Peak M+1` | `NL Peak Q+1` | `NL Peak Cal+1` |
 
+⚠ **Amended 2026-09-23 by [DEC-161] — depth widens from six products to 24.** The 2×3 matrix above is
+the **front period of each shape/period-type cell only**. The actual Phase 1 depth is **6 months + 4
+quarters + 2 years, × Base/Peak = 24 products** — M+1…M+6, Q+1…Q+4, Cal+1…Cal+2 — and depth is **data**
+(`relative_offset` on `price_indication_product`), never a code constant, so the matrix grows by adding
+rows, not by changing anything that reads it. **[OQ-23]** widens with it: the ticker-symbol gap it
+already carried is now 24 symbols wide, not six, and it gains a second open item — whether the Montel
+licence and **[DEC-96]**'s existing service actually cover the far offsets (M+3…M+6, Q+3…Q+4, Cal+2) —
+which must be confirmed before any of those **fourteen** can go live — 4 + 2 + 1 = 7 offsets × Base/Peak. (The round adds eighteen products in total, 24 minus the original six, but four of those eighteen — M+2 and Q+2, Base and Peak — are not part of this coverage question; whether they need their own confirmation before going live is not addressed here.)
+
 ⚠ **The matrix cannot be completed, and [OQ-23] closes only in part (⏸).** The **Montel ticker symbols
-for the six products were never supplied** in the 2026-08-19 round. [DEC-80] settles what is done *to*
-the price; it says nothing about which symbol each cell reads. Until the symbols arrive:
+for the (now 24) products were never supplied** in the 2026-08-19 round. [DEC-80] settles what is done
+*to* the price; it says nothing about which symbol each cell reads. Until the symbols arrive:
 
 - the six names in the table above are **placeholders written for this document — they are not Montel
   symbols** and must not be copied into configuration;
-- `montel_ticker` has no value for any row, so the poller **[F04-R01]** has nothing to call and the
-  price board has nothing to render;
-- the missing symbols are the single blocking dependency on this feature. Everything else in F04 —
-  the markup, the staleness rules, the labelling, the reference-data screens — can be built and
-  tested against a stub, and none of it can go live.
+- `montel_ticker` has no value for any row, so a **real** Montel feed has nothing to call; behind
+  **[DEC-159]**'s simulated fixture the poller **[F04-R01]** still runs and the price board still
+  renders in Phase 1 — the fixture computes its values by product code, not by the missing ticker;
+- the missing symbols are **one** of five blocking dependencies on **going live**, not the single one.
+  Nor are they the only thing standing between this feature and a **real** feed: **[DEC-96]**'s
+  existing Montel service has to be read before anything can call it, and no real provider is built
+  at all — `ForwardPrices:Provider` accepts only empty (no provider) or `Simulated` (**[DEC-159]**).
+  Everything in F04 that Phase 1 actually ships and that does not depend on them — the markup, the
+  staleness rules, the labelling, the observation store — is built and tested end to end against
+  **[DEC-159]**'s simulated test fixture rather than a stub. What Phase 1 does **not** ship is
+  unchanged by the fixture: the product/ticker maintenance screen (**F04-R11**), the feed-health
+  dashboard (**F04-R12**) and the employee markup-edit screen (**F04-R18**) are all deferred by
+  **[DEC-161] (2)**, so "the reference-data screens" are not among the things built here. ⚠ **This
+  qualifies, rather than replaces, the sentence that used to close this bullet — "can be built and
+  tested against a stub, and none of it can go live"**: that sentence still stands, production
+  included, because **[DEC-159]**'s fixture is permitted only in local development and the
+  **[DEC-28]** demo VM. What the fixture changes is that the Phase 1 slice above is now built and
+  tested end to end against a working fixture rather than a stub, and shippable to those two
+  environments now — not that any of it can go live to a real customer. The switch to a real feed — a
+  real Montel-derived price reaching a real customer — is gated on the **full live gate**, all five
+  conditions in **[DEC-161] (2)** together: the ticker symbols and licence/service coverage
+  **[OQ-23]**, feed-health monitoring (**P4**), employee reference-data maintenance (**P5**), reading
+  **[DEC-96]**'s existing service, and a commercial copy review against business rule 1. The
+  ticker-symbol and licence-coverage gap is the one this row can describe in detail because it is
+  §3's own subject; it is not, on its own, what "going live" waits on.
 
 ⚠ **Electricity only.** No gas row exists in this matrix and none is added: gas is out of scope
 **[DEC-68]**, which withdraws **[DEC-30]**. The `commodity` discriminator below stays on the product
@@ -96,12 +146,27 @@ price_indication_product
   └─ active
 ```
 
+⚠ **Amended 2026-09-23 by [DEC-161] — the sketch above is the pre-build shape; two of its values are
+not what was built.** `display_name` is seeded as **"Base — month +1"** ("Peak — quarter +2", "Base —
+year +2", …), not "Base — next month": the "next month" phrasing was never seeded
+(**[02-montel-api](../30-integrations/02-montel-api.md)** §3 carries all 24 seeded names). And
+`relative_offset` runs **1–6** for months, **1–4** for quarters and **1–2** for years, not only 1 and
+2 — see the depth note under the matrix above.
+
 The exact Montel symbols must come from the existing Montel implementation and be confirmed against
 the live feed — see **[OQ-23]**. ⚠ **Amended 2026-08-19 by [DEC-96]** — "the existing Montel
 implementation" now has a name: the **Montel service Luka built** inside PeakPower. The symbols are
 read from it rather than from the Montel API, which is one fewer contract to negotiate and one more
 piece of code to read first. Showing the *front two* periods per cell (M+1 and M+2, Q+1 and Q+2,
 Cal+1 and Cal+2) is the recommended default; more than that is noise for this audience.
+
+⚠ **Amended 2026-09-23 by [DEC-161] — the "front two" recommendation above is superseded, and the
+depth beyond it is not noise.** The approved depth is **6 months + 4 quarters + 2 years, × Base/Peak
+= 24 products** (**[DEC-161] (1)**), not the front two per cell (12 products). What keeps 24
+products readable is the screen, not a shallower matrix: **[DEC-160]**'s granularity selector shows
+one period type at a time — at most six delivery periods on the chart and in the list — rather than
+24 tiles at once. The sentence is kept rather than deleted, as the record of what was recommended
+before the depth was decided; this note, not the sentence, is what binds.
 
 ### 3.1 The markup — reference data, not a constant **[DEC-80]**
 
@@ -119,19 +184,48 @@ price_indication_markup
   └─ note                                              -- why it moved
 ```
 
+⚠ **Amended 2026-09-23 by [DEC-161] — the built shape is a fraction, not a whole-number percentage,
+and the sketch above was never built.** The fraction shape below is not a match to an existing rate
+table — this register has no VAT rate column (**[DEC-76]**: the platform computes no VAT at all) and
+the energy-tax tiers store an absolute €/kWh rate, not a fraction — it is the first and only
+fractional rate column in this schema, chosen on its own merits: it removes the one `× 100` at
+exactly the boundary where a scale error is invisible until an invoice disagrees with a customer's
+own arithmetic:
+
+```
+market.price_indication_markup
+  ├─ id             uuid
+  ├─ markup_rate     numeric(6,4)   CHECK (markup_rate > 0)   -- 0.0200 = 2%, a FRACTION not a whole number
+  ├─ valid_from      timestamptz    NOT NULL
+  ├─ valid_to        timestamptz    NULL                       -- NULL = currently in force
+  ├─ validity        tstzrange      GENERATED ALWAYS AS (tstzrange(valid_from, valid_to, '[)')) STORED
+  ├─ note            text           NULL
+  ├─ created_by      varchar(128)
+  └─ created_at      timestamptz
+  -- EXCLUDE USING gist (validity WITH &&) — no two rows in force at once, same guarantee as before
+```
+
+`percentage decimal(5,2)` and its `changed_by`/`changed_at` pair are the never-built sketch this
+replaces — no migration ever created them, so nothing is renamed or backfilled, only reconciled on
+paper. `created_by`/`created_at` carry the same fact `changed_by`/`changed_at` were going to. **No row
+in force at render time is UNAVAILABLE**, never a silent 0% — see §8. One row is seeded:
+`markup_rate = 0.0200`, `valid_from = '2026-01-01T00:00:00Z'`, `valid_to = NULL`,
+`note = 'Default 2 % per DEC-80'` (the literal seeded value — see [database design](../20-architecture/04-database-design.md) §7.5).
+
 One platform-wide value, keyed by validity period only. **[DEC-80]** asks for "a configurable
 percentage, default 2%" and names no per-product, per-customer, per-shape or per-period
 differentiation, so none is built — a second dimension is cheap to add to a one-row table later and
 expensive to remove once quotes have been captured against it **[F04-R10]**.
 
-**Worked example.** Montel returns 76,91 €/MWh for `NL Base M+1`; the markup in force is 2,00%.
+**Worked example.** Montel returns 76,91 €/MWh for `NL Base M+1`; the markup in force is 2,00%
+(`markup_rate = 0.0200`).
 
 | Step | Value | Where it lives |
 | --- | --- | --- |
-| Raw quote from the Montel service | 76,9100 €/MWh | `price_indication_observation.price` — stored, never rendered to a customer **[F04-R01]** |
-| Markup in force | 2,00% | `price_indication_markup.percentage` **[F04-R18]** |
-| Marked-up price | 76,9100 × 1,02 = **78,4482** €/MWh | computed; captured at 4 decimals on a trade request **[F04-R10]**, matching the offer precision of **[F05-R17]** |
-| Shown on the tile | **€ 78,45** /MWh | rounded to 2 decimals for display **[F04-R17]** |
+| Raw quote from the Montel service | 76,9100 €/MWh | `price_indication_observation.raw_price` — stored, never rendered to a customer **[F04-R01]** |
+| Markup in force | 2,00% (`markup_rate 0.0200`) | `market.price_indication_markup.markup_rate` **[F04-R18]** |
+| Marked-up price | 76,9100 × (1 + 0,0200) = **78,4482** €/MWh | computed via `IndicationPricing.MarkUp`; captured at 4 decimals on a trade request **[F04-R10]**, matching the offer precision of **[F05-R17]** |
+| Shown on the tile | **€ 78,45** /MWh | rounded to 2 decimals half-away-from-zero, from the 4-decimal value **[F04-R17]**, **[DEC-161]** |
 
 The 2% is not a display flourish. Since **[DEC-73]** took surcharges and topups out of the platform,
 the **spread inside the price PeakPower quotes** is the only margin instrument left; the markup is
@@ -145,26 +239,26 @@ change is audited **[F12-R24]**.
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
 | F04-R01 | The platform polls Montel on a schedule and stores each observation with its ticker, price, currency, unit and source timestamp. ⚠ **Amended 2026-08-19 by [DEC-96]** — the poll goes through the **existing PeakPower Montel service**, not the Montel API directly. The stored price is the **raw quote as received**; the markup **[F04-R17]** is applied on the way out, never on the way in, so a markup change never rewrites what Montel actually said. | Must |
-| F04-R02 | Poll frequency is configurable per product, defaulting to every 5 minutes during market hours and hourly outside them. | Must |
+| F04-R02 | Poll frequency is configurable per product, defaulting to every 5 minutes during market hours and hourly outside them. ⚠ **Amended 2026-09-23 by [DEC-161]** — **platform-wide for Phase 1**, not per-product: one `ForwardPrices:PollIntervalInMarketHours`/`PollIntervalOutsideMarketHours` pair for every one of the 24 products. Per-product frequency waits for **P5**'s employee reference-data maintenance (§4 R11), because nothing can set a per-product value without a screen to set it on. | Must |
 | F04-R03 | Observations are stored as an append-only series; the latest is the current indication. ~~History is retained for the trend view.~~ ⚠ **Amended 2026-08-19 by [DEC-81]** — the series is still stored, because **[F04-R10]** captures a point in it and **[F04-R06]** needs an age, but it is **internal**. No customer surface reads more than the latest observation per product **[F04-R20]**. The trend view it was retained for is retired. | Must |
 | F04-R04 | The customer portal shows a price board: one tile per active product with price, unit (€/MWh), ~~change vs. previous close,~~ and the observation timestamp. ⚠ **Amended 2026-08-19 by [DEC-81]** — the **change vs. previous close is removed**. A price and a delta are two prices: the reader recovers the earlier close by subtraction, which is exactly the history [DEC-81] withholds. The price on the tile is the marked-up price **[F04-R17]**. | Must |
-| F04-R05 | Every tile and every price carries an explicit **"Indication — not an offer"** label. A tooltip explains that a firm price is only given in response to a trade request. ⚠ **Extended 2026-08-19 by [DEC-80]** — the number on the tile is a **PeakPower indication**, not a market price, and the copy must say so: no screen calls it "the market price", "the Montel price" or "the exchange price", because it is a Montel quote plus PeakPower's markup **[F04-R17]**. Whether the *existence* of the markup is spelled out in words is a commercial copy choice [DEC-80] does not settle; it goes through the copy review in business rule 1. The markup **percentage** is never shown to a customer **[F04-R17]**; employees see it **[F04-R21]**. | Must |
-| F04-R06 | If the newest observation for a product is older than a configurable staleness threshold (default 30 min during market hours), the tile is visibly marked stale with its age. | Must |
-| F04-R07 | If no observation exists at all, the tile shows "unavailable" rather than a blank or a zero. | Must |
-| F04-R08 | A tile links into the trade wizard with shape and delivery period pre-filled. | Must |
-| ~~F04-R09~~ | ~~A tile expands into a trend chart of the last 30 / 90 / 365 days for that product.~~ **Retired 2026-08-19 by [DEC-81]** — customers see the current curve only; there is no history surface and nothing replaces it. The chart component, the range selector and the series endpoint are not built. | ~~Should~~ |
-| F04-R10 | The trade request and the resulting offer both record the indication that was current at the moment of request, for later comparison. ⚠ **Amended 2026-08-19 by [DEC-80]** — what is recorded is now **three values, not one**: the raw quote, the **markup percentage in force**, and the marked-up price at 4 decimals. Without the percentage a captured indication cannot be reproduced after the markup moves, and the dispute this requirement exists to prevent comes back. | Must |
-| F04-R11 | An employee can add, edit, deactivate and reorder products and their ticker mapping without a deployment. | Must |
-| F04-R12 | Feed health (last successful poll, error count, stale products) is visible on the employee integration dashboard. | Must |
+| F04-R05 | Every tile and every price carries an explicit **"Indication — not an offer"** label. A tooltip explains that a firm price is only given in response to a trade request. ⚠ **Extended 2026-08-19 by [DEC-80]** — the number on the tile is a **PeakPower indication**, not a market price, and the copy must say so: no screen calls it "the market price", "the Montel price" or "the exchange price", because it is a Montel quote plus PeakPower's markup **[F04-R17]**. Whether the *existence* of the markup is spelled out in words is a commercial copy choice [DEC-80] does not settle; it goes through the copy review in business rule 1. The markup **percentage** is never shown to a customer **[F04-R17]**; employees see it **[F04-R21]**. ⚠ **Extended again 2026-09-23 by [DEC-160]** — "tile" widens to **every price surface**: the chart §6 draws and the list beside it each carry the label independently, not once for the screen, and the chart's own **tooltip repeats it** rather than relying on a caption elsewhere on the page. The disclaimer text itself is fixed: *"A PeakPower indication. A firm price is given only in response to a trade request."* — both in the payload and behind the info glyph. | Must |
+| F04-R06 | If the newest observation for a product is older than a configurable staleness threshold (default 30 min during market hours), the tile is visibly marked stale with its age. ⚠ **Amended 2026-09-23 by [DEC-161]** — governed by `IndicationStatusRules` against the **placeholder** market window (§8, **[OQ-108]**): inside the window, stale once the observation is older than 30 minutes; outside it, stale only once the feed has missed its own outside-hours polls. The observation timestamp is **always shown**, carrying its date whenever that date is not today. | Must |
+| F04-R07 | If no observation exists at all, the tile shows "unavailable" rather than a blank or a zero. ⚠ **Amended 2026-09-23 by [DEC-161]** — three ways to reach it, not one: no row for the currently-resolved period, no markup in force, or no provider configured at all (**[DEC-159]**) all render the same `UNAVAILABLE` status; the customer surface does not distinguish which. | Must |
+| F04-R08 | A tile links into the trade wizard with shape and delivery period pre-filled. ⚠ **Deferred 2026-09-23 by [DEC-161] — outside Phase 1 scope.** Moves with **[F05](F05-energy-block-trading.md)**; the Prices screen in Phase 1 has no trade-wizard call-to-action to pre-fill (**§6**, **[DEC-161]** (7)). | Must |
+| ~~F04-R09~~ | ~~A tile expands into a trend chart of the last 30 / 90 / 365 days for that product.~~ **Retired 2026-08-19 by [DEC-81]** — customers see the current curve only; there is no history surface and nothing replaces it. The chart component, the range selector and the series endpoint are not built. ⚠ **The retirement stands, reaffirmed 2026-09-23 by [DEC-160], and the §6 chart is not a reversal of it.** This requirement's x-axis was **calendar time** and its trigger was a tile **expanding** into a range-selected trend; the §6 chart's x-axis is **delivery periods**, its selector picks a **granularity** (Month/Quarter/Year) rather than a date range, and every product shows exactly **one** point — today's — never two. A chart existing again does not mean a history exists again. | ~~Should~~ |
+| F04-R10 | The trade request and the resulting offer both record the indication that was current at the moment of request, for later comparison. ⚠ **Amended 2026-08-19 by [DEC-80]** — what is recorded is now **three values, not one**: the raw quote, the **markup percentage in force**, and the marked-up price at 4 decimals. Without the percentage a captured indication cannot be reproduced after the markup moves, and the dispute this requirement exists to prevent comes back. ⚠ **Deferred 2026-09-23 by [DEC-161] — outside Phase 1 scope.** Capture moves with **[F05](F05-energy-block-trading.md)**, since there is no trade request to capture it against until F05 ships; the observation store itself is built and populated in Phase 1 so there is something to capture from once F05 arrives. | Must |
+| F04-R11 | An employee can add, edit, deactivate and reorder products and their ticker mapping without a deployment. ⚠ **Deferred 2026-09-23 by [DEC-161] — outside Phase 1 scope, part of the live gate (P5).** The 24 products are seeded by migration for Phase 1; there is no employee screen yet, so a ticker or a product changes only by a further migration until P5 ships. | Must |
+| F04-R12 | Feed health (last successful poll, error count, stale products) is visible on the employee integration dashboard. ⚠ **Deferred 2026-09-23 by [DEC-161] — outside Phase 1 scope, part of the live gate (P4).** Nothing customer-facing depends on it, but going live does — see the live gate in **[DEC-161]**. | Must |
 | ~~F04-R13~~ | ~~Prices can be shown on the consumption chart as a secondary axis.~~ **Retired 2026-08-19 by [DEC-81]** — a price series drawn along a consumption chart is a price history, whatever it is called. Nothing replaces it; the consumption chart **[F03](F03-consumption-visualisation.md)** carries volume only. | ~~Could~~ |
-| F04-R14 | A customer can set a price alert threshold per product. ⚠ **Amended 2026-08-19 by [DEC-81]** and **[DEC-27]** — the notification may say that a threshold was crossed and link into the portal; it may **not** carry the price itself, because email is not an authenticated portal surface **[F04-R15]** and a stream of threshold-crossing prices is a history assembled by the recipient. Stays **Could**. | Could |
+| F04-R14 | A customer can set a price alert threshold per product. ⚠ **Amended 2026-08-19 by [DEC-81]** and **[DEC-27]** — the notification may say that a threshold was crossed and link into the portal; it may **not** carry the price itself, because email is not an authenticated portal surface **[F04-R15]** and a stream of threshold-crossing prices is a history assembled by the recipient. Stays **Could**. ⚠ **Not built in Phase 1, and not recorded as deferred until now** — outside Phase 1 scope, per this requirement's own **Could** priority and **[DEC-161]**'s Phase 1 scope. | Could |
 | F04-R15 | Indications are rendered on **authenticated portal surfaces only**. No unauthenticated page, feed or share link carries a Montel-derived indication **[DEC-27]**. ⚠ **Confirmed 2026-08-19 by [DEC-81]**, which narrows the permitted surface further rather than widening it. | Must |
 | F04-R16 | Customer **export** of Montel-derived indications is not offered. ~~Export is redistribution and the licence has not been confirmed to permit it **[DEC-27]**, **[OQ-24]**; the chart export in **[F03-R23]** therefore excludes any indication series. Reopen when the licence is read.~~ ⚠ **Amended 2026-08-19 by [DEC-81]** — this is no longer provisional and does not reopen. There is **no export in any form**: no CSV, no PNG carrying a price series, no download, and **no API** — the customer usage API **[DEC-97]** carries net usage and nothing priced. The exclusion of indication series from the chart export **[F03-R23]** is permanent. | Must |
 | F04-R17 | Every customer-facing indication is the raw Montel quote **× (1 + markup)**, using the markup in force at render time **[F04-R18]**. The result is stored and captured at **4 decimals** **[F04-R10]** and displayed rounded to **2 decimals** €/MWh. The **raw quote is never rendered on a customer surface**, and neither is the markup percentage — price and percentage together disclose the raw quote by division, which puts the Montel number back on the customer's screen **[DEC-80]**, **[DEC-27]**. | Must |
-| F04-R18 | The markup is **reference data**: one platform-wide percentage, default **2%**, effective-dated, which an employee changes **without a release** — the screen belongs beside the ticker mapping **[F12-R22]** and the change is audited before/after **[F12-R24]**, **[DEC-17]**. A new value applies to indications rendered after it takes effect; indications already captured against a trade request keep the percentage that was in force **[F04-R10]**. The value must be **greater than zero** — a 0% markup would render the raw quote, which **[DEC-80]** forbids — and [DEC-80] names no upper bound, so none is enforced. | Must |
+| F04-R18 | The markup is **reference data**: one platform-wide percentage, default **2%**, effective-dated, which an employee changes **without a release** — the screen belongs beside the ticker mapping **[F12-R22]** and the change is audited before/after **[F12-R24]**, **[DEC-17]**. A new value applies to indications rendered after it takes effect; indications already captured against a trade request keep the percentage that was in force **[F04-R10]**. The value must be **greater than zero** — a 0% markup would render the raw quote, which **[DEC-80]** forbids — and [DEC-80] names no upper bound, so none is enforced. ⚠ **Deferred 2026-09-23 by [DEC-161] — the employee edit screen is outside Phase 1 scope and part of the live gate (P5); the effective-dated table, its `markup_rate` fraction shape and the CHECK that forbids a non-positive value are all built in Phase 1 (§3.1) — only the screen that lets an employee change the value without a migration is deferred.** The seeded **2,00 %** is the only markup **in force** in Phase 1 — never displayed to a customer, per **F04-R17**. | Must |
 | F04-R19 | Indicative-versus-firm status is **explicit on every customer-facing price**, and the two are structurally different objects, not two labels. An indication has no expiry, no accept action and no reference; a firm price exists only as a published offer with a price, a countdown and an accept action **[F05-R19]**. The price board may not use the words *offer*, *quote*, *valid until* or *bid/ask* — this document uses "quote" for the Montel number, which is internal vocabulary and must not reach customer copy. A price is firm **only when PeakPower says so** **[DEC-80]**. | Must |
-| F04-R20 | Customer surfaces expose the **current** value per product and nothing else: no series, no earlier observation, no open/close/high/low, no delta, and no value from which an earlier price can be derived. This applies to screens, tooltips, notifications and any payload **[DEC-81]**, **[DEC-97]**. | Must |
-| F04-R21 | Employee surfaces show, per product, the **raw quote**, the **markup percentage in force** and the resulting customer-visible price side by side, with the timestamp of each. This is the only place the raw number is rendered, and it is what makes "why is your price above the exchange?" and a mistyped markup diagnosable. | Should |
+| F04-R20 | Customer surfaces expose the **current** value per product and nothing else: no series, no earlier observation, no open/close/high/low, no delta, and no value from which an earlier price can be derived. This applies to screens, tooltips, notifications and any payload **[DEC-81]**, **[DEC-97]**. ⚠ **Clarified 2026-09-23 by [DEC-160].** "Series" here means one product plotted or listed **over time** — that stays forbidden absolutely, and nothing in §6's chart or list produces it: every point is this instant's value, for every one of the 24 products, and the chart never draws more than one value per product. Several products shown together at one instant is not a series in the sense this requirement forbids. | Must |
+| F04-R21 | Employee surfaces show, per product, the **raw quote**, the **markup percentage in force** and the resulting customer-visible price side by side, with the timestamp of each. This is the only place the raw number is rendered, and it is what makes "why is your price above the exchange?" and a mistyped markup diagnosable. ⚠ **Deferred 2026-09-23 by [DEC-161] — outside Phase 1 scope.** There is no employee surface yet (§4 R11, R12); the raw value is stored in `price_indication_observation.raw_price` from the first migration, so this view has data to read the day it is built. | Should |
 
 ## 5. Business rules
 
@@ -176,7 +270,19 @@ change is audited **[F12-R24]**.
    construction **[F04-R19]**.
 2. **Stale is worse than absent.** A number without an age is a number a customer will assume is
    live. Timestamp always visible; staleness always flagged.
-3. **Never interpolate or synthesise.** If Montel has no price, the platform has no price.
+3. **Never interpolate or synthesise.** If Montel has no price, the platform has no price. ⚠ **Qualified
+   2026-09-23 by [DEC-159], in two ways.** First, the same rule now covers a *configured* absence, not
+   only a data one: a product with no row for its currently-resolved period, no markup in force, or
+   **no provider configured at all** all render `UNAVAILABLE` rather than a synthesised value. "No
+   provider" is deliberate here, not an oversight — production's default is no provider, so this rule
+   is what makes that default safe rather than merely absent. Second, and stated rather than left
+   implicit: the **[DEC-159]** simulated fixture itself computes a price nobody quoted — from a
+   deterministic formula, not from Montel — which is precisely what this rule otherwise forbids. It is
+   permitted as the one narrow, labelled exception: config-gated to local development and the
+   **[DEC-28]** demo VM, never reachable by a real customer, and carrying the `isSampleData` flag —
+   `true` only when the configured provider is this simulated fixture **and** at least one product
+   comes back priced, never true by omission — so nobody mistakes it for rule 3 holding. The rule
+   binds without exception everywhere else.
 4. **The indication at request time is captured.** When PeakPower later offers a price, both the
    customer and the trader can see what the market looked like when the request was made. This
    removes an entire category of dispute.
@@ -205,32 +311,70 @@ change is audited **[F12-R24]**.
 
 | Screen | Mockup |
 | --- | --- |
-| Price board | [`price-indications.svg`](../60-mockups/price-indications.svg) |
-| Dashboard price strip | [`customer-dashboard.svg`](../60-mockups/customer-dashboard.svg) |
+| Prices | [`price-indications.svg`](../60-mockups/price-indications.svg) |
+| ~~Dashboard price strip~~ | [`customer-dashboard.svg`](../60-mockups/customer-dashboard.svg) |
 
-⚠ **The price-board mockup predates 2026-08-19 and now contradicts the requirements above in two
-places.** It is generated from
+⚠ **As-built drift from the mockup, found 2026-09-24 by reading the built portal.** The mockup is a
+structural wireframe, not a pixel reference, and two things it draws are not what shipped: the built
+period labels read **"Oct 2026" / "Q4 2026" / "Cal 2027"** (`delivery-period-label.ts`), not the
+mockup's abbreviated two-digit-year form; and the built list's layout and status badges differ from
+the mockup's table drawing. Noted here rather than redrawn — this document's wireframes describe
+structure, not the final visual design.
+
+⚠ **Amended 2026-09-23 by [DEC-160] and [DEC-161] — the mockup contradicted "tiles only" because
+"tiles only" is no longer the shape.** It is generated from
 [`screens-customer.mjs`](../60-mockups/screens-customer.mjs) (`priceIndications()`) and is not edited
-by hand, so the fix is a regeneration, not a redraw:
+by hand, so any change is a regeneration, not a redraw. The **Prices** screen (**`/prices`**, the only
+screen this feature ships in Phase 1 — **[DEC-161]**) now draws, in this order: a granularity selector
+(Month / Quarter / Year — a *set of periods*, never a date range, **[DEC-160]**); a hand-rolled SVG
+forward-curve chart, Base and Peak both plotted, x-axis the delivery periods of the selected
+granularity, y-axis today's marked-up €/MWh, with a distinct marker style for a stale point and a gap
+rather than an interpolated line for an unavailable one; and a **list** beneath it covering the same
+products, with a status per cell. The **"Indication — not an offer"** label sits beside the chart
+**and** beside the list independently — not once for the screen — and the chart's own tooltip repeats
+it. An info glyph carries the fixed disclaimer text (**F04-R05**), and a sample-data note is shown
+whenever the configured provider is the **[DEC-159]** simulated fixture **and** at least one product
+comes back priced — never true by omission, matching the response's own `isSampleData` field (**§2**
+of the [Montel integration](../30-integrations/02-montel-api.md) doc): *"Sample indications —
+generated for demonstration only. They do not reflect PeakPower's pricing."* — the built `SAMPLE_NOTE`
+uses the plain ASCII apostrophe, not a typographic one, and this document's own mockup generator is
+corrected to match it character for character, per the copy check for this close-out. ⚠ **The chart's licence
+guardrails are recorded on [DEC-160]**, not repeated here in full: the y-domain is drawn from current
+values only, the x-axis carries delivery periods only, tooltips and hit areas exist only at the
+plotted period points, there is no CSS transition or animation on a price mark or its text, no
+up/down colour or arrow and no previous-value state anywhere in the component, no download/copy/save
+control, and the live region announces current values only. These bind the built component exactly
+as much as the wording and the label do. ⚠ **As-built colour, found 2026-09-23 by reading the code
+for this close-out.** Neither this document nor **[DEC-160]** picks the Base/Peak line colours; the
+built component takes them from the shared design-token stylesheet, `--pp-chart-base:#004C94` (the
+palette's own brand-blue fill, 8,6:1 on white) for Base and `--pp-chart-peak:#3C93FA` (a lighter,
+cooler blue, 3,1:1 on white) for Peak, chosen so the two series are never mistaken for one line at a
+glance — distinct from the teal/indigo pairing this document's own mockup generator draws, which is
+the generic wireframe palette every screen in this set uses and is not a claim about the built
+component's actual colours. ⚠ **The dashboard price strip
+is deferred, not removed from the mockup file** — **[DEC-161]** (7) keeps `/prices` as the only screen
+for Phase 1, so `customer-dashboard.svg` drops its trade-request call-to-action and its per-tile delta,
+and its remaining price panel carries the same label and no banned wording, but it is not the primary
+surface this feature's requirements describe. A tile no longer links into the trade wizard in this
+phase — **F04-R08** is deferred with F05.
 
-| In the mockup | Why it is now wrong | What it should show |
-| --- | --- | --- |
-| A *"Base — next month · 90-day trend"* panel under the tiles | **[DEC-81]** — no history surface exists; **[F04-R09]** is retired | The panel is removed. The board is tiles only |
-| A change figure on each tile (`+1,25`, `−0,45`, …) | **[DEC-81]** via **[F04-R04]** — price plus delta discloses the previous close | Price, unit and observation time; no delta |
-| Tile price `€ 78,45` | Correct as drawn, and now for a different reason | It is the **marked-up** price: 76,9100 × 1,02 = 78,4482 → **78,45** **[F04-R17]**. The raw 76,91 belongs only on the employee view **[F04-R21]** |
-
-The banner it already carries — *"These are indicative market prices, not offers. A firm, time-limited
-price is issued only in response to a trade request"* — is what **[F04-R19]** asks for, with one word
-to change: they are **PeakPower indications**, not *market prices* **[F04-R05]**.
+The banner the old mockup carried — *"These are indicative market prices, not offers. A firm,
+time-limited price is issued only in response to a trade request"* — is retired along with the tiles it
+sat under. Its replacement is the **fixed** disclaimer text this build round fixed as its wording
+constraint, recorded in the implementation brief rather than as a separate spec document:
+*"A PeakPower indication. A firm price is given only in response to a trade request."* — word for word,
+because that sentence is no longer copy to be workshopped per screen, it is the one string the payload
+and the info glyph both carry (**[DEC-161]**).
 
 ## 7. Data
 
 | Entity | Purpose |
 | --- | --- |
-| `price_indication_product` | Product definition and Montel ticker mapping. `montel_ticker` is empty for all six rows until **[OQ-23]** delivers the symbols |
-| `price_indication_observation` | ticker, price, currency, unit, source_ts, received_ts. The `price` is the **raw quote**, stored exactly as the Montel service returned it **[F04-R01]** — the markup is never baked into it |
-| `price_indication_markup` | **New 2026-08-19 [DEC-80]** — percentage (default 2.00), valid_from, valid_to, changed_by, changed_at, note. Effective-dated so a captured indication stays reproducible **[F04-R10]** |
-| `price_feed_health` | Per-product last success, last error, consecutive failures |
+| `market.price_indication_product` | Product definition and Montel ticker mapping. ⚠ **Amended 2026-09-23 by [DEC-161]** — **24 rows**, not six (6M / 4Q / 2Y × Base/Peak, depth as `relative_offset` data). `montel_ticker` is empty for all 24 rows until **[OQ-23]** delivers the symbols, and the far **fourteen** (M+3…M+6, Q+3…Q+4, Cal+2, × Base/Peak) additionally wait on that row's licence/service-coverage question |
+| `market.price_indication_observation` | **Append-only.** `product_id`, `delivery_start`/`delivery_end`, `raw_price`, `currency`, `unit`, `ticker` (the product's configured `montel_ticker` at poll time, whatever the source; `NULL` in Phase 1 because no product has one configured yet — **[OQ-23]**), `observed_at`, `received_at`, `source`. The `raw_price` is the **raw quote**, stored exactly as the configured provider returned it **[F04-R01]** — the markup is never baked into it. ⚠ **New 2026-09-23**: a `BEFORE UPDATE OR DELETE` trigger enforces append-only at the database, not only by convention — see [database design](../20-architecture/04-database-design.md) §3.3 |
+| `market.price_indication_markup` | **New 2026-08-19 [DEC-80], reconciled 2026-09-23 by [DEC-161]** — `markup_rate numeric(6,4)` as a **fraction** (default `0.0200`), `valid_from`, `valid_to`, `note`, `created_by`, `created_at`, plus a generated `tstzrange` and its `EXCLUDE`. Effective-dated so a captured indication stays reproducible **[F04-R10]**. No row in force renders `UNAVAILABLE`, never a silent 0% (§8) |
+| `market.price_indication_latest` | **New 2026-09-23 [DEC-161]** — a keyless, least-privilege view over `price_indication_observation` (`DISTINCT ON` product/period/source, newest `observed_at` first). `app_customer_role` reads this view and loses `SELECT` on the raw table entirely (**[DEC-161]** (5)) |
+| ~~`price_feed_health`~~ | ⚠ **Deferred 2026-09-23 by [DEC-161] — outside Phase 1 scope, part of the live gate (P4).** Per-product last success, last error and consecutive failures are not built in Phase 1; there is no employee feed-health dashboard to read them (**F04-R12**) |
 
 **Retention.** The observation series is append-only and kept for internal use — capture
 **[F04-R10]**, staleness **[F04-R06]**, feed health, support. **[DEC-81]** restricts what a *customer*
@@ -241,15 +385,16 @@ is that no customer-facing query may return more than one row per product **[F04
 
 | Case | Behaviour |
 | --- | --- |
-| Montel unreachable | Last known values shown with a prominent stale marker and age; alert raised after N consecutive failures. The stale value is still marked up **[F04-R17]** — a stale price is not an excuse to show the raw quote |
+| Montel unreachable | Last known values shown with a prominent stale marker and age; alert raised after N consecutive failures. The stale value is still marked up **[F04-R17]** — a stale price is not an excuse to show the raw quote. ⚠ The alert half is deferred with **F04-R12** (§4) — Phase 1 shows the stale marker; it does not yet raise anything |
 | The existing Montel service is unreachable, but Montel is not | Identical handling: **[DEC-96]** makes that service the feed, so its outage is a feed outage. Feed health **[F04-R12]** names the service, not "Montel", or the first incident is diagnosed against the wrong system |
-| Ticker rolls (M+1 becomes a new month) | Relative-offset products resolve dynamically; the board always shows the correct forward period. ~~and the trend chart notes the roll~~ ⚠ **Amended 2026-08-19 by [DEC-81]** — there is no trend chart to note it in, and a roll is now invisible to the customer because there is no earlier value on screen to be confused with the new one |
+| No provider configured at all | ⚠ **New 2026-09-23 [DEC-159].** Production's default. Every product renders `UNAVAILABLE`; nothing is polled and no alert fires, because there is nothing broken — there is nothing configured. Distinct from an unreachable feed, which *is* an incident |
+| Ticker rolls (M+1 becomes a new month) | Relative-offset products resolve dynamically; the board always shows the correct forward period. ~~and the trend chart notes the roll~~ ⚠ **Amended 2026-08-19 by [DEC-81]** — there is no trend chart to note it in, and a roll is now invisible to the customer because there is no earlier value on screen to be confused with the new one. ⚠ **As-built 2026-09-24**: the poller forces one extra poll whenever the last poll predates the start of the current Amsterdam month — covering a month, quarter or year roll alike, never a per-product comparison — see [Montel integration](../30-integrations/02-montel-api.md) §4. ⚠ **As-built 2026-09-24, client-side guard**: the portal itself renders any product whose `deliveryStart` (Amsterdam date) has already started or passed as `UNAVAILABLE`, independent of the server's own `status` — a backstop for the window where the page keeps a failed refresh's last-good data on screen across the roll |
 | Price returned in a different currency or unit | Rejected and logged; never silently converted |
 | Negative price | Displayed as-is. Negative wholesale prices are real and must not be filtered. ⚠ **A multiplicative markup breaks on a negative quote.** Read literally, **[DEC-80]** gives −4,00 × 1,02 = **−4,08**, which moves the price *in the customer's favour* — the opposite of what a risk markup is for. The alternative reading, quote plus 2% of the absolute value, gives **−3,92**. [DEC-80] does not choose, so the platform implements the literal `× (1 + markup)` of **[F04-R17]** and this row is the record that it is unverified; confirm the sign convention together with the bid-versus-ask wording carried on **[OQ-23]**. Negative *forward* prices are rare enough that this is a correctness note, not a blocker |
-| Market closed | Last close shown, labelled as such rather than as stale. It is the current value of the curve, not history: one value per product, which is what **[F04-R20]** permits |
+| Market closed | ~~Last close shown, labelled as such rather than as stale.~~ ⚠ **Amended 2026-09-23 by [DEC-161] — the "market closed / last close" label is deferred to the live phase.** Phase 1 evaluates only the **placeholder** window (§4 R06, **[OQ-108]**): outside it, the tile is `STALE` (only if the feed missed its own outside-hours polls) or `FRESH` on the last value received, never a third "closed" label. It is still the current value of the curve, not history: one value per product, which is what **[F04-R20]** permits |
 | ~~A product is deactivated while a trend chart is open~~ | ~~Chart still renders history; the tile disappears from the board~~ ⚠ **Withdrawn 2026-08-19 by [DEC-81]** — there is no trend chart. A deactivated product simply disappears from the board on the next render |
 | The markup is changed while a trade request is in flight | The request keeps the percentage captured at submission **[F04-R10]**, **[F05-R12]**. The board moves; the captured indication does not |
-| No markup row is in force at render time | Treated as a configuration failure, not as 0%: the tile shows "unavailable" **[F04-R07]** rather than the raw quote, because rendering the quote would breach **[DEC-80]** silently. The default of 2% is seeded at install, so this should only occur if a row is closed without a successor |
+| No markup row is in force at render time | Treated as a configuration failure, not as 0%: the tile shows `UNAVAILABLE` **[F04-R07]** rather than the raw quote, because rendering the quote would breach **[DEC-80]** silently. The default `markup_rate = 0.0200` is seeded at install, so this should only occur if a row is closed without a successor. ⚠ **Governs the sentence in [database design](../20-architecture/04-database-design.md) §7.3, the `market.price_indication_markup` row** — the old text read "falls back to the raw quote"; it now reads "renders Unavailable" **[DEC-161]** |
 
 ## 9. Out of scope
 
@@ -261,7 +406,17 @@ is that no customer-facing query may return more than one row per product **[F04
   (**[F04-R09]** retired), no price series on the consumption chart (**[F04-R13]** retired), no
   change-vs-close on a tile (**[F04-R04]** amended). Licence-driven.
 - Order-book depth, bid/ask, volumes.
-- Own price curve construction or forward-curve modelling.
+- Own price curve construction or forward-curve modelling. ⚠ **Qualified 2026-09-23 by [DEC-159]** —
+  the **[DEC-159]** simulated provider that stands in for the feed in local development and the
+  **[DEC-28]** demo VM is a labelled **test fixture**, not curve construction. It computes a price
+  from a fixed formula — a seasonal cosine baseline, a Peak/Base factor, a term drift by months out,
+  and a small per-bucket variation seeded from the product code and a five-minute time bucket — so it
+  is not literally "playing back" stored values; it generates one on every call. What keeps it out of
+  scope of this bullet is not that it avoids computation, but that it is not fit to, derived from or
+  informed by any real market observation: it is a deterministic function of the product code and the
+  clock, entirely disconnected from Montel, published for a test double's honesty rather than for a
+  trader's use. This bullet is unchanged; the fixture is not curve construction in the sense this
+  bullet forbids, even though it is a computation rather than a lookup.
 - ~~Gas price indications ([OQ-01]).~~ **Gas entirely — [DEC-68]**, which withdraws **[DEC-30]**. No
   gas product row, no gas ticker, no m³ unit. The `commodity` field stays **[DEC-15]**; it holds
   `ELECTRICITY` and nothing else while [DEC-68] stands.
@@ -271,18 +426,19 @@ is that no customer-facing query may return more than one row per product **[F04
 
 | Depends on | Why |
 | --- | --- |
-| [Montel integration](../30-integrations/02-montel-api.md) | The feed. ⚠ **Amended 2026-08-19 by [DEC-96]** — the dependency is on the **existing PeakPower Montel service built by Luka**, integrated first rather than the Montel API directly. **[OQ-52]** closes on the question of whether such a thing exists; what it does not close is the **estimate** — the service's shape, location and coverage of the six forward products have to be read before the size of this feature is firm. If it turns out to serve day-ahead only, F04 is back to a direct integration with the API |
-| **[OQ-23]** — the six ticker symbols | Blocking. Nothing on the board can be polled without them (§3) |
-| [F12-R22], [F12-R24] | The employee screens: ticker mapping, and the **markup** **[F04-R18]** with its audit trail |
+| [Montel integration](../30-integrations/02-montel-api.md) | The feed. ⚠ **Amended 2026-08-19 by [DEC-96]** — the dependency is on the **existing PeakPower Montel service built by Luka**, integrated first rather than the Montel API directly. **[OQ-52]** closes on the question of whether such a thing exists; what it does not close is the **estimate** — the service's shape, location and coverage of the (now 24, not six — ⚠ **widened 2026-09-23 by [DEC-161]**) forward products have to be read before the size of this feature is firm. If it turns out to serve day-ahead only, F04 is back to a direct integration with the API |
+| **[OQ-23]** — the 24 ticker symbols | Blocking **for a real feed**. ⚠ **Amended 2026-09-23 by [DEC-159]/[DEC-161]** — behind [DEC-159]'s simulated fixture the poller still runs and the board still renders in Phase 1 (§3); it is a **real** Montel feed that has nothing to call without them. Widened from six symbols to 24, and OQ-23 now also carries the bid/ask side, the sign convention and licence/service coverage of the far offsets — see [80-open-questions.md](../80-open-questions.md) |
+| [F12-R22], [F12-R24] | The employee screens: ticker mapping, and the **markup** **[F04-R18]** with its audit trail. ⚠ **Deferred 2026-09-23 by [DEC-161] (2)** — the ticker-mapping screen (**F04-R11**) and the markup edit screen (**F04-R18**) are outside Phase 1 scope and part of the live gate (P5); the feed-health dashboard (**F04-R12**) is outside Phase 1 scope too, but its own live-gate condition is **P4**, not P5 (§4, **[DEC-161] (2)**) |
 | [F05](F05-energy-block-trading.md) | Where the customer goes next, and the only place a **firm** price exists **[F05-R19]** |
 
 ## 11. Open questions
 
-Post-2026-08-19 state. One question is open on this feature, and it blocks the board.
+Post-2026-08-19 state. ⚠ **Amended 2026-09-23 by [DEC-161].** Two open questions now touch this feature directly — **[OQ-23]** (widened to the 24 symbols, still a partial) and **[OQ-108]** (the placeholder market window) — plus **[OQ-99]**, widened to name this endpoint's own missing server-side entitlement gate. OQ-23 blocks a **real** feed; behind [DEC-159]'s fixture the board itself still renders in Phase 1.
 
 | Ref | Status | Question |
 | --- | :--: | --- |
-| **[OQ-23]** | ⏸ | **Which exact Montel tickers map to the six product cells?** **CLOSED ONLY IN PART.** **[DEC-80]** settled the markup that OQ-23's answer was carrying; the **ticker symbols themselves were never supplied**, so the half of the question that gives the feature its data is still open (§3). ⚠ It now also carries two wordings to confirm with the symbols: **bid or ask** — OQ-25's comment says *bid* + a percentage, OQ-23's answer says *ask* + 2%, and the comment governs (business rule 7) — and the **sign convention** for a negative quote (§8). 🟠, Trading |
+| **[OQ-23]** | ⏸ | **Which exact Montel tickers map to the (now 24, not six — [DEC-161]) product cells?** **CLOSED ONLY IN PART.** **[DEC-80]** settled the markup that OQ-23's answer was carrying; the **ticker symbols themselves were never supplied**, so the half of the question that gives the feature its data is still open (§3). ⚠ It now also carries two wordings to confirm with the symbols: **bid or ask** — OQ-25's comment says *bid* + a percentage, OQ-23's answer says *ask* + 2%, and the comment governs (business rule 7) — and the **sign convention** for a negative quote (§8). ⚠ **Widened 2026-09-23 by [DEC-161]** — a fourth item joined the row: **licence/service coverage of the far offsets** (M+3…M+6, Q+3…Q+4, Cal+2 — fourteen products), which must be confirmed before those can go live; see [80-open-questions.md](../80-open-questions.md). 🟠, Trading |
+| **[OQ-108]** | 🟠 | **Confirm the real market-window values** — trading days, open time, close time. ⚠ **Raised 2026-09-23 by [DEC-161] (6)**, which ships the feature behind a **placeholder** window (Mon–Fri 08:00–18:00 Europe/Amsterdam) that the staleness rule and poll-frequency split are evaluated against; not one of the five named live-gate conditions. Fully open, not a partial, per [80-open-questions.md](../80-open-questions.md). 🟠, Trading |
 | ~~[OQ-24]~~ | ✅ | ~~**Partly closed by [DEC-27]**: authenticated display is permitted, public display is not. Still open — does the licence permit customer **export**, and at what granularity?~~ **CLOSED — no export, and current granularity only** **[DEC-81]**. Both halves are answered, and answered as F04 had provisionally assumed, so nothing built on the precautionary reading is undone **[F04-R16]**, **[F04-R20]**. ⚠ The master ledger's summary lists OQ-24 in neither its closed nor its remaining-open set; the register row for it has been ✅ since **[DEC-27]** and [DEC-81] settles its export residual, so it is recorded closed here |
 | ~~[OQ-25]~~ | ✅ | ~~Should indications include a PeakPower spread, or be shown as raw market prices?~~ **CLOSED — never raw** **[DEC-80]**: a quote plus a **configurable percentage markup, default 2%**, held as reference data an employee maintains **[F04-R17]**, **[F04-R18]**. The residual — which side of the market is marked up — moved to **[OQ-23]**, not into a new question |
 | ~~[OQ-52]~~ | ✅ | ~~Where does the existing Montel implementation live, and in what shape?~~ **CLOSED — it exists: a Montel service built by Luka, integrated before the Montel API** **[DEC-96]**. Listed here because it is F04's implementation route, not only an architecture question. ⚠ "It exists" is not "it fits": the estimate stays soft until the service is read (§10) |

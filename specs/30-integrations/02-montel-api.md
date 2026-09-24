@@ -34,7 +34,7 @@ what to look for. **[OQ-23]** is the one input still missing from the outside.
 
 | Need | Frequency | Consumer | Failure impact |
 | --- | --- | --- | --- |
-| Forward prices for 6–12 configured products | Every 5 min in market hours | Price board and trade-wizard estimate, **both marked up at display [DEC-80]** | Customers see stale indications; trading continues |
+| Forward prices for **24** configured products ⚠ **Amended 2026-09-23 by [DEC-161]** — widened from the original 6–12 sketch to a fixed 6M/4Q/2Y × Base/Peak depth | **Platform-wide** for Phase 1, every 5 min in market hours **[DEC-161]** (per-product frequency waits for P5) | Price board, **marked up at display [DEC-80]**. The trade-wizard estimate is deferred with F05 in Phase 1 (**F04-R10**) | Customers see stale indications, or `Unavailable` if the configured provider is absent entirely **[DEC-159]**; trading continues |
 | NL day-ahead curve for D+1 | **Once daily, from 18:00 Europe/Amsterdam [DEC-36]** | Invoicing (uncovered purchase, unused block cover, **export credit [DEC-87]**), chart tooltips, exposure KPI | **Invoicing blocked for affected days** |
 | Historical forward prices | On demand | **Employee** trend charts only — the customer-facing history is withdrawn by **[DEC-81]** (§7) | Internal trend view degrades; nothing customer-facing is affected |
 | Historical day-ahead | Backfill, once, then on demand for corrections | Historical positions, late correction invoices **[DEC-99]** | Past periods cannot be settled. ⚠ **No longer an unknown: history is available [DEC-75]** — the limit is the licence, not the data |
@@ -60,10 +60,57 @@ public sealed record DayAheadPrice(
     decimal Price, string Currency, string Unit);
 ```
 
+⚠ **Amended 2026-09-23 by [DEC-161] — this is the pre-build sketch; the port as actually built for
+Phase 1 is narrower and batch-shaped:**
+
+```csharp
+public interface IMarketDataProvider
+{
+    string SourceId { get; }                  // "SIMULATED" for [DEC-159]'s fixture; non-nullable — "none" means no IMarketDataProvider is registered at all, so there is no instance to read
+    Task<IReadOnlyList<ForwardQuote>> GetForwardQuotesAsync(
+        IReadOnlyList<ForwardQuoteRequest> requests, CancellationToken ct);
+}
+
+public sealed record ForwardQuoteRequest(string ProductCode, BlockShape Shape, DeliveryPeriod Period, string? Ticker);
+
+public sealed record ForwardQuote(
+    string ProductCode, DeliveryPeriod Period, decimal PricePerMwh,
+    string Currency, string Unit, DateTimeOffset ObservedAt);
+```
+
+**Forward-only.** `GetHistoryAsync` and `GetDayAheadAsync` are not part of the built interface. History
+has no customer- or platform-facing consumer to build against in Phase 1 (**F04-R09** stays retired —
+this document's §1 "Historical forward prices / employee trend charts" row is aspirational, not
+scheduled work). Day-ahead **keeps its [DEC-149] loader** — a seeded reference table
+(`market.day_ahead_price`, migration 12, covering 2026-01-01..2026-08-05), not a poll — so it was
+never going to share this port. ⚠ **This narrows one sentence of the brief, not a reversal of
+[DEC-36].** `IMarketDataProvider` is scoped to forward prices for Phase 1 of this feature; day-ahead is
+**currently loaded** through **[DEC-149]**'s seeded reference set, for the proof of concept, rather
+than through this port. §4's day-ahead jobs (`FetchDayAheadPricesJob` and its siblings) are **not**
+superseded, retired or historical — **[DEC-149]** neither mentions them nor changes them, and §1's own
+table above still names a failed daily fetch as blocking invoicing (**[DEC-36]**). They remain the
+specified mechanism for whenever day-ahead moves off the seeded reference set onto a live feed; this
+feature's build simply does not touch them.
+**Batch, not per-ticker**: `GetForwardQuotesAsync` takes every requested product in one call, matching
+a platform-wide poll interval (**F04-R02**, **[DEC-161]**) rather than 24 independent per-ticker calls.
+**`SourceId`, not an implicit vendor name**: the sweep job stamps every observation it writes with
+`provider.SourceId`, which is what `price_indication_observation.source` records. ⚠ **The customer
+endpoint's read-side filter and `isSampleData` do not read this property at all — they read
+`ForwardPriceOptions.ConfiguredSourceId` from config, independently.** No `IMarketDataProvider` is
+even registered in the customer API host; only the Worker resolves and calls the provider. The
+customer endpoint serves `price_indication_latest` rows where `source = options.ConfiguredSourceId`
+(`"SIMULATED"` for `Simulated`, `null` — matching no rows — for "none"), and sets `isSampleData` when
+the **configured** provider is `Simulated` and at least one row priced. **[DEC-159]**'s sample-honesty
+rule is therefore enforced by a config value read at the API boundary, which happens to agree with
+what the Worker's provider wrote as `SourceId` only because both hosts are bound from the same
+`ForwardPrices:Provider` setting — it is not the same property read twice.
+
 Naming the port `IMarketDataProvider` rather than `IMontelClient` is deliberate: it keeps the
 possibility of a second or replacement provider a configuration matter rather than a refactor.
 **[DEC-96] cashes that in immediately**: the first implementation behind this port is not a Montel
-client at all, it is a client of PeakPower's own Montel service.
+client at all, it is a client of PeakPower's own Montel service — and **[DEC-159]** cashes it in a
+second time: the Phase 1 implementation behind the port is neither of those, it is the **simulated
+test fixture**, config-gated to development and the demo VM.
 
 ### 2.1 The first hop is PeakPower's existing Montel service **[DEC-96]**
 
@@ -81,7 +128,7 @@ adapter in this repo            credentials · quota · symbols
 | Montel credentials and their rotation | **Existing service** | The platform holds a credential for the *service*, not for Montel. §6's Key Vault row narrows accordingly |
 | Vendor rate limits and quota | **Existing service** | One consumer at the vendor rather than two competing for the same quota |
 | Vendor endpoint shapes and their changes | **Existing service** | A Montel API change is absorbed one layer down |
-| Ticker symbol resolution | ⏸ **Unknown until the service is read** | It may already hold the six symbols **[OQ-23]** asks for, which is the cheapest way to close that question |
+| Ticker symbol resolution | ⏸ **Unknown until the service is read** | It may already hold the (now 24, not six — ⚠ **widened 2026-09-23 by [DEC-161]**) symbols **[OQ-23]** asks for, which is the cheapest way to close that question |
 | Product configuration — which products the portal shows | **Platform** (§3) | Customer-facing reference data, edited by employees **[F04-R11]** |
 | Markup at display | **Platform only, never the service** **[DEC-80]** | The service returns raw values and must keep doing so (§5.2) |
 | Storage, versioning, completeness, alerting | **Platform** (§4, §5) | The invoice depends on these; they cannot live in a service this repo does not own |
@@ -105,32 +152,70 @@ unsuitable for the day-ahead leg, only one implementation is replaced.
 ## 3. Product configuration
 
 Ticker symbols are **reference data**, never constants
-([F04](../10-features/F04-price-indications.md) §3). Six products for the first release:
+([F04](../10-features/F04-price-indications.md) §3). ⚠ **Amended 2026-09-23 by [DEC-161] — 24
+products, not six.** Depth is data: 6 months (M+1…M+6) + 4 quarters (Q+1…Q+4) + 2 calendar years
+(Cal+1…Cal+2), × Base/Peak. **All 24 rows carry `commodity = ELECTRICITY`** (gas stays out —
+**[DEC-68]**), so that column is omitted from the table below rather than repeated 24 times unchanged.
+The full seed, exactly as migration 25 writes it
+([database design](../20-architecture/04-database-design.md) §3.3/§7.5), `display_name` and
+`display_order` included since a reader diagnosing the board's ordering needs them here rather than a
+second lookup:
 
-| Code | Display | Shape | Period | Offset | Montel ticker |
-| --- | --- | --- | --- | --- | --- |
-| `NL_POWER_BASE_M1` | Base — next month | BASE | MONTH | +1 | ⏸ **[OQ-23]** |
-| `NL_POWER_PEAK_M1` | Peak — next month | PEAK | MONTH | +1 | ⏸ **[OQ-23]** |
-| `NL_POWER_BASE_Q1` | Base — next quarter | BASE | QUARTER | +1 | ⏸ **[OQ-23]** |
-| `NL_POWER_PEAK_Q1` | Peak — next quarter | PEAK | QUARTER | +1 | ⏸ **[OQ-23]** |
-| `NL_POWER_BASE_Y1` | Base — next calendar year | BASE | YEAR | +1 | ⏸ **[OQ-23]** |
-| `NL_POWER_PEAK_Y1` | Peak — next calendar year | PEAK | YEAR | +1 | ⏸ **[OQ-23]** |
+| Code | Display name | Shape | Period | Offset | Display order | Montel ticker |
+| --- | --- | --- | --- | --- | :--: | --- |
+| `NL_POWER_BASE_M1` | Base — month +1 | BASE | MONTH | +1 | 1 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_M1` | Peak — month +1 | PEAK | MONTH | +1 | 2 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_M2` | Base — month +2 | BASE | MONTH | +2 | 3 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_M2` | Peak — month +2 | PEAK | MONTH | +2 | 4 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_M3` | Base — month +3 | BASE | MONTH | +3 | 5 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_M3` | Peak — month +3 | PEAK | MONTH | +3 | 6 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_M4` | Base — month +4 | BASE | MONTH | +4 | 7 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_M4` | Peak — month +4 | PEAK | MONTH | +4 | 8 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_M5` | Base — month +5 | BASE | MONTH | +5 | 9 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_M5` | Peak — month +5 | PEAK | MONTH | +5 | 10 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_M6` | Base — month +6 | BASE | MONTH | +6 | 11 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_M6` | Peak — month +6 | PEAK | MONTH | +6 | 12 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_Q1` | Base — quarter +1 | BASE | QUARTER | +1 | 13 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_Q1` | Peak — quarter +1 | PEAK | QUARTER | +1 | 14 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_Q2` | Base — quarter +2 | BASE | QUARTER | +2 | 15 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_Q2` | Peak — quarter +2 | PEAK | QUARTER | +2 | 16 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_Q3` | Base — quarter +3 | BASE | QUARTER | +3 | 17 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_Q3` | Peak — quarter +3 | PEAK | QUARTER | +3 | 18 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_Q4` | Base — quarter +4 | BASE | QUARTER | +4 | 19 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_Q4` | Peak — quarter +4 | PEAK | QUARTER | +4 | 20 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_Y1` | Base — year +1 | BASE | YEAR | +1 | 21 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_Y1` | Peak — year +1 | PEAK | YEAR | +1 | 22 | ⏸ **[OQ-23]** |
+| `NL_POWER_BASE_Y2` | Base — year +2 | BASE | YEAR | +2 | 23 | ⏸ **[OQ-23]** |
+| `NL_POWER_PEAK_Y2` | Peak — year +2 | PEAK | YEAR | +2 | 24 | ⏸ **[OQ-23]** |
 
-Adding M+2, Q+2 and Cal+2 is configuration.
+`montel_ticker` is empty on every one of these 24 rows. "Adding M+2, Q+2 and Cal+2 is configuration"
+is no longer a forward-looking sentence: it is what this round did, and `relative_offset` continues
+to be how the next widening happens too. ⚠ **The display names above are the seeded ones** — "Base —
+month +1", not "Base — next month" — matching the migration literally, the api-contracts example and
+the mockup; an earlier draft of this table used the "next month"/"next quarter"/"next calendar year"
+phrasing for the front six, which is not what was built.
 
-**The ticker column is deliberately empty. [OQ-23] stays open in part (⏸)** after the 2026-08-19 round,
-and it is now two missing things rather than one:
+**The ticker column is deliberately empty on all 24 rows. [OQ-23] stays open in part (⏸)**, and it is
+now three missing things rather than two:
 
-1. **The six symbols themselves were never supplied.** Nothing can be seeded into
+1. **The 24 symbols themselves were never supplied.** Nothing can be seeded into
    `price_indication_product.montel_ticker`, so until they arrive the price board renders
-   "unavailable" **[F04-R07]** rather than a wrong number. The cheapest place to look first is the
-   ticker-resolution row of §2.1: the existing Montel service **[DEC-96]** may already carry them.
+   `Unavailable` **[F04-R07]** rather than a wrong number — and for Phase 1 it renders against
+   **[DEC-159]**'s simulated fixture regardless, so the missing symbols do not block the build, only
+   the production switch.
 2. **Which side of the market they quote is contradicted by the sources.** [OQ-23]'s answer says
    **ask** + 2%; [OQ-25]'s comment says **bid** + percentage. The comment governs, so **[DEC-80]** is
    recorded on the **bid** and that is the working assumption — but the wording has to be confirmed
    *together with* the symbols, because a symbol that turns out to be an ask quote moves the number the
    customer sees by the bid-ask spread **on top of** the 2% markup. Confirming the symbol without
    confirming the side leaves a silent pricing error, not a missing feature.
+3. **⚠ New 2026-09-23.** Licence and service coverage of the **fourteen far-offset products** —
+   M+3…M+6, Q+3…Q+4, Cal+2 (4 + 2 + 1 offsets × Base/Peak) — is unconfirmed: nothing has established
+   that the Montel licence extends that far or that **[DEC-96]**'s existing service carries quotes for
+   them at all. A service that answers only M+1…M+2, Q+1…Q+2 and Cal+1 (Base and Peak, ten products)
+   leaves exactly those fourteen permanently `Unavailable`, which would be a licence/service finding to record, not a defect to fix.
+   (This is a different, smaller set than the eighteen products the depth expansion adds in total —
+   that figure also counts M+2 and Q+2, which this coverage question does not name.)
 
 ### 3.1 Rolling
 
@@ -149,10 +234,12 @@ view, and reconstructing which instrument a customer was looking at when a trade
 
 | Job | Schedule | Notes |
 | --- | --- | --- |
-| `PollMontelIndicationsJob` | 5 min in market hours, hourly otherwise | Market hours from reference data, not hard-coded |
+| `PollMontelIndicationsJob` | 5 min in market hours, hourly otherwise | Market hours from configuration, not hard-coded. ⚠ **Amended 2026-09-23 by [DEC-161]** — for Phase 1 the market window is **application config**, not the employee-maintained reference-data table this document elsewhere means by that term (contrast the markup table, §3): `ForwardPrices:MarketWindow:Days`/`:Open`/`:Close` on `ForwardPriceOptions`, with a **placeholder** value, Monday–Friday 08:00–18:00 Europe/Amsterdam, tracked against real values by **[OQ-108]**. The poll interval is likewise config and **platform-wide** (`ForwardPrices:PollIntervalInMarketHours`/`PollIntervalOutsideMarketHours`), not per-product until **F04-R02**'s P5 maintenance screen ships. ⚠ **As-built 2026-09-24**: this row's name and queue are the pre-build sketch, not what shipped — the built poller is `ForwardPricePollJob`, run by the `ForwardPriceScheduleHost` `BackgroundService` on a one-minute `PeriodicTimer` **inside the Worker process**, never enqueued to Hangfire's `integration` queue at all (see [background jobs](../20-architecture/06-background-jobs.md) §2) |
 | `FetchDayAheadPricesJob` | **18:00 Europe/Amsterdam, once [DEC-36]**, then retry with backoff until complete or cut-off | The NL day-ahead curve **arrives at 18:00 Amsterdam**. Both the time and the retry policy are configuration **[F08-R01]** |
 | `CheckDayAheadCompletenessJob` | 20:00 Europe/Amsterdam | Alerts on gaps for the next day |
 | `BackfillDayAheadPricesJob` | **On demand, operator-triggered, over a bounded date range [DEC-75]** | Not a schedule. It exists because the history is available, and it is also the path a late metering correction **[DEC-99]** takes when it needs a price for a month already closed. Rate-limited so a wide range cannot starve the daily fetch |
+
+⚠ **As-built roll rule, corrected 2026-09-24 — the platform's own polish pass replaced the rule this note used to describe.** The previous text here said the poller detects a roll by comparing each active product's currently resolved delivery period against the latest period stored for it — that per-product comparison is superseded. Reading `ForwardPriceCadence.IsDue`/`ForwardPricePollJob` as actually built: the sweep ticks every minute and a poll is due when either the ordinary 5-minute/hourly cadence above says so, **or** the last poll for the configured source predates the start of the **current Amsterdam month** (every quarter and year boundary is also a month boundary, so this one rule covers a roll of any period type). This is deliberately not per-product: a product that keeps failing to get a valid post-roll quote — a missing symbol, a period-mismatch rejection — can never make the sweep stick at polling every minute forever, the way the old per-product comparison could.
 
 **[DEC-36] replaces the four-attempt schedule.** The previous 13:00 / 14:00 / 15:00 / 18:00 sequence
 existed only because the publication time was unknown; three of those four attempts were speculative
@@ -196,8 +283,28 @@ price_indication_observation
   └─ received_at
 ```
 
+⚠ **Amended 2026-09-23 by [DEC-161] — ticker and source, as built.** The table
+[actually migrated](../20-architecture/04-database-design.md) §3.3/§7.5 is keyed by `product_id`
+rather than `product_code`, splits `resolved_delivery_period` into `delivery_start`/`delivery_end`
+(`DeliveryPeriod` is a value object, not stored as one string), and adds `source varchar(32)` —
+`'SIMULATED'` for **[DEC-159]**'s fixture, a future real value once one exists — which is what the
+served-rows sample-honesty filter keys on: the customer endpoint filters to rows whose `source`
+matches the currently configured provider **and** to the resolved delivery period, so a row from a
+source the platform is no longer configured for is never returned as live (**[DEC-159]**). The
+least-privilege `price_indication_latest` view carries **no such filter itself** — it is
+`DISTINCT ON (product_id, delivery_start, source)`, the latest row per product/period/source for
+**every** source, not only the configured one; narrowing to the configured source and the resolved
+period is the endpoint's own job, not the view's (see [database design](../20-architecture/04-database-design.md)
+§7.5, **[DEC-161]**). `ticker` is the product's own configured `montel_ticker`, carried onto the
+observation at poll time whatever the source — it is `NULL` for every row in Phase 1 because no
+product has a ticker configured yet (**[OQ-23]**), not specifically because the source is
+`SIMULATED`.
+
 There is **no markup column and no adjusted-price column** in that table, and none in `day_ahead_price`
-either. Everything stored here is the value the provider gave — see §5.2.
+either. Everything stored here is the value the provider gave — see §5.2. ⚠ **This reconciles with
+[F04-R10]**, deferred with F05 for Phase 1 (**[DEC-161]**): the observation store holds the **raw**
+value only, in Phase 1 exactly as it always was meant to, and there is nothing here for F05's capture
+step to disturb when it lands — it reads this table, it does not write a different shape into it.
 
 Day-ahead prices are stored with a validity range and versioned
 ([Database design](../20-architecture/04-database-design.md) §3.3), so an hourly and a 15-minute
@@ -258,10 +365,20 @@ This creates two prices where there was one, so the boundary has to be stated ra
 | Day-ahead shown to a customer (tooltip, exposure KPI) | **Raw** | It is the price they are actually charged; marking it up would break their own reconciliation |
 | Settlement — [Invoice calculation](../50-calculations/03-invoice-calculation.md) | **Raw day-ahead, always** | **[DEC-44]** first half, confirmed by **[DEC-87]**. No marked-up value is an input to any invoice line |
 
-**The single rule: a marked-up number exists only in a rendered view.** It is never persisted, never
-returned by `IMarketDataProvider`, and never read by the invoice run. The port's `PriceObservation`
-and `DayAheadPrice` records (§2) carry raw values by definition, which is what makes the rule
-enforceable at the type level rather than by convention.
+**The rule, precisely stated: the *observation store* holds only raw values, in Phase 1.** A marked-up
+number is never returned by `IMarketDataProvider`, never written to `price_indication_observation` or
+`day_ahead_price`, and never read by the invoice run — the port's `ForwardQuote` and `DayAheadPrice`
+records (§2; `ForwardQuote` is the as-built type, replacing the pre-build `PriceObservation` sketch)
+carry raw values by definition, which is what makes that half of the rule enforceable at the type
+level rather than by convention. ⚠ **This does not mean a marked-up number is never persisted
+anywhere.** **[F04-R10]** and **[F04-R17]** require the trade request to capture and store the
+marked-up price at 4 dp alongside the markup rate in force — deferred to **[F05](../10-features/F05-energy-block-trading.md)**
+for Phase 1, since there is no trade request to capture it against until F05 ships, but not deferred
+forever. When F05 lands, it **reads** the observation table's raw value and the markup in force, and
+writes the computed marked-up price with the trade request it belongs to — a different table, a
+different lifecycle, and a write F05 owns, not this adapter. The boundary this section draws is
+narrower than "never persisted": it is "never persisted in the observation store, and never computed
+by anything but the render/capture path itself."
 
 Worked example, at the 2% default:
 
@@ -352,12 +469,14 @@ more weight than it did, not less.
 
 ## 8. Open questions
 
-Post-2026-08-19 state. One question remains against this integration, and it is a partial.
+Post-2026-08-19 state. ⚠ **Amended 2026-09-23.** Two questions remain against this integration: one is
+a partial ([OQ-23]), the other is fully open and does not block Phase 1's build ([OQ-108]).
 
 | Ref | Status | Question |
 | --- | :--: | --- |
 | ~~[OQ-16]~~ | ✅ | ~~What resolution does Montel deliver for the NL day-ahead curve, and is history available for backfill?~~ **CLOSED.** The arrival time was settled by **[DEC-36]** (18:00 Amsterdam, §4); **[DEC-75]** settles the rest — **history is available for backfill**, so there is no backfill cliff and retrospective settlement is bounded by the licence rather than by the data (§4, §7). The **resolution** half was never separately answered and no longer needs to be: §5 stores hourly and 15-minute identically, so it is absorbed on arrival |
-| **[OQ-23]** | ⏸ | **Still open in part.** ~~Exact ticker symbols for the six products~~ — the symbols **were never supplied** (§3), and a second half has been added to the row: **the sources disagree on which side of the market is quoted and marked up** — [OQ-23]'s answer says *ask* + 2%, [OQ-25]'s comment says *bid* + percentage, and the comment governs **[DEC-80]**. Both must be confirmed together; a symbol confirmed without its side is a silent pricing error. First place to look: the existing Montel service **[DEC-96]**, §2.1 |
+| **[OQ-23]** | ⏸ | **Still open in part.** ~~Exact ticker symbols for the six products~~ — the symbols **were never supplied** (§3), and a second half has been added to the row: **the sources disagree on which side of the market is quoted and marked up** — [OQ-23]'s answer says *ask* + 2%, [OQ-25]'s comment says *bid* + percentage, and the comment governs **[DEC-80]**. Both must be confirmed together; a symbol confirmed without its side is a silent pricing error. First place to look: the existing Montel service **[DEC-96]**, §2.1. ⚠ **Widened 2026-09-23 by [DEC-161]** — the row is now 24 symbols, not six (§3), and carries two further items: the **sign convention** for a negative quote ([F04](../10-features/F04-price-indications.md) §8), and **licence/service coverage of the far offsets** (M+3…M+6, Q+3…Q+4, Cal+2 — fourteen products) that must be confirmed before those can go live. All four items — symbols, side, sign, far-offset coverage — must arrive together; see [80-open-questions.md](../80-open-questions.md) |
+| **[OQ-108]** | 🟠 | **New 2026-09-23 by [DEC-161] (6).** Confirm the real market-window values — trading days, open time, close time — against the **placeholder** window this integration polls to (§4: Monday–Friday 08:00–18:00 Europe/Amsterdam). Fully open, not a partial: unlike [OQ-23] it is not one of the five named [F04](../10-features/F04-price-indications.md) live-gate conditions, confirming it is cheap and blocks nothing else, and it is deliberately tracked separately from the ticker-symbol wait. See [80-open-questions.md](../80-open-questions.md) |
 | ~~[OQ-24]~~ | ✅ | ~~Licence terms for onward display and export.~~ **CLOSED on both halves.** Display: **[DEC-27]** — portal yes, public no. Export: **[DEC-81]** — no export, no history, no price API **[DEC-97]**, decided rather than merely presumed (§7). ⚠ What replaces it in the licence conversation is **retention and backfill depth**, which **[DEC-75]** makes a live question for the first time |
 | ~~[OQ-25]~~ | ✅ | ~~Are indications shown raw, or with a PeakPower spread?~~ **CLOSED — never raw** **[DEC-80]**: quote plus a **configurable markup, default 2%**, applied at display only, and never firm unless PeakPower says so. The stored value stays raw and settlement stays raw (§5.2) |
 | ~~[OQ-35]~~ | ✅ | ~~Is the raw day-ahead price used for settlement, or a price plus a spread?~~ **Closed by [DEC-44]** — the **raw** price, no spread (§5.1). ⚠ **Confirmed and widened 2026-08-19**: the first half of [DEC-44] is confirmed, its second half is **reversed by [DEC-87]**, and the raw curve now settles **three** legs rather than two — uncovered purchase, unused block cover and physical export |

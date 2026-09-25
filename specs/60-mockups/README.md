@@ -1,6 +1,6 @@
 # Mockups
 
-Nineteen wireframes covering the customer portal and the employee back office.
+Twenty wireframes covering the customer portal and the employee back office.
 
 > **What these are.** Structural wireframes: information architecture, hierarchy, density and the
 > data actually on each screen. They are deliberately not visual design — no brand, no final
@@ -22,6 +22,11 @@ screens as they now stand, naming the decision behind each change. One thing is 
 yet: **[DEC-94]** points the visual identity at the brand guidelines on peakpower.nl, so "no brand"
 above describes this round of wireframes rather than a standing position.
 
+**Revised again 2026-09-23** for the Balance redesign **[DEC-164]**: `wallet-ledger.svg` and
+`wallet-topup.svg` are redrawn against the built UI rather than the earlier wireframe, and
+`wallet-checkout.svg` is new, drawing the PeakPower test checkout **[DEC-162]** the simulated iDEAL
+provider now redirects to.
+
 ---
 
 ## Customer portal
@@ -37,8 +42,9 @@ above describes this round of wireframes rather than a standing position.
 | [trade-wizard.svg](trade-wizard.svg) | [F05](../10-features/F05-energy-block-trading.md) | Per-connection volume split, live totals, wallet check |
 | [trade-offer-countdown.svg](trade-offer-countdown.svg) | [F05](../10-features/F05-energy-block-trading.md) | Firm offer, countdown ring, per-EAN breakdown, wallet impact before/after |
 | [trade-history.svg](trade-history.svg) | [F05](../10-features/F05-energy-block-trading.md) · [F15](../10-features/F15-audit-and-observability.md) | The shared audit timeline — **requested by one colleague, accepted by another** — and linked records |
-| [wallet-ledger.svg](wallet-ledger.svg) | [F06](../10-features/F06-wallet-and-ledger.md) | Three balances, ledger with reservations visible, **the colleague behind each movement**, reference links. Trading movements only **[DEC-77]** — no invoice debit — plus withdrawals **[DEC-83]** and reference-matched bank-transfer deposits **[DEC-106]** |
-| [wallet-topup.svg](wallet-topup.svg) | [F07](../10-features/F07-wallet-topup-and-payments.md) | iDEAL and bank transfer side by side as equal routes **[DEC-106]**, the platform-issued payment reference the transfer is matched on, no minimum and no maximum amount **[DEC-84]** |
+| [wallet-ledger.svg](wallet-ledger.svg) | [F06](../10-features/F06-wallet-and-ledger.md) | **Redrawn against the built UI [DEC-164].** The Balance overview: a test-money banner, a hero with **Available** as the largest figure plus a **TEST MONEY** marker and Settled/Reserved defined beside their figures, an **In progress** list with one action per item, and an **Activity** card switching Ledger/Deposits/Withdrawals — the ledger keeping its Debit, Credit and Available-after columns **[F06 §7]** |
+| [wallet-topup.svg](wallet-topup.svg) | [F07](../10-features/F07-wallet-topup-and-payments.md) | **Redrawn against the built UI [DEC-164].** The deposit page: an amount field and two **identical**, alphabetically-ordered method cards — Bank transfer, then iDEAL — with **neither preselected** **[F07-R01]**, no minimum and no maximum amount **[DEC-84]** |
+| [wallet-checkout.svg](wallet-checkout.svg) | [F07](../10-features/F07-wallet-topup-and-payments.md) | **New [DEC-162], [DEC-164].** The in-portal PeakPower test checkout the simulated iDEAL provider redirects to — read-only deposit facts, a dashed **"Choose the outcome"** card with a **TEST SIMULATION** badge and its three actions, and the note that going back keeps the deposit open rather than losing it |
 | [invoice-detail.svg](invoice-detail.svg) | [F10](../10-features/F10-invoicing-and-settlement.md) | Per-EAN section, the three live line categories — block energy, spot settlement with surplus *and* export on its sale leg **[DEC-87]**, energiebelasting **[DEC-74]** — and the volume reconciliation check. No surcharge line **[DEC-73]** |
 
 ## Employee portal
@@ -113,7 +119,7 @@ node specs/60-mockups/generate.mjs
 | File | Purpose |
 | --- | --- |
 | `lib.mjs` | Wireframe primitives: shell, panel, table, chart, badge, button, load-shape generator |
-| `screens-customer.mjs` | The twelve customer-portal screens |
+| `screens-customer.mjs` | The thirteen customer-portal screens |
 | `screens-employee.mjs` | The seven employee-portal screens |
 | `generate.mjs` | Writes every SVG |
 

@@ -634,35 +634,86 @@ export function tradeHistory() {
 
 /* ─────────────────────────────────────────────────────── wallet & ledger */
 export function walletLedger() {
-  const s = shell({ portal: 'customer', title: 'Balance', crumb: 'Vandersteen Koeling B.V. · EUR', nav: NAV, active: 5, user: USER, actions: [{ label: 'Top up' }, { label: 'Statement', variant: 'secondary', w: 106 }] });
+  const s = shell({ portal: 'customer', title: 'Balance', crumb: 'Vandersteen Koeling B.V. · EUR', nav: NAV, active: 5, user: USER });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
-  const kw = (cw - 2 * 16) / 3;
-  b += kpi(cx, cy, kw, 'AVAILABLE BALANCE', eur(75576.72), 'what you can commit right now', { accent: C.accent, h: 100 });
-  b += kpi(cx + kw + 16, cy, kw, 'SETTLED BALANCE', eur(86950.72), 'money in the wallet', { h: 100 });
-  b += kpi(cx + 2 * (kw + 16), cy, kw, 'RESERVED', eur(11374), '1 accepted trade · incl. VAT', { accent: C.amber, h: 100 });
+  // Test banner — the one banner every /wallet route carries [DEC-162, DEC-164].
+  b += rect(cx, cy, cw, 56, { fill: C.amberBg, stroke: '#fcd34d', r: 10 });
+  b += text(cx + 18, cy + 22, 'TEST ENVIRONMENT', { size: 10.5, fill: '#92400e', weight: 700 });
+  b += text(cx + 18, cy + 41, 'Everything on this page is test money. No real money moves, and deposits go through a PeakPower test checkout instead of your bank.', { size: 11.5, fill: '#78350f' });
 
-  b += note(cx, cy + 116, cw, 'The wallet funds trading only. Delivery invoices are paid to the bank and never debited here. No balance threshold is monitored.', 'muted');
+  // Hero — Available is the largest figure on the screen [DEC-164]; Settled and Reserved are each
+  // defined beside their figure; the action bar reads Deposit / Withdraw / Statement.
+  const heroY = cy + 72; const heroH = 158;
+  b += rect(cx, heroY, cw, heroH, { fill: C.panel, stroke: C.border, r: 10 });
+  b += text(cx + 20, heroY + 30, 'Balance', { size: 18, weight: 700, fill: C.text });
+  b += badge(cx + 92, heroY + 17, 'TEST MONEY', 'amber', { w: 96 });
 
-  b += panel(cx, cy + 172, cw, 520, 'Ledger', { subtitle: 'Every movement, newest first', right: 'Aug 2026 ▾   ·   All types ▾' });
+  const heroLeftW = Math.round(cw * 0.56);
+  b += text(cx + 20, heroY + 58, 'AVAILABLE', { size: 10.5, fill: C.muted, weight: 700 });
+  b += text(cx + 20, heroY + 94, eur(75576.72), { size: 32, weight: 700, fill: C.accent });
+  b += text(cx + 20, heroY + 113, 'Ready to trade or withdraw now', { size: 11.5, fill: C.muted });
+  b += button(cx + 20, heroY + 128, 110, 'Deposit', 'primary', { h: 30 });
+  b += button(cx + 138, heroY + 128, 110, 'Withdraw', 'secondary', { h: 30 });
+  b += button(cx + 256, heroY + 128, 110, 'Statement', 'secondary', { h: 30 });
+
+  const heroRX = cx + heroLeftW; const heroRW = cw - heroLeftW - 20;
+  b += line(heroRX, heroY + 24, heroRX, heroY + heroH - 24, { stroke: C.border });
+  b += text(heroRX + 24, heroY + 46, 'SETTLED', { size: 10, fill: C.muted, weight: 700 });
+  b += text(heroRX + 24 + heroRW - 24, heroY + 46, eur(86950.72), { size: 16, weight: 700, fill: C.text, anchor: 'end' });
+  b += text(heroRX + 24, heroY + 62, 'Money in your balance, including amounts that are held', { size: 10.5, fill: C.muted });
+  b += text(heroRX + 24, heroY + 96, 'RESERVED', { size: 10, fill: C.muted, weight: 700 });
+  b += text(heroRX + 24 + heroRW - 24, heroY + 96, eur(11374), { size: 16, weight: 700, fill: C.amber, anchor: 'end' });
+  b += text(heroRX + 24, heroY + 112, 'Held for accepted trades (trades include VAT)', { size: 10.5, fill: C.muted });
+  b += text(cx + cw - 20, heroY + heroH - 12, 'Updated 14:22', { size: 10.5, fill: C.faint, anchor: 'end' });
+
+  // In progress — one action each, and highlighted when it is waiting on THIS reader [DEC-164].
+  const ipY = heroY + heroH + 16;
+  b += text(cx + 18, ipY + 20, 'In progress (2)', { size: 15, weight: 700, fill: C.text });
+  const ipItems = [
+    ['Checkout not finished', 'amber', 'Deposit via iDEAL', 'PeakPower test checkout · started 14:12', 12472.56, 'Continue checkout'],
+    ['Needs your approval', 'amber', 'Withdrawal request', 'To NL18 INGB 0007 2519 44', 5000, 'Review request'],
+  ];
+  const ipRowH = 52;
+  ipItems.forEach((it, i) => {
+    const y = ipY + 34 + i * (ipRowH + 10);
+    b += rect(cx, y, cw, ipRowH, { fill: it[0] === 'Needs your approval' ? C.amberBg : C.panel, stroke: it[0] === 'Needs your approval' ? '#fcd34d' : C.border, r: 9 });
+    b += badge(cx + 16, y + 8, it[0], it[1], { w: it[0].length * 6.2 + 20 });
+    b += text(cx + 16, y + 40, it[2], { size: 12.5, weight: 700, fill: C.text });
+    b += text(cx + 190, y + 40, it[3], { size: 11, fill: C.muted });
+    b += text(cx + cw - 190, y + 34, eur(it[4]), { size: 14, weight: 700, fill: C.text, anchor: 'end' });
+    b += button(cx + cw - 168, y + 12, 150, it[5], 'secondary', { h: 28 });
+  });
+
+  // Activity — Ledger · Deposits · Withdrawals, switched by a bookmarkable view [DEC-164].
+  const acY = ipY + 34 + ipItems.length * (ipRowH + 10) + 8;
+  const acH = cy + 796 - acY;
+  b += panel(cx, acY, cw, acH, 'Activity');
+  b += button(cx + cw - 108, acY + 12, 90, 'Export', 'secondary', { h: 28 });
+
+  const segs = ['Ledger', 'Deposits', 'Withdrawals'];
+  let sx = cx + 18;
+  segs.forEach((seg, i) => {
+    const sw = 92;
+    b += rect(sx, acY + 52, sw, 26, { fill: i === 0 ? C.accentBg : C.panel2, stroke: i === 0 ? '#5eead4' : C.border, r: 13 });
+    b += text(sx + sw / 2, acY + 69, seg, { size: 11, weight: 600, fill: i === 0 ? '#0f766e' : C.muted, anchor: 'middle' });
+    sx += sw + 8;
+  });
 
   const cols = [
-    { label: 'DATE & TIME', w: 112 }, { label: 'TYPE', w: 146 }, { label: 'DESCRIPTION', w: 236 },
-    { label: 'BY', w: 130 }, { label: 'REFERENCE', w: 150 }, { label: 'DEBIT', w: 110, align: 'end' },
-    { label: 'CREDIT', w: 110, align: 'end' }, { label: 'AVAILABLE AFTER', w: 136, align: 'end' },
+    { label: 'DATE & TIME', w: 108 }, { label: 'TYPE', w: 138 }, { label: 'DESCRIPTION', w: 220 },
+    { label: 'BY', w: 124 }, { label: 'REFERENCE', w: 140 }, { label: 'DEBIT', w: 104, align: 'end' },
+    { label: 'CREDIT', w: 104, align: 'end' }, { label: 'AVAILABLE AFTER', w: 132, align: 'end' },
   ];
   // Chronological, then displayed newest-first. Balances are computed, so they reconcile.
   const hist = [
-    ['24-07 16:11', 'Adjustment', 'indigo', 'Correction — duplicate deposit reversed', 'S. Willems ⬥', 'ADJ-0031', -1500, 0],
     ['28-07 08:30', 'Deposit (transfer)', 'green', 'Transfer matched on ref PP-4821-QK', 'System', 'DEP-0118', 76500, 0],
     ['30-07 14:44', 'Funds reserved', 'amber', 'Peak Q1-27 · 1,0 MW · incl. VAT', 'M. Vandersteen', 'TRD-1051', 0, 88049.28],
     ['30-07 14:52', 'Trade confirmed', 'green', 'Peak Q1-27 · reservation settled', 'M. Bakker ⬥', 'TRD-1051', -88049.28, -88049.28],
-    ['05-08 15:22', 'Funds reserved', 'amber', 'Base Sep-26 · 0,05 MW · incl. VAT', 'J. de Vries', 'TRD-1048', 0, 4719],
-    ['05-08 16:03', 'Reservation released', 'indigo', 'TRD-1048 failed — counterparty withdrew', 'M. Bakker ⬥', 'TRD-1048', 0, -4719],
     ['06-08 09:20', 'Withdrawal', 'muted', 'Paid out to NL18 INGB 0007 2519 44', 'M. Vandersteen', 'WDR-0014', -5000, 0],
     ['10-08 07:41', 'Deposit (transfer)', 'green', 'Transfer matched on ref PP-5107-TD', 'System', 'DEP-0126', 60000, 0],
-    ['12-08 09:14', 'Deposit (iDEAL)', 'green', 'Top-up via iDEAL', 'J. de Vries', 'PAY-2291', 25000, 0],
+    ['12-08 09:14', 'Deposit (test checkout)', 'green', 'Completed in the PeakPower test checkout', 'J. de Vries', 'PAY-2291', 25000, 0],
     ['13-08 10:15', 'Funds reserved', 'amber', 'Base Oct-26 · 0,12 MW · incl. VAT', 'P. Aksoy', 'TRD-1072', 0, 11374],
   ];
   let settled = 20000; let reserved = 0;
@@ -687,80 +738,139 @@ export function walletLedger() {
       { t: eur(e.avail), align: 'end', weight: 600, size: 11.5, fill: e.avail < 0 ? C.danger : C.text },
     ];
   });
-  b += table(cx + 18, cy + 232, cw - 36, cols, rows, { rowH: 40 });
+  b += table(cx + 18, acY + 94, cw - 36, cols, rows, { rowH: 34 });
 
-  b += text(cx + 18, cy + 678, 'Every movement names the colleague who caused it. Reservations and trade debits are VAT-inclusive; the price itself is quoted ex VAT.', { size: 11, fill: C.faint });
-  b += text(cx + cw - 18, cy + 678, `Showing ${rows.length} of 143 entries`, { size: 11, fill: C.faint, anchor: 'end' });
+  const footY = acY + 94 + 30 + rows.length * 34 + 22;
+  b += text(cx + 18, footY, 'Trade holds and trade debits include VAT; prices are quoted without VAT.', { size: 10.5, fill: C.faint });
+  b += text(cx + 18, footY + 16, 'This balance funds trading only. Delivery invoices are paid by bank transfer and are never taken from it.', { size: 10.5, fill: C.faint });
 
-  return svgDoc(b, { label: 'Customer portal — wallet and ledger' });
+  return svgDoc(b, { label: 'Customer portal — Balance overview' });
 }
 
 /* ───────────────────────────────────────────────────────── wallet top-up */
 export function walletTopup() {
-  const s = shell({ portal: 'customer', title: 'Top up your balance', crumb: 'Balance › Add funds', nav: NAV, active: 5, user: USER });
+  const s = shell({ portal: 'customer', title: 'Make a deposit', crumb: 'Balance › Make a deposit', nav: NAV, active: 5, user: USER });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
-  b += note(cx, cy, cw, 'Available € 75.576,72 — the trade you were composing (Peak Q1-2027 · 1,0 MW) needs € 88.049,28 including VAT, so you are € 12.472,56 short.', 'amber');
+  // Test banner — the one banner every /wallet route carries [DEC-162, DEC-164].
+  b += rect(cx, cy, cw, 56, { fill: C.amberBg, stroke: '#fcd34d', r: 10 });
+  b += text(cx + 18, cy + 22, 'TEST ENVIRONMENT', { size: 10.5, fill: '#92400e', weight: 700 });
+  b += text(cx + 18, cy + 41, 'Everything on this page is test money. No real money moves, and deposits go through a PeakPower test checkout instead of your bank.', { size: 11.5, fill: '#78350f' });
 
-  const colW = (cw - 24) / 2;
+  b += text(cx, cy + 88, 'Make a deposit', { size: 18, weight: 700, fill: C.text });
+  b += text(cx, cy + 110, 'Available now € 75.576,72', { size: 12.5, fill: C.muted });
 
-  // iDEAL — instant, but capped by the customer's own bank
-  b += rect(cx, cy + 56, colW, 430, { fill: C.panel, stroke: C.border2, r: 10 });
-  b += badge(cx + 18, cy + 74, 'INSTANT', 'accent', { w: 74 });
-  b += badge(cx + 100, cy + 74, 'BANK LIMIT APPLIES', 'amber', { w: 138 });
-  b += text(cx + 18, cy + 126, 'iDEAL', { size: 22, weight: 700 });
-  b += text(cx + 18, cy + 148, 'Funds available within seconds — your own bank caps the amount', { size: 12.5, fill: C.muted });
-  b += field(cx + 18, cy + 186, colW - 36, 'AMOUNT', '€ 12.472,56', { focus: true, weight: 600 });
-  b += text(cx + 18, cy + 240, 'Suggested — the exact shortfall. No minimum and no maximum applies.', { size: 10.5, fill: C.faint });
-  const quick = ['€ 10.000', '€ 25.000', '€ 50.000', '€ 100.000'];
-  quick.forEach((q, i) => { b += badge(cx + 18 + i * 100, cy + 254, q, 'muted', { w: 90, h: 26, size: 12 }); });
-  b += field(cx + 18, cy + 316, colW - 36, 'YOUR BANK', 'ING', { });
-  b += button(cx + 18, cy + 384, colW - 36, 'Deposit € 12.472,56 with iDEAL', 'primary', { h: 44 });
-  b += text(cx + colW / 2, cy + 448, 'You will be redirected to your bank and returned here.', { size: 11, fill: C.faint, anchor: 'middle' });
-  b += text(cx + colW / 2, cy + 466, 'PeakPower never sees your bank credentials.', { size: 11, fill: C.faint, anchor: 'middle' });
+  const formY = cy + 132;
+  b += rect(cx, formY, cw, 508, { fill: C.panel, stroke: C.border, r: 10 });
 
-  // Bank transfer — equal footing, and the only route without a bank-side ceiling
-  const bx = cx + colW + 24;
-  b += rect(bx, cy + 56, colW, 430, { fill: C.panel, stroke: C.border2, r: 10 });
-  b += badge(bx + 18, cy + 74, 'NO LIMIT', 'accent', { w: 78 });
-  b += badge(bx + 104, cy + 74, '1–2 BUSINESS DAYS', 'muted', { w: 132 });
-  b += text(bx + 18, cy + 126, 'Bank transfer', { size: 22, weight: 700 });
-  b += text(bx + 18, cy + 148, 'Any amount — PeakPower matches your transfer on the reference below', { size: 12.5, fill: C.muted });
+  b += field(cx + 20, formY + 44, 300, 'AMOUNT', '€ 0,00', { });
+  b += text(cx + 20, formY + 98, 'Enter an amount greater than € 0,00.', { size: 10.5, fill: C.faint });
 
+  // Two IDENTICAL cards, alphabetical order, NEITHER preselected [F07-R01, DEC-164].
+  b += text(cx + 20, formY + 138, 'How do you want to deposit?', { size: 13, weight: 700, fill: C.text });
+  const colW = (cw - 40 - 20) / 2;
+
+  b += rect(cx + 20, formY + 156, colW, 156, { fill: C.panel, stroke: C.border2, sw: 1.5, r: 9 });
+  b += text(cx + 36, formY + 184, 'Bank transfer', { size: 15, weight: 700, fill: C.text });
+  b += text(cx + 36, formY + 206, 'Transfer from your company’s bank account with a reference we give', { size: 11, fill: C.muted });
+  b += text(cx + 36, formY + 220, 'you. No limit on our side. Within minutes with SEPA Instant,', { size: 11, fill: C.muted });
+  b += text(cx + 36, formY + 234, 'otherwise within one working day.', { size: 11, fill: C.muted });
+  b += rect(cx + 36, formY + 254, 16, 16, { fill: C.panel, stroke: C.border2, r: 8, sw: 1.5 });
+
+  const idx = cx + 40 + colW;
+  b += rect(idx, formY + 156, colW, 156, { fill: C.panel, stroke: C.border2, sw: 1.5, r: 9 });
+  b += text(idx + 16, formY + 184, 'iDEAL', { size: 15, weight: 700, fill: C.text });
+  b += text(idx + 16, formY + 206, 'Confirm in your bank’s iDEAL screen. Usually credited within a', { size: 11, fill: C.muted });
+  b += text(idx + 16, formY + 220, 'minute. Your bank may cap the amount; use a bank transfer for larger', { size: 11, fill: C.muted });
+  b += text(idx + 16, formY + 234, 'sums. In this test environment a PeakPower test checkout stands in', { size: 11, fill: C.muted });
+  b += text(idx + 16, formY + 248, 'for your bank.', { size: 11, fill: C.muted });
+  b += rect(idx + 16, formY + 268, 16, 16, { fill: C.panel, stroke: C.border2, r: 8, sw: 1.5 });
+
+  b += button(cx + 20, formY + 336, 160, 'Continue', 'primary', { h: 40 });
+  b += button(cx + 192, formY + 336, 120, 'Cancel', 'secondary', { h: 40 });
+
+  b += line(cx + 20, formY + 396, cx + cw - 20, formY + 396, { stroke: C.border });
+  b += text(cx + 20, formY + 420, 'Bank transfer destination — once chosen, the platform issues a deposit reference for this deposit.', { size: 11, fill: C.muted });
   const bank = [
     ['Account holder', 'PeakPower Trading B.V.'],
     ['IBAN', 'NL18 INGB 0007 2519 44'],
-    ['BIC', 'INGBNL2A'],
   ];
   bank.forEach((r, i) => {
-    const y = cy + 182 + i * 54;
-    b += rect(bx + 18, y, colW - 36, 44, { fill: C.panel2, stroke: C.border, r: 7 });
-    b += text(bx + 32, y + 17, r[0].toUpperCase(), { size: 9.5, fill: C.muted, weight: 700 });
-    b += text(bx + 32, y + 34, r[1], { size: 13, weight: 600, mono: i > 0 });
-    b += text(bx + colW - 32, y + 27, 'copy', { size: 11, fill: C.accent, weight: 600, anchor: 'end' });
+    const y = formY + 438 + i * 30;
+    b += text(cx + 20, y, r[0].toUpperCase(), { size: 9.5, fill: C.muted, weight: 700 });
+    b += text(cx + 220, y, r[1], { size: 12, weight: 600, mono: i > 0 });
   });
 
-  const ry = cy + 344;
-  b += rect(bx + 18, ry, colW - 36, 62, { fill: C.accentBg, stroke: '#5eead4', r: 8 });
-  b += text(bx + 32, ry + 20, 'DEPOSIT REFERENCE — ISSUED FOR THIS DEPOSIT, ALWAYS INCLUDE IT', { size: 9.5, fill: '#0f766e', weight: 700 });
-  b += text(bx + 32, ry + 46, 'PP-5233-BW', { size: 22, weight: 700, fill: '#0f766e', mono: true });
-  b += text(bx + colW - 32, ry + 44, 'copy', { size: 11, fill: '#0f766e', weight: 600, anchor: 'end' });
-
-  b += note(bx + 18, cy + 412, colW - 36, 'We match the incoming deposit on this reference and email you when it lands.', 'muted');
-  b += text(bx + 32, cy + 474, 'No reference given? We fall back to your registered IBAN.', { size: 10.5, fill: C.faint });
-  b += text(bx + colW / 2, cy + 500, 'Download instructions as PDF', { size: 11.5, fill: C.accent, weight: 600, anchor: 'middle' });
-
-  b += panel(cx, cy + 512, cw, 140, 'Recent top-ups');
-  b += table(cx + 18, cy + 566, cw - 36, [
-    { label: 'DATE', w: 160 }, { label: 'METHOD', w: 180 }, { label: 'REFERENCE', w: 200 },
-    { label: 'STATUS', w: 160 }, { label: 'AMOUNT', w: 220, align: 'end' },
+  b += panel(cx, formY + 524, cw, 132, 'Recent top-ups');
+  b += table(cx + 18, formY + 578, cw - 36, [
+    { label: 'DATE', w: 160 }, { label: 'METHOD', w: 200 }, { label: 'REFERENCE', w: 200 },
+    { label: 'STATUS', w: 160 }, { label: 'AMOUNT', w: 200, align: 'end' },
   ], [
-    [{ t: '12 Aug 2026, 09:14' }, { t: 'iDEAL · ING' }, { t: 'PAY-2291', mono: true }, { t: 'Succeeded', badge: 'green' }, { t: '€ 25.000,00', align: 'end', weight: 600 }],
+    [{ t: '12 Aug 2026, 09:14' }, { t: 'iDEAL · test checkout' }, { t: 'PAY-2291', mono: true }, { t: 'Succeeded', badge: 'green' }, { t: '€ 25.000,00', align: 'end', weight: 600 }],
     [{ t: '10 Aug 2026, 07:41' }, { t: 'Bank transfer' }, { t: 'PP-5107-TD', mono: true }, { t: 'Matched', badge: 'green' }, { t: '€ 60.000,00', align: 'end', weight: 600 }],
   ], { rowH: 34 });
 
-  return svgDoc(b, { label: 'Customer portal — wallet top-up' });
+  return svgDoc(b, { label: 'Customer portal — make a deposit' });
+}
+
+/* ─────────────────────────────────────────────── PeakPower test checkout */
+export function walletCheckout() {
+  const s = shell({ portal: 'customer', title: 'Test checkout', crumb: 'Balance › Deposit › Test checkout', nav: NAV, active: 5, user: USER });
+  let b = s.svg;
+  const { cx, cy, cw } = s;
+
+  // The checkout's own banner — never imitates iDEAL or a bank [DEC-162].
+  b += rect(cx, cy, cw, 56, { fill: C.amberBg, stroke: '#fcd34d', r: 10 });
+  b += text(cx + 18, cy + 22, 'PEAKPOWER TEST CHECKOUT', { size: 10.5, fill: '#92400e', weight: 700 });
+  b += text(cx + 18, cy + 41, 'This simulates an iDEAL deposit. No bank is involved and no real money moves.', { size: 11.5, fill: '#78350f' });
+
+  b += text(cx, cy + 90, 'Finish your test deposit', { size: 20, weight: 700, fill: C.text });
+
+  const colW = (cw - 24) / 2;
+
+  // Deposit facts — read-only summary of what the checkout is asking for.
+  const factsY = cy + 118;
+  b += rect(cx, factsY, colW, 190, { fill: C.panel, stroke: C.border, r: 10 });
+  const facts = [
+    ['Amount', '€ 12.472,56'],
+    ['To', 'Balance of Vandersteen Koeling B.V.'],
+    ['Deposit', 'PP-DEP-58213'],
+    ['Started', '14 Sep 2026, 14:12'],
+    ['Open until', '15:12 (in 48 minutes)'],
+  ];
+  facts.forEach((r, i) => {
+    const y = factsY + 34 + i * 32;
+    b += text(cx + 20, y, r[0].toUpperCase(), { size: 9.5, fill: C.muted, weight: 700 });
+    b += text(cx + colW - 20, y, r[1], { size: 12.5, weight: 600, anchor: 'end', mono: r[0] === 'Deposit' });
+    if (i < facts.length - 1) b += line(cx + 20, y + 12, cx + colW - 20, y + 12, { stroke: C.border });
+  });
+
+  // Choose the outcome — dashed, TEST SIMULATION badge, the three actions and their explanations.
+  const ocX = cx + colW + 24; const ocW = colW;
+  const ocH = 300;
+  b += rect(ocX, factsY, ocW, ocH, { fill: C.panel, stroke: '#fcd34d', sw: 1.5, dash: '6 5', r: 10 });
+  b += text(ocX + 20, factsY + 32, 'Choose the outcome', { size: 15, weight: 700, fill: C.text });
+  b += badge(ocX + ocW - 148, factsY + 20, 'TEST SIMULATION', 'amber', { w: 130 });
+
+  b += button(ocX + 20, factsY + 56, 200, 'Complete deposit', 'primary', { h: 36 });
+  b += text(ocX + 232, factsY + 78, 'Adds € 12.472,56 of test', { size: 10.5, fill: C.muted });
+  b += text(ocX + 232, factsY + 92, 'money to your balance.', { size: 10.5, fill: C.muted });
+
+  b += button(ocX + 20, factsY + 112, 200, 'Simulate a failed deposit', 'secondary', { h: 36 });
+  b += text(ocX + 232, factsY + 134, 'Records the deposit as', { size: 10.5, fill: C.muted });
+  b += text(ocX + 232, factsY + 148, 'failed. Nothing is added.', { size: 10.5, fill: C.muted });
+
+  b += button(ocX + 20, factsY + 168, 140, 'Back to Balance', 'ghost', { h: 34 });
+
+  b += line(ocX + 20, factsY + 214, ocX + ocW - 20, factsY + 214, { stroke: '#fcd34d' });
+  b += text(ocX + 20, factsY + 236, 'Going back keeps this deposit open until 15:12. You can finish', { size: 10.5, fill: C.muted });
+  b += text(ocX + 20, factsY + 250, 'it from In progress.', { size: 10.5, fill: C.muted });
+
+  b += text(cx, factsY + 210, 'PeakPower never asks for your bank login. There is nothing to enter', { size: 11, fill: C.faint });
+  b += text(cx, factsY + 226, 'on this page.', { size: 11, fill: C.faint });
+
+  return svgDoc(b, { label: 'Customer portal — PeakPower test checkout' });
 }
 
 /* ───────────────────────────────────────────────────────── invoice detail */

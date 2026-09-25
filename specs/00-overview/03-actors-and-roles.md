@@ -121,11 +121,12 @@ outside four-eyes entirely **[DEC-150]**. It is not a permission ladder and it i
 intra-company role model **[DEC-16]** rejected: `trader` and `viewer` still differ from each other in
 nothing but the label. A non-admin account keeps every privilege it had: same data, same trade
 requests, same offer acceptance, same wallet top-ups, same ledger and invoices. ⚠ **Amended
-2026-09-23 by [DEC-163]** — two clauses in the sentence above no longer hold without qualification:
-"differ from each other in nothing but the label" and "same wallet top-ups". Depositing
-(iDEAL, bank transfer, and completing the company's own simulated checkout) is admin and trader; a
-viewer may not. Every other privilege in this list, and every other respect in which `trader` and
-`viewer` differ only by label, is unchanged.
+2026-09-23 by [DEC-163]** — two clauses in the two sentences above no longer hold without
+qualification: "differ from each other in nothing but the label" and "same wallet top-ups". The same
+narrowing reaches the "gate nothing" clause near the top of this section, too: depositing is the one
+thing `trader` and `viewer` now gate. Depositing (iDEAL, bank transfer, and completing the company's
+own simulated checkout) is admin and trader; a viewer may not. Every other privilege in this list, and
+every other respect in which `trader` and `viewer` differ only by label, is unchanged.
 
 A **customer company** has four-eyes either **enabled** or **disabled**. There is **no threshold** —
 not in euros, not in megawatts — so there is no threshold table to build, no default to ship and no

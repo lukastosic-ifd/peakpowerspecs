@@ -12,6 +12,14 @@
 > a `PP-DEP-…` reference matched from a **simulated** incoming feed (reference → auto, IBAN → proposed, else an
 > unmatched queue). Withdrawals reserve → optional four-eyes → a manual employee payout that **re-resolves the
 > destination from the registered IBAN** (theft-proof). The real PSP + real bank feed remain the deferred piece.
+>
+> ⚠ **Built 2026-09-23 by [DEC-162] and [DEC-163]** — the simulated iDEAL redirect now lands in the portal's
+> own **PeakPower test checkout** (`/wallet/checkout/{depositId}`), never a dead external host: read-only deposit
+> facts, and a **Complete deposit** / **Simulate a failed deposit** pair that settle through the same idempotent
+> crediting core as the webhook. Starting a deposit and completing this checkout are gated **admin or trader**,
+> not admin-only. The deposit page (amount + two identical method cards **[F07-R01]** — Bank transfer, then
+> iDEAL, alphabetically, neither preselected) is its own route, and `wallet-topup.svg` in §6 is redrawn
+> against this built UI, with a new `wallet-checkout.svg` for the checkout itself.
 
 Two ways to put money in the wallet, and **only** two **[DEC-58]**:
 
@@ -374,8 +382,9 @@ chargebacks, reversals, settlement reconciliation — leaves the platform entire
 
 | Screen | Mockup |
 | --- | --- |
-| Top-up (iDEAL and bank transfer tabs) | [`wallet-topup.svg`](../60-mockups/wallet-topup.svg) — ⚠ the bank-transfer tab shows a **standing** reference and an amount field with a stated minimum; both are wrong after **[DEC-106]** and **[DEC-84]**. The tab now shows the reference issued for **this** deposit **[F07-R23]** and no limit text **[F07-R28]** |
-| Wallet & ledger | [`wallet-ledger.svg`](../60-mockups/wallet-ledger.svg) |
+| Make a deposit | [`wallet-topup.svg`](../60-mockups/wallet-topup.svg) — ⚠ **redrawn 2026-09-23 against the built UI [DEC-164]**: its own page (not a tab), amount plus two identical, unpreselected method cards **[F07-R01]**, the reference issued for **this** deposit **[F07-R23]**, no limit text **[F07-R28]** |
+| PeakPower test checkout | [`wallet-checkout.svg`](../60-mockups/wallet-checkout.svg) — ⚠ **new 2026-09-23 [DEC-162]**, replacing the dead `payments.simulated.peakpower.dev` redirect the earlier text below still describes |
+| Balance overview | [`wallet-ledger.svg`](../60-mockups/wallet-ledger.svg) — ⚠ **redrawn 2026-09-23 against the built UI [DEC-164]** |
 | **Withdrawal request** | ⚠ **No mockup yet** — new under **[DEC-83]**. It needs the amount against the available balance, the destination IBAN shown read-only **[F07-R33]**, and, under four-eyes, who has to approve **[DEC-71]** |
 
 ## 7. Data
@@ -463,7 +472,7 @@ with a stated fallback. Everything else here is closed.
 | --- | --- |
 | **[OQ-93]** 🟠 | **Which incoming-payment feed does the platform consume for wallet deposits — a CAMT.053 import, a PSP webhook, or a SEPA-instant push from a modern bank?** ⚠ **New 2026-08-19.** **[DEC-106]** requires the platform to match a wire transfer on a reference it issued, which requires a feed; the source names SEPA instant and a PSP-generated description without choosing between them. **What it blocks:** [F07-R24] and therefore [F07-R25], the automatic credit, the honest timing statement on the instructions screen [F07-R16] and the funds-received email's latency [F07-R27] — in short, everything in §3.2 downstream of "the money arrives". **What is not blocked:** the deposit intent and its reference [F07-R23], the portal flow, and manual registration [F07-R17]. **What the answer changes:** latency (minutes versus a working day), who owns the bank connection, whether the feed is coupled to the still-unchosen PSP **[DEC-86]**, and whether the platform ever sees a payment the bookkeeping program does not **[DEC-109]** |
 | **[OQ-109]** 🟠 | **The transfer instructions have no BIC**, although **[F07-R13]** (Must) names one. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
-| **[OQ-110]** 🟠 | **No read shows the withdrawal destination or the approval terms before the first request**, although **[F07-R33]** (Must) requires both. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
+| **[OQ-110]** 🟠 | **No read shows the withdrawal destination or the approval terms before the first request** — **[F07-R33]** (Must) requires the destination; **F07 §6**'s Withdrawal request screen row requires the approval terms. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
 | **[OQ-114]** 🟡 | **`CANCELLED`** (**[F07-R08]**) **has no writer** — neither the webhook nor **[DEC-162]**'s simulated-checkout endpoint can write it. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
 | **[OQ-115]** 🟡 | **No `returnUrl` survives sign-in**, so a customer bounced mid-checkout lands on the dashboard rather than back where they were. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
 | **[OQ-116]** 🟡 | **Bank transfers have no demo simulator** — the counterpart **[DEC-162]** builds for iDEAL. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |

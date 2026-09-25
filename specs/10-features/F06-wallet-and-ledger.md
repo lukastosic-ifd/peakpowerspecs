@@ -17,6 +17,13 @@
 > ⚠ **Amended 2026-09-23 by [DEC-158]** — the customer-facing label reverts to **"Balance"**; the deposit-flow
 > copy uses **"deposit"** rather than "pay/payment". Display text only — the `wallet` domain term, the
 > `/wallet` route and the DTOs/API named above are unchanged.
+>
+> ⚠ **Built 2026-09-23 by [DEC-164]** — the Balance page itself is redesigned and built: an overview-first
+> layout with the hero (Available largest, Settled and Reserved each defined beside their figure, a **TEST
+> MONEY** marker), an **In progress** list, and an Activity card switching **Ledger**/**Deposits**/**Withdrawals**
+> — keeping this file's own Debit/Credit/Available-after ledger columns **[F06 §7]** unchanged. Deposit and
+> Withdraw are now focused pages of their own, and every deposit and withdrawal has a permanent detail page.
+> `wallet-ledger.svg` in §8 is redrawn against this built UI. See also **[DEC-162]**, **[DEC-163]**.
 
 Every customer **company** has one prepaid EUR wallet **[AS-02]**, shared by all of its accounts. It
 funds trades, absorbs invoices, and is the single place a customer can answer "where did my money
@@ -438,13 +445,13 @@ paid to the bank.
 | Customer wallet & ledger | [`wallet-ledger.svg`](../60-mockups/wallet-ledger.svg) |
 | Employee wallet administration | [`employee-wallet-admin.svg`](../60-mockups/employee-wallet-admin.svg) |
 
-⚠ **Both mockups are stale as of 2026-08-19 and must be regenerated** from
-[`screens-customer.mjs`](../60-mockups/screens-customer.mjs) and
-[`screens-employee.mjs`](../60-mockups/screens-employee.mjs). `wallet-ledger.svg` still shows two
-**Invoice** ledger rows, which **[DEC-77]** removes; `employee-wallet-admin.svg` still shows
-**Warning** and **Critical** threshold states, which **[DEC-90]** removes. Neither needs a new screen —
-the customer wallet gains a withdrawal request action **[F06-R33]** and the employee screen gains a
-withdrawal payout queue **[F06-R36]**, and both lose more than they gain.
+⚠ **`wallet-ledger.svg` was redrawn 2026-09-23 against the built UI [DEC-164]** and is current: no
+**Invoice** ledger rows (**[DEC-77]** removed them), the redesigned overview-first layout, and the
+**Debit**/**Credit**/**Available after** columns this file's own §7 specifies.
+`employee-wallet-admin.svg` **remains stale as of 2026-08-19** and must still be regenerated from
+[`screens-employee.mjs`](../60-mockups/screens-employee.mjs) — it still shows **Warning** and
+**Critical** threshold states, which **[DEC-90]** removes, and it still lacks the withdrawal payout
+queue **[F06-R36]**.
 
 ## 9. Data
 

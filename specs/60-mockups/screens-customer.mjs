@@ -44,13 +44,14 @@ export function customerDashboard() {
   b += text(cx + cw - 200, by + 38, '24:47', { size: 24, weight: 700, fill: C.amber, anchor: 'end', mono: true });
   b += button(cx + cw - 176, by + 13, 158, 'View offer', 'amber');
 
-  // price strip
+  // price strip — deferred as the primary surface by [DEC-161] (Prices is the only screen in Phase 1);
+  // wording and figures cleaned to the same standard regardless, since the panel still ships here
   const py = by + 76;
-  b += panel(cx, py, cw, 132, 'Price indications', { subtitle: 'Indicative only — market quote plus 2,0 % markup, never an offer', right: 'updated 14:22' });
+  b += panel(cx, py, cw, 132, 'Prices', { subtitle: 'Indication — not an offer', right: 'updated 14:22' });
   const tiles = [
-    ['Base — Sep 26', '€ 78,45', '+1,25', true], ['Peak — Sep 26', '€ 96,15', '+2,10', true],
-    ['Base — Q4 26', '€ 84,20', '−0,45', false], ['Peak — Q4 26', '€ 103,70', '−1,05', false],
-    ['Base — Cal 27', '€ 79,90', '+0,35', true], ['Peak — Cal 27', '€ 98,25', '+0,80', true],
+    ['Base — Sep 26', '€ 78,45'], ['Peak — Sep 26', '€ 96,15'],
+    ['Base — Q4 26', '€ 84,20'], ['Peak — Q4 26', '€ 103,70'],
+    ['Base — Cal 27', '€ 79,90'], ['Peak — Cal 27', '€ 98,25'],
   ];
   const tw = (cw - 36 - 5 * 12) / 6;
   tiles.forEach((t, i) => {
@@ -58,7 +59,6 @@ export function customerDashboard() {
     b += rect(tx, py + 68, tw, 50, { fill: C.panel2, stroke: C.border, r: 8 });
     b += text(tx + 12, py + 86, t[0], { size: 10.5, fill: C.muted, weight: 600 });
     b += text(tx + 12, py + 107, t[1], { size: 15, fill: C.text, weight: 700 });
-    b += text(tx + tw - 12, py + 107, t[2], { size: 11, fill: t[3] ? C.green : C.danger, weight: 600, anchor: 'end' });
   });
 
   // chart + activity
@@ -389,57 +389,129 @@ export function chartMonthView() {
 
 /* ──────────────────────────────────────────────────── price indications */
 export function priceIndications() {
-  const s = shell({ portal: 'customer', title: 'Price indications', crumb: 'Dutch power · indicative only · no history, no export', nav: NAV, active: 3, user: USER });
+  const s = shell({ portal: 'customer', title: 'Prices', crumb: 'Dutch power · 24 products · sample indications', nav: NAV, active: 3, user: USER });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
-  b += note(cx, cy, cw, 'Indicative only, never firm unless PeakPower says so. Every price is the market quote plus PeakPower’s markup — currently 2,0 %. A firm price is issued only when you request a trade.', 'accent');
+  const NOTE_H = 40; const GAP = 16; const SELECTOR_H = 40; const CHART_H = 300; const LIST_H = 300;
+  const yDisclaimer = cy;
+  const ySelector = yDisclaimer + NOTE_H + GAP;
+  const yChart = ySelector + SELECTOR_H + GAP;
+  const yList = yChart + CHART_H + GAP;
+  const yClose = yList + LIST_H + GAP;
 
-  const cardW = (cw - 2 * 16) / 3;
-  const cards = [
-    ['Base', 'Next month', 'Sep 2026', '€ 78,45', '+1,25', true, '14:22', false],
-    ['Base', 'Next quarter', 'Q4 2026', '€ 84,20', '−0,45', false, '14:22', false],
-    ['Base', 'Next calendar year', 'Cal 2027', '€ 79,90', '+0,35', true, '14:22', false],
-    ['Peak', 'Next month', 'Sep 2026', '€ 96,15', '+2,10', true, '14:22', false],
-    ['Peak', 'Next quarter', 'Q4 2026', '€ 103,70', '−1,05', false, '14:22', false],
-    ['Peak', 'Next calendar year', 'Cal 2027', '€ 98,25', '+0,80', true, '12:40', true],
-  ];
-  cards.forEach((c, i) => {
-    const col = i % 3; const row = Math.floor(i / 3);
-    const x = cx + col * (cardW + 16);
-    const y = cy + 56 + row * 190;
-    b += rect(x, y, cardW, 174, { fill: C.panel, stroke: c[7] ? '#fcd34d' : C.border, r: 10, sw: c[7] ? 1.5 : 1 });
-    b += badge(x + 18, y + 18, c[0].toUpperCase(), c[0] === 'Peak' ? 'indigo' : 'accent', { w: 56 });
-    if (c[7]) b += badge(x + cardW - 96, y + 18, 'STALE 1h42', 'amber', { w: 78 });
-    b += text(x + 18, y + 62, c[1], { size: 11.5, fill: C.muted, weight: 600 });
-    b += text(x + 18, y + 84, c[2], { size: 13, fill: C.text, weight: 600 });
-    b += text(x + 18, y + 122, c[3], { size: 30, fill: c[7] ? C.faint : C.text, weight: 700 });
-    b += text(x + 18, y + 142, '€ / MWh', { size: 10.5, fill: C.faint });
-    b += text(x + cardW - 18, y + 122, c[4], { size: 14, fill: c[5] ? C.green : C.danger, weight: 700, anchor: 'end' });
-    b += text(x + cardW - 18, y + 142, `observed ${c[6]}`, { size: 10, fill: C.faint, anchor: 'end' });
-    b += line(x, y + 154, x + cardW, y + 154, { stroke: C.border });
-    b += text(x + 18, y + 168, 'Indication — not an offer', { size: 10, fill: C.faint });
-    b += text(x + cardW - 18, y + 168, 'Request a price →', { size: 11, fill: C.accent, weight: 600, anchor: 'end' });
+  // info-glyph disclaimer — fixed wording [DEC-161]
+  b += rect(cx, yDisclaimer, cw, NOTE_H, { fill: C.accentBg, stroke: '#5eead4', r: 8 });
+  b += circle(cx + 20, yDisclaimer + 20, 8, { fill: '#0f766e' });
+  b += text(cx + 20, yDisclaimer + 24, 'i', { size: 11, fill: '#fff', weight: 700, anchor: 'middle' });
+  b += text(cx + 38, yDisclaimer + 24, 'A PeakPower indication. A firm price is given only in response to a trade request.', { size: 12.5, fill: '#0f766e', weight: 600 });
+
+  // granularity selector — picks a set of periods, never a date range [DEC-160]
+  const segW = 100; const segH = 34; const segX = cx; const segY = ySelector + 3;
+  b += rect(segX, segY, segW * 3, segH, { fill: C.panel2, stroke: C.border2, r: 17 });
+  b += rect(segX + 2, segY + 2, segW - 4, segH - 4, { fill: C.panel, stroke: C.accent, sw: 1.5, r: 15 });
+  ['Month', 'Quarter', 'Year'].forEach((label, i) => {
+    b += text(segX + i * segW + segW / 2, segY + segH / 2 + 4.5, label, { size: 12, weight: i === 0 ? 700 : 500, fill: i === 0 ? C.text : C.muted, anchor: 'middle' });
+  });
+  // sample note — fixed wording [DEC-161], shown because the configured provider is the simulated fixture [DEC-159].
+  // As-built drift fixed 2026-09-23: the built SAMPLE_NOTE (prices-page.ts) uses the plain ASCII
+  // apostrophe, not U+2019 — this literal must match it character for character.
+  b += text(cx + cw, ySelector + 24, 'Sample indications — generated for demonstration only. They do not reflect PeakPower\'s pricing.', { size: 10, fill: C.faint, anchor: 'end' });
+
+  // forward-curve chart — x = delivery periods of one granularity, y = today’s marked-up €/MWh [DEC-160]
+  b += panel(cx, yChart, cw, CHART_H, 'Base & Peak — forward curve · Month', { subtitle: 'Delivery period on the x-axis · today’s price per MWh', right: 'Indication — not an offer' });
+  const gx = cx + 60; const gy = yChart + 80; const gw = cw - 100; const gh = 140;
+  const periods = ['Sep 26', 'Oct 26', 'Nov 26', 'Dec 26', 'Jan 27', 'Feb 27'];
+  const baseVals = [78.45, 80.10, null, 83.40, 82.90, 81.20];
+  const baseStatus = ['FRESH', 'FRESH', 'UNAVAILABLE', 'FRESH', 'FRESH', 'FRESH'];
+  const peakVals = [96.15, 97.80, 99.40, 101.20, 100.60, 98.90];
+  const peakStatus = ['FRESH', 'FRESH', 'FRESH', 'FRESH', 'FRESH', 'STALE'];
+  const yMin = 74; const yMax = 104;
+  const sx = (i) => gx + i * (gw / (periods.length - 1));
+  const sy = (v) => gy + gh - ((v - yMin) / (yMax - yMin)) * gh;
+
+  b += axis(gx, gy, gw, gh, periods, { gridLines: 2, yLabels: ['€104', '€89', '€74'] });
+
+  const lineFor = (vals) => {
+    let d = ''; let open = false;
+    vals.forEach((v, i) => {
+      if (v == null) { open = false; return; }
+      d += `${open ? ' L ' : 'M '}${sx(i).toFixed(1)} ${sy(v).toFixed(1)}`;
+      open = true;
+    });
+    return d;
+  };
+  b += path(lineFor(baseVals), { stroke: C.accent, sw: 2.5 });
+  b += path(lineFor(peakVals), { stroke: C.indigo, sw: 2.5, dash: '6 3' });
+
+  periods.forEach((p, i) => {
+    if (baseVals[i] == null) {
+      b += text(sx(i), gy + gh + 34, 'Unavailable', { size: 9, fill: C.faint, anchor: 'middle' });
+    } else if (baseStatus[i] === 'STALE') {
+      b += circle(sx(i), sy(baseVals[i]), 5, { fill: C.panel, stroke: C.amber, sw: 2 });
+    } else {
+      b += circle(sx(i), sy(baseVals[i]), 4, { fill: C.accent });
+    }
+    if (peakVals[i] != null) {
+      if (peakStatus[i] === 'STALE') {
+        b += circle(sx(i), sy(peakVals[i]), 5, { fill: C.panel, stroke: C.amber, sw: 2 });
+        b += badge(sx(i) - 28, sy(peakVals[i]) - 28, 'STALE', 'amber', { w: 56 });
+      } else {
+        b += circle(sx(i), sy(peakVals[i]), 4, { fill: C.indigo });
+      }
+    }
   });
 
-  // No trend chart and no export: the board shows the current curve only.
-  const ty = cy + 56 + 2 * 190;
-  b += panel(cx, ty, cw, 210, 'About these prices', { right: 'Montel · NL power · markup 2,0 % (configurable)' });
-  const facts = [
-    ['Indicative, never firm', 'A price becomes firm only when PeakPower issues an offer against your trade request, and it is then time-limited.'],
-    ['Quote plus markup', 'Every indication is the market quote plus PeakPower’s markup — reference data, currently 2,0 %. The raw market price is never shown.'],
-    ['Current curve only', 'No price history is kept in the portal: no trend chart, no comparison with earlier days.'],
-    ['No export', 'Prices cannot be downloaded, exported or read over the API. Your own usage data can be.'],
-  ];
-  facts.forEach((f, i) => {
-    const fy = ty + 66 + i * 38;
-    if (i > 0) b += line(cx + 18, fy - 24, cx + cw - 18, fy - 24, { stroke: C.border });
-    b += circle(cx + 26, fy - 4, 3, { fill: C.accent });
-    b += text(cx + 40, fy, f[0], { size: 12.5, weight: 700 });
-    b += text(cx + 240, fy, f[1], { size: 11.5, fill: C.muted });
-  });
+  b += legend(gx, yChart + CHART_H - 34, [
+    { color: C.accent, label: 'Base' },
+    { color: C.indigo, label: 'Peak', dash: true },
+  ]);
 
-  return svgDoc(b, { label: 'Customer portal — price indications' });
+  // static callout — the chart tooltip repeats the label [DEC-160]
+  const ttX = sx(1); const ttY = sy(baseVals[1]);
+  b += path(`M ${ttX - 8} ${ttY - 16} L ${ttX + 8} ${ttY - 16} L ${ttX} ${ttY - 4} Z`, { fill: '#0f172a' });
+  b += rect(ttX - 72, ttY - 80, 144, 66, { fill: '#0f172a', stroke: 'none', r: 8 });
+  b += text(ttX, ttY - 62, 'Base — Oct 2026', { size: 10.5, fill: '#cbd5e1', weight: 600, anchor: 'middle' });
+  b += text(ttX, ttY - 44, '€ 80,10 /MWh', { size: 14, fill: '#ffffff', weight: 700, anchor: 'middle' });
+  b += text(ttX, ttY - 28, 'Indication — not an offer', { size: 9, fill: '#94a3b8', anchor: 'middle' });
+
+  // list — same products, per-cell status. Base and Peak are separate products, each with its own
+  // observedAt, so each gets its own OBSERVED column rather than one shared time implying a single
+  // observation both rows share [DEC-160], [DEC-161] (6), F04-R06 ("the observation timestamp is
+  // always shown", per product).
+  b += panel(cx, yList, cw, LIST_H, 'This period’s prices', { subtitle: 'Month · Base and Peak, per delivery period', right: 'Indication — not an offer' });
+  const cols = [
+    { label: 'PERIOD', w: 190 },
+    { label: 'BASE € / MWH', w: 140, align: 'end' },
+    { label: 'STATUS', w: 110 },
+    { label: 'OBSERVED', w: 95, align: 'end' },
+    { label: 'PEAK € / MWH', w: 140, align: 'end' },
+    { label: 'STATUS', w: 110 },
+    { label: 'OBSERVED', w: 95, align: 'end' },
+  ];
+  const badgeFor = (st) => (st === 'FRESH' ? 'green' : st === 'STALE' ? 'amber' : 'muted');
+  const textFor = (st) => (st === 'FRESH' ? 'Fresh' : st === 'STALE' ? 'Stale' : 'Unavailable');
+  // Each product's own observedAt. "Now" for this static render is ~14:22 — a FRESH observation
+  // (staleAfter 30 min, inside the market window) sits within 30 minutes of it; the one STALE point
+  // (Peak, Feb 27) is well outside that, at 12:40 (1h42 old), which is exactly what makes it STALE
+  // rather than FRESH. Base has no observation at all for Nov 26 (UNAVAILABLE), so it shows no time.
+  const baseObserved = ['14:18', '14:12', null, '14:09', '14:05', '14:22'];
+  const peakObserved = ['14:20', '14:14', '14:10', '14:07', '14:03', '12:40'];
+  const rows = periods.map((p, i) => [
+    p,
+    baseVals[i] != null ? eur(baseVals[i]) : { t: '—', fill: C.faint },
+    { t: textFor(baseStatus[i]), badge: badgeFor(baseStatus[i]) },
+    { t: baseObserved[i] || '—', fill: C.faint },
+    peakVals[i] != null ? eur(peakVals[i]) : { t: '—', fill: C.faint },
+    { t: textFor(peakStatus[i]), badge: badgeFor(peakStatus[i]) },
+    { t: peakObserved[i] || '—', fill: C.faint },
+  ]);
+  b += table(cx + 18, yList + 66, cw - 36, cols, rows, { rowH: 32 });
+
+  // no history, no export, no API — [F04-R16], [F04-R20]
+  b += note(cx, yClose, cw, 'Current curve only — no price history, no export, no API. Twenty-four products across 6 months, 4 quarters and 2 calendar years, Base and Peak.', 'muted');
+
+  return svgDoc(b, { label: 'Customer portal — prices' });
 }
 
 /* ───────────────────────────────────────────────────────── trade wizard */

@@ -708,12 +708,12 @@ export function walletLedger() {
   ];
   // Chronological, then displayed newest-first. Balances are computed, so they reconcile.
   const hist = [
-    ['28-07 08:30', 'Deposit (transfer)', 'green', 'Transfer matched on ref PP-4821-QK', 'System', 'DEP-0118', 76500, 0],
+    ['28-07 08:30', 'Deposit (bank)', 'green', 'Bank transfer PP-DEP-4821', 'PeakPower', 'PP-DEP-4821', 76500, 0],
     ['30-07 14:44', 'Funds reserved', 'amber', 'Peak Q1-27 · 1,0 MW · incl. VAT', 'M. Vandersteen', 'TRD-1051', 0, 88049.28],
     ['30-07 14:52', 'Trade confirmed', 'green', 'Peak Q1-27 · reservation settled', 'M. Bakker ⬥', 'TRD-1051', -88049.28, -88049.28],
-    ['06-08 09:20', 'Withdrawal', 'muted', 'Paid out to NL18 INGB 0007 2519 44', 'M. Vandersteen', 'WDR-0014', -5000, 0],
-    ['10-08 07:41', 'Deposit (transfer)', 'green', 'Transfer matched on ref PP-5107-TD', 'System', 'DEP-0126', 60000, 0],
-    ['12-08 09:14', 'Deposit (test checkout)', 'green', 'Completed in the PeakPower test checkout', 'J. de Vries', 'PAY-2291', 25000, 0],
+    ['06-08 09:20', 'Withdrawal paid', 'muted', 'Paid out to NL18 INGB 0007 2519 44', 'PeakPower', 'WDR-0014', -5000, 0],
+    ['10-08 07:41', 'Deposit (bank)', 'green', 'Bank transfer PP-DEP-5107', 'PeakPower', 'PP-DEP-5107', 60000, 0],
+    ['12-08 09:14', 'Deposit (iDEAL)', 'green', 'iDEAL deposit (test checkout)', 'Automatic', 'sim-0199a3f2', 25000, 0],
     ['13-08 10:15', 'Funds reserved', 'amber', 'Base Oct-26 · 0,12 MW · incl. VAT', 'P. Aksoy', 'TRD-1072', 0, 11374],
   ];
   let settled = 20000; let reserved = 0;
@@ -802,14 +802,6 @@ export function walletTopup() {
     b += text(cx + 220, y, r[1], { size: 12, weight: 600, mono: i > 0 });
   });
 
-  b += panel(cx, formY + 524, cw, 132, 'Recent top-ups');
-  b += table(cx + 18, formY + 578, cw - 36, [
-    { label: 'DATE', w: 160 }, { label: 'METHOD', w: 200 }, { label: 'REFERENCE', w: 200 },
-    { label: 'STATUS', w: 160 }, { label: 'AMOUNT', w: 200, align: 'end' },
-  ], [
-    [{ t: '12 Aug 2026, 09:14' }, { t: 'iDEAL · test checkout' }, { t: 'PAY-2291', mono: true }, { t: 'Succeeded', badge: 'green' }, { t: '€ 25.000,00', align: 'end', weight: 600 }],
-    [{ t: '10 Aug 2026, 07:41' }, { t: 'Bank transfer' }, { t: 'PP-5107-TD', mono: true }, { t: 'Matched', badge: 'green' }, { t: '€ 60.000,00', align: 'end', weight: 600 }],
-  ], { rowH: 34 });
 
   return svgDoc(b, { label: 'Customer portal — make a deposit' });
 }
@@ -835,7 +827,7 @@ export function walletCheckout() {
   const facts = [
     ['Amount', '€ 12.472,56'],
     ['To', 'Balance of Vandersteen Koeling B.V.'],
-    ['Deposit', 'PP-DEP-58213'],
+    ['Deposit', 'sim-0199b7c4e1'],
     ['Started', '14 Sep 2026, 14:12'],
     ['Open until', '15:12 (in 48 minutes)'],
   ];

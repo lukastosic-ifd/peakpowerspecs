@@ -17,6 +17,13 @@
 > ⚠ **Amended 2026-09-23 by [DEC-158]** — the customer-facing label reverts to **"Balance"**; the deposit-flow
 > copy uses **"deposit"** rather than "pay/payment". Display text only — the `wallet` domain term, the
 > `/wallet` route and the DTOs/API named above are unchanged.
+>
+> ⚠ **Built 2026-09-23 by [DEC-164]** — the Balance page itself is redesigned and built: an overview-first
+> layout with the hero (Available largest, Settled and Reserved each defined beside their figure, a **TEST
+> MONEY** marker), an **In progress** list, and an Activity card switching **Ledger**/**Deposits**/**Withdrawals**
+> — keeping this file's own Debit/Credit/Available-after ledger columns **[F06 §7]** unchanged. Deposit and
+> Withdraw are now focused pages of their own, and every deposit and withdrawal has a permanent detail page.
+> `wallet-ledger.svg` in §8 is redrawn against this built UI. See also **[DEC-162]**, **[DEC-163]**.
 
 Every customer **company** has one prepaid EUR wallet **[AS-02]**, shared by all of its accounts. It
 funds trades, absorbs invoices, and is the single place a customer can answer "where did my money
@@ -438,13 +445,13 @@ paid to the bank.
 | Customer wallet & ledger | [`wallet-ledger.svg`](../60-mockups/wallet-ledger.svg) |
 | Employee wallet administration | [`employee-wallet-admin.svg`](../60-mockups/employee-wallet-admin.svg) |
 
-⚠ **Both mockups are stale as of 2026-08-19 and must be regenerated** from
-[`screens-customer.mjs`](../60-mockups/screens-customer.mjs) and
-[`screens-employee.mjs`](../60-mockups/screens-employee.mjs). `wallet-ledger.svg` still shows two
-**Invoice** ledger rows, which **[DEC-77]** removes; `employee-wallet-admin.svg` still shows
-**Warning** and **Critical** threshold states, which **[DEC-90]** removes. Neither needs a new screen —
-the customer wallet gains a withdrawal request action **[F06-R33]** and the employee screen gains a
-withdrawal payout queue **[F06-R36]**, and both lose more than they gain.
+⚠ **`wallet-ledger.svg` was redrawn 2026-09-23 against the built UI [DEC-164]** and is current: no
+**Invoice** ledger rows (**[DEC-77]** removed them), the redesigned overview-first layout, and the
+**Debit**/**Credit**/**Available after** columns this file's own §7 specifies.
+`employee-wallet-admin.svg` **remains stale as of 2026-08-19** and must still be regenerated from
+[`screens-employee.mjs`](../60-mockups/screens-employee.mjs) — it still shows **Warning** and
+**Critical** threshold states, which **[DEC-90]** removes, and it still lacks the withdrawal payout
+queue **[F06-R36]**.
 
 ## 9. Data
 
@@ -529,3 +536,6 @@ withdrawal payout queue **[F06-R36]**, and both lose more than they gain.
 | [OQ-31] | Must wallet funds be held in a segregated client account, and does that carry regulatory obligations? **Deferred by [DEC-28]** — a go-live gate, not a build gate. [R-05](../70-delivery/02-risks.md) stays open. ⚠ Confirmed 2026-08-19 with a stated intent — *"Ideally we want to have a third party account. For now just use same bank account."* — and **[DEC-83]** raises the stake, because money now leaves the same undifferentiated account it sits in |
 | [OQ-93] | Which incoming-payment feed does the platform consume for wallet deposits — a CAMT.053 import, a PSP webhook, or a SEPA-instant push? **[DEC-106]** requires the platform to match a wire transfer on a reference it issued, which needs a feed, and the source names transports without choosing one. **Blocks the bank-transfer deposit route**: until it is answered `DEPOSIT_BANK` is no better than manual registration **[F06-R25]** |
 | [OQ-94] | What collateral or exposure limit applies to a **short** position? **[DEC-72]** permits short selling. The wallet is prepaid **[AS-11]** and a short is a promise to deliver rather than a spend, so the pre-trade balance check **[DEC-41]** does not bound the risk and the wallet has no instrument that does. Needed before the sell path opens |
+| [OQ-111] | **[F06-R17]** (Must) requires a wallet's active reservations to be listed with trade links and ages, but `GET /wallet` returns the aggregate `reservedAmount` only, with no per-reservation breakdown. The redesigned Balance page's Reserved definition falls back to naming the known withdrawal holds and folding the rest into "and accepted trades" until it lands. Registered by **[DEC-164]** |
+| [OQ-112] | **[F06-R20]** (Must) requires each ledger row to link to its cause, and **[F06-R05]**/**[F06-R24]** (Must) require the actor to be visible, but the DTO carries `causedByType`/`causedById` with no human reference (`TRD-`/`WDR-`/`DEP-`) and no `actorKind`. The redesigned ledger view links through the routes that already exist and infers the actor from the entry type until it lands. Registered by **[DEC-164]** |
+| [OQ-113] | **[F06-R22]** (Should) wants the ledger exportable to CSV for a chosen period, but only the PDF/statement export exists server-side. The redesigned Export panel pages through the ledger endpoint and assembles the CSV client-side until a server-side export lands. Registered by **[DEC-164]** |

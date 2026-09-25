@@ -1,6 +1,8 @@
 # Open Questions
 
-Every `[OQ-nn]` reference in this specification set resolves here. **16 open, 80 closed.**
+Every `[OQ-nn]` reference in this specification set resolves here. **32 open, 83 closed.** ⚠ This line
+had been left at its original 2026-08-19 figure through every later round; corrected 2026-09-23 against
+the Summary section's own running total, which is the source of truth (see below).
 
 **Blocking** means work cannot responsibly start until it is answered. **Impact** is what changes if
 the answer is different from the working assumption.
@@ -272,6 +274,23 @@ it blocks nothing a customer does and everything support does.
 | **OQ-106** | ✅ | **Wallet withdrawal four-eyes can be skipped by a SQL-injection actor (own account only)** — recorded by **[DEC-156]** | The withdrawal money-authorising *transitions* (approve / decline / cancel) are owner-privileged and `app_customer_role` holds **no `UPDATE`** on `wallet.withdrawal_request`, so it cannot self-approve; and the payout **re-resolves the destination from the registered IBAN [DEC-61]**, so nothing can redirect money — **the path is theft-proof**. The residual was that `app_customer_role` still held **`INSERT`** on the table, so an actor with a *separate* SQL-injection foothold could fabricate a `REQUESTED` row that skips the second admin — only ever to the company's **own** account (no theft). ✅ **Closed 2026-09-22.** The **create** now also runs owner-privileged — `WithdrawalEndpoints.RequestAsync` validates amount + `AvailableBalance` + the server-derived destination in C#, then does the reserve and the row `INSERT` through `OwnerPrivilegedWrite` — and the grant is narrowed to **`SELECT` only** on `wallet.withdrawal_request` for `app_customer_role` (a raw `INSERT` now returns `42501`, pinned by `WithdrawalEndpointTests.A_SQL_actor_as_app_customer_role_cannot_fabricate_a_withdrawal_by_raw_INSERT` + verify-migrator). Every withdrawal write — create, approve, decline, cancel — is now owner-privileged with C# enforcing the invariants; the app role writes nothing to the table. No SQL-level four-eyes bypass remains | Security — closed |
 | **OQ-107** | 🟠 | **The back-office wallet surface is read-thin** — recorded by **[DEC-156]** | The employee wallet admin can work the unmatched-payment queue, pay out a withdrawal (by id) and toggle four-eyes, but the platform exposes **no employee-side wallet balance / ledger read**, **no "withdrawals ready for payout" list** (payout is direct-entry by id), **no company-IBAN read** (the customer sees the withdrawal destination only after a first request), **no ledger caused-by detail route** (the customer ledger links show as text), and **no wallet funding-instructions document endpoint** (bank-transfer instructions are shown inline, unlike onboarding's downloadable doc). Each is a small follow-up platform *read* the web already has a home for — none blocks the wallet, but together they make the back-office side and a few customer touches thinner than the mockups | Product — a batch of small platform reads |
 
+## Balance page & simulated checkout round — 2026-09-23
+
+Eight rows, all raised by **[DEC-164]**'s inventory of platform data the redesigned Balance page reads
+but that no endpoint yet serves. Each is shipped with a stated, honest UI fallback, so none of the
+eight blocks the page — they are recorded so the fallback is a known one rather than a silent gap.
+
+| Ref | P | Question | Impact | Owner |
+| --- | :--: | --- | --- | --- |
+| **OQ-109** | 🟠 | **The transfer instructions have no BIC.** **[F07-R13]** (Must) names IBAN, BIC, account holder and reference; `GET /wallet/deposits/{id}` returns `instructions { iban, accountHolder }` only — the platform has never had a BIC field to serve. Registered by **[DEC-164]**, which puts the instructions on a permanent, reload-safe page rather than only the create response | Until it lands, the instructions card omits the BIC row entirely rather than showing a blank or a guess; nothing else on the deposit page depends on it. Adding it later is one DTO field | Product |
+| **OQ-110** | 🟠 | **No read shows the withdrawal terms before the first request.** **[F07-R33]** requires the destination to be shown **before** submission, and **F07 §6**'s Withdrawal request screen row requires showing, under four-eyes, who has to approve. The customer API has no company bank-account or IBAN read at all — the only IBAN a customer can read is `WithdrawalRequestDto.Destination`, snapshotted at request time on an **already-created** request (**[OQ-107]** records the same gap from the back-office side). The built `WithdrawalRequestDto` also carries no `approval` object — that shape exists only in the API contracts' own example, not in the built DTO. Registered by **[DEC-164]**, whose Withdraw page's first step needs both before the customer commits | Until it lands, the Withdraw page uses the redesign's fallback: the destination is read from the **latest withdrawal request's snapshot** when one exists, otherwise the copy reads "your company's registered bank account" rather than naming an IBAN nothing can read yet. The approval line is conditional copy — "If your company requires a second approval, another administrator approves before PeakPower pays out." — with the eligible approvers' names drawn from the **company roster**, already readable **[DEC-62]**, not from a withdrawal-terms endpoint. The review step after submission still shows the true, server-computed state | Product |
+| **OQ-111** | 🟠 | **No per-reservation read exists.** **[F06-R17]** requires a wallet's active reservations to be listed with trade links and ages; `GET /wallet` returns the aggregate `reservedAmount` only. Registered by **[DEC-164]**, whose Reserved figure needs a definition sentence such as "Held for 1 withdrawal request and accepted trades" | Until it lands, Reserved's definition names the known withdrawal holds (from the withdrawals list, already readable) and folds the remainder into "and accepted trades" with no per-trade breakdown or link. The In progress section's own withdrawal rows are unaffected, since those already come from the withdrawals list | Product |
+| **OQ-112** | 🟠 | **The ledger has no human reference or actor kind.** **[F06-R20]** requires each row to link to its cause and **[F06-R05]**/**[F06-R24]** require the actor to be visible; the DTO carries a typed `causedByType`/`causedById` pair but no reference such as `TRD-`/`WDR-`/`DEP-` and no `actorKind` (`MEMBER`/`PEAKPOWER`/`SYSTEM`). Registered by **[DEC-164]** for the redesigned Activity ledger view | Until it lands, the Reference cell links through the routes that already exist for deposits and withdrawals (built from `causedByType` + `causedById`) and falls back to plain text where none exists yet (a trade link needs trading-poc); the actor is inferred from the entry type, which is correct for every type built so far | Product |
+| **OQ-113** | 🟡 | **There is no server-side CSV export.** **[F06-R22]** (Should) wants the ledger exportable to CSV for a chosen period; only the PDF/statement export exists server-side | Until it lands, the redesigned Export panel pages through the existing ledger endpoint for the chosen period and assembles the CSV client-side — correct, but slower on a long period and heavier per export than a server-side query | Product |
+| **OQ-114** | 🟡 | **`CANCELLED` has no writer.** **[F07-R08]**'s state list includes `CANCELLED`, but nothing in the webhook or **[DEC-162]**'s simulated-checkout endpoint can write it — **Back to Balance** on the checkout page makes no call at all, and a real customer closing their bank's iDEAL screen has no path back to the platform either | Until it lands, an abandoned checkout stays `INITIATED` until it resumes or expires at its 1 h lifetime **[DEC-162]**, and **Back to Balance** carries the note "keeps this deposit open until {time}" — explaining exactly that, rather than claiming a cancellation that cannot be recorded | Engineering |
+| **OQ-115** | 🟡 | **No `returnUrl` survives sign-in.** A customer whose session has expired, arriving cold at `/wallet/checkout/{id}` or any wallet route, is sent to sign-in and lands on the dashboard afterwards. Registered by **[DEC-164]**; the redesign's checkout and deposit-detail pages are exactly the routes this would strand a customer on mid-flow | Until it lands, the In progress section's "Checkout not finished" / **Continue** item is the mitigation — a bounced customer can still get back to an open checkout from the Balance overview, at the cost of one extra click | Engineering |
+| **OQ-116** | 🟡 | **Bank transfers have no demo simulator.** **[DEC-162]** gives the demo a working simulated iDEAL checkout; bank transfers have no equivalent — `Demo:IncomingBankFeedSimulator` is not wired into the demo compose stack, so a bank-transfer deposit on the demo VM can only reach "Awaiting your transfer" and never resolves. The user's own decision was iDEAL only for the simulated checkout, so this gap is left open rather than closed in the same round | Until it lands, the demo's bank-transfer route is honestly incomplete: the instructions page and the "Awaiting your transfer" status both work, but nothing on the demo VM ever completes one. Wiring the existing flag with the **[DEC-141]** compose-default pattern is the shape of the fix | Engineering |
+
 ---
 
 ## Forward price indications round — 2026-09-23
@@ -322,7 +341,7 @@ inside a decision already taken, not a question blocking work.
 
 ⚠ **Two rows joined without a Summary amendment in the interval, caught up here rather than left
 silent: [OQ-106] (closed on arrival — [DEC-156]) and [OQ-107] (🟠 P2 — [DEC-156]), taking the
-position to 107 entries · 24 open · 83 closed before this round's own change — and P2 to 17, since
+position to 107 entries · 24 open · 83 closed before either round's own change — and P2 to 17, since
 [OQ-107] is the one that moved it (16 → 17); the closed [OQ-106] touches no priority count.**
 
 ⚠ **Amended 2026-09-23 by the forward price indications round: 108 entries · 25 open · 83 closed.**
@@ -333,6 +352,18 @@ existing row's status column moves: **[OQ-23]** stays ⏸ (widened in place from
 twenty-four, plus a licence/service-coverage question for the far offsets) and **[OQ-99]** stays 🟡
 (extended in place to cover the endpoint's own missing entitlement gate) — both edits, no new rows,
 so neither touches the count.
+
+⚠ **Amended 2026-09-23 by the Balance page & simulated checkout round: 116 entries · 33 open · 83
+closed.** Eight further rows join with **[DEC-164]**'s Balance redesign, numbered **[OQ-109]** to
+**[OQ-116]**, picking up from the next free number above **[OQ-108]** and all carrying a stated
+fallback rather than blocking anything. Four leave a **Must** unmet behind their fallback and are
+filed 🟠 P2, like **[OQ-107]** — **[OQ-109]** (BIC, **[F07-R13]**), **[OQ-110]** (withdrawal terms,
+**[F07-R33]**/**[F06-R37]**), **[OQ-111]** (reservations list, **[F06-R17]**) and **[OQ-112]** (ledger
+references and actor kind, **[F06-R20]**) — so P2 rises **18 → 22**. The other four are 🟡 P3 —
+**[OQ-113]** (server-side CSV, a Should), **[OQ-114]** (a `CANCELLED` outcome), **[OQ-115]** (a
+`returnUrl` through sign-in) and **[OQ-116]** (a demo bank-transfer simulator) — so P3 rises **6 → 10**.
+No new 🔴 row. 25 + 8 = 33 open; 108 + 8 = **116** total; 83 closed is unchanged by this round. 22 (P2)
++ 10 (P3) + 1 (P1, unchanged) = **33**, agreeing with the open count.
 
 | Priority | Count | Blocks |
 | --- | --: | --- |

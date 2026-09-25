@@ -12,6 +12,14 @@
 > a `PP-DEP-…` reference matched from a **simulated** incoming feed (reference → auto, IBAN → proposed, else an
 > unmatched queue). Withdrawals reserve → optional four-eyes → a manual employee payout that **re-resolves the
 > destination from the registered IBAN** (theft-proof). The real PSP + real bank feed remain the deferred piece.
+>
+> ⚠ **Built 2026-09-23 by [DEC-162] and [DEC-163]** — the simulated iDEAL redirect now lands in the portal's
+> own **PeakPower test checkout** (`/wallet/checkout/{depositId}`), never a dead external host: read-only deposit
+> facts, and a **Complete deposit** / **Simulate a failed deposit** pair that settle through the same idempotent
+> crediting core as the webhook. Starting a deposit and completing this checkout are gated **admin or trader**,
+> not admin-only. The deposit page (amount + two identical method cards **[F07-R01]** — Bank transfer, then
+> iDEAL, alphabetically, neither preselected) is its own route, and `wallet-topup.svg` in §6 is redrawn
+> against this built UI, with a new `wallet-checkout.svg` for the checkout itself.
 
 Two ways to put money in the wallet, and **only** two **[DEC-58]**:
 
@@ -161,6 +169,12 @@ sequenceDiagram
 must still be credited, and a customer who is redirected back before the webhook lands must see
 "processing" rather than a wrong answer.
 
+⚠ **In the demo, [DEC-162]**: the simulated provider's redirect URL is the portal's own **PeakPower
+test checkout** (`/wallet/checkout/{depositId}`), not a bank domain — `payments.simulated.peakpower.dev`
+never existed. The diagram above is unchanged in shape; only the simulated provider's own destination
+differs, and its Complete/Fail actions settle through this same webhook-authoritative core, as the
+**simulated PSP's own action** rather than the browser's.
+
 ### 3.2 Bank-transfer deposit **[DEC-106]**
 
 ```mermaid
@@ -242,15 +256,15 @@ platform can, on its own, move money to a bank account.
 
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
-| F07-R01 | A customer can start a top-up by entering an amount and choosing iDEAL. ⚠ **Amended 2026-08-19 by [DEC-106]** — the entry point is now **one deposit action with a method choice**: the customer starts a deposit, enters an amount, then picks **iDEAL** (this section) or **bank transfer** (**[F07-R23]**). The two methods are peers on that screen; iDEAL is not the default that bank transfer hides behind. | Must |
+| F07-R01 | A customer can start a top-up by entering an amount and choosing iDEAL. ⚠ **Amended 2026-08-19 by [DEC-106]** — the entry point is now **one deposit action with a method choice**: the customer starts a deposit, enters an amount, then picks **iDEAL** (this section) or **bank transfer** (**[F07-R23]**). The two methods are peers on that screen; iDEAL is not the default that bank transfer hides behind. ⚠ **Amended 2026-09-23 by [DEC-163]** — the customer who may do this is an **admin or trader**, not literally any member; a viewer cannot start a deposit. | Must |
 | ~~F07-R02~~ | ~~Minimum and maximum top-up amounts are configurable (defaults €100 and €250 000) **[OQ-32]**.~~ ⚠ **Retired 2026-08-19 by [DEC-84]** — there is **no minimum and no maximum**. The €100 / €250 000 defaults are **removed rather than configured**, because the right deposit is whatever the volume the customer intends to trade costs **[DEC-77]**, and no constant knows that. Replaced by **[F07-R28]**; closes [OQ-32]. | ~~Must~~ |
 | F07-R03 | A `payment` record is created before redirecting, with state `INITIATED`. | Must |
-| F07-R04 | The customer is redirected to the provider and returned to a platform URL that preserves their prior context. | Must |
+| F07-R04 | The customer is redirected to the provider and returned to a platform URL that preserves their prior context. ⚠ **Amended 2026-09-23 by [DEC-162] and [DEC-164]** — the return target is `/wallet/deposits/{id}`; in the demo, the simulated provider's own checkout sits between the redirect and the return, at `/wallet/checkout/{id}`. | Must |
 | F07-R05 | The provider webhook is signature-verified; unverified callbacks are rejected and logged. | Must |
 | F07-R06 | The webhook is idempotent on the provider payment id: repeated deliveries credit once. | Must |
 | F07-R07 | On success the wallet is credited with a `DEPOSIT_IDEAL` entry in the same transaction as the state change. | Must |
 | F07-R08 | Payment states: `INITIATED`, `PENDING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EXPIRED`. | Must |
-| F07-R09 | If the browser returns before the webhook, the UI shows "processing" and polls until resolved or a timeout, then explains what to do. | Must |
+| F07-R09 | If the browser returns before the webhook, the UI shows "processing" and polls until resolved or a timeout, then explains what to do. ⚠ **Amended 2026-09-23 by [DEC-164]** — the visible budget is **60 s**; past it the page reads "Still confirming…" with a **Check again** action, and it never shows failure while the deposit is still in flight. | Must |
 | F07-R10 | A reconciliation job queries the provider for payments stuck in `INITIATED`/`PENDING` beyond a threshold and resolves them. | Must |
 | F07-R11 | The customer's payment history is visible with state and timestamps. | Must |
 | F07-R12 | The suggested top-up amount is prefilled when the customer arrives from a blocked trade — the shortfall, rounded up. | Should |
@@ -291,7 +305,7 @@ PeakPower pays out manually, the platform records. Nothing here initiates a bank
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
 | F07-R29 | A customer account can raise a **withdrawal request** for an amount up to the **available balance**. The requested amount is **held** from that moment — it leaves the available balance and cannot be spent on a trade — using the wallet's existing reserved-amount mechanism [F06](F06-wallet-and-ledger.md) §2. Without the hold, the same euros can be traded and withdrawn **[AS-11]**. | Must |
-| F07-R30 | When the customer company has **four-eyes enabled [DEC-71]**, a withdrawal must be approved by a **different admin account of the same company** before PeakPower sees it; that admin may also decline it, which releases the hold and moves no money. Deposits are explicitly **not** four-eyes actions **[DEC-71]** — anyone may put money in. | Must |
+| F07-R30 | When the customer company has **four-eyes enabled [DEC-71]**, a withdrawal must be approved by a **different admin account of the same company** before PeakPower sees it; that admin may also decline it, which releases the hold and moves no money. Deposits are explicitly **not** four-eyes actions **[DEC-71]** — anyone may put money in. ⚠ **Amended 2026-09-23 by [DEC-163]** — read "anyone" as **admin or trader**; a viewer may not. | Must |
 | F07-R31 | PeakPower is notified of an approved request; an employee pays it out **manually** by bank transfer and then **records the payout** — value date, bank reference, acting employee — which posts the wallet debit and releases the hold in one transaction. **No invoice and no credit note is raised for a withdrawal, and none for a deposit** **[DEC-106]**: nothing is sold, so there is nothing to invoice and no VAT to state **[DEC-76]**. The bookkeeping program sees both movements through its own bank feed **[DEC-109]**. | Must |
 | F07-R32 | Withdrawal states: `REQUESTED`, `AWAITING_APPROVAL`, `APPROVAL_DECLINED`, `REJECTED`, `PAID`, `CANCELLED`. `CANCELLED` is the customer withdrawing their own request before payout; `REJECTED` is PeakPower refusing it **with a mandatory reason**. Every state change records the acting account **[DEC-17]**, and every state except `PAID` releases the hold. | Must |
 | F07-R33 | The destination is **the company bank account on the customer record [DEC-61]** and cannot be typed in on the request. A customer who wants a different account changes it first — which is itself a four-eyes action **[DEC-71]** and cannot be edited, only replaced by adding an account and deactivating the old one. This is what stops a compromised account from redirecting money. | Must |
@@ -368,8 +382,9 @@ chargebacks, reversals, settlement reconciliation — leaves the platform entire
 
 | Screen | Mockup |
 | --- | --- |
-| Top-up (iDEAL and bank transfer tabs) | [`wallet-topup.svg`](../60-mockups/wallet-topup.svg) — ⚠ the bank-transfer tab shows a **standing** reference and an amount field with a stated minimum; both are wrong after **[DEC-106]** and **[DEC-84]**. The tab now shows the reference issued for **this** deposit **[F07-R23]** and no limit text **[F07-R28]** |
-| Wallet & ledger | [`wallet-ledger.svg`](../60-mockups/wallet-ledger.svg) |
+| Make a deposit | [`wallet-topup.svg`](../60-mockups/wallet-topup.svg) — ⚠ **redrawn 2026-09-23 against the built UI [DEC-164]**: its own page (not a tab), amount plus two identical, unpreselected method cards **[F07-R01]**, the reference issued for **this** deposit **[F07-R23]**, no limit text **[F07-R28]** |
+| PeakPower test checkout | [`wallet-checkout.svg`](../60-mockups/wallet-checkout.svg) — ⚠ **new 2026-09-23 [DEC-162]**, replacing the dead `payments.simulated.peakpower.dev` redirect the earlier text below still describes |
+| Balance overview | [`wallet-ledger.svg`](../60-mockups/wallet-ledger.svg) — ⚠ **redrawn 2026-09-23 against the built UI [DEC-164]** |
 | **Withdrawal request** | ⚠ **No mockup yet** — new under **[DEC-83]**. It needs the amount against the available balance, the destination IBAN shown read-only **[F07-R33]**, and, under four-eyes, who has to approve **[DEC-71]** |
 
 ## 7. Data
@@ -448,12 +463,19 @@ chargebacks, reversals, settlement reconciliation — leaves the platform entire
 
 ## 11. Open questions
 
-Post-2026-08-19 truth: **one question is open in this file — [OQ-93] — and it blocks the bank-transfer
-deposit route.** Everything else here is closed.
+Post-2026-08-19 truth, updated 2026-09-23: **six questions are open against this file** — [OQ-93],
+which blocks the bank-transfer deposit route, and five raised by **[DEC-164]**'s Balance redesign —
+[OQ-109], [OQ-110], [OQ-114], [OQ-115] and [OQ-116] — none of which blocks anything, each shipping
+with a stated fallback. Everything else here is closed.
 
 | Ref | Question |
 | --- | --- |
 | **[OQ-93]** 🟠 | **Which incoming-payment feed does the platform consume for wallet deposits — a CAMT.053 import, a PSP webhook, or a SEPA-instant push from a modern bank?** ⚠ **New 2026-08-19.** **[DEC-106]** requires the platform to match a wire transfer on a reference it issued, which requires a feed; the source names SEPA instant and a PSP-generated description without choosing between them. **What it blocks:** [F07-R24] and therefore [F07-R25], the automatic credit, the honest timing statement on the instructions screen [F07-R16] and the funds-received email's latency [F07-R27] — in short, everything in §3.2 downstream of "the money arrives". **What is not blocked:** the deposit intent and its reference [F07-R23], the portal flow, and manual registration [F07-R17]. **What the answer changes:** latency (minutes versus a working day), who owns the bank connection, whether the feed is coupled to the still-unchosen PSP **[DEC-86]**, and whether the platform ever sees a payment the bookkeeping program does not **[DEC-109]** |
+| **[OQ-109]** 🟠 | **The transfer instructions have no BIC**, although **[F07-R13]** (Must) names one. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
+| **[OQ-110]** 🟠 | **No read shows the withdrawal destination or the approval terms before the first request** — **[F07-R33]** (Must) requires the destination; **F07 §6**'s Withdrawal request screen row requires the approval terms. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
+| **[OQ-114]** 🟡 | **`CANCELLED`** (**[F07-R08]**) **has no writer** — neither the webhook nor **[DEC-162]**'s simulated-checkout endpoint can write it. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
+| **[OQ-115]** 🟡 | **No `returnUrl` survives sign-in**, so a customer bounced mid-checkout lands on the dashboard rather than back where they were. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
+| **[OQ-116]** 🟡 | **Bank transfers have no demo simulator** — the counterpart **[DEC-162]** builds for iDEAL. Registered by **[DEC-164]**; full row and fallback in [80-open-questions.md](../80-open-questions.md) |
 | ~~[OQ-07]~~ | ~~Is a bank statement import in scope, or is manual registration acceptable indefinitely?~~ **CLOSED — a payment feed into the platform IS in scope, for wallet deposits only** **[DEC-106]**. Invoice payments are matched in the bookkeeping program **[DEC-88]**, not here. Manual registration survives as the exception path **[F07-R17]**. Which feed is **[OQ-93]** |
 | ~~[OQ-30]~~ | ~~Refunds: in scope, and who approves?~~ ~~**Closed by [DEC-43]** — not in scope, and nobody, because no payout path exists **[F06-R29]**. ⚠ The offboarding gap it leaves is recorded in [F06](F06-wallet-and-ledger.md) §1~~ ⚠ **Rewritten 2026-08-19 — [DEC-43] is reversed by [DEC-83].** **CLOSED, with the opposite answer:** withdrawals are in scope. The **customer requests**, a **second admin approves** when four-eyes is on **[DEC-71]**, **PeakPower pays out manually** to the registered IBAN **[DEC-61]**, and the platform records request, approval, payout and debit **[F07-R29..R33]**. No invoice is raised. The offboarding gap in [F06](F06-wallet-and-ledger.md) §1 now has a route out |
 | ~~[OQ-32]~~ | ~~Minimum and maximum top-up amounts~~ **CLOSED — there are none** **[DEC-84]**. The €100 / €250 000 defaults are removed rather than configured, because the amount depends on the volume the customer wants to trade **[DEC-77]**. ~~[F07-R02]~~ retired, replaced by **[F07-R28]** |

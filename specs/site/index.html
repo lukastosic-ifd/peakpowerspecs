@@ -453,7 +453,10 @@ function resolveLinks(root, dir) {
 }
 
 /** Turn bare [OQ-nn] / [DEC-nn] / [AS-nn] / [F05] / [NFR-nn] text into chips. */
-const CHIP_RE = /\[(OQ-\d{2}|DEC-\d{2}|AS-\d{2}|NFR-\d{2}|F\d{2}(?:-R\d{2})?)\]/g;
+// ⚠ \d{2,}, not \d{2}. Two digits left [DEC-1xx] and [OQ-1xx] as literal bracket text
+// instead of chips once the registers passed 99 rows — the same class of bug build.mjs
+// fixed for its own OQ parser on 2026-09-10 (see the note there). Fixed here 2026-09-23.
+const CHIP_RE = /\[(OQ-\d{2,}|DEC-\d{2,}|AS-\d{2,}|NFR-\d{2,}|F\d{2}(?:-R\d{2,})?)\]/g;
 function chipify(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(n) {
@@ -767,7 +770,7 @@ function viewHome() {
 function stripMd(s) {
   return esc(String(s)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/\[(OQ-\d\d|DEC-\d\d|AS-\d\d|F\d\d(?:-R\d\d)?|NFR-\d\d)\]/g,
+    .replace(/\[(OQ-\d{2,}|DEC-\d{2,}|AS-\d{2,}|F\d\d(?:-R\d{2,})?|NFR-\d{2,})\]/g,
       (m, r) => '<span class="chip ' + (r.startsWith('OQ') ? 'chip-oq' : r.startsWith('DEC') ? 'chip-dec'
         : r.startsWith('AS') ? 'chip-as' : r.startsWith('NFR') ? 'chip-nfr' : 'chip-f') + '">' + r + '</span>')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');

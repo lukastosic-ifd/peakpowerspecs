@@ -131,7 +131,7 @@ The one place the wallet meets VAT is the gross-up on a trade, at the **[DEC-64]
 | `DEPOSIT_IDEAL` | Credit | + | — | Payment provider webhook confirms | Payment |
 | `DEPOSIT_BANK` | Credit | + | — | ⚠ **Amended 2026-08-19 by [DEC-106]** — was "finance registers a received transfer". The platform matches the incoming transfer on the **unique payment reference it issued** for the deposit intent, credits the wallet and emails the customer. Registered-IBAN matching **[DEC-61]** is the fallback, and manual registration by finance **[F06-R25]** is the fallback to that | Deposit intent, payment reference, bank reference |
 | `TRADE_RESERVED` | — | 0 | + | Customer accepts an offer. Amount is **VAT-inclusive [DEC-78]** | Trade |
-| `TRADE_RESERVATION_RELEASED` | — | 0 | − | Trade marked failed | Trade |
+| `TRADE_RESERVATION_RELEASED` | — | 0 | − | Trade marked failed ⚠ **or an approval refused (actor = the refusing admin), or an offer expired from `AWAITING_APPROVAL` [DEC-167]** | Trade |
 | `TRADE_SETTLED` | Debit | − | − | Trader confirms a BUY. Amount is **VAT-inclusive [DEC-78]** | Trade, block |
 | `TRADE_PROCEEDS` | Credit | + | — | Trader confirms a SELL. Amount is **VAT-inclusive [DEC-78]** | Trade |
 | ~~`INVOICE_DEBIT`~~ | ~~Debit~~ | ~~−~~ | — | ⚠ **Removed 2026-08-19 by [DEC-77]** — the wallet funds trading only. The monthly delivery amount (day-ahead, export, energiebelasting) is pushed to the bookkeeping program as a **draft invoice [DEC-88]** and **paid to the bank**; it never reaches the ledger. Nothing replaces this type inside the wallet, and no writer for it may be built | ~~Invoice~~ |
@@ -323,7 +323,7 @@ bookkeeping program either — it learns about both from its bank feed **[DEC-10
 | F06-R14 | Settling a reservation converts it into a settled debit for the same amount, in one transaction. | Must |
 | F06-R15 | Releasing a reservation restores availability in full, in one transaction, and records the reason. | Must |
 | F06-R16 | Reservations cannot be partially settled or partially released. | Must |
-| F06-R17 | A wallet's active reservations are listed with their trade links and ages. Withdrawal reservations **[F06-R33]** appear in the same list, labelled as such. | Must |
+| F06-R17 | A wallet's active reservations are listed with their trade links and ages. Withdrawal reservations **[F06-R33]** appear in the same list, labelled as such. ⚠ **Deferred 2026-09-29 by [DEC-167]** — the active-reservations list is not in slice 1 (**[OQ-111]**); each trade's reserved amount shows on the trade itself. | Must |
 | F06-R32 | A trade reservation and the debit that settles it are **VAT-inclusive**: `round(volume * price * 1.21, 2)`, using the **[DEC-64]** reference rate **[DEC-78]**. The same figure is used by the pre-trade check **[DEC-41]**, **[F05-R52]**, by `TRADE_RESERVED` and by `TRADE_SETTLED`, so the three can never disagree. Prices stay stored ex-VAT **[DEC-26]** and the platform computes no VAT of its own **[DEC-76]**; this gross-up exists solely so a reservation covers the debit it becomes. | Must |
 
 ### Withdrawals **[DEC-83]**
@@ -343,7 +343,7 @@ bookkeeping program either — it learns about both from its bank feed **[DEC-10
 | --- | --- | :--: |
 | F06-R18 | Both customer and employee can view the full ledger, newest first, paginated. | Must |
 | F06-R19 | Each row shows: date/time, type (human-readable), description, direction, amount, resulting available balance, and — for customer-initiated movements — **the colleague who caused it**. | Must |
-| F06-R20 | Each row links to the object that caused it — trade, ~~invoice,~~ payment, ~~credit note~~ withdrawal request (⚠ **amended 2026-08-19 by [DEC-77]**: no ledger row can link to an invoice or a credit note any more, because neither ever produces one). Clicking a reservation row opens that trade **(explicitly required by the brief)**. | Must |
+| F06-R20 | Each row links to the object that caused it — trade, ~~invoice,~~ payment, ~~credit note~~ withdrawal request (⚠ **amended 2026-08-19 by [DEC-77]**: no ledger row can link to an invoice or a credit note any more, because neither ever produces one). Clicking a reservation row opens that trade **(explicitly required by the brief)**. ⚠ **Built for trades 2026-09-29 by [DEC-167]** — every `TRADE_*` entry links to its trade (`caused_by_type = Trade`) and carries the reconciliation mapping in the same commit as its first producer. | Must |
 | F06-R21 | The ledger can be filtered by date range, type, direction and **acting account**, and searched by description or linked reference. | Must |
 | F06-R22 | The ledger can be exported to CSV and PDF for a chosen period. | Should |
 | F06-R23 | A period statement shows opening balance, movements grouped by type, and closing balance. | Should |

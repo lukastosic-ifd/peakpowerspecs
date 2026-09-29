@@ -14,7 +14,8 @@ Feature spec: [F05](../10-features/F05-energy-block-trading.md).
 > not to every active account. Two more things move at the edges of the process: the indication the
 > customer starts from is a **quote plus a configurable markup**, default 2%, and is **never firm
 > unless PeakPower says so** **[DEC-80]**; and a confirmed block **runs to the end of its delivery
-> period even when the customer's contract ends first** **[DEC-82]**.
+> period even when the customer's contract ends first** **[DEC-82]**. 
+> ⚠ **Reversed in part 2026-09-29 by [DEC-167]:** the indication the customer starts from is now the **raw quote**, not quote plus markup; the margin is in the firm offer price the trader types. It is still never firm unless PeakPower says so.
 
 ---
 
@@ -97,7 +98,7 @@ Three boxes on the customer side do more than their labels admit.
 
 | Box | What it actually does | Why |
 | --- | --- | --- |
-| `A2` | Shows the **marked-up** indication — the quote plus a configurable percentage, default 2%, held as reference data — labelled as an indication and **never firm unless PeakPower says so** **[DEC-80]** | The markup is the platform's only margin instrument now that surcharges have left it **[DEC-73]**. A raw quote here would give that margin away and imply a firmness the trader has not committed to **[F04](../10-features/F04-price-indications.md)** |
+| `A2` | Shows the **marked-up** indication — the quote plus a configurable percentage, default 2%, held as reference data — labelled as an indication and **never firm unless PeakPower says so** **[DEC-80]** | The markup is the platform's only margin instrument now that surcharges have left it **[DEC-73]**. A raw quote here would give that margin away and imply a firmness the trader has not committed to **[F04](../10-features/F04-price-indications.md)** ⚠ **Reversed 2026-09-29 by [DEC-167]** — `A2` shows the **raw** indication (Prices page and wizard estimate); the margin is in the offer price the trader types at `B3`-side pricing, not in the indication. |
 | `A3` | Accepts volumes in steps of **0,01 MW**, minimum 0,01 MW per line **[DEC-70]**, reversing [DEC-32]'s 0,1 MW | Ten times finer. The per-EAN total now almost never lands on a whole MW, so the "PeakPower rounds on the market side" notice next to it is routine information rather than a warning **[F05-R07]** |
 | `A4` | Compares available balance against **100% of the gross estimate** — no buffer **[DEC-41]**, grossed up at the 21% of **[DEC-64]** **[DEC-78]** | §4.1 works the figures. An ex-VAT check here clears a request whose own reservation it under-covers by 21%, and there is no buffer to absorb the difference |
 
@@ -188,7 +189,7 @@ gantt
 
 | Interval | Target | Alert |
 | --- | --- | --- |
-| Request → offer | median **< 30 min** | Request unpriced after 60 min |
+| Request → offer | median **< 30 min** | Request unpriced after 60 min ⚠ **Deferred 2026-09-29 by [DEC-167]** — the *request unpriced after 60 min* alert goes with **[F05-R39]** (slice 4); the desk mail and the red *To confirm* age stand in. |
 | Offer → customer response | within the window, default 30 min | Notification at T−5 min, to the **requesting account** and, under four-eyes, the **approving admins** **[DEC-111]** |
 | Acceptance → approval **[DEC-33]**, **[DEC-71]** | **inside the same window** — no separate clock | The **other admin accounts** are notified immediately, and again at T−5 min **[DEC-111]** |
 | Acceptance → confirmation | median **< 30 min** | Escalation after 4 h **[F05-R39]** |
@@ -269,7 +270,7 @@ One trade, TRD-1051 at *Vandersteen Koeling B.V.* — base shape, May 2026, thre
 | Volume per EAN **[DEC-70]** | `1.37 + 0.86 + 0.52` MW, each a whole multiple of 0,01 MW | **2,75 MW** |
 | Delivery intervals | May 2026: `31 × 96`. No DST change in May — the 2026 changes are 29 March and 25 October | **2 976 intervals** |
 | Total volume | `2.75 × 2976 × 0.25` | **2 046,00 MWh** |
-| Indication shown at `A2` **[DEC-80]** | raw bid `66.50` × `(1 + 0.02)` markup | **€ 67,83/MWh** |
+| Indication shown at `A2` **[DEC-80]** | raw bid `66.50` × `(1 + 0.02)` markup | **€ 67,83/MWh** ⚠ **2026-09-29 [DEC-167]** — the customer now sees **€ 66,50/MWh** (the raw bid); the markup example above is history. |
 | Pre-submission estimate, ex VAT | `2046.00 × 67.83` | **€ 138.780,18** |
 | Pre-submission check at `A4` **[DEC-41]**, **[DEC-78]** | `138780.18 × 1.21` — 100% of the **gross** estimate, no buffer | **€ 167.924,02** must be available |
 | Offer price, firm for the window, ex VAT **[DEC-26]** | quoted by the trader | **€ 68,00/MWh** |
@@ -344,6 +345,8 @@ Wallet and trade change together, in one transaction, with a fixed lock order �
 trade** ([Database design](../20-architecture/04-database-design.md) §5). A partially applied
 confirmation is not a state the system can reach.
 
+⚠ **Lock order superseded 2026-09-29 by [DEC-167].** "Wallet first, then trade" is **replaced** by the one global order **admin roster → `customer.customer` → `trading.trade` → wallet**, never the wallet before the trade; every trade path (accept, approve, refuse, confirm, fail and the expiry sweep) takes a **subsequence** of it, and DEC-167 (7) records the path-by-path check against the withdrawal, four-eyes and reconciliation paths. Confirmation therefore locks the trade, then the wallet.
+
 ### 5.3 Approval at the expiry boundary — the sharpest edge in [DEC-71]
 
 The rule is that there is **no second clock**. The offer's reaction window governs the customer's
@@ -381,6 +384,8 @@ sequenceDiagram
         JOB->>DB: COMMIT
     end
 ```
+
+⚠ **2026-09-29 [DEC-167]** — "same lock order" below means **admin roster → `customer.customer` → `trading.trade` → wallet**, never the wallet before the trade; `now` is read **once, immediately after the trade lock returns**, and `now < expires_at` is evaluated after the locks; the four-eyes flag is read and pinned under the company-row lock at accept **[F05-R71]**; notifications are best-effort mail after the commit and the pages poll.
 
 Identical in shape to §5.1, deliberately: same lock order, same guard, same job. **[DEC-33]** adds a
 state to the machine but no new concurrency mechanism, which is the main reason for placing the
@@ -521,7 +526,7 @@ costed in §4.1:
 
 | # | Event | Actor | At | Recorded |
 | --: | --- | --- | --- | --- |
-| 1 | `SUBMITTED` | Customer account — **J. de Vries** *(Energy Manager)* | 14:25:03 | Volumes per EAN — 1,37 + 0,86 + 0,52 MW **[DEC-70]** — comment, and the captured indication **including its markup** **[DEC-80]** |
+| 1 | `SUBMITTED` | Customer account — **J. de Vries** *(Energy Manager)* | 14:25:03 | Volumes per EAN — 1,37 + 0,86 + 0,52 MW **[DEC-70]** — comment, and the captured indication **including its markup** **[DEC-80]** ⚠ **2026-09-29 [DEC-167]** — the captured indication is the raw price, its time and its source; no markup is captured. |
 | 2 | `OFFERED` | Employee — M. Bakker | 14:31:20 | Price € 68,00/MWh ex VAT, 30-minute window, `expires_at` 15:01:00 |
 | 3 | `ACCEPTED` | Customer account — **M. Vandersteen** *(Finance Director)* | 14:44:12 | Gross amount reserved **€ 168.344,88** **[DEC-78]**, ex-VAT value € 139.128,00, reservation id |
 | 4 | `CONFIRMED` | Employee — M. Bakker | 14:52:07 | External reference, block id, settled amount € 168.344,88 |
@@ -538,7 +543,7 @@ trade at a company whose **four-eyes flag is on**, at any value. One event more,
 
 | # | Event | Actor | At | Recorded |
 | --: | --- | --- | --- | --- |
-| 1 | `SUBMITTED` | Customer account — **J. de Vries** *(Energy Manager)* | 14:25:03 | Volumes per EAN, comment, captured indication with markup **[DEC-80]** |
+| 1 | `SUBMITTED` | Customer account — **J. de Vries** *(Energy Manager)* | 14:25:03 | Volumes per EAN, comment, captured indication with markup **[DEC-80]** ⚠ **2026-09-29 [DEC-167]** — raw price, time and source; no markup captured. |
 | 2 | `OFFERED` | Employee — M. Bakker | 14:31:20 | Price € 68,00/MWh ex VAT, 30-minute window, `expires_at` 15:01:00 |
 | 3 | `ACCEPTED` | Customer account — **M. Vandersteen** *(Finance Director, admin)* | 14:44:12 | Gross amount reserved € 168.344,88, reservation id, ~~**threshold version and the amount compared**~~ **the company's four-eyes flag read as ON** **[DEC-71]**, resulting state `AWAITING_APPROVAL` |
 | 4 | `APPROVED` | Customer account — **S. Aydin** *(Managing Director, admin)* | 14:52:41 | Decision `APPROVED`, initiator M. Vandersteen, **8 min 19 s** remaining of the window, resulting state `ACCEPTED` |
@@ -588,5 +593,5 @@ Post-2026-08-19 state for the questions this process turns on. The register of r
 | ~~[OQ-83]~~ | ~~Does the wallet debit settle the ex-VAT subtotal or the inclusive total?~~ | ✅ **Closed — [DEC-78]**: **inclusive**, for the reservation and the debit that settles it, grossed up at the **[DEC-64]** rate. **[AS-10]** is amended with it. §4.1 |
 | ~~[OQ-19]~~ | ~~When a wallet cannot cover an invoice: full debit into negative, or partial settlement with a receivable?~~ | ✅ **Closed — [DEC-77]**, reversing **[AS-12]**: the wallet funds trading only and is never asked to cover an invoice, so the question disappears with the debit |
 | ~~[OQ-29]~~ | ~~What happens to a block when the customer's contract ends mid-period?~~ | ✅ **Closed — [DEC-82]**: nothing unwinds. The block runs to the end of its delivery period and the whole volume settles at the day-ahead price — §5.5 |
-| ~~[OQ-25]~~ | ~~Are indications shown raw, or with a PeakPower spread?~~ | ✅ **Closed — [DEC-80]**: never raw. Quote plus a configurable markup, default 2% and held as reference data, and never firm unless PeakPower says so — `A2` in §1 |
+| ~~[OQ-25]~~ | ~~Are indications shown raw, or with a PeakPower spread?~~ | ✅ **Closed — [DEC-80]**: never raw. Quote plus a configurable markup, default 2% and held as reference data, and never firm unless PeakPower says so — `A2` in §1 ⚠ **Reopened 2026-09-29 by [DEC-167]** — raw for the customer; licence question **[OQ-117]**. |
 | ~~[OQ-42]~~ | ~~How many concurrent employees, and does the trade desk need real-time collaboration beyond a soft lock?~~ | ✅ **Closed — [DEC-50]**: a soft lock is enough. ⚠ **Amended 2026-08-19 by [DEC-91]** — the cross-customer same-period warning [DEC-50] added is **withdrawn**; two customers may request the same period. No branch in §1 depends on it |

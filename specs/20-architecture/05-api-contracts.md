@@ -251,7 +251,7 @@ support request away from being turned on.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/prices/indications` | Price board — one entry per active product (**24** as of **[DEC-161]**). The price is the raw quote **× (1 + markup)** **[DEC-80]**, **[F04-R17]** |
+| `GET` | `/prices/indications` | Price board — one entry per active product (**24** as of **[DEC-161]**). The price is the raw quote **× (1 + markup)** **[DEC-80]**, **[F04-R17]** ⚠ **Amended 2026-09-29 by [DEC-167]** — the price is the **raw quote as received**, no markup. |
 | ~~`GET`~~ | ~~`/prices/indications/{productCode}/history?from=&to=`~~ | ~~Trend~~ ⚠ **Removed 2026-08-19 by [DEC-81]** — customers see the **current** curve and nothing from which an earlier price can be recovered **[F04-R20]**. The observation series is still stored, for **[F04-R10]** and staleness **[F04-R06]**; it is internal |
 | `GET` | `/prices/day-ahead?from=&to=` | Day-ahead curve. **Portal surface only** — it is not on the usage API and there is no export of it **[DEC-81]**, **[NFR-67]** |
 
@@ -314,7 +314,7 @@ a month is `YYYY-MM`, a quarter is `YYYY-Qn`, a calendar year is `YYYY`.
 | Field | Why it is gone |
 | --- | --- |
 | ~~`changeVsPreviousClose`~~ | A price and a delta are two prices: the reader recovers the previous close by subtraction, which is exactly the history **[DEC-81]** withholds **[F04-R04]** |
-| ~~`rawQuote`~~ / ~~`markupPercent`~~ (never shipped, and never will) | The customer-facing number is the marked-up one **[DEC-80]**, **[F04-R17]**. Price and percentage together disclose the raw quote, so neither the raw quote nor the percentage appears on a customer payload. Both are on the **employee** surface **[F04-R21]** |
+| ~~`rawQuote`~~ / ~~`markupPercent`~~ (never shipped, and never will) | The customer-facing number is the marked-up one **[DEC-80]**, **[F04-R17]**. Price and percentage together disclose the raw quote, so neither the raw quote nor the percentage appears on a customer payload. Both are on the **employee** surface **[F04-R21]** ⚠ **Reversed in part 2026-09-29 by [DEC-167]** — `price` **is** the raw quote now; `markupPercent` still never ships and the percentage still never appears on a customer payload. |
 | ~~`isStale: boolean`~~ | **Replaced 2026-09-23 by `status: "FRESH" \| "STALE" \| "UNAVAILABLE"`** **[DEC-161]**. A boolean answers "is it old"; it cannot also answer "does it exist at all" without a second field drifting out of sync with the first — `status` answers both: `price` is `null` exactly when `status` is `UNAVAILABLE`, and so is `observedAt` — whatever the cause (no row for the currently resolved period, no markup in force, or no provider configured at all), the customer surface does not distinguish which **[F04-R07]** |
 
 `price` is therefore the only priced number on this surface, and it is already marked up — a plain,
@@ -324,6 +324,8 @@ with the consumption price/cost fields, not with every built money field (see th
 markup itself is reference data with a default of 2%, maintained through the Employee API §3.2
 **[F12-R48]** once **[F04-R18]**'s screen ships; for Phase 1 it is the single seeded row
 (**[DEC-161]**).
+
+⚠ **Amended 2026-09-29 by [DEC-167] — `price` is the raw quote.** The last paragraph's claims that `price` *"is already marked up"* and that the markup applies at display are **reversed**: `GET /prices/indications` returns the **raw** quote as `price` (4 dp on the wire, unchanged shape); no field is added or removed. The markup table stays and is **unused by customer reads**. The *no markup row in force ⇒ `UNAVAILABLE`* cause listed above no longer applies. The trade-wizard estimate in `POST /trades/quote` uses the same raw indication (§2.4). Licence caveat before Montel goes live: **[OQ-117]**.
 
 ### 2.4 Trading
 
@@ -555,7 +557,7 @@ Three things this shape is asserting.
 `/approve` returns the trade with `state: "ACCEPTED"` and `approvedBy` populated;
 `/refuse-approval` returns `state: "APPROVAL_REFUSED"` with the reservation released. The reason is
 optional on refusal, symmetric with `/reject` **[F05-R63]**. Both are `Idempotency-Key` POSTs like
-every other transition, and both take the same wallet-then-trade lock order as `/accept`.
+every other transition, and both take the same wallet-then-trade lock order as `/accept`. ⚠ **Superseded 2026-09-29 by [DEC-167] (7):** the order is roster → company row → trade → wallet; refuse-approval takes roster → trade → wallet, and approve takes no wallet lock.
 
 The `GET /trades/{id}` response carries the same `approval` object while the trade is
 `AWAITING_APPROVAL`, and the timeline gains `APPROVED` / `APPROVAL_REFUSED` event types. Note that
@@ -573,6 +575,35 @@ New error `type` URIs, all `409`:
 | `…/errors/admin-role-required` | ⚠ **New 2026-08-19 [DEC-71]** — an approve or decline attempt by an account without `customer.admin`, re-validated against the account record rather than read off the token **[F13-R43]** |
 | `…/errors/four-eyes-not-satisfiable` | ⚠ **New 2026-08-19 [DEC-71]** — the company has four-eyes on and **fewer than two active admin accounts**, so nobody can be the second pair of eyes. Raised at **acceptance**, before money is reserved, rather than letting the trade sit in `AWAITING_APPROVAL` until it expires. It should be unreachable — **[F12-R41]** refuses to enable the mode below two admins and **[F01-R50]** refuses to deactivate below it — which is exactly why it is checked: an unreachable state that is not checked is an unreachable state that happens. ⚠ **Amended 2026-09-23 by [DEC-157]:** deactivating an admin below the floor is **no longer refused** — it is **warned and reasoned [F12-R43]**, because the account may be a leaver — so this state is now **reachable by design**. The acceptance check is therefore load-bearing rather than a guard against the merely-improbable; the demotion path, by contrast, *is* refused ([DEC-157], above) |
 | `…/errors/invalid-volume` | ⚠ **New 2026-08-19 [DEC-70]** — a `powerMw` below 0,01 or not a multiple of 0,01 — §2.4.1 |
+
+#### 2.4.2 Slice 1 as designed — [DEC-167]
+
+⚠ **Added 2026-09-29.** The routes above, minus `GET /blocks` (deferred) and with the bodies and shapes below. All are `.RequireAuthorization()` — any active member, `viewer` included **[DEC-152]** — and every route parameter is `{tradeId:guid}`. Error type URIs are under `https://peakpower.dev/problems/`; there is **no 403** literal anywhere.
+
+| Method and path | Body → 200 | Other |
+| --- | --- | --- |
+| `GET /trades?state=&page=&pageSize=` | → `TradeListResponse` (`state` repeatable; `pageSize` 1–100) | 400 |
+| `POST /trades/quote` | `TradeQuoteRequest` → `TradeQuoteResponse` (no side effects) | 400 |
+| `POST /trades` | `SubmitTradeRequest` → `SubmitTradeResponse` | 400, 409 `customer-not-active` / `insufficient-available-balance` |
+| `GET /trades/{tradeId}` | → `TradeDetailDto` | 404 |
+| `POST …/cancel` | none → `TradeDetailDto` | 404, 409 |
+| `POST …/accept` | none → `TradeDetailDto` (state `ACCEPTED` or `AWAITING_APPROVAL`) | 404, 409 |
+| `POST …/reject` | `{ "reason" }` → `TradeDetailDto` | 400, 404, 409 |
+| `POST …/approve` | none → `TradeDetailDto` | 404, 409 |
+| `POST …/refuse-approval` | `{ "reason" }` (optional, ≤ 500) → `TradeDetailDto` | 400, 404, 409 |
+
+**Request.** `direction, shape, periodType, period, lines[{ meteringPointId, powerMw }], comment` (the quote omits `comment`). `direction` null or `BUY` is accepted; **`SELL` is a 400 on `direction`** — *"Only BUY trades can be requested for now."* The server resolves `period` to one of the 24 active products by `(shape, periodType)`; none is a 400 on `period`. Every line and the total are **under 1 000 000 MW** (`invalid-volume`), duplicates are a 400 on `lines`, and an unknown or foreign connection returns the **same** message as an ineligible one so a foreign EAN cannot be probed: *"This connection is not one of your company's electricity connections for the whole delivery period."*
+
+**Money on the wire** is a **bare decimal**, and every gross amount has its `vatRate` beside it, so no client does money arithmetic: `TradeOfferDto` carries `priceEurMwh`, `totalValueExVat` (rounded to 2 dp), `vatRate`, `vatAmount` (= the amount to reserve minus the rounded ex-VAT value, so the three confirmation lines always add up), `amountToReserve`, `offeredAt`, `expiresAt` and **`secondsRemaining`** — the client counts down from that, never from its reading of `expiresAt`. Once accepted the amount is the **stored** gross and `vatRate` the **stored** rate.
+
+**The estimate is RAW.** `TradeQuoteResponse.estimate` carries `productCode`, `priceEurMwh` — the **raw** indication, **no markup** — `observedAt`, `status` (`FRESH` or `STALE`), `estimatedValueExVat`, `vatRate`, `estimatedValue` (the gross) and `isSampleData`. It is **absent** when the indication is `UNAVAILABLE` or at or below zero; `walletCheck.sufficient` is then `null`. `TradeQuoteResponse` also carries the resolved dates, `peakDays`, the per-line MWh, the wallet check and `fourEyes { enabled, activeAdminCount, canBeApproved }` (`canBeApproved` = at least two active admins). **Only the quote and submit responses ever carry a raw estimate.**
+
+**Reads project.** Every customer read is a projection — the customer role cannot `SELECT` the captured indication, `actual_market_price` or `offered_by_employee_id` (§3.4.4) — newest first. Participant names and job titles come from the **`trade_event` actor snapshots** (`SUBMITTED` → requester, `ACCEPTED` → acceptor, `APPROVED`/`APPROVAL_REFUSED` → decider), never a join on `customer_account`, whose customer policy hides removed members. Staff actors show as *PeakPower Trading*, the system as *PeakPower*. `availableActions` (`CANCEL`, `ACCEPT`, `REJECT`, `APPROVE`, `REFUSE_APPROVAL`) is computed server-side: at a four-eyes company `ACCEPT` is offered only to an active admin, and only when there are at least two.
+
+**Transactions.** The `CurrentTransaction is null ? Begin : null` transaction is opened **before** `OwnerPrivilegedWrite`; every guard runs **before** any mutation; any refusal discovered after a flush **throws** (rollback, 500), because the customer middleware commits on a returned 409. **Accept** takes: (1) the admin roster, (2) the company row `FOR SHARE` (owner-privileged, the token's company) — refuse if not `ACTIVE`; the four-eyes flag is read here, and at a four-eyes company the caller must be in the roster (`admin-role-required`) and there must be at least two admins (`four-eyes-not-satisfiable`); (3) the trade `FOR UPDATE` — 404 if absent; (4) the wallet `FOR UPDATE`; then `now` is read **once**, the state and `expires_at` guards run, the connections are re-checked (`metering-point-not-eligible`, naming the EANs) and the balance is checked against the stored-price gross — *"Your available balance is € A, but accepting reserves € G — the price plus 21 % VAT. Top up your Balance and accept again before the offer expires."* — and only then does the trade accept, pin `four_eyes_applied`, `vat_rate` and the gross, and reserve. **Approve** takes roster → company (`FOR SHARE`) → trade, re-checks the caller is an active admin, the period and the connections, and moves no money. **Refuse-approval** takes roster → trade → wallet, checks only the admin role, and releases the reservation with the **refuser** as the ledger actor. **Cancel and reject** lock the trade only. The order is [DEC-167] (7).
+
+**Problem details** (shown verbatim by both portals; the exact strings are pinned in tests): `four-eyes-not-satisfiable` — *"Your company uses four-eyes approval but has fewer than two active administrators, so an acceptance could never be approved. Appoint a second administrator first."*; `admin-role-required` — *"Your company uses four-eyes approval, so only an administrator can accept this offer."* (accept) and *"Only an active administrator of your company can approve or refuse an acceptance."* (approve, refuse); `self-approval-not-permitted` — *"You accepted this offer, so a different administrator must approve or refuse it."*; `customer-not-active` — *"Your company's account is not active, so it cannot request or accept trades. Contact PeakPower."*; `delivery-period-started` — *"The delivery period {period} has already started, so this can no longer go ahead."*; `offer-expired` — *"This offer expired at {time}. Any reservation is released automatically."*; `trade-state-conflict` — *"This trade is now “{label}”, so this action is no longer possible. The page will refresh."*; `insufficient-available-balance` — *"Your available balance is € A. At acceptance this request reserves about € E incl. 21 % VAT. Top up your Balance first, or request a smaller volume."* (submit). `approval-window-elapsed` is **not used**: one clock covers acceptance and approval, so it folds into `offer-expired` **[DEC-167]** (11). `Idempotency-Key` and rate limits are **deferred**.
+
 
 ### 2.5 Wallet, deposits and withdrawals
 
@@ -1119,6 +1150,26 @@ There is **no employee endpoint that approves on the customer's behalf**, delibe
 **[F12-R42]**. An override would be one pair of eyes wearing PeakPower's badge, which is the control it
 is meant to be. `POST /trades/{id}/confirm` refuses with `409 approval-required` while a trade is
 `AWAITING_APPROVAL` **[F05-R66]**.
+
+#### 3.1.1 Slice 1 as designed — [DEC-167]
+
+⚠ **Added 2026-09-29.** Every route is `.BackOffice(...)` — **any signed-in operator**, no per-trade ownership **[DEC-155]**; bodies are validated by FluentValidation. **There is no `internal-notes` route in slice 1** (**[F05-R23]** is deferred) and **no approve, override or four-eyes route of any kind** — the Awaiting approval queue is watch-only **[DEC-166]**.
+
+| Method and path | Body → 200 | Other |
+| --- | --- | --- |
+| `GET /trade-desk/queues?limit=` | → the four queues (`limit` 1–200, default 50) with **true totals** and `valueAtRiskExVat` | 400 |
+| `GET /trades?state=&customerId=&page=&pageSize=` | → paged desk list | 400 |
+| `GET /trades/{tradeId}` | → `EmployeeTradeDetailDto` | 404 |
+| `POST …/offer` | `{ priceEurMwh, reactionWindowMinutes }` → detail | 400, 404, 409 |
+| `POST …/decline`, `…/withdraw-offer`, `…/fail` | `{ reason }` (required, ≤ 500) → detail | 400, 404, 409 |
+| `POST …/confirm` | `{ externalReference?, actualMarketPrice? }` → detail | 400, 404, 409 |
+
+**Queues.** *To price* = `REQUESTED` oldest first; *Awaiting customer* = `OFFERED` by `expires_at`; *Awaiting approval* = `AWAITING_APPROVAL` by `expires_at`, each card carrying the acceptor's name and job title and the number of **other** active admins who can approve **[F12-R34]**; *To confirm* = `ACCEPTED` ordered and aged by `readySince` = `approval_decided_at`, else `accepted_at`. `valueAtRiskExVat` sums the ex-VAT value of offered, awaiting and accepted trades.
+
+**Detail.** Beside the trade, the customer (`fourEyesEnabled`, `activeAdminCount`), the requester's contact, the lines with an *eligible now* flag, the wallet snapshot, and the **market reference**: the **captured** raw indication (raw price, observed-at, source) and the **current** one — the newest observation for the trade's `delivery_start` across **every** product of the trade's shape and period type and **all sources**, labelled with its source ([DEC-167] (13)). There is **no markup and no customer price** anywhere on the desk.
+
+**Actions.** *Offer* — the price is **typed**, the field starts empty (no prefill), above 0, at most 4 dp, and a value or gross reaching 1e12 is a 400 on `priceEurMwh`; the window is 5–1440 minutes (the portal defaults to 30); the company must be `ACTIVE` and the period not started. Offer mail goes to the requester and, at a four-eyes company, to every active admin, **after** the commit. *Confirm and fail* open an explicit transaction and lock **trade → wallet**; confirm re-checks the connections (`metering-point-not-eligible` — *fail the trade instead*), creates the block and allocations and debits the stored gross in one save; while `AWAITING_APPROVAL` either is 409 `approval-required`; **no customer-`ACTIVE` check** applies, because the money is already committed. The actor's display name is a projection of `employee.employee` — never a materialised entity, because the employee role holds only a column grant there.
+
 
 ### 3.2 Customers, wallets, withdrawals, payments, invoicing, data, reference data
 

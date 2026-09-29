@@ -418,13 +418,13 @@ export function priceIndications() {
   // apostrophe, not U+2019 — this literal must match it character for character.
   b += text(cx + cw, ySelector + 24, 'Sample indications — generated for demonstration only. They do not reflect PeakPower\'s pricing.', { size: 10, fill: C.faint, anchor: 'end' });
 
-  // forward-curve chart — x = delivery periods of one granularity, y = today’s marked-up €/MWh [DEC-160]
+  // forward-curve chart — x = delivery periods of one granularity, y = today’s RAW €/MWh [DEC-160]; raw since 2026-09-29 [DEC-167] — the customer sees the quote as received, no markup
   b += panel(cx, yChart, cw, CHART_H, 'Base & Peak — forward curve · Month', { subtitle: 'Delivery period on the x-axis · today’s price per MWh', right: 'Indication — not an offer' });
   const gx = cx + 60; const gy = yChart + 80; const gw = cw - 100; const gh = 140;
   const periods = ['Sep 26', 'Oct 26', 'Nov 26', 'Dec 26', 'Jan 27', 'Feb 27'];
-  const baseVals = [78.45, 80.10, null, 83.40, 82.90, 81.20];
+  const baseVals = [76.91, 78.53, null, 81.76, 81.27, 79.61];
   const baseStatus = ['FRESH', 'FRESH', 'UNAVAILABLE', 'FRESH', 'FRESH', 'FRESH'];
-  const peakVals = [96.15, 97.80, 99.40, 101.20, 100.60, 98.90];
+  const peakVals = [94.26, 95.88, 97.45, 99.22, 98.63, 96.96];
   const peakStatus = ['FRESH', 'FRESH', 'FRESH', 'FRESH', 'FRESH', 'STALE'];
   const yMin = 74; const yMax = 104;
   const sx = (i) => gx + i * (gw / (periods.length - 1));
@@ -472,7 +472,7 @@ export function priceIndications() {
   b += path(`M ${ttX - 8} ${ttY - 16} L ${ttX + 8} ${ttY - 16} L ${ttX} ${ttY - 4} Z`, { fill: '#0f172a' });
   b += rect(ttX - 72, ttY - 80, 144, 66, { fill: '#0f172a', stroke: 'none', r: 8 });
   b += text(ttX, ttY - 62, 'Base — Oct 2026', { size: 10.5, fill: '#cbd5e1', weight: 600, anchor: 'middle' });
-  b += text(ttX, ttY - 44, '€ 80,10 /MWh', { size: 14, fill: '#ffffff', weight: 700, anchor: 'middle' });
+  b += text(ttX, ttY - 44, '€ 78,53 /MWh', { size: 14, fill: '#ffffff', weight: 700, anchor: 'middle' });
   b += text(ttX, ttY - 28, 'Indication — not an offer', { size: 9, fill: '#94a3b8', anchor: 'middle' });
 
   // list — same products, per-cell status. Base and Peak are separate products, each with its own

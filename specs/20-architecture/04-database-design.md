@@ -26,7 +26,7 @@ and an entirely avoidable one.
 | `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, **approval requests [DEC-71]**, metering points, **refresh tokens [DEC-117]**, **password-reset tokens [DEC-113]**, **onboarding applications [DEC-113]** |
 | `metering` | **BRPs [DEC-69]**, **the shared EAN pool [DEC-113]**, inbound messages, interval data versions, readings, imbalance, data state |
 | `market` | peak calendars, calendar intervals, price indications, **the indication markup [DEC-80]**, day-ahead prices |
-| `trading` | trades, lines, offers, events, blocks, allocations, ~~**four-eyes thresholds [DEC-33]**~~ |
+| `trading` | trades, lines, offers, events, blocks, allocations, ~~**four-eyes thresholds [DEC-33]**~~ ⚠ **Built as designed by [DEC-167]** — five tables and one sequence, §3.4.4; migration 30. |
 | `wallet` | wallets, entries, reservations, payments, **deposit intents, incoming payments [DEC-106]**, **withdrawal requests [DEC-83]** |
 | `billing` | ~~surcharges~~, ~~**feed-in tariffs [DEC-44]**~~, **energiebelasting brackets, reductions and results [DEC-74]**, invoice runs, **invoice drafts [DEC-88]**, sections, lines, credit notes |
 | `audit` | generic audit records, internal notes |
@@ -1067,6 +1067,8 @@ render time is `UNAVAILABLE`, never a silent 0%** — see the fixed §7.3 note b
 
 ### 3.4 Trading
 
+⚠ **Slice 1 is designed in §3.4.4 (2026-09-29, [DEC-167]).** The sketch below is the **2026-08 design**; where it and §3.4.4 differ — there is **no `approval_request_id`**, the refusal is stored on the trade, the gross is a stored column, and events carry no `payload` — §3.4.4 wins.
+
 ⚠ **Reversed 2026-08-19 by [DEC-71].** The table below is **not created**. It is kept, struck, with
 its reasoning readable, because it is the only record of what was designed against **[DEC-33]** and
 of what the reversal costs. **[F05-R50]**…**[F05-R54]** retire with it; the mode and the flag that
@@ -1245,6 +1247,28 @@ a short is a promise to deliver, so the balance check **[DEC-41]** does not size
 deliberately **no collateral column, no exposure limit and no margin table** — inventing one here
 would be inventing the rule. It is **[OQ-94]**, and what it blocks is the sell path opening, not this
 schema.
+
+#### 3.4.4 Trading slice 1 — the `trading` schema as designed — [DEC-167]
+
+⚠ **Added 2026-09-29.** Migration **30** (`Trading`) — the next free number when it lands; 29 is **[DEC-166]**'s. EF owns the column list (snake_case by convention) and declares every `CHECK`, so the snapshot agrees; raw SQL adds the grants, the row-level security, the triggers and the ledger index filters. It has a real `Down()`: drop the policies, triggers and functions, revoke, drop the tables, the sequence, the schema and the two ledger indexes. Roll forward in production, as every migration here.
+
+| Table | Contents and the constraints that matter |
+| --- | --- |
+| `trading.trade_reference_seq` | `bigint`, starts at **1001**. `trading.trade.reference` defaults to `'TRD-' \|\| nextval(...)` — **TRD-1001**, unique |
+| `trading.trade` | `id`, `reference`, `customer_id` (RESTRICT), `direction`, `shape`, `period_type`, `period_code`, `delivery_start`/`delivery_end` (exclusive), `delivery_starts_at` (Amsterdam local midnight, captured at submit), `calendar_version` (the constant text `NL-POWER-PEAK-EXCHANGE`), `state`, `total_power_mw numeric(12,6)`, `total_mwh numeric(18,6)`, `comment`, `requested_by_account_id`; the **captured indication** `indication_product_id`, `indication_raw_price numeric(12,4)`, `indication_observed_at`, `indication_source`; the **offer** `price_eur_mwh numeric(12,4)`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat numeric(20,8)`; the **acceptance** `vat_rate numeric(6,4)`, `wallet_amount_gross numeric(18,6)` (**the one stored number**), `four_eyes_applied`, `accepted_by_account_id`, `accepted_at`, `approved_by_account_id`, `approval_decided_at`, `approval_refused_by_account_id`; the **resolution** `resolution_reason`, `external_reference varchar(64)`, `actual_market_price numeric(12,4)`, `resolved_at`; `last_event_sequence`, `created_at`. **No `row_version`** — pessimistic lock-then-check |
+| `trading.trade_line` | `(trade_id, metering_point_id)` primary key, `power_mw numeric(12,6)`, `mwh numeric(18,6)` |
+| `trading.trade_event` | Append-only, one row per transition: `id` (a v7 uuid), `trade_id`, `sequence` (unique per trade), `event_type`, `from_state` (admits `DRAFT`, the `SUBMITTED` event's), `to_state`, `actor_type` (`CUSTOMER`/`EMPLOYEE`/`SYSTEM`), `actor_id`, `actor_name`, `actor_job_title`, `reason`, `comment`, `occurred_at`. Trigger `trg_trade_event_append_only` raises `restrict_violation` on `UPDATE` or `DELETE` |
+| `trading.block`, `trading.block_allocation` | The confirmed position and its per-connection split, **immutable** by trigger (`trg_block_immutable`, `trg_block_allocation_immutable`); `block.source_trade_id` is unique, so a trade confirms into at most one block |
+
+**`CHECK`s on `trading.trade`.** `state` is one of the **12 persisted states** (no `DRAFT`); `direction`, `shape` and `period_type` are closed sets; `delivery_end > delivery_start`; `total_power_mw >= 0.01 AND mod(total_power_mw, 0.01) = 0`, and the same grid on every line, block and allocation **[DEC-70]**; `total_mwh > 0`; `price_eur_mwh > 0`; `reaction_window_minutes BETWEEN 5 AND 1440`; `wallet_amount_gross > 0` **and** equal to `round(wallet_amount_gross, 2)`, so a stored gross is always whole cents; the approver and the refuser each differ from the acceptor; **never both approved and refused**; `AWAITING_APPROVAL` implies `four_eyes_applied`; `APPROVAL_REFUSED` implies a refuser and a decision time; a trade past `REQUESTED`/`CANCELLED`/`DECLINED` carries a complete offer; an accepted, awaiting, confirmed, failed or refused trade carries its reservation fields; and **`ck_trade_four_eyes_approved`** — a `four_eyes_applied` trade in `ACCEPTED`, `CONFIRMED` or `FAILED` must carry `approved_by_account_id` **and** `approval_decided_at`. The employee role can write neither column, so **no employee-role `UPDATE` can skip four-eyes** at the database. A `BEFORE UPDATE` transition trigger (state pairs, frozen price and money columns) is **deferred** — it would refuse the raw-`UPDATE` arranges the stored-number tests rely on **[DEC-167]** (c).
+
+**Indexes.** Unique `reference`; `(customer_id, created_at DESC)`; partial `ix_trade_open (state, created_at)` over `REQUESTED`, `OFFERED`, `AWAITING_APPROVAL`, `ACCEPTED`; partial `ix_trade_expiring (expires_at)` over `OFFERED`, `AWAITING_APPROVAL` — §3.4.1. **On `wallet.ledger_entry`, two partial unique indexes keyed per wallet:** `ux_ledger_entry_trade_reserved (wallet_id, caused_by_id)` where `caused_by_type = 'Trade'` and `entry_type = 'TRADE_RESERVED'`, and `ux_ledger_entry_trade_exit` over the same pair for `TRADE_SETTLED` and `TRADE_RESERVATION_RELEASED` — one reservation and one exit per trade. They are keyed on the wallet too, because the customer role holds `INSERT` on `ledger_entry` and another tenant's insert must never block this trade.
+
+**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly. **`app_customer_role` gets a column-scoped `SELECT` on `trading.trade` that excludes `indication_product_id`, `indication_raw_price`, `indication_observed_at`, `indication_source`, `actual_market_price` and `offered_by_employee_id`** (the house pattern of `GRANT SELECT (…)`, as on `onboarding_application` and on migration 25's revoke under **[DEC-161]** D7), plus `SELECT` on the other four tables and **no** write privilege anywhere — customer writes are owner-privileged. Consequence: any customer-role query that materialises a `Trade`, or selects `*`, fails with `42501`, so customer read models **project**. `app_employee_role` gets `SELECT` on all five, `INSERT` on the event, block and allocation tables, and a column `UPDATE` on `trading.trade` limited to `state`, `price_eur_mwh`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat`, `resolution_reason`, `external_reference`, `actual_market_price`, `resolved_at`, `last_event_sequence` — which is also what makes `FOR UPDATE` legal for the role. **No role has `DELETE`.** The approval columns are written by the owner only.
+
+**Row-level security** — enabled, never forced, ten policies: `trading_trade_tenant_isolation` and `trading_block_tenant_isolation` on `customer_id = current_setting('app.customer_id')`; the line, event and allocation tables reach it through an `EXISTS` on their parent; and a `*_back_office` policy per table for `app_employee_role`, `USING (true)`. Accepted residue: **employee actor names on `trade_event` stay `SELECT`-able by the customer role through raw SQL**; no customer API response carries them **[DEC-167]** (b).
+
+**Locks.** One global order — §5 and [DEC-167] (7): admin roster, company row, trade, wallet. Trade locks are taken by `id` only; the company row is locked **owner-privileged** with the token's company named explicitly (§3.1.4).
 
 ### 3.5 Wallet
 
@@ -1777,16 +1801,18 @@ rather than "recompute the month".
 
 | Path | Mechanism |
 | --- | --- |
-| Accept an offer | `SELECT … FROM wallet.wallet WHERE id = $1 FOR UPDATE`, then trade state guard, then reservation, all in one transaction — **whichever state the acceptance lands in [F05-R55]** |
-| Approve an acceptance ~~**[DEC-33]**~~ **[DEC-71]** | Trade row and its `approval_request` row. Still **no wallet lock and no second balance check**: the reservation was taken at acceptance and is not re-created **[T11]** |
-| Refuse approval, or expire from `AWAITING_APPROVAL` | **Wallet first, then trade**, same as acceptance — both release a reservation in the same transaction **[T12]**, **[F05-R62]**, **[F05-R63]** |
-| Confirm a trade | Same lock ordering: **wallet first, then trade**, always, to prevent deadlock |
+| Accept an offer | `SELECT … FROM wallet.wallet WHERE id = $1 FOR UPDATE`, then trade state guard, then reservation, all in one transaction — **whichever state the acceptance lands in [F05-R55]** ⚠ **Superseded 2026-09-29 by [DEC-167] (7):** the order is **admin roster → company row `FOR SHARE` (owner-privileged, token's company) → trade `FOR UPDATE` → wallet `FOR UPDATE`**, then the guards (`now` read after the trade lock), then the reservation, in one transaction — never the wallet first. |
+| Approve an acceptance ~~**[DEC-33]**~~ **[DEC-71]** | Trade row and its `approval_request` row. Still **no wallet lock and no second balance check**: the reservation was taken at acceptance and is not re-created **[T11]** ⚠ **2026-09-29 [DEC-167]:** roster → company row (`FOR SHARE`, status check) → trade. Still no wallet lock and no second balance check; approval is state on the trade, not an `approval_request` row. |
+| Refuse approval, or expire from `AWAITING_APPROVAL` | **Wallet first, then trade**, same as acceptance — both release a reservation in the same transaction **[T12]**, **[F05-R62]**, **[F05-R63]** ⚠ **Superseded 2026-09-29 by [DEC-167]:** refusal is roster → trade → wallet; the expiry sweep is trade → wallet, per trade. **Trade first, then wallet.** |
+| Confirm a trade | Same lock ordering: **wallet first, then trade**, always, to prevent deadlock ⚠ **Superseded 2026-09-29 by [DEC-167]:** **trade first, then wallet** — the old "wallet first, then trade" deadlocks against the roster-first withdrawal paths. |
 | Interval supersession | Advisory lock on `hash(metering_point_id, delivery_date)` — under **[DEC-38]** exactly one document per key per day, so contention is limited to a document and its own correction |
 | Invoice run | Advisory lock per (period, customer) |
 | **Match an incoming payment [DEC-106]** | Wallet row lock, then the intent, then the entry — one transaction. Serialisation is **not** what makes it safe: `incoming_payment.bank_transaction_id UNIQUE` does, so a re-delivered feed line fails on insert rather than crediting twice **[F07-R25]** |
-| **Withdrawal request → payout [DEC-83]** | Wallet first, then the request, same ordering as a trade. The request holds a reservation from the moment it is raised, so the money cannot be traded away while it waits for a second admin **[F07-R29]** |
+| **Withdrawal request → payout [DEC-83]** | Wallet first, then the request, same ordering as a trade. The request holds a reservation from the moment it is raised, so the money cannot be traded away while it waits for a second admin **[F07-R29]** ⚠ **2026-09-29:** the order is the one in [DEC-166] and [DEC-167] (7) — roster, company, bank account, withdrawal, wallet — and no trade row is involved. |
 | **A four-eyes decision [DEC-71]** | The `approval_request` row. `ux_approval_open_subject` is what stops two pending approvals for one subject, so two admins deciding at once resolve on one row rather than on a read-modify-write |
 | Everything else | Optimistic concurrency via `row_version` |
+
+⚠ **Superseded in part 2026-09-29 by [DEC-167] (7).** The one global order is **admin roster → `customer.customer` → `trading.trade` → wallet**, and **the wallet is never locked before the trade**: "wallet before trade" below deadlocks against [DEC-166]'s roster-first withdrawal approve and decline, and is replaced. The roster is locked before the company row so an enabling four-eyes toggle (roster → company `UPDATE`) cannot deadlock with an accept; the company row is locked owner-privileged, naming the token's company (§3.1.4). "Wallet before withdrawal request" and "wallet before deposit intent" stand as [DEC-166] restated them.
 
 **Lock ordering is a written rule** — wallet before trade, always, and now wallet before withdrawal
 request and wallet before deposit intent as well. Deadlocks in a money path are the kind of bug that
@@ -2044,6 +2070,17 @@ Roll forward only, as every migration here.
 | `wallet.withdrawal_request` grants **[DEC-166]** | `GRANT UPDATE (bank_reference, paid_by_employee_id, paid_by_employee_name) … TO app_employee_role`, migration **28** | Column-scoped, widening `(status, resolved_at, destination)` by exactly those three columns — the only ones the payout newly touches. `app_customer_role` gains nothing: its table-level `SELECT` already covers the new columns, so the customer role **can** read the payer columns although no customer API returns them (the customer DTO maps `bank_reference` only) |
 | `customer.customer` **[DEC-166]** | Two nullable columns, a foreign key, an index and two `CHECK`s, migration **29** (`CustomerFourEyesDisableRequest`, `20260929035903`) | §3.1.4. No grant change: customer-host writes to the table are already owner-privileged since migration 16. The `Down` drops the foreign key, index, `CHECK`s and columns in that order |
 | `PeakPowerDbContextModelSnapshot.cs`, the migration pins and `tools/verify-migrator.sh` | Updated in the same commits | The Designer file, the snapshot, the pins for history, `CHECK`s and the employee `UPDATE` columns, and the migrator script move with each migration, not as a follow-up |
+
+### 7.8 The 2026-09-29 trading migration
+
+⚠ **One migration, 30 (`Trading`)** — the next free number when it lands; 29 is §7.7's — in the platform lane. It creates a schema, so the roll-forward-only rule bites harder than in §7.7: nothing is `ALTER`ed except `wallet.ledger_entry`, which gains two indexes.
+
+| Change | Form | Note |
+| --- | --- | --- |
+| `trading` schema **[DEC-167]** | Five tables (`trade`, `trade_line`, `trade_event`, `block`, `block_allocation`), the sequence `trade_reference_seq` from 1001, the `CHECK`s, three triggers, ten policies, the grants — §3.4.4 | Every `CHECK` is declared in EF so the snapshot agrees. The `Down` drops policies, triggers and functions, revokes, then drops tables, sequence and schema |
+| `wallet.ledger_entry` **[DEC-167]** | Two partial unique indexes, `ux_ledger_entry_trade_reserved` and `ux_ledger_entry_trade_exit`, keyed `(wallet_id, caused_by_id)` where `caused_by_type = 'Trade'` | One reservation and one exit per trade. Created in the same migration as the first producer of `TRADE_*` entries |
+| A wallet for every company | **Not a migration:** an unconditional, idempotent Migrator step, `WalletBackfill`, runs after seeding, and the back-office `POST /api/v1/customers` creates the wallet in the same `SaveChanges` | Only onboarding created wallets before; deposits answered 404 without one |
+| The migration pins, `PeakPowerDbContextModelSnapshot.cs` and `tools/verify-migrator.sh` | Updated in the same commits | The history length and the applied list, the `CHECK`, grant and policy pins, the query-filter and row-level-security catalogue pins, the model-shape and enum-wire pins, and the migrator script move with the migration |
 
 ## 8. Retention & archival
 

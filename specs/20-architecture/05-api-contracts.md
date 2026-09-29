@@ -325,7 +325,7 @@ markup itself is reference data with a default of 2%, maintained through the Emp
 **[F12-R48]** once **[F04-R18]**'s screen ships; for Phase 1 it is the single seeded row
 (**[DEC-161]**).
 
-⚠ **Amended 2026-09-29 by [DEC-167] — `price` is the raw quote.** The last paragraph's claims that `price` *"is already marked up"* and that the markup applies at display are **reversed**: `GET /prices/indications` returns the **raw** quote as `price` (4 dp on the wire, unchanged shape); no field is added or removed. The markup table stays and is **unused by customer reads**. The *no markup row in force ⇒ `UNAVAILABLE`* cause listed above no longer applies. The trade-wizard estimate in `POST /trades/quote` uses the same raw indication (§2.4). Licence caveat before Montel goes live: **[OQ-117]**.
+⚠ **Amended 2026-09-29 by [DEC-167] — `price` is the raw quote.** The last paragraph's claims that `price` *"is already marked up"* and that the markup applies at display are **reversed**: `GET /prices/indications` returns the **raw** quote as `price` (4 dp on the wire, unchanged shape); no field is added or removed. The markup table stays and is **unused by customer reads**. The *no markup row in force ⇒ `UNAVAILABLE`* cause listed above no longer applies. The trade-wizard estimate in `POST /trades/quote` uses the same raw indication (§2.4). Licence caveat before Montel goes live: **[OQ-117]**. ⚠ **As built (2026-09-29) the "no markup row in force ⇒ `UNAVAILABLE`" cause still applies to `GET /prices/indications` (gate in `IndicationStatusRules`; see the "Slice 1 as built" box in F05 and [DEC-167]); the wizard estimate does not gate on it.**
 
 ### 2.4 Trading
 

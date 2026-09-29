@@ -589,7 +589,7 @@ New error `type` URIs, all `409`:
 | ~~`POST`~~ | ~~`/wallet/payments`~~ | ~~Start an iDEAL top-up, returns a redirect URL~~ ⚠ **Amended 2026-08-19 by [DEC-106]** — folded into `POST /wallet/deposits` with `method: "IDEAL"`. iDEAL and bank transfer are **peers on one deposit action**, not a default with a fallback behind it **[F07-R01]** |
 | `GET` | `/wallet/payments/{id}` | Payment status. Retained: it is the PSP leg, not the deposit intent. ⚠ **Amended 2026-09-23 by [DEC-162] and [DEC-164]** — no longer what the portal polls after the return: the return target moved to `/wallet/deposits/{id}` **[F07-R04]**, and **[F07-R09]**'s confirmation poll targets the `GET /wallet/deposits/{id}` row above |
 | `POST` | `/wallet/withdrawals` | ⚠ **New 2026-08-19 [DEC-83]** — request a withdrawal up to `availableBalance`. **Admin only** **[F06-R33]**; the amount is held immediately **[F07-R29]** |
-| `GET` | `/wallet/withdrawals?state=` | ⚠ **New** — the company's requests and their states **[F07-R32]** |
+| `GET` | `/wallet/withdrawals?state=` | ⚠ **New** — the company's requests and their states **[F07-R32]**. ⚠ **Amended 2026-09-29 by [DEC-166]:** each request now carries **`bankReference`** — the reference the back office recorded when it paid the request, null until then and when none was given — **appended as the last field, an additive change**. The customer never sees which staff member paid: there is no `paidByName` on this contract |
 | `POST` | `/wallet/withdrawals/{id}/cancel` | ⚠ **New** — the customer withdraws their own request before payout; releases the hold **[F07-R32]** |
 | `GET` | `/bank-account` | ⚠ **New 2026-09-28 [DEC-165]** — the company's registered bank account and whether **this caller** may change it. **Any member**, tenant-scoped. Answers `{ account, canChange, changeBlockedReason }` — the shape and the exact sentences are below **[F01-R44]** |
 | `POST` | `/bank-account` | ⚠ **New 2026-09-28 [DEC-165]** — add **or replace** the company's bank account; a replace deactivates the current `ACTIVE` account and activates the new one in one transaction **[F01-R46]**. **Admin only** (`CompanyAdmin`); refused at a company with four-eyes on. `200` with the new account; `400`, `403` and `409` below |
@@ -773,6 +773,7 @@ threshold **[DEC-100]**, **[F10-R50]**.
 | `GET` | `/company/accounts` | Colleagues who can also act — name, job title, email, status **[OQ-80]**, and each account's ~~**admin** flag~~ **`membershipRole`** **[F01-R21]**. ⚠ **Corrected 2026-09-10 by [DEC-152]: there is no admin flag.** Open to **every** member, unchanged — `CompanyEndpoints.cs:77` @ debadda0 (`MapGet("/accounts")`), `.RequireAuthorization()` with **no policy** at `:104`. `admin` gates no read here; the read it gates is `/company/memberships` below |
 | `GET` | `/company/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — the company's bank accounts with status (`PENDING_APPROVAL` \| `ACTIVE` \| `DEACTIVATED`) **[F01-R44]**. Read-only here: a bank account is added and deactivated by a PeakPower employee **[DEC-16]** and, under four-eyes, approved by a second admin §2.10. ⚠ **Not built, and superseded 2026-09-28 by [DEC-165].** The built read is `GET /bank-account` (§2.5) and answers the `ACTIVE` account only — there is no list of deactivated ones — with `canChange` and `changeBlockedReason` beside it; a company **admin**, not an employee, adds and replaces it, and no approval is involved: a four-eyes company is refused |
 | `GET`/`PATCH`/`DELETE` | `/company/memberships`, `/company/memberships/{accountId}` | ⚠ **New 2026-09-10 [DEC-152]** — the member list, a role change and a removal, **all three `CompanyAdmin`** (`MembershipEndpoints.cs:75`/`:85`/`:102` @ debadda0, the `.RequireAuthorization` lines; routes at `:61`/`:83`/`:100`). ⚠ **Not "`GET` open to every member"**: every member instead keeps `GET /company/accounts` above, which already carries the colleague's `membershipRole`; this list additionally names who has been **invited** and is admin-only for that reason. `GET` returns the whole `CompanyMembershipsResponse`; `PATCH` replaces one row but answers with the **whole list**, not the one row, so a screen never merges a partial response; `DELETE` answers `204` with no body. Both are `404` for a membership not this business's or already removed — byte-identical to an unknown `accountId` **[F13-R19]** — and `409` for the **admin floor**: demoting or removing the company's last admin, or a four-eyes company's second one; `DELETE` alone also refuses removing **your own** membership under the same status and body. ⚠ The `DELETE` **verb is a soft delete**: the SQL is an `UPDATE` setting `removed_at`, because PostgreSQL never evaluates `WITH CHECK` for a `DELETE` and there is no `DELETE` grant to guard |
+| `GET`/`POST` | `/company/four-eyes` and its five actions | ⚠ **New 2026-09-29 [DEC-166]** — the company's four-eyes mode, set by its own admins. `GET` is open to every member; the five `POST`s — `enable`, `disable-request`, `disable-request/approve`, `…/decline`, `…/cancel` — are **`CompanyAdmin`**. Each `POST` answers `200` with the same state the `GET` builds. Shapes and the exact `409` sentences are in the block below the entitlements table **[F01-R42]**, **[F01-R43]**, **[F01-R48]** |
 | `POST` | `/company/invitations`, `/company/invitations/accept` | ⚠ **New 2026-09-10 [DEC-152]** — issue (**`CompanyAdmin`**, `InvitationEndpoints.cs:49`/`:51` @ debadda0) and redeem (**anonymous**, `:67`/`:69`, on the owner connection: the invitation token is the authorisation, not tenancy). Issue answers **`202` always**, indistinguishable for a known and an unknown address in status, body and timing; its only other response is a **validation `400`** on the request itself, which never touches the address's standing. Accept answers the created `CompanyInvitationAcceptedResponse`, a **validation `400`** for the profile fields an address with no login must supply, or a single **`409`** — an unknown, a spent and an expired invitation token are one indistinguishable body |
 
 ~~All three are read-only. Company details, accounts and bank accounts are maintained by PeakPower
@@ -796,6 +797,81 @@ mechanism from an administration screen, and *"add a user"* has now left that ap
 altogether. What is unchanged: company **details** are still maintained by PeakPower employees, and a
 bank account **cannot be edited once added** — correcting an IBAN is *deactivate the old, add the
 new*, two audited events with two named actors **[F01-R44]**, **[F01-R46]**. ⚠ **Amended 2026-09-28 by [DEC-165]:** *who* and *how* changed, not *whether it can be edited* — a company **admin** replaces the account from the Balance page, `POST /bank-account` §2.5, as **one** operation recorded against one acting account; it is still never edited.
+
+⚠ **The company's four-eyes mode — new 2026-09-29 by [DEC-166].** Six routes at `/api/v1/company/four-eyes`,
+tenant-scoped like the other company routes and tagged *Company*. The read is open to every member of the token's
+company; each write is behind the `CompanyAdmin` policy, proven from the database on every request and never read
+from a claim **[DEC-152]**. **Four-eyes is set by the company's own admins**: turning it on is immediate, turning it
+off is a request a **different** admin approves, and the back office has no route that changes it **[F01-R42]**. No
+route takes an `Idempotency-Key`.
+
+| Method | Path | Body | Effect |
+| --- | --- | --- | --- |
+| `GET` | `/company/four-eyes` | — | The state below. Any member |
+| `POST` | `/company/four-eyes/enable` | — | Turn four-eyes on, at once. Needs two or more active admins **[F01-R43]** |
+| `POST` | `/company/four-eyes/disable-request` | — | Ask for four-eyes to be turned **off**. It stays on while the request is pending |
+| `POST` | `/company/four-eyes/disable-request/approve` | — | A **different** admin approves. Four-eyes is off afterwards and the request is cleared **[F01-R48]** |
+| `POST` | `/company/four-eyes/disable-request/decline` | optional `{ reason }` | A **different** admin declines. Four-eyes stays on and the request is cleared |
+| `POST` | `/company/four-eyes/disable-request/cancel` | — | The requester withdraws it |
+
+```jsonc
+// GET /api/v1/company/four-eyes — and the 200 body of every POST above (the page applies this one state)
+{
+  "enabled": true,
+  "activeAdminCount": 3,
+  "pendingDisable": {
+    "requestedByName": "M. Vandersteen",
+    "requestedAt": "2026-09-29T09:41:00+02:00",
+    "canApprove": true,
+    "canDecline": true,
+    "canCancel": false
+  },
+  "canEnable": false,
+  "canRequestDisable": false,
+  "blockedReason": null
+}
+
+// POST /api/v1/company/four-eyes/disable-request/decline — the whole body is optional
+{ "reason": "We are mid-audit; ask again in October." }
+```
+
+- **`pendingDisable` is null** when nobody has asked. `requestedByName` is "First Last" and reads *"A former admin"*
+  when the requester's account is no longer visible. **The flags are computed for the caller**: `canEnable` — the
+  caller is an admin, four-eyes is off and `activeAdminCount` is at least 2; `canRequestDisable` — an admin, four-eyes
+  on, nothing pending; `canApprove` — an admin **other than the requester**, and the requester is still an active
+  admin; `canDecline` — an admin other than the requester; `canCancel` — the requester. `activeAdminCount` counts
+  active accounts with an active `admin` membership in the token's company.
+- **`blockedReason`** is *"Only a company admin can change four-eyes."* for a non-admin (which wins when both apply),
+  *"Four-eyes needs at least two active admins. Your company has {n}."* for an admin while four-eyes is off with fewer
+  than two, and `null` otherwise. The portal shows it verbatim.
+- **`403`** for a member who is not an admin, on any `POST`. Nothing is written.
+- **`400`**, a validation problem keyed **`reason`**, when a decline's reason is longer than 500 characters after
+  trimming — *"Reason must be at most 500 characters."* A blank reason means none. It is checked before anything is
+  locked.
+- **`409`**, the generic `conflict` problem type with a `detail` that is the discriminator, the whole change refused
+  and nothing written:
+
+| Route | `detail` |
+| --- | --- |
+| `enable` | *"Four-eyes is already on."* — or, with fewer than two active admins, *"Four-eyes needs at least two active admins. Your company has {n}."* |
+| `disable-request` | *"Four-eyes is off."* — or *"A request to turn off four-eyes is already waiting for approval."* |
+| `approve` | *"There is no request to turn off four-eyes."* — self-approval, *"You requested this change. A different admin must approve it."* — or, when the requester has since been removed, demoted or deactivated, *"The admin who asked for this is no longer an active admin, so the request cannot be approved. Decline it, and ask again if four-eyes should still be turned off."* |
+| `decline` | *"There is no request to turn off four-eyes."* — or self-decline, *"You requested this change. Cancel it instead, or ask a different admin to decline it."* |
+| `cancel` | *"There is no request to turn off four-eyes."* — or, from anyone but the requester, *"Only the admin who requested this change can cancel it."* |
+| any `POST` | *"Only a company admin can change four-eyes."* — a caller demoted between the policy check and the lock |
+
+- **Every mutation locks and re-reads.** The admin roster is locked first (`CustomerMembershipCore.LockAdminAccountIdsAsync`),
+  then the company's row `FOR UPDATE`, owner-privileged with the **token's** company named explicitly; the mode, the
+  pending request and the roster are read after both locks. **All guards run before any mutation**, so no `409`
+  follows a flush — the customer middleware commits on a returned `409`. The one global lock order, roster, company
+  row, bank-account row, withdrawal row, wallet row, is recorded in **[DEC-166]**.
+- **Each success writes one audit row** from the customer host — `FOUR_EYES_ENABLED`, `FOUR_EYES_DISABLE_REQUESTED`,
+  `FOUR_EYES_DISABLE_APPROVED`, `FOUR_EYES_DISABLE_DECLINED` (the reason on the after side) or
+  `FOUR_EYES_DISABLE_CANCELLED`, actor `account:{id}`, entity `Customer`. A decline's reason is kept only there; no
+  response returns it to the requester.
+- **Unchanged while a request is pending:** withdrawal approval and decline **[F07-R30]**, the bank-account block
+  **[DEC-165]** (`GET /bank-account` still answers `changeBlockedReason` for a four-eyes company) and the admin floor
+  **[DEC-157]**.
 
 ### 2.8 Notifications & profile
 
@@ -1063,7 +1139,7 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `POST` | ~~`/accounts/{accountId}/deactivate`~~ **`/customers/{id}/accounts/{accountId}/deactivate`** | Deactivate and revoke sessions. ⚠ **Corrected 2026-09-10 by [DEC-152]: the route nests under the company** (`AccountEndpoints.cs:49`). ⚠ **Amended 2026-09-23 by [DEC-157]: warn + confirm + reason, never refused.** The request takes an optional body `{ acknowledged, reason }`. Deactivating an account that would leave a **four-eyes company with fewer than two active admins [F12-R43]**, or remove a **company's last active account [F12-R17]** — evaluated across **every** company the account is an active member of, because deactivation is person-wide — answers **`409` problem type `deactivation-requires-confirmation`** unless `acknowledged` carries a non-blank `reason` (a blank reason on an acknowledged call is `400`). It is **warned, not refused** — the account may be a leaver — and the forced path is **audited with the reason [F12 §5]**. A deactivation that breaches nothing stays silent `200`. Distinct from the plain `409` conflict an already-deactivated account still answers |
 | ~~`POST`~~ | ~~`/accounts/{accountId}/resend-invitation`~~ | ~~Reissue; invalidates the previous link. Under four-eyes no invitation is sent until the second admin approves the addition [F01-R49]~~ ⚠ **Removed 2026-09-10 by [DEC-152] — not shipped.** No route on this host sends, reissues or invalidates an invitation; the back office's own `CreateAsync` sends no email at all. The open item this leaves is already registered on **[DEC-152]**: whether the back office keeps its own account-creation path or becomes the same invitation flow with an employee actor |
 | ~~`PATCH`~~ | ~~`/accounts/{accountId}/admin`~~ | ~~set or clear the account's admin flag [F01-R47], [F12-R39]. Refused when it would leave a four-eyes company with fewer than two active admins [F01-R50]~~ ⚠ **Removed 2026-09-10 by [DEC-152]: there is no admin flag, and no route this narrow.** `membershipRole` is set on the general edit route above instead. ⚠ **Amended 2026-09-23 by [DEC-157]:** that general edit route **now enforces the admin-floor refusal on a demotion** — so this row's original `[F01-R50]` refusal is restored there rather than lost (see its own note) |
-| `POST` | `/customers/{id}/four-eyes/enable` \| `/disable` | ⚠ **New 2026-08-19 [DEC-71]** — turn the mode on or off for a company **[F12-R40]**. Enabling with **fewer than two active admin accounts is refused** **[F12-R41]**. Audited before/after **[DEC-17]**; it takes effect for actions started after it, and does not release a trade already `AWAITING_APPROVAL` |
+| ~~`POST`~~ | ~~`/customers/{id}/four-eyes/enable` \| `/disable`~~ | ~~⚠ **New 2026-08-19 [DEC-71]** — turn the mode on or off for a company **[F12-R40]**. Enabling with **fewer than two active admin accounts is refused** **[F12-R41]**. Audited before/after **[DEC-17]**; it takes effect for actions started after it, and does not release a trade already `AWAITING_APPROVAL`~~ ⚠ **Removed 2026-09-29 by [DEC-166].** It was built as one route, `POST /api/v1/customers/{customerId}/four-eyes` taking `{ enabled }` and answering `{ fourEyesEnabled }` — not the enable/disable pair drawn here — and it wrote no audit row. It is **deleted** with its contracts (the employee route count goes from 40 to 39): the mode is set by the company's own admins through `/api/v1/company/four-eyes` §2.7, and the back office only **reads** it — the employee customer detail keeps `FourEyesEnabled` and gains `FourEyesDisablePending` |
 | `GET`/`POST` | `/customers/{id}/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — add a bank account. **No `PATCH`**: a bank account cannot be edited, only added or deactivated **[F01-R44]**. Under four-eyes it lands `PENDING_APPROVAL` §2.10 **[F01-R45]** |
 | `POST` | `/bank-accounts/{id}/deactivate` | ⚠ **New 2026-08-19 [DEC-71]** — the other half of the pair; also a four-eyes action. A company holds **at most one `ACTIVE`** account, so replacing one activates the new and deactivates the old together **[F01-R46]** |
 | `PATCH` | `/metering-points/{id}` | Master data, end-dating, **BRP assignment [DEC-69]**, **[F12-R50]**, and the **production expectation the customer declares at onboarding [DEC-112]**, **[F01-R41]** |
@@ -1071,9 +1147,9 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET` | `/wallets/{id}/ledger` | Ledger with actor detail |
 | `POST` | `/wallets/{id}/deposits` | Register a bank transfer. ⚠ **Amended 2026-08-19 by [DEC-106]** — this is now the **exception path**, not the normal one: unmatched transfers, payments arriving outside the feed, and everything until **[OQ-93]** is answered **[F07-R17]** |
 | ~~`POST`~~ | ~~`/wallets/{id}/adjustments`~~ | ~~Manual adjustment (reason required)~~ ⚠ **Removed 2026-08-19 by [DEC-85]** — chargebacks and reversals are the bookkeeping program's, and the manual-adjustment-with-a-reason path goes with them **[F06-R26]**, **[F06-R27]** retired. ⚠ **Known gap, recorded rather than papered over:** a charged-back iDEAL deposit leaves the wallet overstated and the platform has no entry type left to correct it |
-| `GET` | `/withdrawals?state=` | ⚠ **New 2026-08-19 [DEC-83]** — the payout worklist: customer, amount, requester, age, destination bank account, four-eyes state **[F12-R53]** |
-| `POST` | `/withdrawals/{id}/pay` | ⚠ **New [DEC-83]** — **record a transfer already made**: value date, amount actually transferred, bank reference. Posts `WITHDRAWAL_PAID` and releases the hold in one transaction **[F12-R54]**, **[F06-R36]**. It is **not** an instruction to the bank; the platform initiates no payment. ⚠ **Amended 2026-09-28 by [DEC-165]** — built as `POST /api/v1/customers/{customerId}/wallet/withdrawals/{id}/payout`: the pay-to is **re-resolved** from the company's `ACTIVE` bank account **after** the request's lock is taken and its status checked, never read from the request row, and the resolved IBAN is **persisted as the request's `destination`** and returned. With none `ACTIVE` it is a `409`, *"No bank account on file for this company. Cannot pay out."* The operator's manual transfer is outside the platform and is not checked against it, so it must go to the IBAN the payout resolved and showed |
-| `POST` | `/withdrawals/{id}/reject` | ⚠ **New [DEC-83]** — reason **mandatory**; releases the hold **[F07-R32]** |
+| `GET` | `/withdrawals?state=` | ⚠ **New 2026-08-19 [DEC-83]** — the payout worklist: customer, amount, requester, age, destination bank account, four-eyes state **[F12-R53]**. ⚠ **Built 2026-09-29 by [DEC-166] as `GET /api/v1/wallet/withdrawals?status=&customerId=&page=&pageSize=`** — the withdrawals desk, across every company; shapes and rules below the table |
+| `POST` | `/withdrawals/{id}/pay` | ⚠ **New [DEC-83]** — **record a transfer already made**: value date, amount actually transferred, bank reference. Posts `WITHDRAWAL_PAID` and releases the hold in one transaction **[F12-R54]**, **[F06-R36]**. It is **not** an instruction to the bank; the platform initiates no payment. ⚠ **Amended 2026-09-28 by [DEC-165]** — built as `POST /api/v1/customers/{customerId}/wallet/withdrawals/{id}/payout`: the pay-to is **re-resolved** from the company's `ACTIVE` bank account **after** the request's lock is taken and its status checked, never read from the request row, and the resolved IBAN is **persisted as the request's `destination`** and returned. With none `ACTIVE` it is a `409`, *"No bank account on file for this company. Cannot pay out."* The operator's manual transfer is outside the platform and is not checked against it, so it must go to the IBAN the payout resolved and showed. ⚠ **Amended 2026-09-29 by [DEC-166]:** the route takes an **optional** body `{ bankReference }` and records the acting staff member — see the block below the table. The value date and the amount actually transferred that this row lists are **not** recorded |
+| `POST` | `/withdrawals/{id}/reject` | ⚠ **New [DEC-83]** — reason **mandatory**; releases the hold **[F07-R32]**. ⚠ **Not built 2026-09-29 — [DEC-166].** The user ruled that marking a withdrawal paid is the only staff action; there is no reject route and nothing writes `REJECTED` |
 | `GET` | `/payments/unmatched` | ⚠ **New 2026-08-19 [DEC-106]** — received payments the platform could not attribute: value date, amount, payer name, payer IBAN, raw description, why matching failed **[F12-R56]** |
 | `POST` | `/payments/{id}/match` | ⚠ **New [DEC-106]** — attribute one to a wallet by hand, with a mandatory note. Matching order is **(1)** platform-issued reference — automatic, never reaches this list; **(2)** payer IBAN resolving to exactly one customer — a *proposed* match, confirmed here; **(3)** manual **[F12-R57]**, **[F07-R21]** |
 | `POST` | `/invoice-runs` | Start a run |
@@ -1090,13 +1166,86 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `POST` | `/reference/energy-tax-brackets/validate` | ⚠ **New [DEC-74]** — contiguity, no gap, no overlap, ascending bounds, year fully covered, **plus the blast radius**: how many customers and EANs the version affects and from when **[F12-R47]**. A wrong boundary silently mis-taxes every EAN for a year |
 | `GET`/`PUT` | `/customers/{id}/energy-tax-reduction` | ⚠ **New [DEC-74]** — the minority case: no reduction (the default, ~90% of customers), a **percentage reduction applied per bracket**, or a full exemption, with `valid_from`, `valid_to`, a mandatory reason and the ruling or certificate that justifies it **[F12-R46]**. Per customer, not per EAN |
 | ~~`GET`/`PUT`~~ | ~~`/reference/surcharges`~~ | ~~Surcharges~~ ⚠ **Removed 2026-08-19 by [DEC-73]**, reversing **[DEC-35]**. Topups leave the platform entirely: it pushes the **invoiced volume per EAN** and the bookkeeping program multiplies by the topup fee **[F10-R51]**. A rate stored here would be a second source of truth for PeakPower's margin |
-| ~~`GET`/`PUT`~~ | ~~`/reference/four-eyes-thresholds`~~ | ~~Four-eyes thresholds **[DEC-33]**, scoped `GLOBAL_DEFAULT` or per customer, with `valid_from`/`valid_to`. ⚠ **Ships with no rows — the value is not decided.** Until one is in force, acceptance returns `409 four-eyes-threshold-not-configured` **[F05-R53]**~~ ⚠ **Removed 2026-08-19 by [DEC-71]** — there is **no threshold**, in euros or in megawatts, so the table is **not built** rather than shipped empty **[F13-R42]**. Four-eyes is a **per-company flag**, set through `/customers/{id}/four-eyes/enable` above |
+| ~~`GET`/`PUT`~~ | ~~`/reference/four-eyes-thresholds`~~ | ~~Four-eyes thresholds **[DEC-33]**, scoped `GLOBAL_DEFAULT` or per customer, with `valid_from`/`valid_to`. ⚠ **Ships with no rows — the value is not decided.** Until one is in force, acceptance returns `409 four-eyes-threshold-not-configured` **[F05-R53]**~~ ⚠ **Removed 2026-08-19 by [DEC-71]** — there is **no threshold**, in euros or in megawatts, so the table is **not built** rather than shipped empty **[F13-R42]**. Four-eyes is a **per-company flag**, set through `/customers/{id}/four-eyes/enable` above ⚠ **Amended 2026-09-29 by [DEC-166]:** that route is removed; the flag is set by the company's own admins through `/api/v1/company/four-eyes` §2.7 |
 | `GET`/`PUT` | `/reference/price-products` | Montel mapping. ⚠ Under **[DEC-96]** the poll goes through the **existing PeakPower Montel service**, not the Montel API directly **[F04-R01]** |
 | `GET`/`PUT` | `/reference/price-markup` | ⚠ **New 2026-08-19 [DEC-80]** — the **markup percentage** applied to every customer-facing indication: one platform-wide value, **default 2%**, effective-dated, changed **without a release**, audited before/after **[F12-R48]**, **[F04-R18]**. ⚠ It is now the platform's **only** margin instrument — **[DEC-73]** took the surcharge out — so a wrong value here is wrong on every quote |
 | `GET`/`POST` | `/reference/brps` · `PATCH` `/reference/brps/{id}` | ⚠ **New 2026-08-19 [DEC-69]** — a **BRP** is reference data: name, endpoint, credentials, document format / adapter, and the direction and trigger of the exchange **[F12-R49]**. **Credentials are write-only** — replaced, never read back — and rotation is audited like any other reference-data change **[F12-R24]**. PVNed is the first row, not the only one **[F02-R44]** |
 | ~~`GET`/`PUT`~~ | ~~`/reference/wallet-thresholds`~~ | ~~Alert rules~~ ⚠ **Removed 2026-08-19 by [DEC-90]**, reversing **[DEC-49]**. No warning amount, no critical amount, no low-balance alert and no `wallet_threshold_rule` **[F06-R39]** |
 | `GET` | `/audit?…` | Audit search. Retention is the fiscal **seven years** **[DEC-95]**; the trail covers **actions**, and the financial record of record is the bookkeeping program's |
 | `POST` | `/impersonation` | Start a read-only view-as session |
+
+⚠ **The withdrawals desk and the payout body — new 2026-09-29 by [DEC-166].** Staff track withdrawals across every
+company, pay them by manual bank transfer outside the platform, and **mark them as paid** — the only staff action, with
+no approve and no reject **[DEC-83]**. Both routes carry the back-office policy, as the other wallet routes do.
+
+`GET /api/v1/wallet/withdrawals?status=&customerId=&page=&pageSize=`
+
+| Parameter | Rule |
+| --- | --- |
+| `status` | `to-pay` (the default; `REQUESTED`), `awaiting-approval` (`AWAITING_APPROVAL`), `paid` (`PAID`), `closed` (`CANCELLED`, `APPROVAL_DECLINED` or `REJECTED`) or `all`. Any other value is a `400`, a validation problem keyed **`status`**: *"Status must be one of: to-pay, awaiting-approval, paid, closed, all."* |
+| `customerId` | Optional. Filters to one company |
+| `page`, `pageSize` | `page` is 1-based; `pageSize` defaults to 50 with a maximum of 200. An out-of-range value is **clamped, not refused**: a page below 1 is 1, a size below 1 is 50, a size above 200 is 200 |
+
+```jsonc
+// 200 OK — WithdrawalDeskListResponse
+{
+  "items": [
+    {
+      "id": "0198…",
+      "customerId": "0197…",
+      "companyName": "Zonnedak Beheer B.V.",
+      "amount": 25000.00,
+      "status": "REQUESTED",
+      "requestedByName": "M. Vandersteen",
+      "requestedAt": "2026-09-29T09:10:00+02:00",
+      "approvedByName": null,
+      "destination": "NL00BANK0123456789",
+      "payToIban": "NL00BANK0123456789",
+      "payToHolderName": "Zonnedak Beheer B.V.",
+      "bankReference": null,
+      "paidByName": null,
+      "resolvedAt": null
+    }
+  ],
+  "total": 12,
+  "counts": { "toPay": 12, "awaitingApproval": 3 }
+}
+```
+
+- **Ordering.** `to-pay` and `awaiting-approval` are **oldest first**, first come first served; the rest are newest
+  first; the id breaks ties, so a page boundary is stable between two loads.
+- **`total` is the filtered count; `counts` are not.** `counts.toPay` and `counts.awaitingApproval` are totals across
+  **every company**, independent of `status` and `customerId`.
+- **`status`** on an item is the existing withdrawal wire value (`REQUESTED`, `AWAITING_APPROVAL`, `APPROVAL_DECLINED`,
+  `REJECTED`, `PAID`, `CANCELLED`). `companyName` is the trade name, falling back to the legal name.
+- **`payToIban` and `payToHolderName` are the company's current `ACTIVE` bank account, read at query time** — both null
+  when it has none — so a replace shows on the next load. **`destination` is the row's own column**: the request-time
+  snapshot, re-pointed by a replace while the request is open **[DEC-165]**, and the account actually paid once `PAID`.
+  The list is read-only and takes no lock: **where money goes is the payout's own re-resolution under the withdrawal
+  lock, never this list.**
+- **Names** come from the account records the back office already reads: `requestedByName`, and `approvedByName` when
+  a second admin approved under four-eyes; a person it cannot resolve reads *"Unknown"*. `paidByName` is the staff
+  member's display name **as a snapshot** and is null until `PAID`; `resolvedAt` is when the request left the open set.
+  **Staff names never reach the customer contract** §2.5.
+
+```jsonc
+// POST /api/v1/customers/{customerId}/wallet/withdrawals/{id}/payout — the whole body is optional
+{ "bankReference": "SEPA-20260929-0042" }
+// 200 OK — the WithdrawalRequestDto, now carrying "bankReference"
+```
+
+- **`bankReference`** is trimmed; an absent body, an absent property, an empty value and a whitespace one all mean none;
+  **more than 140 characters is a `400`** keyed `bankReference`, *"A bank reference must be at most 140 characters."*,
+  checked before the request is locked. A call with **no body still works**.
+- **Recorded on the payout:** `bank_reference`, `paid_by_employee_id` (the username on the employee's token) and
+  `paid_by_employee_name` (the display name at that moment; the username when none is found) — migration 28. **No value
+  date and no amount actually transferred** are recorded: the payout pays the requested amount in full.
+- **`404`** for an unknown company wallet or withdrawal. **`409`**, the generic `conflict` problem type: *"This
+  withdrawal is {STATUS}, not REQUESTED - it is not ready for payout."*, or, with no `ACTIVE` account,
+  *"No bank account on file for this company. Cannot pay out."*
+- **The payout still records the company's `ACTIVE` account as it is when the payout runs**, which is not necessarily
+  the account the operator was shown; the desk warns after the fact when the two differ. An expected-IBAN precondition
+  on this body is a possible follow-up and is **not built** **[DEC-166]**.
 
 ⚠ **Three endpoints that will never be added, stated so nobody adds them.**
 

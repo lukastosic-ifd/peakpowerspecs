@@ -122,6 +122,9 @@ CREATE TABLE customer.customer (
     -- Four-eyes is a per-customer-company MODE, not a value comparison  [DEC-71], [F01-R42].
     -- Default off. There is no threshold column here or anywhere else.
     four_eyes_enabled   boolean NOT NULL DEFAULT false,
+    -- ⚠ As built 2026-09-29 by [DEC-166] (migration 29): two more nullable columns on this table hold a
+    --   pending request to turn the mode OFF, and the mode is set by the company's own admins, not by an
+    --   employee — see §3.1.4.
     status              text NOT NULL
         CHECK (status IN ('PROSPECT','ACTIVE','SUSPENDED','CLOSED')),
     billing_address     jsonb NOT NULL,
@@ -556,7 +559,7 @@ required a versioned reference table of amounts. **[DEC-71]** replaces it: four-
 
 | Object | Column / table | Note |
 | --- | --- | --- |
-| The mode | `customer.four_eyes_enabled` | One boolean, default off, set by a PeakPower employee **[DEC-16]**, **[F01-R42]**. All five actions or none — there is no per-action override |
+| The mode | `customer.four_eyes_enabled` | One boolean, default off, set by a PeakPower employee **[DEC-16]**, **[F01-R42]**. All five actions or none — there is no per-action override. ⚠ **Amended 2026-09-29 by [DEC-166]: set by the company's own admins, not an employee** — turned on at once, turned off by a request a different admin approves; a pending request is held in two further columns, §3.1.4 |
 | Eligibility to approve | ~~`customer_account.is_admin`~~ `customer_membership.role = 'admin'` | ⚠ **Moved 2026-09-10 by [DEC-152].** The column is dropped; eligibility is a **membership** role, per business, read from the database on every request rather than carried in a token. It no longer grants *only* the second pair of eyes — `admin` also gates invitations, role changes, removals and entitlements **[DEC-150]** **[F01-R47]** |
 | The record | `customer.approval_request` | Action, subject, initiating account, approving account, decision, timestamps **[F01-R48]** |
 | ~~The threshold~~ | ~~`trading.four_eyes_threshold`~~ | ⚠ **Not built** — §3.4 |
@@ -623,6 +626,32 @@ onboarding application and gets no row.
 re-points it for the company's open (`REQUESTED`, `AWAITING_APPROVAL`) requests, scoped through the company's
 own wallet, and the payout sets it to the account it resolved, so it is where a request **will** be paid, not a
 frozen snapshot **[DEC-165]**.
+
+#### 3.1.4 The four-eyes disable request, as built — [DEC-166]
+
+⚠ **Added 2026-09-29.** Turning four-eyes **off** needs a **different** admin's approval **[F01-R48]**, so the
+request has to live somewhere between the asking and the answering. **Migration 29**
+(`CustomerFourEyesDisableRequest`) adds two nullable columns to `customer.customer`, beside `four_eyes_enabled`:
+
+| Column | As built |
+| --- | --- |
+| `four_eyes_disable_requested_by_account_id uuid NULL` | The admin who asked. Foreign key `fk_customer_customer_account_four_eyes_disable_requested_by_ac` to `customer.customer_account`, **`ON DELETE RESTRICT`**, so an account with a request pending cannot be deleted from under it; indexed (`ix_customer_four_eyes_disable_requested_by_account_id`) |
+| `four_eyes_disable_requested_at timestamptz NULL` | When they asked |
+| `ck_customer_four_eyes_disable_request_complete` | `(requested_by IS NULL) = (requested_at IS NULL)` — both null or both set |
+| `ck_customer_four_eyes_disable_request_implies_on` | `requested_by IS NULL OR four_eyes_enabled` — **a pending request implies four-eyes is on**, so a write that turns the mode off without clearing the request fails in the database rather than stranding a request nobody can approve |
+
+⚠ **The two `CHECK`s are the last line of defence, not the first.** The `Customer` aggregate refuses first
+(`RequestFourEyesDisable`, `ApproveFourEyesDisable`, `DeclineFourEyesDisable`, `CancelFourEyesDisable`), and
+approving clears the request and the mode in the same save. ⚠ **No grant changes.** `app_customer_role` holds a
+table-level `UPDATE` on `customer.customer`, but migration 16 left the table with a `SELECT` policy only, so
+row-level security silently drops it from any row-locking clause and a customer-role `UPDATE` affects zero rows.
+**Every customer-host lock or write on the row therefore runs owner-privileged** (`OwnerPrivilegedWrite`), with an
+explicit `id = <the token's company>` predicate and nothing taken from the request. ⚠ **Lock order,** one global
+order for every writer that takes more than one row: **admin roster** (`customer.customer_membership`), then the
+**company row**, then its **bank-account** rows, then the **withdrawal** row, then the **wallet** row — §3.5, and
+api-contracts §2.7 for the path-by-path check. Each change also writes an `audit.audit_record` (`FOUR_EYES_ENABLED`,
+`_DISABLE_REQUESTED`, `_DISABLE_APPROVED`, `_DISABLE_DECLINED` with the reason, `_DISABLE_CANCELLED`) in the same
+save.
 
 #### Self-service onboarding and the credential store — ⚠ added 2026-09-03
 
@@ -1385,6 +1414,10 @@ CREATE TABLE wallet.withdrawal_request (
     decided_at         timestamptz,
     decline_reason     text,
     -- the payout an employee has ALREADY made  [F06-R36]
+    -- ⚠ As built (migration 28, 2026-09-29 by [DEC-166]): three nullable columns — bank_reference (optional, at
+    --   most 140 characters by CHECK), paid_by_employee_id (the employee's username) and paid_by_employee_name
+    --   (a display-name snapshot) — all null unless the request is PAID. There is no value_date column and the
+    --   PAID CHECK below is not built; the paid time is resolved_at. See §7.7.
     paid_by_employee   text,
     bank_reference     text,
     value_date         date,
@@ -1998,6 +2031,19 @@ that migration 26's readers made unnecessary.
 | Backfill from `customer.onboarding_application` **[DEC-165]** | `INSERT … SELECT DISTINCT ON`, migration **26**, after the table exists | One `ACTIVE`, `ONBOARDING` row per customer with a signed application carrying an IBAN; idempotent through `ON CONFLICT DO NOTHING`. A customer with none gets no row and no error — §3.1.3 |
 | `wallet.withdrawal_request` **[DEC-165]** | `GRANT UPDATE (destination) … TO app_employee_role`, migration **26** | Column-scoped, widening `(status, resolved_at)` by `destination` only. `app_customer_role` gains nothing: a replace re-points open withdrawals on the owner connection |
 | `customer.onboarding_application` grants **[DEC-165]** | `REVOKE SELECT (iban, customer_id)` from both application roles and `DROP POLICY` on the two policies beside them, migration **27** (`OnboardingIbanGrantRetired`) | Migrations 22 and 23 opened those column grants for two readers — the bank-transfer matcher and the withdrawal request — that now read `customer_bank_account`'s `ACTIVE` row. Row-level security **stays enabled** on the table; the wizard's own reads are anonymous, on the owner connection, and were never gated by either. `Down` restores both grants and both policies |
+
+### 7.7 The 2026-09-29 withdrawals desk and four-eyes migrations
+
+⚠ **Two migrations, 28 and 29, sequential after 27 (§7.6)** in the platform lane. Both are additive `ALTER`s on
+tables that already exist, both nullable, so nothing is backfilled and no company changes behaviour on deploy.
+Roll forward only, as every migration here.
+
+| Change | Form | Note |
+| --- | --- | --- |
+| `wallet.withdrawal_request` **[DEC-166]** | Three nullable columns, migration **28** (`WithdrawalPayoutDetails`, `20260929031716`): `bank_reference text`, `paid_by_employee_id text`, `paid_by_employee_name text` | `ck_withdrawal_request_bank_reference_length`: `bank_reference IS NULL OR char_length(bank_reference) <= 140`, because the API's `400` is not the last line of defence. All three stay null until a request is `PAID`. No foreign key to `employee.employee` — the customer role reads this table and a cross-realm key buys nothing the name snapshot does not give. `paid_by_employee_name` is a snapshot, so a later rename never rewrites history |
+| `wallet.withdrawal_request` grants **[DEC-166]** | `GRANT UPDATE (bank_reference, paid_by_employee_id, paid_by_employee_name) … TO app_employee_role`, migration **28** | Column-scoped, widening `(status, resolved_at, destination)` by exactly those three columns — the only ones the payout newly touches. `app_customer_role` gains nothing: its table-level `SELECT` already covers the new columns, so the customer role **can** read the payer columns although no customer API returns them (the customer DTO maps `bank_reference` only) |
+| `customer.customer` **[DEC-166]** | Two nullable columns, a foreign key, an index and two `CHECK`s, migration **29** (`CustomerFourEyesDisableRequest`, `20260929035903`) | §3.1.4. No grant change: customer-host writes to the table are already owner-privileged since migration 16. The `Down` drops the foreign key, index, `CHECK`s and columns in that order |
+| `PeakPowerDbContextModelSnapshot.cs`, the migration pins and `tools/verify-migrator.sh` | Updated in the same commits | The Designer file, the snapshot, the pins for history, `CHECK`s and the employee `UPDATE` columns, and the migrator script move with each migration, not as a follow-up |
 
 ## 8. Retention & archival
 

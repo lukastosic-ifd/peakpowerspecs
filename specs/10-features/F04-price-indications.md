@@ -172,7 +172,7 @@ before the depth was decided; this note, not the sentence, is what binds.
 
 ### 3.1 The markup — reference data, not a constant **[DEC-80]**
 
-The customer never sees the quote. The customer sees the quote **plus a percentage**, and the
+⚠ **2026-09-29 [DEC-167]: reversed for customer reads — the customer now sees the raw quote, no markup is applied, and the table below is unused. Licence caveat [OQ-117].** The customer never sees the quote. The customer sees the quote **plus a percentage**, and the
 percentage is maintained like a tariff:
 
 ```

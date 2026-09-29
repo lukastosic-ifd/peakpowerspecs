@@ -567,11 +567,11 @@ export function tradeWizard() {
   rows.forEach((r, i) => { b += statLine(rx + 18, cy + 138 + i * 26, rw - 36, r[0], r[1]); });
 
   b += line(rx + 18, cy + 322, rx + rw - 18, cy + 322, { stroke: C.border });
-  b += text(rx + 18, cy + 344, 'Indicative price — ex VAT', { size: 12, fill: C.muted });
-  b += text(rx + rw - 18, cy + 344, '€ 96,1500 / MWh', { size: 12, weight: 600, anchor: 'end' });
+  b += text(rx + 18, cy + 344, 'Market indication (raw) — ex VAT', { size: 12, fill: C.muted });
+  b += text(rx + rw - 18, cy + 344, '€ 96,15 / MWh', { size: 12, weight: 600, anchor: 'end' });
   b += text(rx + 18, cy + 366, 'Estimated value — ex VAT', { size: 13, weight: 700 });
   b += text(rx + rw - 18, cy + 368, '€ 73.843,20', { size: 19, weight: 700, anchor: 'end' });
-  b += text(rx + 18, cy + 384, 'based on the indication of 14:22 — the actual price will differ', { size: 10, fill: C.faint });
+  b += text(rx + 18, cy + 384, 'Estimate at today\'s market indication — your firm price is set by our trader', { size: 10, fill: C.faint });
 
   b += rect(rx + 18, cy + 392, rw - 36, 96, { fill: C.panel2, stroke: C.border, r: 8 });
   b += statLine(rx + 32, cy + 414, rw - 64, 'To reserve — incl. 21% VAT', '€ 89.350,27', { fill: C.amber });

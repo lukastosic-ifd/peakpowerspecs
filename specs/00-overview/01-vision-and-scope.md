@@ -61,7 +61,7 @@ mindmap
       EAN portfolio + friendly naming
       Consumption, production and net usage charts
       Block overlay on chart
-      Price indications — bid plus configurable markup
+      Price indications — bid plus configurable markup (now raw, DEC-167)
       Trade requests + offer acceptance
       Selling short
       Four-eyes as a per-company mode

@@ -304,7 +304,7 @@ Held at 3 × 5 again. What changed is which paths the test gate has to name, bel
 
 **Mitigation**
 - Append-only ledger with computed balances and a daily reconciliation job **[DEC-04]**.
-- Row-level locking with a written lock order — wallet before trade, always.
+- Row-level locking with a written lock order — wallet before trade, always. ⚠ **Superseded 2026-09-29 by [DEC-167] (7):** roster → `customer.customer` → trade → wallet, never the wallet before the trade.
 - The eight correctness tests in
   [Solution structure §6.1](../20-architecture/02-solution-structure.md) as a merge gate.
 - **Add the four-eyes release paths as named cases to that gate [DEC-33]**: approve, refuse and
@@ -1247,6 +1247,8 @@ The residual this entry kept — **customer CSV export** — is settled from the
 the licence side, which is the cheapest way a risk can go away. **[DEC-81]**: customers see the
 **current** forward curve, with **no history and no export**. **[DEC-97]**: the customer API exposes
 usage and **nothing priced**. There is no longer a feature waiting to be refused.
+
+⚠ **2026-09-29 [DEC-167]:** the premise below is removed — customers now see the **raw** quote, so the 3 → 2 reduction no longer holds and the impact should be read as **3** until **[OQ-117]** is answered; a real Montel provider must not go live before then.
 
 Impact falls from 3 to 2 because the worst case is now a portal that shows a **derived** figure rather
 than a raw one — and **[DEC-80]** already requires exactly that: a quote plus a configurable

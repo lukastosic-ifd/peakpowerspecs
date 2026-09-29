@@ -360,7 +360,7 @@ This creates two prices where there was one, so the boundary has to be stated ra
 | --- | --- | --- |
 | Montel / the Montel service returns | Raw quote | Untouched. §2.1 forbids the service applying a markup |
 | This adapter stores (`price_indication_observation`) | **Raw quote** | **No markup column, no adjusted column.** What is stored is what was quoted |
-| Portal price board, trade-wizard estimate | **Raw × (1 + markup)** | Computed at render time from the stored raw value and the markup in force **[DEC-80]** | ⚠ **2026-09-29 [DEC-167]:** now **raw**, with no markup: customer reads (the Prices page) and the wizard estimate both show the raw stored value. Licence caveat: **[OQ-117]**.
+| Portal price board, trade-wizard estimate | **Raw × (1 + markup)** | Computed at render time from the stored raw value and the markup in force **[DEC-80]** ⚠ **2026-09-29 [DEC-167]:** now **raw**, with no markup: customer reads (the Prices page) and the wizard estimate both show the raw stored value. Licence caveat: **[OQ-117]**. |
 | `day_ahead_price` store | **Raw** | Unchanged by [DEC-80], which is about indications |
 | Day-ahead shown to a customer (tooltip, exposure KPI) | **Raw** | It is the price they are actually charged; marking it up would break their own reconciliation |
 | Settlement — [Invoice calculation](../50-calculations/03-invoice-calculation.md) | **Raw day-ahead, always** | **[DEC-44]** first half, confirmed by **[DEC-87]**. No marked-up value is an input to any invoice line |
@@ -386,7 +386,7 @@ Worked example, at the 2% default:
 
 | Quantity | Raw | Shown | Charged |
 | --- | --- | --- | --- |
-| Base M+1 indication, 92,40 €/MWh | 92,40 | 92,40 × 1,02 = 94,248 → **94,25** | *n/a — an indication is not charged* |
+| Base M+1 indication, 92,40 €/MWh | 92,40 | 92,40 × 1,02 = 94,248 → **94,25** ⚠ **2026-09-29 [DEC-167]:** now shown **raw**, 92,40, no markup | *n/a — an indication is not charged* |
 | Day-ahead interval, 87,30 €/MWh | 87,30 | 87,30 | **87,30** |
 
 ⚠ **What a breach of the boundary costs.** If the markup ever leaked into settlement, one MW of
@@ -396,6 +396,8 @@ against itself. It would only surface when a customer checked the invoice agains
 curve, which [F08](../10-features/F08-day-ahead-prices.md) business rule 6 explicitly expects them to
 do. That is why the markup is applied
 at the last possible moment instead of on ingestion.
+
+⚠ **2026-09-29 [DEC-167]:** no markup is captured; F05 records the raw price, its time and its source only. The paragraph below is superseded.
 
 ⚠ **Consequence for [F04-R10]**, which records the indication current at the moment of a trade request:
 the recorded value is a raw observation, so the markup percentage **in force at that moment** must be
@@ -468,6 +470,8 @@ number commercially, while remaining a Montel display for licence purposes. It d
 licensed. It does mean the figure on the tile is **not** a raw quote that a third party could
 reconcile against Montel, which makes the *"Indication — not an offer"* labelling **[F04-R05]** carry
 more weight than it did, not less.
+
+⚠ **2026-09-29 [DEC-167]:** the tile now shows the **raw** quote, so the reasoning above no longer holds: a third party can reconcile it against Montel. The licence caveat is **[OQ-117]**, to be answered before Montel goes live.
 
 ## 8. Open questions
 

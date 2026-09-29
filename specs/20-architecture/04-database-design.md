@@ -357,6 +357,10 @@ CREATE POLICY customer_customer_invitation_back_office ON customer.customer_invi
 
 ```sql
 -- Bank accounts are added and deactivated, never edited  [DEC-71], [DEC-61], [F01-R44].
+-- ⚠ As built 2026-09-28 by [DEC-165] (migration 26): this is the 2026-08-19 design, kept for the record.
+--   The built table has no approver columns and no immutability trigger, adds a `source` column, makes
+--   added_by_account_id nullable and validates the IBAN and BIC in the domain type rather than in CHECKs —
+--   see §3.1.3.
 CREATE TABLE customer.customer_bank_account (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id   uuid NOT NULL REFERENCES customer.customer(id),
@@ -573,6 +577,52 @@ use iDEAL unaided, so gating a deposit gates nothing **[DEC-71]**, **[DEC-106]**
 database. It is checkable only because **[DEC-17]** already records the acting account on every
 action. `ux_approval_open_subject` stops the same subject accumulating two pending approvals, which
 is how a "second" approval could otherwise be manufactured by clicking twice.
+
+#### 3.1.3 The company bank account, as built — [DEC-165]
+
+⚠ **Added 2026-09-28.** The `customer.customer_bank_account` DDL above is the 2026-08-19 design
+**[DEC-71]**, kept for the record. **Migration 26** (`CompanyBankAccounts`) built the table, and it differs
+from that sketch in the respects below. A company **admin** now adds or replaces the account from the
+Balance page, so a row is written by the customer host, not by an employee **[F01-R44]**.
+
+| Design sketch above | As built |
+| --- | --- |
+| `iban` and `bic` with regular-expression `CHECK`s | Plain `text`. The IBAN is validated in the domain type — shape (15 to 34 characters) and ISO 7064 mod-97 — and the BIC by shape, before anything is written; the per-country IBAN length table **[F01-R03]** describes is not built |
+| `holder_name text NOT NULL` | The same, with 1 to 200 characters enforced in the domain type, not by the column |
+| `added_by_account_id NOT NULL` | **Nullable** — a row copied from an onboarding application that recorded no signing account. Every portal write names the acting account |
+| `approved_by_account_id`, `approved_at`, `deactivation_approved_by_account_id` and their `CHECK`s | **Not built.** They arrive with the four-eyes approval flow **[F01-R45]**, which is deferred |
+| `status IN ('PENDING_APPROVAL','ACTIVE','DEACTIVATED')` | The same `CHECK` (`ck_customer_bank_account_status_valid`). `PENDING_APPROVAL` is admitted for the deferred flow and **never written**: a four-eyes company is blocked from changing its account instead |
+| — | **New: `source`** — `ONBOARDING`, `PORTAL` or `BACKFILL`, with `ck_customer_bank_account_source_valid`. `ONBOARDING` is the wizard's signing **and** migration 26's own copy; `PORTAL` is a Balance-page add or replace; `BACKFILL` is reserved for a later data repair and written by nothing |
+| `CHECK (status <> 'DEACTIVATED' OR deactivated_at IS NOT NULL)` | `ck_customer_bank_account_deactivation_consistency`: `deactivated_at` **and** `deactivated_by_account_id` are set if, and only if, `status = 'DEACTIVATED'` |
+| `ux_bank_account_active` | The same partial unique index, named `ux_customer_bank_account_active` — at most one `ACTIVE` row per company **[F01-R46]** |
+| `bank_account_is_immutable()` and `trg_bank_account_immutable` | **Not built.** What stops an edit is that no application role holds `UPDATE` or `DELETE` on the table, and its only two writers — the add/replace endpoint, which deactivates and inserts, and onboarding's signing, which inserts — both run owner-privileged and never edit a row in place |
+
+⚠ **Grants and row-level security.** Migration 26 revokes everything first — migration 2's default
+privileges had already handed the new table full DML — then grants **`SELECT` only** to `app_customer_role`
+and `app_employee_role`. **No role holds `DELETE`**: a bank account is a financial record, only ever
+deactivated. Row-level security is enabled with two **`FOR SELECT`** policies — `customer_id = app.customer_id`
+for the customer role and `USING (true)` for the back office — narrower than the *"same policy"* §6 asks of
+this table, because neither role writes it through its own connection. Every write runs through
+`OwnerPrivilegedWrite` **after** the admin check, the four-eyes refusal and every field check have run in C#,
+the discipline migration 23 set for `wallet.withdrawal_request`. **Migration 26 also widens
+`app_employee_role`'s column-scoped `UPDATE` on `wallet.withdrawal_request`** from `(status, resolved_at)` to
+include `destination` — the payout records the account it resolved — and nothing else.
+
+⚠ **The backfill.** Migration 26 inserts, for every customer with a signed `customer.onboarding_application`
+carrying an IBAN, one `ACTIVE` row with `source = 'ONBOARDING'` from that customer's **most recent** such
+application (`DISTINCT ON (customer_id)` ordered by `signed_at` descending), with `added_at` the signing time
+and `added_by_account_id` the signing account. The holder name is the application's bank-account holder, else its
+organisation name, else the company's `legal_name`, capped at 200 characters. `ON CONFLICT (customer_id) WHERE
+status = 'ACTIVE' DO NOTHING` makes a manual re-run harmless. Note the source: the built `customer.customer`
+never carried `iban`, `bic` or `bank_account_holder` — the sketch in §3.1 above is a column that was never
+created — so there is nothing to drop from it. A company created by the back office or the seeder has no
+onboarding application and gets no row.
+
+⚠ **`wallet.withdrawal_request` stores the IBAN itself.** The DDL in §3.5 sketches `bank_account_id` and
+`iban_at_request`; the built table (migration 23) has a single **`destination`** column. A bank-account replace
+re-points it for the company's open (`REQUESTED`, `AWAITING_APPROVAL`) requests, scoped through the company's
+own wallet, and the payout sets it to the account it resolved, so it is where a request **will** be paid, not a
+frozen snapshot **[DEC-165]**.
 
 #### Self-service onboarding and the credential store — ⚠ added 2026-09-03
 
@@ -1320,6 +1370,9 @@ CREATE TABLE wallet.withdrawal_request (
     amount             numeric(18,6) NOT NULL CHECK (amount > 0),
     -- an ACTIVE bank account of the SAME customer  [DEC-61], [W15], plus the IBAN as it stood at
     -- request time, because the account can be deactivated before the payout happens  [F07-R33]
+    -- ⚠ As built (migration 23, amended 2026-09-28 by [DEC-165]): one `destination` column holding the IBAN
+    --   itself, not bank_account_id + iban_at_request. A bank-account replace re-points it while the request
+    --   is open and the payout sets it to the account it resolved — see §3.1.3.
     bank_account_id    uuid NOT NULL REFERENCES customer.customer_bank_account(id),
     iban_at_request    text NOT NULL,
     requested_by_account_id uuid NOT NULL REFERENCES customer.customer_account(id),
@@ -1887,7 +1940,7 @@ ALTER TABLE billing.surcharge RENAME COLUMN rate TO rate_eur_per_kwh;
 | `customer.metering_point.brp_id` **[DEC-69]** | Add nullable → backfill to PVNed → `SET NOT NULL`, across one release | Expand/contract, but the backfill is safe enough to run in the same release: the value is knowable for every row without asking anyone |
 | `customer.customer.four_eyes_enabled`, ~~`customer_account.is_admin`~~ **[DEC-71]** | Additive, `NOT NULL DEFAULT false` | Both default **off**, so no company changes behaviour on deploy. ⚠ A company cannot enable the mode until it has **two** admins **[F01-R43]** — an application guard, not a constraint, because it counts rows in another table. ⚠ **`is_admin` is dropped 2026-09-10 by [DEC-152]**; see the row below |
 | `customer.approval_request` **[DEC-71]** | New table | Empty on deploy and correctly so: there is no historic approval to reconstruct, and inventing rows for past trades would fabricate a control that was not applied |
-| `customer.customer_bank_account` **[DEC-71]**, **[DEC-61]** | New table + **backfill from the three `customer` columns** + drop, across separate releases | ⚠ The one genuinely breaking move this round. Existing `iban`/`bic`/`bank_account_holder` become one `ACTIVE` row per customer that has them, with `added_by_account_id` set to the account that last edited the customer — **or the migration fails loudly** rather than inventing an actor, because the whole table exists to say who added an account |
+| `customer.customer_bank_account` **[DEC-71]**, **[DEC-61]** | New table + **backfill from the three `customer` columns** + drop, across separate releases | ⚠ The one genuinely breaking move this round. Existing `iban`/`bic`/`bank_account_holder` become one `ACTIVE` row per customer that has them, with `added_by_account_id` set to the account that last edited the customer — **or the migration fails loudly** rather than inventing an actor, because the whole table exists to say who added an account. ⚠ **As built 2026-09-28 [DEC-165]:** the source was `customer.onboarding_application`, not `customer` columns — the built table never had them — in **one** migration (26, §7.6), with no actor invented: `added_by_account_id` is nullable, and the row's own `source` says where it came from |
 | `trading.trade.total_power_mw`, `trading.block_allocation.power_mw` **[DEC-70]** | `DROP CONSTRAINT` + `ADD CONSTRAINT … NOT VALID`, then `VALIDATE` | ⚠ **Check the existing rows before validating.** Every row written under **[DEC-32]** is a multiple of 0,1 MW, therefore also a multiple of 0,01 MW, therefore passes — the change is a **loosening**. If a row fails, it was written outside the old constraint and the migration has found a real defect |
 | `wallet.wallet_entry.entry_type`, `cause_type` **[DEC-77]**, **[DEC-85]** | `ADD CONSTRAINT … NOT VALID`, then `VALIDATE` | ⚠ **This is the one that can fail on real data.** If any `INVOICE_DEBIT`, `INVOICE_CREDIT` or `ADJUSTMENT` entry exists, validation fails — and it **must**, because the entry is append-only **[W7]** and cannot be rewritten. The resolution is a decision about those balances, not a migration flag |
 | `wallet.wallet.settled_balance >= 0` **[DEC-77]** | `ADD CONSTRAINT … NOT VALID`, then `VALIDATE` | Fails on any wallet already negative under ~~**[AS-12]**~~. Same reasoning: a negative balance is now unreachable, so an existing one is a fact to resolve, not a constraint to weaken |
@@ -1932,6 +1985,19 @@ attempt to backfill it.
 | `market.price_indication_markup` **[DEC-161]** | **New table, migration 25** — created with `CreateTable`, the same as `price_indication_product` and `price_indication_observation` above, not an `ALTER` against a prior shape | ⚠ **Not a reconciliation of a live schema — a first creation.** This table exists only in the design document (§3.3), sketched with a `percentage`/`daterange` shape that no migration ever built; there is no `percentage` column to `DROP`, no `daterange` `EXCLUDE` to swap, and no backfill, because nothing has ever shipped against the old sketch. Migration 25 creates it directly in the reconciled shape: `markup_rate numeric(6,4)`, `valid_from`/`valid_to`, a generated `validity tstzrange` added via `migrationBuilder.Sql` (EF has no native range mapping), and its `EXCLUDE USING gist`. Seeds **one** row: `markup_rate 0.0200`, `valid_from '2026-01-01T00:00:00Z'`, `valid_to NULL`, `note 'Default 2 % per DEC-80'` (the literal, space included — matches the seeded value), `created_by 'migration:PriceIndications'` |
 | `market.price_indication_latest` view + `REVOKE SELECT … FROM app_customer_role` **[DEC-161]** | New view + `REVOKE`, migration **25** | Least privilege (§3.3): the app-customer connection reads the view, never the append-only table directly. ⚠ **The view does not enforce period or source filtering, and neither does the REVOKE.** The view is `DISTINCT ON (product_id, delivery_start, source)` with no other predicate, so it returns the latest row for **every** period ever observed and **every** source, including a period that has since rolled off or a `SIMULATED` row served after the provider is reconfigured. What it guarantees is narrower: **one row per (product, period, source), the latest by construction** — no earlier observation within a single (product, period, source) can leak through. Filtering to the currently resolved period and the configured source is still the endpoint's own job |
 | `PeakPowerDbContextModelSnapshot.cs` | Regenerated in the same commit | EF 10's pending-model-changes check has no suppression; the Designer file and the snapshot are committed together with the migration, not as a follow-up |
+
+### 7.6 The 2026-09-28 company bank account migrations
+
+⚠ **Two migrations, 26 and 27, sequential after 25 (§7.5)** in the platform lane. Migration 26 is the expand —
+the table, its grants and the backfill — and migration 27 is the contract: it revokes the two onboarding grants
+that migration 26's readers made unnecessary.
+
+| Change | Form | Note |
+| --- | --- | --- |
+| `customer.customer_bank_account` **[DEC-165]** | New table, migration **26** (`CompanyBankAccounts`) | `SELECT`-only grants to both roles after a `REVOKE ALL`, two `FOR SELECT` policies, the partial unique index and three `CHECK`s — §3.1.3. Roll forward only; the `Down` revokes explicitly rather than leave migration 2's default privileges standing over a re-created table |
+| Backfill from `customer.onboarding_application` **[DEC-165]** | `INSERT … SELECT DISTINCT ON`, migration **26**, after the table exists | One `ACTIVE`, `ONBOARDING` row per customer with a signed application carrying an IBAN; idempotent through `ON CONFLICT DO NOTHING`. A customer with none gets no row and no error — §3.1.3 |
+| `wallet.withdrawal_request` **[DEC-165]** | `GRANT UPDATE (destination) … TO app_employee_role`, migration **26** | Column-scoped, widening `(status, resolved_at)` by `destination` only. `app_customer_role` gains nothing: a replace re-points open withdrawals on the owner connection |
+| `customer.onboarding_application` grants **[DEC-165]** | `REVOKE SELECT (iban, customer_id)` from both application roles and `DROP POLICY` on the two policies beside them, migration **27** (`OnboardingIbanGrantRetired`) | Migrations 22 and 23 opened those column grants for two readers — the bank-transfer matcher and the withdrawal request — that now read `customer_bank_account`'s `ACTIVE` row. Row-level security **stays enabled** on the table; the wizard's own reads are anonymous, on the owner connection, and were never gated by either. `Down` restores both grants and both policies |
 
 ## 8. Retention & archival
 

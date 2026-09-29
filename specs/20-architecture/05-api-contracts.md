@@ -591,6 +591,8 @@ New error `type` URIs, all `409`:
 | `POST` | `/wallet/withdrawals` | ⚠ **New 2026-08-19 [DEC-83]** — request a withdrawal up to `availableBalance`. **Admin only** **[F06-R33]**; the amount is held immediately **[F07-R29]** |
 | `GET` | `/wallet/withdrawals?state=` | ⚠ **New** — the company's requests and their states **[F07-R32]** |
 | `POST` | `/wallet/withdrawals/{id}/cancel` | ⚠ **New** — the customer withdraws their own request before payout; releases the hold **[F07-R32]** |
+| `GET` | `/bank-account` | ⚠ **New 2026-09-28 [DEC-165]** — the company's registered bank account and whether **this caller** may change it. **Any member**, tenant-scoped. Answers `{ account, canChange, changeBlockedReason }` — the shape and the exact sentences are below **[F01-R44]** |
+| `POST` | `/bank-account` | ⚠ **New 2026-09-28 [DEC-165]** — add **or replace** the company's bank account; a replace deactivates the current `ACTIVE` account and activates the new one in one transaction **[F01-R46]**. **Admin only** (`CompanyAdmin`); refused at a company with four-eyes on. `200` with the new account; `400`, `403` and `409` below |
 
 ⚠ **There is no wallet-threshold endpoint, and none is coming [DEC-90].** ~~`/wallet/thresholds`~~ and
 the low-balance alert it would have configured are **reversed [DEC-49]**. The balance is returned by
@@ -667,10 +669,63 @@ Four things this asserts, each of them a decision rather than a design preferenc
   customer can wire money or use iDEAL alone, so gating a deposit gates nothing.
 - **`destination` is read-only and is the bank account on the customer record** **[DEC-61]**,
   **[F06-R37]**. It is never a request field. A `PENDING_APPROVAL` bank account is not a payout
-  destination **[F01-R45]**, and the request is refused with `…/errors/no-active-bank-account`.
+  destination **[F01-R45]**, and the request is refused with `…/errors/no-active-bank-account`. ⚠ **Amended 2026-09-28 by [DEC-165].** No bank account is ever written `PENDING_APPROVAL`, so that case does not arise; the case that does is **none on file**, refused with a `409` whose detail reads *"No bank account on file for this company. A company admin can add one on the Balance page."* — the generic `conflict` problem type, not a dedicated `…/errors/no-active-bank-account` URI. The destination is the company's `ACTIVE` account (`GET /bank-account`), read under a share lock on the company's row so a concurrent replace cannot slip between the read and the insert; a replace **re-points** the company's open requests (`REQUESTED`, `AWAITING_APPROVAL`) at the new account while they wait. On the built wire `destination` is the IBAN string.
 - **There is no payout endpoint on this API.** PeakPower pays out **manually** and records what the
   bank did **[DEC-83]**, **[F12-R54]** — §3.2. The platform never initiates a transfer, so no customer
   call can cause money to leave; `POST /wallet/withdrawals` creates an obligation, not a payment.
+
+⚠ **The company bank account — new 2026-09-28 by [DEC-165].** Two routes at `/api/v1/bank-account` — top level,
+tagged *Wallet*, **not** under `/company`. The read is open to every member of the token's company; the write is
+behind the `CompanyAdmin` policy, proven from the database on every request, never a claim **[DEC-152]**. There is no
+verification step: the account is `ACTIVE` the moment `POST` answers `200`.
+
+```jsonc
+// GET /api/v1/bank-account            — any member
+{
+  "account": {
+    "id": "0198…",
+    "iban": "NL00BANK0123456789",
+    "bic": null,
+    "holderName": "Zonnedak Beheer B.V.",
+    "addedAt": "2026-09-28T09:41:00+02:00"
+  },
+  "canChange": true,
+  "changeBlockedReason": null
+}
+
+// POST /api/v1/bank-account           — admin only, no Idempotency-Key
+{ "iban": "NL00 BANK 0123 4567 89", "bic": "BANKNL2A", "holderName": "Zonnedak Beheer B.V." }
+// 200 OK — the new account, in the shape of "account" above
+```
+
+- **`account` is `null`** when the company has no `ACTIVE` account on file. **`canChange` is true only for an admin
+  at a company with four-eyes off**; when it is false, **`changeBlockedReason`** is the server's own sentence and is
+  what the portal shows — *"Only a company admin can change the bank account."* for a non-admin (which wins when both
+  apply), *"Bank account changes need a second admin's approval, which isn't available yet."* for a four-eyes
+  company, and `null` otherwise.
+- **Request.** `iban` is accepted in either case and with or without spaces, and returned normalised (upper case, no
+  spaces). `bic` is optional and, when given, 8 or 11 characters; it is returned normalised, or `null`. `holderName`
+  is trimmed and must be 1 to 200 characters. The route takes **no `Idempotency-Key`**: repeating an identical call
+  is refused as *already registered* rather than replayed.
+- **`400`**, a validation problem (`https://peakpower.dev/problems/validation`), `errors` keyed **`iban`**,
+  **`bic`** or **`holderName`**, one message each — *"IBAN must not be blank."*, *"IBAN must be 15 to 34 characters:
+  two letters, two digits, then letters or digits."*, *"IBAN failed the ISO 7064 mod-97 check."*; *"BIC must be 8 or
+  11 characters: a bank code, a country code, a location code and an optional branch code."*; *"Account holder name
+  must not be blank."*, *"Account holder name must be at most 200 characters."* Every field is validated **before**
+  a transaction opens or a lock is taken, so a bad BIC is a `400` even at a four-eyes company.
+- **`403`** for a member who is not an admin. No row is written.
+- **`409`**, the generic `conflict` problem type (`https://peakpower.dev/problems/conflict`) with a `detail` — there is
+  no per-condition `type` URI here, so the `detail` is the discriminator — and the whole change refused, nothing
+  written: *"Bank account changes need a second admin's approval, which isn't available yet."* (four-eyes is on,
+  **re-read under the company's row lock** so a toggle racing the request cannot pass); *"This bank account is
+  already registered."* (the same IBAN as the `ACTIVE` account, or a concurrent add of it); *"Another bank account
+  change happened at the same time. Reload and try again."* (a concurrent change won with a **different** IBAN).
+- **A replace is one transaction** — the company's row locked `FOR UPDATE`, the old account deactivated by the acting
+  account, the new one inserted (`source = PORTAL`, added by the acting account) in one save, and the company's open
+  withdrawals re-pointed. A record is **never edited and never deleted** **[F01-R44]**; the change writes no
+  `audit.audit_record`, because the record itself carries the acting accounts and both timestamps.
+- **Three readers use the `ACTIVE` account**: the withdrawal request (above), the employee payout (§3.2) and the
+  incoming-transfer matcher **[F07-R21]**.
 
 ### 2.6 Invoices
 
@@ -716,7 +771,7 @@ threshold **[DEC-100]**, **[F10-R50]**.
 | --- | --- | --- |
 | `GET` | `/company` | Read-only company profile: legal name, KvK, VAT, registered bank account, addresses, contact |
 | `GET` | `/company/accounts` | Colleagues who can also act — name, job title, email, status **[OQ-80]**, and each account's ~~**admin** flag~~ **`membershipRole`** **[F01-R21]**. ⚠ **Corrected 2026-09-10 by [DEC-152]: there is no admin flag.** Open to **every** member, unchanged — `CompanyEndpoints.cs:77` @ debadda0 (`MapGet("/accounts")`), `.RequireAuthorization()` with **no policy** at `:104`. `admin` gates no read here; the read it gates is `/company/memberships` below |
-| `GET` | `/company/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — the company's bank accounts with status (`PENDING_APPROVAL` \| `ACTIVE` \| `DEACTIVATED`) **[F01-R44]**. Read-only here: a bank account is added and deactivated by a PeakPower employee **[DEC-16]** and, under four-eyes, approved by a second admin §2.10 |
+| `GET` | `/company/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — the company's bank accounts with status (`PENDING_APPROVAL` \| `ACTIVE` \| `DEACTIVATED`) **[F01-R44]**. Read-only here: a bank account is added and deactivated by a PeakPower employee **[DEC-16]** and, under four-eyes, approved by a second admin §2.10. ⚠ **Not built, and superseded 2026-09-28 by [DEC-165].** The built read is `GET /bank-account` (§2.5) and answers the `ACTIVE` account only — there is no list of deactivated ones — with `canChange` and `changeBlockedReason` beside it; a company **admin**, not an employee, adds and replaces it, and no approval is involved: a four-eyes company is refused |
 | `GET`/`PATCH`/`DELETE` | `/company/memberships`, `/company/memberships/{accountId}` | ⚠ **New 2026-09-10 [DEC-152]** — the member list, a role change and a removal, **all three `CompanyAdmin`** (`MembershipEndpoints.cs:75`/`:85`/`:102` @ debadda0, the `.RequireAuthorization` lines; routes at `:61`/`:83`/`:100`). ⚠ **Not "`GET` open to every member"**: every member instead keeps `GET /company/accounts` above, which already carries the colleague's `membershipRole`; this list additionally names who has been **invited** and is admin-only for that reason. `GET` returns the whole `CompanyMembershipsResponse`; `PATCH` replaces one row but answers with the **whole list**, not the one row, so a screen never merges a partial response; `DELETE` answers `204` with no body. Both are `404` for a membership not this business's or already removed — byte-identical to an unknown `accountId` **[F13-R19]** — and `409` for the **admin floor**: demoting or removing the company's last admin, or a four-eyes company's second one; `DELETE` alone also refuses removing **your own** membership under the same status and body. ⚠ The `DELETE` **verb is a soft delete**: the SQL is an `UPDATE` setting `removed_at`, because PostgreSQL never evaluates `WITH CHECK` for a `DELETE` and there is no `DELETE` grant to guard |
 | `POST` | `/company/invitations`, `/company/invitations/accept` | ⚠ **New 2026-09-10 [DEC-152]** — issue (**`CompanyAdmin`**, `InvitationEndpoints.cs:49`/`:51` @ debadda0) and redeem (**anonymous**, `:67`/`:69`, on the owner connection: the invitation token is the authorisation, not tenancy). Issue answers **`202` always**, indistinguishable for a known and an unknown address in status, body and timing; its only other response is a **validation `400`** on the request itself, which never touches the address's standing. Accept answers the created `CompanyInvitationAcceptedResponse`, a **validation `400`** for the profile fields an address with no login must supply, or a single **`409`** — an unknown, a spent and an expired invitation token are one indistinguishable body |
 
@@ -740,7 +795,7 @@ never amended. It is listed here now, so the section's inventory is complete:
 mechanism from an administration screen, and *"add a user"* has now left that approval list
 altogether. What is unchanged: company **details** are still maintained by PeakPower employees, and a
 bank account **cannot be edited once added** — correcting an IBAN is *deactivate the old, add the
-new*, two audited events with two named actors **[F01-R44]**, **[F01-R46]**.
+new*, two audited events with two named actors **[F01-R44]**, **[F01-R46]**. ⚠ **Amended 2026-09-28 by [DEC-165]:** *who* and *how* changed, not *whether it can be edited* — a company **admin** replaces the account from the Balance page, `POST /bank-account` §2.5, as **one** operation recorded against one acting account; it is still never edited.
 
 ### 2.8 Notifications & profile
 
@@ -835,6 +890,8 @@ list: membership changes bypass four-eyes entirely **[F01-R49]**, so no membersh
 an approval and no `approval_request` row ever carries that action. **`DEPOSIT` is deliberately not in
 the enumeration** **[DEC-71]**: a customer can wire money or use iDEAL on their own, so gating a
 deposit gates nothing that is not already ungated.
+
+⚠ **Build status 2026-09-28 [DEC-165]: `BANK_ACCOUNT_ADD` and `BANK_ACCOUNT_DEACTIVATE` are never raised.** The approval flow of **[F01-R45]** is not built — no `PENDING_APPROVAL` record, no approver — and the two arms stay in the closed list for it. Their premise, that *PeakPower employees add bank accounts*, no longer holds either: a company **admin** adds or replaces the account, and at a company with four-eyes on `POST /bank-account` §2.5 is refused with a `409` instead of raising an approval.
 
 ⚠ **The closed list is the whole value of this field, which is why removing an arm is recorded here
 and not only on [DEC-152].** *"The five and no others"* was a contract a client could switch on
@@ -1015,7 +1072,7 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `POST` | `/wallets/{id}/deposits` | Register a bank transfer. ⚠ **Amended 2026-08-19 by [DEC-106]** — this is now the **exception path**, not the normal one: unmatched transfers, payments arriving outside the feed, and everything until **[OQ-93]** is answered **[F07-R17]** |
 | ~~`POST`~~ | ~~`/wallets/{id}/adjustments`~~ | ~~Manual adjustment (reason required)~~ ⚠ **Removed 2026-08-19 by [DEC-85]** — chargebacks and reversals are the bookkeeping program's, and the manual-adjustment-with-a-reason path goes with them **[F06-R26]**, **[F06-R27]** retired. ⚠ **Known gap, recorded rather than papered over:** a charged-back iDEAL deposit leaves the wallet overstated and the platform has no entry type left to correct it |
 | `GET` | `/withdrawals?state=` | ⚠ **New 2026-08-19 [DEC-83]** — the payout worklist: customer, amount, requester, age, destination bank account, four-eyes state **[F12-R53]** |
-| `POST` | `/withdrawals/{id}/pay` | ⚠ **New [DEC-83]** — **record a transfer already made**: value date, amount actually transferred, bank reference. Posts `WITHDRAWAL_PAID` and releases the hold in one transaction **[F12-R54]**, **[F06-R36]**. It is **not** an instruction to the bank; the platform initiates no payment |
+| `POST` | `/withdrawals/{id}/pay` | ⚠ **New [DEC-83]** — **record a transfer already made**: value date, amount actually transferred, bank reference. Posts `WITHDRAWAL_PAID` and releases the hold in one transaction **[F12-R54]**, **[F06-R36]**. It is **not** an instruction to the bank; the platform initiates no payment. ⚠ **Amended 2026-09-28 by [DEC-165]** — built as `POST /api/v1/customers/{customerId}/wallet/withdrawals/{id}/payout`: the pay-to is **re-resolved** from the company's `ACTIVE` bank account **after** the request's lock is taken and its status checked, never read from the request row, and the resolved IBAN is **persisted as the request's `destination`** and returned. With none `ACTIVE` it is a `409`, *"No bank account on file for this company. Cannot pay out."* The operator's manual transfer is outside the platform and is not checked against it, so it must go to the IBAN the payout resolved and showed |
 | `POST` | `/withdrawals/{id}/reject` | ⚠ **New [DEC-83]** — reason **mandatory**; releases the hold **[F07-R32]** |
 | `GET` | `/payments/unmatched` | ⚠ **New 2026-08-19 [DEC-106]** — received payments the platform could not attribute: value date, amount, payer name, payer IBAN, raw description, why matching failed **[F12-R56]** |
 | `POST` | `/payments/{id}/match` | ⚠ **New [DEC-106]** — attribute one to a wallet by hand, with a mandatory note. Matching order is **(1)** platform-issued reference — automatic, never reaches this list; **(2)** payer IBAN resolving to exactly one customer — a *proposed* match, confirmed here; **(3)** manual **[F12-R57]**, **[F07-R21]** |

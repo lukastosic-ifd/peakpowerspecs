@@ -100,7 +100,7 @@ Three boxes on the customer side do more than their labels admit.
 | --- | --- | --- |
 | `A2` | Shows the **marked-up** indication — the quote plus a configurable percentage, default 2%, held as reference data — labelled as an indication and **never firm unless PeakPower says so** **[DEC-80]** | The markup is the platform's only margin instrument now that surcharges have left it **[DEC-73]**. A raw quote here would give that margin away and imply a firmness the trader has not committed to **[F04](../10-features/F04-price-indications.md)** ⚠ **Reversed 2026-09-29 by [DEC-167]** — `A2` shows the **raw** indication (Prices page and wizard estimate); the margin is in the offer price the trader types at `B3`-side pricing, not in the indication. |
 | `A3` | Accepts volumes in steps of **0,01 MW**, minimum 0,01 MW per line **[DEC-70]**, reversing [DEC-32]'s 0,1 MW | Ten times finer. The per-EAN total now almost never lands on a whole MW, so the "PeakPower rounds on the market side" notice next to it is routine information rather than a warning **[F05-R07]** |
-| `A4` | Compares available balance against **100% of the gross estimate** — no buffer **[DEC-41]**, grossed up at the 21% of **[DEC-64]** **[DEC-78]** | §4.1 works the figures. An ex-VAT check here clears a request whose own reservation it under-covers by 21%, and there is no buffer to absorb the difference |
+| `A4` | ⚠ **(17) [DEC-167]: compares available balance against the DEPOSIT (`depositPct` of the gross estimate), not 100% of it.** ~~Compares available balance against **100% of the gross estimate** — no buffer~~ **[DEC-41]**, grossed up at the 21% of **[DEC-64]** **[DEC-78]** | §4.1 works the figures. An ex-VAT check here clears a request whose own reservation it under-covers by 21%, and there is no buffer to absorb the difference |
 
 For a `SELL` the same path runs with **no holdings check at all** **[DEC-72]** — the customer may sell
 a block they do not hold. What that does to `A4` is the subject of §5.4.
@@ -274,11 +274,11 @@ One trade, TRD-1051 at *Vandersteen Koeling B.V.* — base shape, May 2026, thre
 | Total volume | `2.75 × 2976 × 0.25` | **2 046,00 MWh** |
 | Indication shown at `A2` **[DEC-80]** | raw bid `66.50` × `(1 + 0.02)` markup | **€ 67,83/MWh** ⚠ **2026-09-29 [DEC-167]** — the customer now sees **€ 66,50/MWh** (the raw bid); the markup example above is history. |
 | Pre-submission estimate, ex VAT | `2046.00 × 67.83` | **€ 138.780,18** |
-| Pre-submission check at `A4` **[DEC-41]**, **[DEC-78]** | `138780.18 × 1.21` — 100% of the **gross** estimate, no buffer | **€ 167.924,02** must be available |
+| Pre-submission check at `A4` **[DEC-41]**, **[DEC-78]** | `138780.18 × 1.21` — 100% of the **gross** estimate, no buffer. ⚠ **(17) [DEC-167]: at the default 20 % deposit the check is `167924.02 × 0.20`; the figures in this section are the gross, of which only the deposit is held at acceptance and the balance is paid later** | ~~**€ 167.924,02** must be available~~ **€ 33.584,80** (20 % deposit) must be available |
 | Offer price, firm for the window, ex VAT **[DEC-26]** | quoted by the trader | **€ 68,00/MWh** |
 | Trade value, ex VAT **[AS-10]** | `2046.00 × 68.00` | **€ 139.128,00** |
 | VAT at the **[DEC-64]** reference rate | `139128.00 × 0.21` | **€ 29.216,88** |
-| **Reserved at acceptance — and debited unchanged at confirmation** **[DEC-78]** | `139128.00 × 1.21` | **€ 168.344,88** |
+| **Gross incl. VAT** **[DEC-78]** — ⚠ (17) [DEC-167]: this is the stored gross; the amount *reserved at acceptance and debited unchanged at confirmation* is the **deposit** (20 % by default: **€ 33.668,98**), and the rest (€ 134.675,90) is the balance | `139128.00 × 1.21` | **€ 168.344,88** |
 
 Reservation and debit are the **same stored number**, never two calculations, so a VAT-rate change
 between acceptance and confirmation cannot open a gap and settlement cannot fall short. The gross-up

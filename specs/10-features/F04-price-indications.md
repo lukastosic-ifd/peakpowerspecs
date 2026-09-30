@@ -109,6 +109,7 @@ for the (now 24) products were never supplied** in the 2026-08-19 round. [DEC-80
   Nor are they the only thing standing between this feature and a **real** feed: **[DEC-96]**'s
   existing Montel service has to be read before anything can call it, and no real provider is built
   at all — `ForwardPrices:Provider` accepts only empty (no provider) or `Simulated` (**[DEC-159]**).
+  ⚠ **Amended 2026-09-30 by [DEC-167] (17h): the Simulated provider serves the trading prototype's price table** (`WIZARD_PERIODS`), embedded as source data, **by position** — `month[i]` prices M+(i+1), `quarter[i]` Q+(i+1), `year[i]` Cal+(i+1), Base taking `base` and Peak `peak` — so a tester sees the numbers the prototype showed. The exact values are served, `observed_at` is the poll time, sample-data labelling and every status rule are unchanged, and products outside the table (M+7…, Q+5…, Cal+3…) keep the old generator.
   Everything in F04 that Phase 1 actually ships and that does not depend on them — the markup, the
   staleness rules, the labelling, the observation store — is built and tested end to end against
   **[DEC-159]**'s simulated test fixture rather than a stub. What Phase 1 does **not** ship is

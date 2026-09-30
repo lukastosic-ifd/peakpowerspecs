@@ -130,9 +130,10 @@ The one place the wallet meets VAT is the gross-up on a trade, at the **[DEC-64]
 | --- | --- | --- | --- | --- | --- |
 | `DEPOSIT_IDEAL` | Credit | + | — | Payment provider webhook confirms | Payment |
 | `DEPOSIT_BANK` | Credit | + | — | ⚠ **Amended 2026-08-19 by [DEC-106]** — was "finance registers a received transfer". The platform matches the incoming transfer on the **unique payment reference it issued** for the deposit intent, credits the wallet and emails the customer. Registered-IBAN matching **[DEC-61]** is the fallback, and manual registration by finance **[F06-R25]** is the fallback to that | Deposit intent, payment reference, bank reference |
-| `TRADE_RESERVED` | — | 0 | + | Customer accepts an offer. Amount is **VAT-inclusive [DEC-78]** | Trade |
+| `TRADE_RESERVED` | — | 0 | + | Customer accepts an offer. Amount is **VAT-inclusive [DEC-78]** ⚠ **2026-09-30 [DEC-167] (17): for a BUY it is the DEPOSIT** — the company's percentage of that gross, frozen at accept; nothing is written at 0 % | Trade |
 | `TRADE_RESERVATION_RELEASED` | — | 0 | − | Trade marked failed ⚠ **or an approval refused (actor = the refusing admin), or an offer expired from `AWAITING_APPROVAL` [DEC-167]** | Trade |
-| `TRADE_SETTLED` | Debit | − | − | Trader confirms a BUY. Amount is **VAT-inclusive [DEC-78]** | Trade, block |
+| `TRADE_SETTLED` | Debit | − | − | Trader confirms a BUY. Amount is **VAT-inclusive [DEC-78]** ⚠ **2026-09-30 [DEC-167] (17): the deposit** (what was reserved) |  Trade, block |
+| `TRADE_BALANCE_PAID` | Debit | − | 0 | ⚠ **New 2026-09-30 [DEC-167] (17).** The **balance** of a confirmed BUY, paid by a customer's *Pay balance* or collected automatically on the due date. A **direct debit of settled and available with no reservation** — reserved does not move — and it may never take available below zero. **Once per (wallet, trade)**, by a partial unique index. Actor: the paying account, or the system for automatic collection | Trade |
 | `TRADE_PROCEEDS` | Credit | + | — | Trader confirms a SELL. Amount is **VAT-inclusive [DEC-78]** | Trade |
 | ~~`INVOICE_DEBIT`~~ | ~~Debit~~ | ~~−~~ | — | ⚠ **Removed 2026-08-19 by [DEC-77]** — the wallet funds trading only. The monthly delivery amount (day-ahead, export, energiebelasting) is pushed to the bookkeeping program as a **draft invoice [DEC-88]** and **paid to the bank**; it never reaches the ledger. Nothing replaces this type inside the wallet, and no writer for it may be built | ~~Invoice~~ |
 | ~~`INVOICE_CREDIT`~~ | ~~Credit~~ | ~~+~~ | — | ⚠ **Removed 2026-08-19 by [DEC-77]**, consequentially: an invoice that never debited the wallet cannot be credited back to it. A credit note is raised, numbered and settled in the bookkeeping program **[DEC-88]**, **[DEC-89]**, against the bank | ~~Credit note~~ |
@@ -144,7 +145,7 @@ The one place the wallet meets VAT is the gross-up on a trade, at the **[DEC-64]
 | `FEE` | Debit | − | — | Contractual fee, if any | Fee definition |
 
 `TRADE_RESERVED`, `TRADE_RESERVATION_RELEASED`, `WITHDRAWAL_REQUESTED` and `WITHDRAWAL_RELEASED`
-change only the reserved amount, so they appear in the ledger with an unchanged settled balance and a
+change only the reserved amount (⚠ `TRADE_BALANCE_PAID` is the opposite: it changes only the settled amount, and so the available one), so they appear in the ledger with an unchanged settled balance and a
 changed available balance — which is exactly the information the customer needs **[DEC-05]**.
 
 Every movement above is handled **individually**: nothing is netted against anything else, batched
@@ -192,6 +193,8 @@ applicable for the hedges"*), so a reservation sized ex-VAT would under-cover it
 reservation time is the cheapest place to fix it: one multiplication, applied consistently at the
 pre-trade check **[F05-R52]**, at reservation and at settlement, so the three numbers are the same
 number.
+
+⚠ **Amended 2026-09-30 by [DEC-167] (17) — for a bought block the example below is split in two.** Accept reserves only the deposit (20 % by default: `22 264,00 × 20 % = 4 452,80`), confirm settles that deposit, and the balance (`22 264,00 − 4 452,80 = 17 811,20`) is debited as `TRADE_BALANCE_PAID` when the customer pays it or on the day before delivery starts, if the wallet covers it. The two amounts add up to the gross to the cent, and the balance is **not** reserved in between (an accepted cost, [DEC-167] (17j)).
 
 What it costs: the customer's available balance falls by 21% more than the price they were quoted, and
 the price board **[F04](F04-price-indications.md)** shows ex-VAT figures **[DEC-26]** while the wallet
@@ -324,7 +327,7 @@ bookkeeping program either — it learns about both from its bank feed **[DEC-10
 | F06-R15 | Releasing a reservation restores availability in full, in one transaction, and records the reason. | Must |
 | F06-R16 | Reservations cannot be partially settled or partially released. | Must |
 | F06-R17 | A wallet's active reservations are listed with their trade links and ages. Withdrawal reservations **[F06-R33]** appear in the same list, labelled as such. ⚠ **Deferred 2026-09-29 by [DEC-167]** — the active-reservations list is not in slice 1 (**[OQ-111]**); each trade's reserved amount shows on the trade itself. | Must |
-| F06-R32 | A trade reservation and the debit that settles it are **VAT-inclusive**: `round(volume * price * 1.21, 2)`, using the **[DEC-64]** reference rate **[DEC-78]**. The same figure is used by the pre-trade check **[DEC-41]**, **[F05-R52]**, by `TRADE_RESERVED` and by `TRADE_SETTLED`, so the three can never disagree. Prices stay stored ex-VAT **[DEC-26]** and the platform computes no VAT of its own **[DEC-76]**; this gross-up exists solely so a reservation covers the debit it becomes. | Must |
+| F06-R32 | A trade reservation and the debit that settles it are **VAT-inclusive**: `round(volume * price * 1.21, 2)`, using the **[DEC-64]** reference rate **[DEC-78]**. ⚠ **Amended 2026-09-30 by [DEC-167] (17): for a BUY, that figure is the gross, and the reservation and the settling debit are the DEPOSIT — `round(gross × deposit_pct / 100, 2)`; the balance, `gross − deposit`, is paid separately ([F06-R41]).** The same figure is used by the pre-trade check **[DEC-41]**, **[F05-R52]**, by `TRADE_RESERVED` and by `TRADE_SETTLED`, so the three can never disagree. Prices stay stored ex-VAT **[DEC-26]** and the platform computes no VAT of its own **[DEC-76]**; this gross-up exists solely so a reservation covers the debit it becomes. | Must |
 
 ### Withdrawals **[DEC-83]**
 
@@ -358,6 +361,7 @@ bookkeeping program either — it learns about both from its bank feed **[DEC-10
 | ~~F06-R27~~ | ~~Adjustments above a configurable threshold require a second approver.~~ **Retired 2026-08-19** on both halves: the adjustment is gone **[DEC-85]**, and approval is no longer threshold-driven — four-eyes is a per-company mode with **no threshold at all** **[DEC-71]**, and there is no materiality threshold anywhere **[DEC-100]**. Replaced for the case that still exists by **[F06-R34]** (withdrawals). | — |
 | F06-R28 | Employees can see wallets ranked by lowest available balance, ~~to spot customers heading for trouble~~. ⚠ **Amended 2026-08-19 by [DEC-90]** — it is a plain view with no threshold colouring, no warning or critical state and no alert behind it. There is no "trouble" to spot: a customer can only trade within their balance, so a low balance limits them rather than exposing PeakPower. | Must |
 | ~~F06-R29~~ | ~~**No code path moves money out of a wallet to a bank account** **[DEC-43]**. There is no refund endpoint, no refund job and no employee screen that initiates one; the `REFUND` entry type exists in the enumeration but has no writer. Money leaves a wallet only as `TRADE_SETTLED`, `INVOICE_DEBIT`, `FEE` or a finance `ADJUSTMENT`, all of which stay inside the platform. ⚠ An `ADJUSTMENT` is **not** a refund route: it can zero a balance in the ledger but it cannot pay anyone, so using it to "refund" a customer records a movement that did not happen.~~ **Retired 2026-08-19 by [DEC-83]**, which reverses [DEC-43]: money does leave the wallet for a bank account, through the withdrawal flow **[F06-R33]**..**[F06-R37]**. The one sentence worth keeping is that the platform still **initiates no payment** — `WITHDRAWAL_PAID` records a transfer an employee has already made **[F06-R36]**. | — |
+| F06-R41 | **The trade balance is a direct debit with no reservation.** `TRADE_BALANCE_PAID` takes `balance_amount` from settled and available together, only when the available balance covers it (the wallet refuses a debit above available, so available never goes below zero), once per (wallet, trade) by `ux_ledger_entry_trade_balance`, and in the same transaction as the trade's payment record. The reconciliation job maps the type (settled falls, reserved does not move) in the same commit as its writer. A refused payment leaves no ledger row. | Must |
 | F06-R39 | The wallet has **no thresholds**: no warning amount, no critical amount, no low-balance alert and no `wallet_threshold_rule` **[DEC-90]**, which reverses **[DEC-49]**. The balance is visible on the wallet screen and in the employee list **[F06-R28]**; the **only** decision taken on it is the pre-trade check **[DEC-41]**. | Must |
 | F06-R40 | Every deposit, trade, withdrawal and correction is handled **individually** **[DEC-100]**. Nothing is netted against anything else, batched into a periodic sweep, or waived for being small; there is no materiality threshold and no €25 default. | Must |
 

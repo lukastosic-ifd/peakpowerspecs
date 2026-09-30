@@ -340,6 +340,7 @@ markup itself is reference data with a default of 2%, maintained through the Emp
 | `POST` | `/trades/{id}/accept` | Accept the offer. **May return state `AWAITING_APPROVAL`** — see below |
 | `POST` | `/trades/{id}/reject` | Reject the offer |
 | `POST` | `/trades/{id}/approve` | ~~**[DEC-33]**~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — approve a colleague's acceptance. The verb, path and semantics are unchanged; the **caller must be an `customer.admin` of the company and must not be the accepting account** **[F05-R59]**, **[F13-R44]**. Refused for the accepting account |
+| `POST` | `/trades/{id}/pay-balance` | ⚠ **New 2026-09-30 [DEC-167] (17)** — pay the balance of a confirmed BUY from the available balance while the payment window is open. Any member; not a four-eyes action. See §2.4.3 |
 | `POST` | `/trades/{id}/refuse-approval` | ~~**[DEC-33]**~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — decline it, optionally with a reason. Terminal. Same admin requirement **[F05-R63]** |
 | `GET` | `/blocks` | Confirmed positions. ⚠ Under **[DEC-72]** a position may be **short**: a confirmed `SELL` with no matching purchase makes the net figure negative, and the client must render a negative as a position rather than as an error **[F05-R69]** |
 
@@ -572,6 +573,16 @@ New error `type` URIs, all `409`:
 | `…/errors/admin-role-required` | ⚠ **New 2026-08-19 [DEC-71]** — an approve or decline attempt by an account without `customer.admin`, re-validated against the account record rather than read off the token **[F13-R43]** |
 | `…/errors/four-eyes-not-satisfiable` | ⚠ **New 2026-08-19 [DEC-71]** — the company has four-eyes on and **fewer than two active admin accounts**, so nobody can be the second pair of eyes. Raised at **acceptance**, before money is reserved, rather than letting the trade sit in `AWAITING_APPROVAL` until it expires. It should be unreachable — **[F12-R41]** refuses to enable the mode below two admins and **[F01-R50]** refuses to deactivate below it — which is exactly why it is checked: an unreachable state that is not checked is an unreachable state that happens. ⚠ **Amended 2026-09-23 by [DEC-157]:** deactivating an admin below the floor is **no longer refused** — it is **warned and reasoned [F12-R43]**, because the account may be a leaver — so this state is now **reachable by design**. The acceptance check is therefore load-bearing rather than a guard against the merely-improbable; the demotion path, by contrast, *is* refused ([DEC-157], above) |
 | `…/errors/invalid-volume` | ⚠ **New 2026-08-19 [DEC-70]** — a `powerMw` below 0,01 or not a multiple of 0,01 — §2.4.1 |
+
+#### 2.4.3 Deposit and balance — [DEC-167] (17), added 2026-09-30
+
+A bought block is paid as a **deposit at accept** and a **balance by the day before delivery starts**. The company's percentage is set by the back office alone (§3.2 `PUT /customers/{id}/commercial-terms`); a customer only reads it. Amounts are bare decimals incl. VAT.
+
+- **`POST /trades/{tradeId}/pay-balance`** — no body → `TradeDetailDto`. `.RequireAuthorization()`, any active member. Allowed only for a `CONFIRMED`, unpaid BUY whose payment window is open (today in Amsterdam ≤ `balanceDueDate`, or the desk confirmed at or after the delivery start). Takes company row → trade → wallet and debits `balanceAmount` as `TRADE_BALANCE_PAID`. Problems (all 409, `https://peakpower.dev/problems/`): **`insufficient-available-balance`** (*"Your available balance is € A, but the balance is € B incl. 21 % VAT. Top up your Balance and pay again."*, nothing written); **`balance-window-closed`** — title *"The balance can no longer be paid here"*, detail *"Delivery has started, so this balance can no longer be paid here. PeakPower will contact you to settle it."*; **`trade-state-conflict`** (already paid, or not confirmed). 404 for an unknown or foreign trade. The trade problem types are now **12**.
+- **`settlement`** on `TradeDetailDto` (null before accept and for a non-BUY): `{ depositPct, depositAmount, balanceAmount, balanceDueDate, balancePaidAt, balancePaidSource ("CUSTOMER" \| "AUTO" \| null), depositState ("ON_HOLD" \| "APPLIED" \| "RELEASED"), balanceState ("SCHEDULED" \| "DUE_SOON" \| "OVERDUE" \| "PAID" \| "NOT_EXECUTED"), paymentWindow ("OPEN" \| "CLOSED" \| "NOT_EXECUTED" \| "PAID") }`. `DUE_SOON` is within 14 days of the due date; `OVERDUE` is a closed window with the balance unpaid — **derived, the trade stays `CONFIRMED`**. `TradeSummaryDto.settlement` is the compact `{ depositAmount, balanceAmount, balanceDueDate, balanceState, paymentWindow }` for the list pill. `reservedAmount` on the trade is the **deposit**. `availableActions` gains **`PAY_BALANCE`** exactly when paying would succeed, ignoring funds.
+- **Offer and quote.** `TradeOfferDto` gains `depositPct`, `depositAmount`, `balanceAmount`, `balanceDueDate` (prospective while `OFFERED`, frozen after accept; `totalInclVat` is still the gross). `TradeQuoteResponse` gains `depositPct`, `depositEstimate` (the estimate's gross × the percentage, rounded once), `balanceEstimate` and `balanceDueDate`. `walletCheck.sufficient` is judged on the **deposit** at quote, submit, and the offer's wallet check.
+- **Ledger.** The wallet's history gains the entry type `TRADE_BALANCE_PAID` (F06 §3).
+- **Timeline.** The event type list gains `BALANCE_PAID` (13 types).
 
 #### 2.4.2 Slice 1 as designed — [DEC-167]
 
@@ -1113,6 +1124,7 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 | `POST` | `/trades/{id}/confirm` | Confirm execution |
 | `POST` | `/trades/{id}/fail` | Fail (reason required) |
 | `POST` | `/trades/{id}/internal-notes` | Add an internal note |
+| `GET` | `/trade-desk/balances?state=&limit=` | ⚠ **New 2026-09-30 [DEC-167] (17)** — every company's `CONFIRMED` trades with an unpaid balance, **overdue first**, then by due date, then by reference. See §3.1.2 |
 
 ```jsonc
 // POST /api/v1/trades/{id}/offer
@@ -1152,6 +1164,12 @@ There is **no employee endpoint that approves on the customer's behalf**, delibe
 is meant to be. `POST /trades/{id}/confirm` refuses with `409 approval-required` while a trade is
 `AWAITING_APPROVAL` **[F05-R66]**.
 
+#### 3.1.2 Balances view and settlement — [DEC-167] (17), added 2026-09-30
+
+`GET /trade-desk/balances?state=due-soon|overdue|all&limit=` (`.BackOffice`, any operator; `state` defaults to `all`, an unknown value is a 400 on `state`; `limit` 1–1000, default 200) → `{ items, total, counts { dueSoon, overdue, all }, generatedAt }`. Each item: `tradeId, reference, customerId, customerName, shape, periodType, period, balanceAmount, balanceDueDate, balanceState ("SCHEDULED" \| "DUE_SOON" \| "OVERDUE"), paymentWindow ("OPEN" \| "CLOSED"), walletAvailableBalance, confirmedAt`. **Counts cover every state whatever the filter**; `total` is the true number of rows the filter matches. **View only** — the desk has no money action on a balance, and an unpaid balance is flagged, never cancelled.
+
+The desk trade detail gains `settlement` (same shape as the customer's: `depositPct`, `depositAmount`, `balanceAmount`, `balanceDueDate`, `balancePaidAt`, `balancePaidSource`, `depositState`, `balanceState`, `paymentWindow`; null before accept and for a non-BUY), the offer gains the prospective `depositPct`, `depositAmount`, `balanceAmount`, `balanceDueDate`, the acceptance's `reservedAmount` is the deposit, and the desk's customer block gains `depositPct`.
+
 #### 3.1.1 Slice 1 as designed — [DEC-167]
 
 ⚠ **Added 2026-09-29.** Every route is `.BackOffice(...)` — **any signed-in operator**, no per-trade ownership **[DEC-155]**; bodies are validated by FluentValidation. **There is no `internal-notes` route in slice 1** (**[F05-R23]** is deferred) and **no approve, override or four-eyes route of any kind** — the Awaiting approval queue is watch-only **[DEC-166]**.
@@ -1174,6 +1192,8 @@ is meant to be. `POST /trades/{id}/confirm` refuses with `409 approval-required`
 
 ### 3.2 Customers, wallets, withdrawals, payments, invoicing, data, reference data
 
+⚠ **New 2026-09-30 ([DEC-167] (17)):** `PUT /api/v1/customers/{customerId}/commercial-terms` — body `{ depositPct }` (0–100, at most two decimals; required), answers `{ depositPct }`. Anything else is a `400` validation problem on `depositPct`; an unknown company is `404`. Back office only (`.BackOffice`, any signed-in operator); there is **no customer write route**. It takes the company row `FOR UPDATE` and writes an audit record in the same transaction — action `COMMERCIAL_TERMS_CHANGED`, entity `Customer`, `before` and `after` `{ "depositPct": … }`. It governs trades accepted from now on; an accepted trade keeps its frozen percentage. The employee `CustomerDetailDto` gains `DepositPct`. The route table below carries it as the row after `/customers/{id}`.
+
 ⚠ **Reshaped 2026-08-19.** Four groups are new — withdrawal payout **[DEC-83]**, unmatched-payment
 matching **[DEC-106]**, energiebelasting brackets and per-customer reductions **[DEC-74]**, and BRP
 administration **[DEC-69]** — and four are struck: surcharge tariffs **[DEC-73]**, four-eyes
@@ -1184,6 +1204,7 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET`/`POST`/`PATCH` | `/customers`, `/customers/{id}` | Administration |
+| `PUT` | `/customers/{id}/commercial-terms` | ⚠ **New 2026-09-30 [DEC-167] (17)** — the company's deposit percentage on a bought block (default 20). Audited before and after. Back office only |
 | `POST` | `/customers/{id}/metering-points` | Attach an EAN |
 | `GET` | `/customers/{id}/accounts` | List the company's accounts |
 | `POST` | `/customers/{id}/accounts` | Create an account and its membership together. ⚠ **Corrected 2026-09-10 by [DEC-152]: also names a role.** The request carries **`membershipRole`**; the handler writes the account and the `customer_membership` row in one transaction (`AccountEndpoints.cs:30`/`:125` @ debadda0). ~~and send the invitation~~ — ⚠ **struck: no route sends one, see the resend row below** |

@@ -122,6 +122,9 @@ CREATE TABLE customer.customer (
     -- Four-eyes is a per-customer-company MODE, not a value comparison  [DEC-71], [F01-R42].
     -- Default off. There is no threshold column here or anywhere else.
     four_eyes_enabled   boolean NOT NULL DEFAULT false,
+    -- ⚠ As built 2026-09-30 by [DEC-167] (17) (migration 31): the company's DEPOSIT percentage on a bought
+    --   block, incl. VAT, set by the back office only.
+    deposit_pct         numeric(5,2) NOT NULL DEFAULT 20 CONSTRAINT ck_customer_deposit_pct_range CHECK (deposit_pct BETWEEN 0 AND 100),
     -- ⚠ As built 2026-09-29 by [DEC-166] (migration 29): two more nullable columns on this table hold a
     --   pending request to turn the mode OFF, and the mode is set by the company's own admins, not by an
     --   employee — see §3.1.4.
@@ -1272,6 +1275,20 @@ schema.
 
 **Row-level security** — enabled, never forced, **eight** policies (⚠ was ten before 2026-09-30): `trading_trade_tenant_isolation` and `trading_block_tenant_isolation` on `customer_id = current_setting('app.customer_id')`; the connection and event tables reach it through an `EXISTS` on their parent; and a `*_back_office` policy per table for `app_employee_role`, `USING (true)`. Accepted residue: **employee actor names on `trade_event` stay `SELECT`-able by the customer role through raw SQL**; no customer API response carries them **[DEC-167]** (b).
 
+**Deposit and balance — migration 31 `TradeDepositSettlement` (`20260930084211`), added 2026-09-30 ([DEC-167] (17)).** Migration 30 is already applied on the local database and is **not** amended; 31 adds:
+
+| Where | What |
+| --- | --- |
+| `customer.customer` | `deposit_pct numeric(5,2) NOT NULL DEFAULT 20` — every existing company gets 20 — with `ck_customer_deposit_pct_range` (`BETWEEN 0 AND 100`). Written only by the back office: the employee role gets `GRANT UPDATE (deposit_pct)` (column-scoped) and the customer role has no write policy (migration 16) |
+| `trading.trade` | The settlement frozen at accept: `deposit_pct numeric(5,2)`, `deposit_amount numeric(18,6)`, `balance_amount numeric(18,6)`, `balance_due_date date` (`delivery_start − 1`, Amsterdam), and the payment record `balance_paid_at timestamptz`, `balance_paid_by_account_id uuid` (FK `customer_account`, `RESTRICT`, indexed) and `balance_paid_source` (`CUSTOMER` \| `AUTO`). All nullable until accept; `wallet_amount_gross` stays the one stored VAT-inclusive number |
+| `CHECK`s on `trading.trade` | `ck_trade_deposit_pct_range` (0–100); `ck_trade_settlement_complete` (`deposit_pct`, `deposit_amount`, `balance_amount` and `balance_due_date` are all null or all set); `ck_trade_settlement_adds_up` (both amounts ≥ 0, whole cents, `deposit_amount + balance_amount = wallet_amount_gross`); `ck_trade_settlement_present` (an accepted, awaiting, confirmed, failed or refused **BUY** carries a settlement); `ck_trade_balance_paid_source` (`CUSTOMER` or `AUTO`); `ck_trade_balance_paid_consistent` (paid-at is set if and only if the source is; a `CUSTOMER` source names the paying account and `AUTO` names none; only a `CONFIRMED` trade with a balance above 0 can be paid) |
+| `trading.trade_event` | `ck_trade_event_type` is replaced to admit a 13th type, **`BALANCE_PAID`** (a `CONFIRMED` → `CONFIRMED` row: paying is not a state change) |
+| `wallet.ledger_entry` | Third partial unique index **`ux_ledger_entry_trade_balance (wallet_id, caused_by_id)`** where `caused_by_type = 'Trade'` and `entry_type = 'TRADE_BALANCE_PAID'`: one balance debit per (wallet, trade). The reserve and exit indexes of migration 30 are untouched and keep guarding the deposit leg |
+| Grants | `app_customer_role` `SELECT` widens by exactly the **seven settlement columns** (`deposit_pct`, `deposit_amount`, `balance_amount`, `balance_due_date`, `balance_paid_at`, `balance_paid_by_account_id`, `balance_paid_source`) — still none of the employee-only ones. The balance payment and the automatic collection write through the same privileged paths as every other trade money movement (the customer host's owner-privileged window, the Worker's owner connection), so no further grant is needed |
+| Backfill | A trade accepted before 31 reserved the whole gross, so it reads as **`deposit_pct = 100`, `deposit_amount = wallet_amount_gross`, `balance_amount = 0`, `balance_due_date = delivery_start − 1`** — which is what actually happened to its wallet |
+
+Down() reverses each of the above (the append-only event trigger is disabled around the `BALANCE_PAID` delete). The pins, `tools/verify-migrator.sh`, the model snapshot and both OpenAPI artifacts move with it. The lock order is unchanged: the pay-balance route and the collection take **company row, trade, wallet**; the commercial-terms change takes the company row `FOR UPDATE`, which an accept's `FOR SHARE` serialises against.
+
 **Locks.** One global order — §5 and [DEC-167] (7): admin roster, company row, trade, wallet. Trade locks are taken by `id` only; the company row is locked **owner-privileged** with the token's company named explicitly (§3.1.4).
 
 ### 3.5 Wallet
@@ -1306,7 +1323,8 @@ CREATE TABLE wallet.wallet_entry (
     entry_type      text NOT NULL CHECK (entry_type IN (
                         'DEPOSIT_IDEAL','DEPOSIT_BANK',                       -- [DEC-58], [DEC-106]
                         'TRADE_RESERVED','TRADE_RESERVATION_RELEASED',
-                        'TRADE_SETTLED','TRADE_PROCEEDS',                     -- gross [DEC-78]
+                        'TRADE_SETTLED','TRADE_PROCEEDS',                     -- gross [DEC-78]; a BUY's is the deposit [DEC-167] (17)
+                        'TRADE_BALANCE_PAID',                                 -- ⚠ new, migration 31 [DEC-167] (17)
                         'WITHDRAWAL_REQUESTED','WITHDRAWAL_RELEASED',
                         'WITHDRAWAL_PAID',                                    -- [DEC-83]
                         'REFUND',                                             -- kept, no writer

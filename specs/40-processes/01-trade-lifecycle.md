@@ -238,6 +238,8 @@ flowchart LR
     style S8 fill:#7f1d1d,stroke:#dc2626,color:#fff
 ```
 
+⚠ **Amended 2026-09-30 by [DEC-167] (17): a bought block is paid in two legs.** `TRADE_RESERVED`, `TRADE_SETTLED` and `TRADE_RESERVATION_RELEASED` below move the **deposit** (the company's percentage of the VAT-inclusive gross, frozen at accept). After `CONFIRMED` the **balance** — the rest of the gross — is owed until the day before delivery starts and is paid as `TRADE_BALANCE_PAID`, by the customer's *Pay balance* (`POST /trades/{id}/pay-balance`) or by the hourly automatic collection when the wallet covers it. Paying is not a state change (a `BALANCE_PAID` event, `CONFIRMED` to `CONFIRMED`); an unpaid balance after delivery starts is **overdue** — a derived flag, the trade stays `CONFIRMED` and nothing is cancelled.
+
 Ledger entries produced: `TRADE_RESERVED` on acceptance, then either `TRADE_SETTLED`
 (or `TRADE_PROCEEDS` for a sell) on confirmation, or `TRADE_RESERVATION_RELEASED` on failure,
 on approval refusal, or on expiry after acceptance **[DEC-33]**, **[DEC-71]**.

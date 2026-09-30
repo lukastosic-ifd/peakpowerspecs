@@ -635,10 +635,10 @@ request, which the trader can quote with a longer window.
 | Screen | Mockup |
 | --- | --- |
 | Trade request wizard | [`trade-wizard.svg`](../60-mockups/trade-wizard.svg) ⚠ **Superseded 2026-09-30 by [DEC-167] (16):** this mockup still shows "Step 2 of 3 · volume per connection" and a per-connection minimum, the input the user reversed. The portal follows the trading-poc wizard (Product & period, Volume for the whole account, Review & submit); read the mockup as the pre-2026-09-30 design. |
-| Offer with countdown | [`trade-offer-countdown.svg`](../60-mockups/trade-offer-countdown.svg) |
-| Trade history / audit timeline | [`trade-history.svg`](../60-mockups/trade-history.svg) |
+| Offer with countdown | [`trade-offer-countdown.svg`](../60-mockups/trade-offer-countdown.svg) ⚠ **Superseded 2026-09-30 by [DEC-167] (16):** its "What you are buying" table allocates the block per connection (an ALLOCATED column), the model the user reversed. As built, the offer shows one account-level power and volume; read the mockup as the pre-2026-09-30 design. |
+| Trade history / audit timeline | [`trade-history.svg`](../60-mockups/trade-history.svg) ⚠ **Superseded 2026-09-30 by [DEC-167] (16):** its confirmation line says the block was "created with 4 allocations". As built, a confirmed block is account-level and has no allocations. |
 | Employee trade desk | [`employee-trade-desk.svg`](../60-mockups/employee-trade-desk.svg) |
-| Employee trade detail & pricing | [`employee-trade-detail.svg`](../60-mockups/employee-trade-detail.svg) |
+| Employee trade detail & pricing | [`employee-trade-detail.svg`](../60-mockups/employee-trade-detail.svg) ⚠ **Superseded 2026-09-30 by [DEC-167] (16):** its connection table gives each connection its own MW and MWh. As built, the desk shows the account's total power and the covered connections by name and EAN only. |
 
 ## 8. Data
 

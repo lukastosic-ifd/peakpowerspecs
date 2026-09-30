@@ -358,11 +358,10 @@ Two validation rules changed on 2026-08-19, in opposite directions: one got stri
 
 `powerMw` is validated as a decimal with **at most two decimal places and a value ≥ 0.01**, which is
 the whole rule: "multiple of 0,01" and "two decimals" are the same statement, so the API expresses it
-once. ⚠ **2026-09-29 [DEC-167] (9):** `invalid-volume` is a **400** validation shape, not a 409; every other trading problem type is a 409. `0.005`, `0.0`, and a negative value are all `409 invalid-volume` with the offending line index
-in `errors`. The check is server-side and repeated at acceptance, because the wizard is not the only
+once. ⚠ **2026-09-29 [DEC-167] (9):** `invalid-volume` is a **400** validation shape, not a 409; every other trading problem type is a 409. `0.005`, `0.0`, and a negative value are all rejected as `invalid-volume` (⚠ **2026-09-30 [DEC-167] (16): there are no lines, so there is no line index** — as built the `ValidationProblem` `errors` is keyed by `powerMw`). The check is server-side and repeated at acceptance, because the wizard is not the only
 client this API will ever have.
 
-⚠ **What ten-times-finer granularity costs downstream.** Per-EAN allocation rounds to 0,01 MW instead
+⚠ **What ten-times-finer granularity costs downstream.** ⚠ **Superseded 2026-09-30 by [DEC-167] (16): there are no allocations** — the paragraph below is the pre-2026-09-30 per-EAN model, and the one account-level `powerMw` is the only volume. Per-EAN allocation rounds to 0,01 MW instead
 of 0,1 MW, so the non-whole-MW tail **[DEC-32]** removed is back: `totalPowerMw` may be `0.070000`,
 and every allocation, block and coverage figure has to survive it. Nothing in this contract changes
 shape — the fields were always decimal strings — but a client that assumed one decimal place is wrong.

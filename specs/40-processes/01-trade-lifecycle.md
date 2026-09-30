@@ -492,7 +492,8 @@ kept underneath the table.
 | Approved | Traders, the **acceptor** and the other admins | In-app (real-time) |
 | Approval declined | The **acceptor** and the other admins, traders | In-app + email |
 | Accepted | Traders | In-app (real-time) |
-| Confirmed | The requester, plus the admins where four-eyes applied **[DEC-111]** | In-app + email |
+| Confirmed | The requester, plus the admins where four-eyes applied **[DEC-111]**. ⚠ **As built 2026-09-30 [DEC-167] (18):** the requester and the acceptor, from the employee host, **email only**; an approver who is neither gets no mail | In-app + email (⚠ email only as built) |
+| ⚠ **Balance paid** **[DEC-167] (18)** | The requester, the acceptor and, on the customer host, the payer | Email only |
 | Failed | The requester, plus the admins where four-eyes applied **[DEC-111]** | In-app + email — **immediate** |
 | Unconfirmed > 4 h | Traders | In-app escalation |
 
@@ -518,7 +519,7 @@ it was, and an expiry or a decline moves their money.
 Two rows carry an inference rather than a decision, and are flagged as such: **confirmed** and
 **failed**. [DEC-111] speaks about *offer* notifications. A trade outcome belongs to the same request
 and the only decision that ever gave it a wider audience was [DEC-63], which is reversed, so it
-inherits the offer's audience. ⚠ **Confirm at the next session** — the same flag
+inherits the offer's audience. ⚠ **Confirm at the next session** (closed for **confirmed** on 2026-09-30: as built it goes to the requester and the acceptor, see the table) — the same flag
 [F11 §2](../10-features/F11-notifications.md) carries.
 
 ## 8. Audit output

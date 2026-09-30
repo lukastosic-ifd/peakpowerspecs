@@ -580,7 +580,7 @@ New error `type` URIs, all `409`:
 
 | Method and path | Body → 200 | Other |
 | --- | --- | --- |
-| `GET /trades?category=&state=&page=&pageSize=` | → `TradeListResponse` (`state` repeatable; `pageSize` 1–100). ⚠ **2026-09-30 [DEC-167] (18):** `category` is `open`, `balance-due` (CONFIRMED BUY, balance unpaid, ordered by due date, overdue first) or `all`; the response adds `counts: { open, balanceDue, all }` for the token's company whatever the filter; items carry `balanceAmount`, `balanceDueDate`, `balanceState` | 400 |
+| `GET /trades?category=&state=&page=&pageSize=` | → `TradeListResponse` (`state` repeatable; `pageSize` 1–100). ⚠ **2026-09-30 [DEC-167] (18):** `category` is `open`, `balance-due` (CONFIRMED BUY, balance unpaid, ordered by due date, overdue first) or `all`; the response adds `counts: { open, balanceDue, all }` for the token's company whatever the filter; each item's nullable `settlement` summary carries `balanceAmount`, `balanceDueDate`, `balanceState`; an omitted `category` means no category filter (every state), and `category` and `state` are both applied (AND) | 400 |
 | `POST /trades/quote` | `TradeQuoteRequest` → `TradeQuoteResponse` (no side effects) | 400 |
 | `POST /trades` | `SubmitTradeRequest` → `SubmitTradeResponse` | 400, 409 `customer-not-active` / `insufficient-available-balance` |
 | `GET /trades/{tradeId}` | → `TradeDetailDto` | 404 |

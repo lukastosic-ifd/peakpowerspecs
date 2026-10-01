@@ -189,7 +189,7 @@ gantt
 
 | Interval | Target | Alert |
 | --- | --- | --- |
-| Request → offer | median **< 30 min** | Request unpriced after 60 min ⚠ **Deferred 2026-09-29 by [DEC-167]** — the *request unpriced after 60 min* alert goes with **[F05-R39]** (slice 4); the desk mail and the red *To confirm* age stand in. |
+| Request → offer | median **< 30 min** | Request unpriced after 60 min ⚠ **Deferred 2026-09-29 by [DEC-167]** — the *request unpriced after 60 min* alert goes with **[F05-R39]** (slice 4); the desk mail (to every active back-office account with the desk-mail setting on, [DEC-168]) and the red *To confirm* age stand in. |
 | Offer → customer response | within the window, default 30 min | Notification at T−5 min, to the **requesting account** and, under four-eyes, the **approving admins** **[DEC-111]** |
 | Acceptance → approval **[DEC-33]**, **[DEC-71]** | **inside the same window** — no separate clock | The **other admin accounts** are notified immediately, and again at T−5 min **[DEC-111]** |
 | Acceptance → confirmation | median **< 30 min** | Escalation after 4 h **[F05-R39]** |
@@ -483,15 +483,15 @@ kept underneath the table.
 
 | Moment | To | Channel |
 | --- | --- | --- |
-| Request submitted | Traders | In-app (real-time) + email |
+| Request submitted | Traders ⚠ **As built 2026-10-01 [DEC-168]:** *new trade request* is emailed to every active back-office account with the desk-mail setting on (admin or not), by the Worker up to ~15 s after the commit | In-app (real-time) + email |
 | Offer published | ~~Every active account of the company~~ **The account that raised the request**, plus — when the company has four-eyes on — **the admin accounts that would have to approve it** **[DEC-111]**, **[DEC-71]** | In-app (real-time) + email — **immediate** |
 | 5 minutes remaining | The same set **[DEC-111]** | In-app + email |
 | Offer expired | The same set **[DEC-111]**, traders | In-app + email |
 | ~~**Approval needed** **[DEC-33]**~~ **Approval requested** **[DEC-71]** | ~~Every active account except the acceptor~~ **The other admin accounts of the company** — every active admin except the one who accepted | In-app (real-time) + email — **immediate**, with the volume, the **gross** amount already held **[DEC-78]**, the acceptor's name and job title, and the time left |
 | 5 minutes remaining, awaiting approval | The other admin accounts, traders | In-app + email |
-| Approved | Traders, the **acceptor** and the other admins | In-app (real-time) |
+| Approved | Traders, the **acceptor** and the other admins ⚠ **As built 2026-10-01 [DEC-168]:** when the approval makes the trade ready to confirm, the *ready to confirm* email goes to the same desk recipients | In-app (real-time) |
 | Approval declined | The **acceptor** and the other admins, traders | In-app + email |
-| Accepted | Traders | In-app (real-time) |
+| Accepted | Traders ⚠ **As built 2026-10-01 [DEC-168]:** with four-eyes off, *accepted — ready to confirm* is emailed to every active back-office account with the desk-mail setting on | In-app (real-time) |
 | Confirmed | The requester, plus the admins where four-eyes applied **[DEC-111]**. ⚠ **As built 2026-09-30 [DEC-167] (18):** the requester and the acceptor, from the employee host, **email only**; an approver who is neither gets no mail | In-app + email (⚠ email only as built) |
 | ⚠ **Balance paid** **[DEC-167] (18)** | The requester, the acceptor and, on the customer host, the payer | Email only |
 | Failed | The requester, plus the admins where four-eyes applied **[DEC-111]** | In-app + email — **immediate** |

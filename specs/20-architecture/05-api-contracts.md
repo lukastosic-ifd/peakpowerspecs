@@ -1343,6 +1343,18 @@ no approve and no reject **[DEC-83]**. Both routes carry the back-office policy,
 | An invoice-numbering endpoint | The bookkeeping program owns numbering **[DEC-88]**. The platform **stores** the returned number and never mints one, so there is no sequence to configure and no gap to repair |
 | An invoice PDF or email endpoint | **[DEC-89]**. **[DEC-48]** (SendGrid) narrows to the platform's **own** notifications: offers, wallet events, alerts |
 
+### 3.3 Operators — staff accounts **[DEC-155]**
+
+⚠ **Added 2026-10-01 ([DEC-168]) for the desk-mail setting; the six routes themselves are [F13-R48]'s.** `/api/v1/operators` lists, creates (with an emailed set-password invite), edits, deactivates, reactivates and re-invites back-office staff. Every route is `.BackOffice(...)` **and** the `BackOfficeAdmin` policy: an ordinary operator is refused, as for every operator route.
+
+| Route | Change for the desk-mail setting |
+| --- | --- |
+| `GET /api/v1/operators` | Each `OperatorResponse` carries **`receivesTradeDeskMail`** (boolean) beside `isAdmin` |
+| `POST /api/v1/operators` | `CreateOperatorRequest` takes an **optional** `receivesTradeDeskMail`, **default `true`** when omitted. The create `INSERT` names only granted columns (never `password_hash`) |
+| `PUT /api/v1/operators/{id}` | `EditOperatorRequest` takes `receivesTradeDeskMail` as **required**, because the `PUT` replaces the editable fields (display name, `isAdmin`, the setting). Flipping it either way takes effect for the next Worker tick |
+
+The setting governs **only** the two trade-desk mails *new trade request* and *accepted — ready to confirm* **[DEC-168]**; the invite and password-reset mails ignore it. Deactivate, reactivate and resend-invite are unchanged, and a deactivated operator receives no desk mail whatever the stored setting says. The OpenAPI artifact the harness pins gains the field, and the generated employee client follows [§7](#7-openapi).
+
 ## 4. Worker endpoints
 
 | Method | Path | Auth | Purpose |

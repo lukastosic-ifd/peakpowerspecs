@@ -627,6 +627,8 @@ New error `type` URIs, all `409`:
 
 ⚠ **As built 2026-10-01, [DEC-169] (5) — `category` also takes `confirmed` and `closed`, and `counts` is `{ open, balanceDue, all, confirmed, closed }`.** `confirmed` is state `CONFIRMED`; `closed` is `EXPIRED`, `DECLINED`, `WITHDRAWN`, `REJECTED`, `APPROVAL_REFUSED`, `CANCELLED` and `FAILED`. `open` (REQUESTED, OFFERED, ACCEPTED, AWAITING_APPROVAL) and `balance-due` are unchanged, and no state is in two of open, confirmed and closed. The trade detail honours `?action=confirm|decline` in the portal only; no API field changes.
 
+⚠ **As built 2026-10-01, [DEC-999] (16) — `TradeCountsDto` gains `offered`.** `offered` is the number of the company's `OFFERED` trades (a subset of `open`); the customer portal's Trades navigation badge shows it and hides it at 0. No state moves between categories.
+
 | `POST /trades/quote` | `TradeQuoteRequest` → `TradeQuoteResponse` (no side effects) | 400 |
 | `POST /trades` | `SubmitTradeRequest` → `SubmitTradeResponse` | 400, 409 `customer-not-active` / `insufficient-available-balance` |
 | `GET /trades/{tradeId}` | → `TradeDetailDto` | 404 |
@@ -1171,6 +1173,8 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 | `POST` | `/trades/{id}/internal-notes` | Add an internal note |
 | `GET` | `/trade-desk/balances?state=&limit=` | ⚠ **New 2026-09-30 [DEC-167] (17)** — every company's `CONFIRMED` trades with an unpaid balance, **overdue first**, then by due date, then by reference. See §3.1.2 |
 
+⚠ **As built 2026-10-01, [DEC-170] (16) — the employee trades list has categories and counts.** `GET /trades` (back office) accepts `category` = `all` (or empty), `to-price` (`REQUESTED`), `offer-out` (`OFFERED`), `awaiting-approval`, `to-confirm` (`ACCEPTED`), `confirmed` (`CONFIRMED`) or `closed` (`REJECTED`, `EXPIRED`, `FAILED`, `DECLINED`, `WITHDRAWN`, `CANCELLED`, `APPROVAL_REFUSED`), 400 on anything else; the repeatable `state` filter still works. The response gains `counts` = `{ all, toPrice, offerOut, awaitingApproval, toConfirm, confirmed, closed }` across every company (back-office scope), independent of the filter. The six specific categories are disjoint and each count equals the length of its own filter's results. The trade detail honours `?action=offer|confirm` in the portal only; no API field changes.
+
 ```jsonc
 // POST /api/v1/trades/{id}/offer
 {
@@ -1326,13 +1330,13 @@ no approve and no reject **[DEC-83]**. Both routes carry the back-office policy,
     }
   ],
   "total": 12,
-  "counts": { "toPay": 12, "awaitingApproval": 3 }
+  "counts": { "toPay": 12, "awaitingApproval": 3, "paid": 40, "closed": 9, "all": 64 }
 }
 ```
 
 - **Ordering.** `to-pay` and `awaiting-approval` are **oldest first**, first come first served; the rest are newest
   first; the id breaks ties, so a page boundary is stable between two loads.
-- **`total` is the filtered count; `counts` are not.** `counts.toPay` and `counts.awaitingApproval` are totals across
+- **`total` is the filtered count; `counts` are not.** ⚠ **As built 2026-10-01, [DEC-170] (16): `counts` gains `paid`, `closed` and `all`, each equal to the length of the desk's own filter of that name.** `counts.toPay` and `counts.awaitingApproval` are totals across
   **every company**, independent of `status` and `customerId`.
 - **`status`** on an item is the existing withdrawal wire value (`REQUESTED`, `AWAITING_APPROVAL`, `APPROVAL_DECLINED`,
   `REJECTED`, `PAID`, `CANCELLED`). `companyName` is the trade name, falling back to the legal name.

@@ -189,7 +189,7 @@ gantt
 
 | Interval | Target | Alert |
 | --- | --- | --- |
-| Request → offer | median **< 30 min** | Request unpriced after 60 min ⚠ **Deferred 2026-09-29 by [DEC-167]** — the *request unpriced after 60 min* alert goes with **[F05-R39]** (slice 4); the desk mail (to every active back-office account, [DEC-168]) and the red *To confirm* age stand in. |
+| Request → offer | median **< 30 min** | Request unpriced after 60 min ⚠ **Deferred 2026-09-29 by [DEC-167]** — the *request unpriced after 60 min* alert goes with **[F05-R39]** (slice 4); the desk mail (to every active back-office account with the desk-mail setting on, [DEC-168]) and the red *To confirm* age stand in. |
 | Offer → customer response | within the window, default 30 min | Notification at T−5 min, to the **requesting account** and, under four-eyes, the **approving admins** **[DEC-111]** |
 | Acceptance → approval **[DEC-33]**, **[DEC-71]** | **inside the same window** — no separate clock | The **other admin accounts** are notified immediately, and again at T−5 min **[DEC-111]** |
 | Acceptance → confirmation | median **< 30 min** | Escalation after 4 h **[F05-R39]** |

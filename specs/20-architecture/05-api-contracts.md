@@ -627,7 +627,7 @@ New error `type` URIs, all `409`:
 
 ⚠ **As built 2026-10-01, [DEC-169] (5) — `category` also takes `confirmed` and `closed`, and `counts` is `{ open, balanceDue, all, confirmed, closed }`.** `confirmed` is state `CONFIRMED`; `closed` is `EXPIRED`, `DECLINED`, `WITHDRAWN`, `REJECTED`, `APPROVAL_REFUSED`, `CANCELLED` and `FAILED`. `open` (REQUESTED, OFFERED, ACCEPTED, AWAITING_APPROVAL) and `balance-due` are unchanged, and no state is in two of open, confirmed and closed. The trade detail honours `?action=confirm|decline` in the portal only; no API field changes.
 
-⚠ **As built 2026-10-01, [DEC-999] (16) — `TradeCountsDto` gains `offered`.** `offered` is the number of the company's `OFFERED` trades (a subset of `open`); the customer portal's Trades navigation badge shows it and hides it at 0. No state moves between categories.
+⚠ **As built 2026-10-01, [DEC-170] (16) — `TradeCountsDto` gains `offered`.** `offered` is the number of the company's `OFFERED` trades (a subset of `open`); the customer portal's Trades navigation badge shows it and hides it at 0. No state moves between categories.
 
 | `POST /trades/quote` | `TradeQuoteRequest` → `TradeQuoteResponse` (no side effects) | 400 |
 | `POST /trades` | `SubmitTradeRequest` → `SubmitTradeResponse` | 400, 409 `customer-not-active` / `insufficient-available-balance` |

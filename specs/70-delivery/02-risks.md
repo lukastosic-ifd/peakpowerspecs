@@ -304,7 +304,7 @@ Held at 3 × 5 again. What changed is which paths the test gate has to name, bel
 
 **Mitigation**
 - Append-only ledger with computed balances and a daily reconciliation job **[DEC-04]**.
-- Row-level locking with a written lock order — wallet before trade, always.
+- Row-level locking with a written lock order — wallet before trade, always. ⚠ **Superseded 2026-09-29 by [DEC-167] (7):** roster → `customer.customer` → trade → wallet, never the wallet before the trade.
 - The eight correctness tests in
   [Solution structure §6.1](../20-architecture/02-solution-structure.md) as a merge gate.
 - **Add the four-eyes release paths as named cases to that gate [DEC-33]**: approve, refuse and
@@ -1239,7 +1239,7 @@ pulling it forward look free when someone asks. Impact stays at 3.
 
 **Owner:** PO
 
-### R-07 · Montel licence restricts display 🟢 **4** *(was 🟡 6)*
+### R-07 · Montel licence restricts display 🟢 **4** *(was 🟡 6)* ⚠ **2026-09-29 [DEC-167]:** read as 6 until [OQ-117] is answered
 
 *Likelihood 2 × Impact 2 — was 2 × 3 = 6. Reduced 2026-08-19.*
 
@@ -1247,6 +1247,8 @@ The residual this entry kept — **customer CSV export** — is settled from the
 the licence side, which is the cheapest way a risk can go away. **[DEC-81]**: customers see the
 **current** forward curve, with **no history and no export**. **[DEC-97]**: the customer API exposes
 usage and **nothing priced**. There is no longer a feature waiting to be refused.
+
+⚠ **2026-09-29 [DEC-167]:** the premise below is removed — customers now see the **raw** quote, so the 3 → 2 reduction no longer holds and the impact should be read as **3** until **[OQ-117]** is answered; a real Montel provider must not go live before then.
 
 Impact falls from 3 to 2 because the worst case is now a portal that shows a **derived** figure rather
 than a raw one — and **[DEC-80]** already requires exactly that: a quote plus a configurable
@@ -1313,7 +1315,7 @@ R-03), of which **17 score 12 or above**.
 | R-18 | Trade desk response times slip in practice | 2 | 3 | 🟡 6 | Real-time desk; urgency ranking; escalation alerts; measure G2. ⚠ 2026-08-19: [DEC-70]'s 0,01 MW minimum means more, smaller requests per trader-hour | Trading |
 | R-22 | Insufficient realistic test data for performance work | 3 | 2 | 🟡 6 | `DevStubs` generates volume; production-shaped test environment. ⚠ 2026-08-19: it must now generate **per BRP** [DEC-69] and cover a **correction arriving months late** [DEC-98] [DEC-99] | QA |
 | **R-35** | **A 30-minute offer dies in one person's calendar** | 3 | 2 | 🟡 6 | **New** — ⚠ [DEC-111] reverses [DEC-63]: the requester is notified, plus the approving admin under four-eyes [DEC-71]. [DEC-18] still lets any account accept, so the offer is unseen rather than unacceptable. Measure lapsed offers before widening it again | Commercial |
-| R-07 | Montel licence restricts display | 2 | 2 | 🟢 4 | **Was 6** — [DEC-81] settles the residual from the product side: current curve, **no history, no export**; [DEC-97] keeps prices out of the customer API; [DEC-80] already shows a **derived** figure. ⚠ [OQ-23] stays a ⏸ partial (ticker symbols, bid-versus-ask); [DEC-96] adds an existing Montel service to reuse | Commercial |
+| R-07 | Montel licence restricts display | 2 | 2 | 🟢 4 | **Was 6** — [DEC-81] settles the residual from the product side: current curve, **no history, no export**; [DEC-97] keeps prices out of the customer API; [DEC-80] already shows a **derived** figure ⚠ **2026-09-29 [DEC-167]:** no longer — customers now see the **raw** quote, so read the impact as **3** (score 6) until **[OQ-117]** is answered. ⚠ [OQ-23] stays a ⏸ partial (ticker symbols, bid-versus-ask); [DEC-96] adds an existing Montel service to reuse | Commercial |
 | R-21 | Angular/.NET version drift over a long build | 2 | 2 | 🟢 4 | Central package management; renovate; upgrade budget per phase | Lead |
 | ~~R-03~~ | ~~Peak-hour definition mismatch~~ — **retired by [DEC-19]** | — | — | ✅ Retired | Peak includes public holidays, matching the exchange convention; `excluded_dates[]` empty; [DEC-14] keeps the calendar as data. ✅ Confirmed verbatim 2026-08-19 by [OQ-02] — *"Peak is Mo-Fr 08:00 - 20:00"* | Closed |
 

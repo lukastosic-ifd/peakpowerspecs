@@ -8,7 +8,7 @@ Two distinct uses of one provider:
 
 1. **Price indications** — forward prices for base and peak, month/quarter/year, shown to customers
    as non-binding indications ([F04](../10-features/F04-price-indications.md)). Since **[DEC-80]** the
-   customer sees the quote **plus a configurable markup, default 2%**, applied at display and never
+   customer sees the quote **plus a configurable markup, default 2%**, applied at display and never ⚠ **2026-09-29 [DEC-167]:** the customer now sees the **raw** quote, with no markup; the markup table is unused (§5.2, [OQ-117]).
    stored (§5.2).
 2. **Day-ahead prices** — the NL day-ahead curve, used **raw** to settle uncovered volume, unused
    block cover and — since **[DEC-87]** — physically exported volume
@@ -34,7 +34,7 @@ what to look for. **[OQ-23]** is the one input still missing from the outside.
 
 | Need | Frequency | Consumer | Failure impact |
 | --- | --- | --- | --- |
-| Forward prices for **24** configured products ⚠ **Amended 2026-09-23 by [DEC-161]** — widened from the original 6–12 sketch to a fixed 6M/4Q/2Y × Base/Peak depth | **Platform-wide** for Phase 1, every 5 min in market hours **[DEC-161]** (per-product frequency waits for P5) | Price board, **marked up at display [DEC-80]**. The trade-wizard estimate is deferred with F05 in Phase 1 (**F04-R10**) | Customers see stale indications, or `Unavailable` if the configured provider is absent entirely **[DEC-159]**; trading continues |
+| Forward prices for **24** configured products ⚠ **Amended 2026-09-23 by [DEC-161]** — widened from the original 6–12 sketch to a fixed 6M/4Q/2Y × Base/Peak depth | **Platform-wide** for Phase 1, every 5 min in market hours **[DEC-161]** (per-product frequency waits for P5) | Price board, **marked up at display [DEC-80]**. The trade-wizard estimate is deferred with F05 in Phase 1 (**F04-R10**) | Customers see stale indications, or `Unavailable` if the configured provider is absent entirely **[DEC-159]**; trading continues ⚠ **Reversed 2026-09-29 by [DEC-167]** — customers now see the **raw** quote (Prices page and trade-wizard estimate); the margin is in the firm offer price the trader types. Licence caveat before Montel goes live: **[OQ-117]**. |
 | NL day-ahead curve for D+1 | **Once daily, from 18:00 Europe/Amsterdam [DEC-36]** | Invoicing (uncovered purchase, unused block cover, **export credit [DEC-87]**), chart tooltips, exposure KPI | **Invoicing blocked for affected days** |
 | Historical forward prices | On demand | **Employee** trend charts only — the customer-facing history is withdrawn by **[DEC-81]** (§7) | Internal trend view degrades; nothing customer-facing is affected |
 | Historical day-ahead | Backfill, once, then on demand for corrections | Historical positions, late correction invoices **[DEC-99]** | Past periods cannot be settled. ⚠ **No longer an unknown: history is available [DEC-75]** — the limit is the licence, not the data |
@@ -352,7 +352,7 @@ feed-in fee touch export volume. For this integration that means:
 **configurable markup, default 2%** — reference data with a default, not a constant — and an indication
 is **never firm unless PeakPower says so**; only PeakPower's response to a trade request binds
 **[F04-R05]**. Which side of the market is marked up is carried on **[OQ-23]** (§3): the comment column
-governs and says **bid**, the answer column says ask.
+governs and says **bid**, the answer column says ask. ⚠ **2026-09-29 [DEC-167] reverses this for the customer:** the Prices page and the trade-wizard estimate now show the **raw** quote; the margin lives in the firm offer price the trader types, and the markup table is unused. Licence caveat before Montel goes live: **[OQ-117]**.
 
 This creates two prices where there was one, so the boundary has to be stated rather than implied:
 
@@ -360,7 +360,7 @@ This creates two prices where there was one, so the boundary has to be stated ra
 | --- | --- | --- |
 | Montel / the Montel service returns | Raw quote | Untouched. §2.1 forbids the service applying a markup |
 | This adapter stores (`price_indication_observation`) | **Raw quote** | **No markup column, no adjusted column.** What is stored is what was quoted |
-| Portal price board, trade-wizard estimate | **Raw × (1 + markup)** | Computed at render time from the stored raw value and the markup in force **[DEC-80]** |
+| Portal price board, trade-wizard estimate | **Raw × (1 + markup)** | Computed at render time from the stored raw value and the markup in force **[DEC-80]** ⚠ **2026-09-29 [DEC-167]:** now **raw**, with no markup: customer reads (the Prices page) and the wizard estimate both show the raw stored value. Licence caveat: **[OQ-117]**. |
 | `day_ahead_price` store | **Raw** | Unchanged by [DEC-80], which is about indications |
 | Day-ahead shown to a customer (tooltip, exposure KPI) | **Raw** | It is the price they are actually charged; marking it up would break their own reconciliation |
 | Settlement — [Invoice calculation](../50-calculations/03-invoice-calculation.md) | **Raw day-ahead, always** | **[DEC-44]** first half, confirmed by **[DEC-87]**. No marked-up value is an input to any invoice line |
@@ -380,11 +380,13 @@ different lifecycle, and a write F05 owns, not this adapter. The boundary this s
 narrower than "never persisted": it is "never persisted in the observation store, and never computed
 by anything but the render/capture path itself."
 
+⚠ **2026-09-29 [DEC-167]:** the paragraph above (the marked-up capture) is superseded. Trading slice 1 captures the **raw** price, its observation time and its source with the trade request, with **no markup** and no marked-up column; F05 reads no markup, and the `price_indication_markup` table is unused. Licence caveat before a real Montel provider goes live: **[OQ-117]**.
+
 Worked example, at the 2% default:
 
 | Quantity | Raw | Shown | Charged |
 | --- | --- | --- | --- |
-| Base M+1 indication, 92,40 €/MWh | 92,40 | 92,40 × 1,02 = 94,248 → **94,25** | *n/a — an indication is not charged* |
+| Base M+1 indication, 92,40 €/MWh | 92,40 | 92,40 × 1,02 = 94,248 → **94,25** ⚠ **2026-09-29 [DEC-167]:** now shown **raw**, 92,40, no markup | *n/a — an indication is not charged* |
 | Day-ahead interval, 87,30 €/MWh | 87,30 | 87,30 | **87,30** |
 
 ⚠ **What a breach of the boundary costs.** If the markup ever leaked into settlement, one MW of
@@ -394,6 +396,8 @@ against itself. It would only surface when a customer checked the invoice agains
 curve, which [F08](../10-features/F08-day-ahead-prices.md) business rule 6 explicitly expects them to
 do. That is why the markup is applied
 at the last possible moment instead of on ingestion.
+
+⚠ **2026-09-29 [DEC-167]:** no markup is captured; F05 records the raw price, its time and its source only. The paragraph below is superseded.
 
 ⚠ **Consequence for [F04-R10]**, which records the indication current at the moment of a trade request:
 the recorded value is a raw observation, so the markup percentage **in force at that moment** must be
@@ -467,6 +471,8 @@ licensed. It does mean the figure on the tile is **not** a raw quote that a thir
 reconcile against Montel, which makes the *"Indication — not an offer"* labelling **[F04-R05]** carry
 more weight than it did, not less.
 
+⚠ **2026-09-29 [DEC-167]:** the tile now shows the **raw** quote, so the reasoning above no longer holds: a third party can reconcile it against Montel. The licence caveat is **[OQ-117]**, to be answered before Montel goes live.
+
 ## 8. Open questions
 
 Post-2026-08-19 state. ⚠ **Amended 2026-09-23.** Two questions remain against this integration: one is
@@ -478,7 +484,7 @@ a partial ([OQ-23]), the other is fully open and does not block Phase 1's build 
 | **[OQ-23]** | ⏸ | **Still open in part.** ~~Exact ticker symbols for the six products~~ — the symbols **were never supplied** (§3), and a second half has been added to the row: **the sources disagree on which side of the market is quoted and marked up** — [OQ-23]'s answer says *ask* + 2%, [OQ-25]'s comment says *bid* + percentage, and the comment governs **[DEC-80]**. Both must be confirmed together; a symbol confirmed without its side is a silent pricing error. First place to look: the existing Montel service **[DEC-96]**, §2.1. ⚠ **Widened 2026-09-23 by [DEC-161]** — the row is now 24 symbols, not six (§3), and carries two further items: the **sign convention** for a negative quote ([F04](../10-features/F04-price-indications.md) §8), and **licence/service coverage of the far offsets** (M+3…M+6, Q+3…Q+4, Cal+2 — fourteen products) that must be confirmed before those can go live. All four items — symbols, side, sign, far-offset coverage — must arrive together; see [80-open-questions.md](../80-open-questions.md) |
 | **[OQ-108]** | 🟠 | **New 2026-09-23 by [DEC-161] (6).** Confirm the real market-window values — trading days, open time, close time — against the **placeholder** window this integration polls to (§4: Monday–Friday 08:00–18:00 Europe/Amsterdam). Fully open, not a partial: unlike [OQ-23] it is not one of the five named [F04](../10-features/F04-price-indications.md) live-gate conditions, confirming it is cheap and blocks nothing else, and it is deliberately tracked separately from the ticker-symbol wait. See [80-open-questions.md](../80-open-questions.md) |
 | ~~[OQ-24]~~ | ✅ | ~~Licence terms for onward display and export.~~ **CLOSED on both halves.** Display: **[DEC-27]** — portal yes, public no. Export: **[DEC-81]** — no export, no history, no price API **[DEC-97]**, decided rather than merely presumed (§7). ⚠ What replaces it in the licence conversation is **retention and backfill depth**, which **[DEC-75]** makes a live question for the first time |
-| ~~[OQ-25]~~ | ✅ | ~~Are indications shown raw, or with a PeakPower spread?~~ **CLOSED — never raw** **[DEC-80]**: quote plus a **configurable markup, default 2%**, applied at display only, and never firm unless PeakPower says so. The stored value stays raw and settlement stays raw (§5.2) |
+| ~~[OQ-25]~~ | ✅ | ~~Are indications shown raw, or with a PeakPower spread?~~ **CLOSED — never raw** **[DEC-80]**: quote plus a **configurable markup, default 2%**, applied at display only, and never firm unless PeakPower says so. The stored value stays raw and settlement stays raw (§5.2) ⚠ **Reversed 2026-09-29 by [DEC-167]** — customers now see the **raw** quote (Prices page and trade-wizard estimate); the margin is in the firm offer price the trader types. Licence caveat before Montel goes live: **[OQ-117]**. |
 | ~~[OQ-35]~~ | ✅ | ~~Is the raw day-ahead price used for settlement, or a price plus a spread?~~ **Closed by [DEC-44]** — the **raw** price, no spread (§5.1). ⚠ **Confirmed and widened 2026-08-19**: the first half of [DEC-44] is confirmed, its second half is **reversed by [DEC-87]**, and the raw curve now settles **three** legs rather than two — uncovered purchase, unused block cover and physical export |
 | ~~[OQ-52]~~ | ✅ | ~~Where does the existing Montel implementation live, and in what shape is it?~~ **CLOSED — it is the Montel service built by Luka**, and the work starts by integrating it **[DEC-96]** (§2.1). ⚠ *Where* and *in what shape* are still literally unknown; that is a **reading task with a named target**, not an open question, and §2.1 lists the four things it must answer before the estimate is firm |
 | ~~[OQ-86]~~ | ✅ | ~~What happens when no feed-in tariff resolves?~~ **CLOSED by [DEC-87]** — there is no feed-in tariff. Recorded here only because §5.1 used to point at it |

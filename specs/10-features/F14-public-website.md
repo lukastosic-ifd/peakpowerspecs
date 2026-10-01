@@ -71,7 +71,7 @@ because the decision *not* to fold it into the customer portal is worth recordin
    authenticated portal**, as the current curve, with **no history and no export**. That removes the
    last plausible route to a public number: there is no customer-held CSV to quote back, and under
    **[DEC-80]** what the portal shows is a bid plus a configurable markup rather than a raw market
-   price, so it is not PeakPower's to republish either.
+   price, so it is not PeakPower's to republish either. ⚠ **2026-09-29 [DEC-167]:** the portal now shows the **raw** quote, so the premise is gone; the licence question is **[OQ-117]**.
 5. **Copy is code [DEC-93].** Who can change a word on this site: anyone with commit rights to the
    site repository — in practice a developer. A marketing or commercial colleague cannot publish a
    change themselves; they request it, a developer edits the content file, it is reviewed like any

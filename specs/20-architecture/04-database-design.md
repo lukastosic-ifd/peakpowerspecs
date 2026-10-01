@@ -63,6 +63,7 @@ pair explicitly, so that a future key in the same direction to a non-reference t
 | `market.calendar_interval` | 35 040 | 365 × 96 |
 | `market.day_ahead_price` | 35 040 | Per market area |
 | `wallet.wallet_entry` | Thousands | Trades, ~~invoices~~ **[DEC-77]**, deposits **[DEC-106]** and withdrawals **[DEC-83]**. Fewer types than before, not more: nothing invoiced reaches the ledger |
+| `trading.trade_desk_notice` | Tens of thousands | ⚠ **New 2026-10-01 ([DEC-168])** — one row per desk mail: one *new request* per trade plus one *ready to confirm* per accepted-and-ready trade, so about two per trade; each is stamped sent within ~15 s |
 | `trading.trade_event` | Tens of thousands | ~8 events per trade; ~9 where a trade passes through `AWAITING_APPROVAL` ~~**[DEC-33]**~~ **[DEC-71]** — the state survives, the threshold that gated it does not |
 | ~~`billing.invoice_line`~~ | ~~about 30 000 per 100 points~~ | ~~100 × 12 × about 25 lines, plus one feed-in line per exporting EAN per rate period **[DEC-44]**~~ ⚠ **Amended 2026-08-19** — see the row below |
 | `billing.invoice_line` | **~3 600 per 100 points**, plus corrections | **100 × 12 × 3**: the surviving line categories are **1, 2 and 5** — categories 3, 4 and 6 are reserved and unused after **[DEC-73]** (no surcharge line) and **[DEC-87]** (no feed-in line), and category 5 returns with **[DEC-74]** (energiebelasting). Correction invoices **[DEC-99]** add delta lines at no fixed rate and with **no time bound**, which is why this figure is a floor rather than a bound |
@@ -1288,6 +1289,15 @@ schema.
 | Backfill | A trade accepted before 31 reserved the whole gross, so it reads as **`deposit_pct = 100`, `deposit_amount = wallet_amount_gross`, `balance_amount = 0`, `balance_due_date = delivery_start − 1`** — which is what actually happened to its wallet |
 
 Down() reverses each of the above (the append-only event trigger is disabled around the `BALANCE_PAID` delete). The pins, `tools/verify-migrator.sh`, the model snapshot and both OpenAPI artifacts move with it. The lock order is unchanged: the pay-balance route and the collection take **company row, trade, wallet**; the commercial-terms change takes the company row `FOR UPDATE`, which an accept's `FOR SHARE` serialises against.
+
+**Trade-desk notices — migration 32 `TradeDeskNotice`, added 2026-10-01 ([DEC-168]).** The desk mails (*new request*, *ready to confirm*) go to every active back-office account, resolved by the Worker at send time. Migration 32 adds one **owner-only** table; nothing else changes. It has a real `Down()` (drop the index and the table).
+
+| Table | Contents and the constraints that matter |
+| --- | --- |
+| `trading.trade_desk_notice` | `id uuid` primary key (client-generated), `trade_id uuid NOT NULL` → `trading.trade(id)`, `kind text NOT NULL` with `CHECK (kind IN ('NEW_REQUEST','READY_TO_CONFIRM'))`, `subject text NOT NULL`, `body text NOT NULL` (the rendered mail, wording unchanged from [DEC-167] (8)), `created_at timestamptz NOT NULL`, `sent_at timestamptz` null until the Worker has taken it, `recipient_count int` null until sent (set together with `sent_at`; `0` when no staff account was active). Every value is set by the application — no database defaults. Partial index **`ix_trade_desk_notice_unsent (created_at) WHERE sent_at IS NULL`** serves the Worker's oldest-first read |
+| **Grants and row-level security** | **Owner-only.** `ENABLE ROW LEVEL SECURITY` with **no policy**, and **no grant to `app_customer_role` or `app_employee_role`** — both roles are refused `SELECT` and `INSERT` (pinned by a test). The customer host writes a row only inside the owner-privileged window that already writes the trade, in the same transaction, so a rolled-back request leaves no notice; the Worker, which connects as the owner, reads and marks it. Realm isolation is kept: the customer host never reads `employee.employee` |
+
+The Worker's `TradeDeskNotificationJob` takes up to 50 unsent rows `ORDER BY created_at … FOR UPDATE SKIP LOCKED`, reads the active `employee.employee` accounts once per tick, stamps `sent_at` and `recipient_count`, commits, and only then enqueues one message per recipient — [background jobs §2](06-background-jobs.md).
 
 **Locks.** One global order — §5 and [DEC-167] (7): admin roster, company row, trade, wallet. Trade locks are taken by `id` only; the company row is locked **owner-privileged** with the token's company named explicitly (§3.1.4).
 

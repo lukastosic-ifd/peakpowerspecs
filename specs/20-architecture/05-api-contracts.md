@@ -204,6 +204,7 @@ than API outcomes, so a correct client cannot reach them.
 | `GET` | `/consumption/month?month=&meteringPointIds=` | Daily totals |
 | `GET` | `/consumption/summary?from=&to=&meteringPointIds=` | KPI strip figures |
 | `GET` | `/consumption/export?…` | CSV |
+| `GET` | `/dashboard/position?month=YYYY-MM` | The month's position for the Dashboard: metered volume against confirmed BUY blocks. ⚠ Added 2026-10-01 ([DEC-167] (19)) |
 
 ```jsonc
 // GET /api/v1/consumption/day?date=2026-08-12&meteringPointIds=mp-1
@@ -246,6 +247,21 @@ field: it is rendered in the tooltip and the KPI strip **[F03-R05]**, **[F03-R19
 **[NFR-67]**. Usage leaves the platform; prices are looked at **[DEC-97]**. The split is enforced by
 the payloads, not by a flag on the export endpoint — a `?includePrices=` parameter would be one
 support request away from being turned on.
+
+**Dashboard position** ⚠ added 2026-10-01 ([DEC-167] (19)). Any member; tenant-scoped; `month` defaults to the current Amsterdam month, a malformed value is a `400`. A **separate DTO** from the consumption ones, so [DEC-149] holds. The server does not gate it on Future Trading; the portal calls it only when the product is enabled. Definitions (per 15-minute interval, C against the confirmed BUY block energy B) are in [F03](../10-features/F03-consumption-visualisation.md).
+
+```jsonc
+// GET /api/v1/dashboard/position?month=2026-10
+{
+  "month": "2026-10", "monthLabel": "October 2026",
+  "asOf": "2026-10-01T09:45:00+02:00", "connectionCount": 3,
+  "meteredMwh": 12.4, "hedgedMwh": 9.1, "shortMwh": 2.8, "longMwh": 0.2, "unpricedMwh": 0.3,
+  "coveragePct": 73.4, "uncoveredMwh": 3.3, "uncoveredEstimateEur": 214.5,
+  "latestDay": { "date": "2026-10-01", "intervals": [ { "start": "2026-10-01T00:00:00+02:00", "consumptionKwh": 180, "blockKwh": 250 } ] }
+}
+```
+
+Nullables: `asOf`, `coveragePct`, `uncoveredMwh`, `uncoveredEstimateEur` and `latestDay` are null when nothing is metered (the estimate also when no interval is priced).
 
 ### 2.3 Prices
 

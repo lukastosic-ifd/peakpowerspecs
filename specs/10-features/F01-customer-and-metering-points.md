@@ -2,6 +2,8 @@
 
 **Portal:** both · **Priority:** Must · **Phase:** 1 · **Size:** M
 
+> **As built 2026-10-01 by [DEC-169] (4) — connection labels and the detail header.** A connection's label is its friendly name, otherwise its **EAN as raw digits** — in the navigation's *Day Ahead* rows, the list, claim-connection, the detail page and the trading roster; sorting by the label is unchanged. The detail page's breadcrumb is *Connections › {label}* (no *EAN* prefix); the header is an `h1` with the friendly name and an icon **edit** button (*Edit name*, or *Add a name* when there is none), with the unspaced EAN in mono and **Copy** beneath. With no name the `h1` is the EAN. The **Name this connection** card is **hidden until edit is clicked**, then takes focus in its Name field; **Cancel** or Esc restores the values and closes it, a successful **Save** closes it, shows *Saved*, updates the header and the navigation and returns focus to the edit button. Helper text: *Leave the name empty to show the EAN instead.* The Volume graphs are unchanged.
+
 ---
 
 ## 1. Summary
@@ -229,8 +231,8 @@ agree on. Confirm at the next session.
 | F01-R27 | An employee can end-date a metering point. Historical data and past invoices remain attached and visible. ⚠ **Amended 2026-08-19 by [DEC-82]** — end-dating does **not** touch blocks. A block bought against this connection runs to the end of its delivery period regardless **[F01-R53]**; offboarding neither unwinds nor marks it to market. | Must |
 | ~~F01-R28~~ | ~~Only `ELECTRICITY` metering points are tradeable in this track; `GAS` can be registered and viewed but not traded. When gas enters scope it keeps **the same EAN model and the same block products**; only pricing and units differ — volumes in **m³** rather than kWh **[DEC-30]**.~~ **Retired 2026-08-19 by [DEC-68]** — gas is out of scope and **[DEC-30]** is withdrawn, so both halves of this requirement lapse: there is no gas registration to permit and no forward promise about gas block products to keep. Replaced by **[F01-R52]**. | ~~Must~~ |
 | F01-R29 | A customer user can set a **name** (max 80 chars) and **description** (max 500 chars) on any of their metering points. | Must |
-| F01-R30 | The friendly name replaces the EAN as the primary label in every customer-facing surface: lists, charts, trade requests, invoices, notifications. The EAN remains visible as a secondary label and is always copyable. | Must |
-| F01-R31 | If no friendly name is set, the UI falls back to the EAN, formatted in readable groups. | Must |
+| F01-R30 | ⚠ **As built 2026-10-01 by [DEC-169] (4)** — the customer portal prints the unspaced EAN wherever it printed the grouped one: the list sub-line, claim-connection, the detail page and the trading roster. The friendly name replaces the EAN as the primary label in every customer-facing surface: lists, charts, trade requests, invoices, notifications. The EAN remains visible as a secondary label and is always copyable. | Must |
+| F01-R31 | If no friendly name is set, the UI falls back to the EAN, formatted in readable groups. ⚠ **Amended 2026-10-01 by [DEC-169] (4)** — the fallback is the **unspaced EAN** (`DisplayLabel` = `Name ?? Ean`, raw digits); the grouped `EanDisplay` stays for the back office only. | Must |
 | F01-R32 | An employee can also set the friendly name (e.g. during onboarding), and can see who last changed it. | Should |
 | F01-R33 | Customer users can add free-text **tags** to metering points and filter by them. | Could |
 | F01-R34 | Metering points can be grouped into customer-defined **sites** for aggregate viewing. | Could |

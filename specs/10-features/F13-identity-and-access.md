@@ -2,6 +2,8 @@
 
 **Portal:** both · **Priority:** Must · **Phase:** 1 · **Size:** M
 
+> **As built 2026-10-01 by [DEC-169] (9) — the customer auth pages are trimmed.** The customer **sign-in, forgot-password and reset-password** pages drop the portal label (*Customer portal*), the rail's bullet points, its status and support lines and the demo note, the *PeakPower Trading* eyebrow, the KvK sentence, the session note and the demo password note. The rail keeps its headline and paragraph, and each page keeps *New to PeakPower? Request access →*. The forgot-password page says the reset link is **valid for one hour** — the platform's lifetime — where it also said *30 minutes*. The shared auth shell makes its portal label, status line and support line optional (an empty one renders nothing, and the rail footer renders only when it has content); **the employee portal still passes its own and is unchanged**.
+
 ---
 
 ## 1. Summary

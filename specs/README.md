@@ -74,6 +74,7 @@ See the [feature index](10-features/README.md) for the full list, MoSCoW priorit
 | [03 Wallet deposits](30-integrations/03-payments-cm-com.md) | iDEAL and **bank transfer matched on a platform-issued payment reference [DEC-106]**. No provider is chosen **[DEC-86]** |
 | [04 Bookkeeping program](30-integrations/04-odoo-accounting.md) | Draft-invoice push and ledger entries. It owns numbering **[DEC-88]**, the PDF and the email **[DEC-89]**, and VAT **[DEC-76]** |
 | [05 Identity provider](30-integrations/05-identity-provider.md) | Microsoft Entra ID **[DEC-20]** on the existing corporate tenancy **[DEC-66]**. MFA is mandatory **[DEC-92]** |
+| [06 ENTSO-E day-ahead](30-integrations/06-entsoe-day-ahead.md) | The NL day-ahead curve, live and backfilled from 2020, into `market.day_ahead_price`. The token is optional **[DEC-169]** |
 
 ### 40 — Processes
 | Doc | Purpose |

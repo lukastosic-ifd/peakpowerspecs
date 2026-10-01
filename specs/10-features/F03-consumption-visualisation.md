@@ -99,11 +99,11 @@ season). Purchased blocks overlay both.
 
 ## 4. Business rules
 
-1. **One coverage implementation.** Chart, invoice and employee view call the same function. A
+1. ⚠ **One coverage implementation** (exception: the Dashboard position summary is a second, gross-consumption calculation, [DEC-167] (19)). Chart, invoice and employee view call the same function. A
    discrepancy between the chart and the invoice destroys trust faster than any bug.
 2. **Provisional data is always labelled.** No number derived from non-final data appears without its
    state.
-3. **Aggregation across metering points sums volumes; it never averages prices or ratios.**
+3. ⚠ **Aggregation across metering points sums volumes; it never averages prices or ratios.** (Exception: the Dashboard summary divides by gross consumption, not net usage, [DEC-167] (19).)
    Coverage ratio for a selection is `Σ covered / Σ net usage` **[DEC-22]**, aggregated first and
    divided second. Intervals with negative net usage contribute nothing to the denominator: they are
    export **[DEC-23]**, reported as their own figure. Netting them into the denominator would make
@@ -160,14 +160,14 @@ holidays included **[DEC-19]**. The design must not smooth them.
 >
 > Calculated **per 15-minute interval** of the month in Amsterdam time (the actual intervals, so a DST day has 92 or 100), over intervals **with metered consumption** only:
 >
-> - **C**: the company's metered consumption, the sum over its electricity connections, from the same fold and quality rules as the consumption endpoints (one shared window loader).
+> - **C**: the company's metered consumption, the sum over its electricity connections, from the same fold and quality rules as `GET /consumption/intervals` and `GET /consumption/day`: `ConsumptionReader.LoadWindowAsync` plus `ConsumptionDayAssembly.Intervals`. `GET /consumption/month` adds up daily rollups instead, so the Dashboard's `meteredMwh` is not built to equal the Consumption page's month total.
 > - **B**: the block energy, Σ `power_mw × 250 kWh` over the company's **CONFIRMED BUY** blocks whose delivery period contains the interval and whose shape covers it. Base covers every interval; Peak covers Mon–Fri 08:00–20:00 Amsterdam, holidays included (`BlockVolumeCalculator.CoversInterval`). ACCEPTED and FAILED trades have no block and never count.
 > - **hedged** = Σ min(C, B). With a day-ahead price (`market.day_ahead_price`, € per kWh, one row per date and 15-minute position): **short** = Σ max(C−B, 0), **long** = Σ max(B−C, 0). Without one: **unpriced** = Σ |C−B|.
-> - **Identities:** `meteredMwh` = Σ C; hedged + short + long + unpriced is the composition total; `coveragePct` = hedged ÷ metered × 100 (1 dp, null when nothing is metered).
+> - **Identities:** `meteredMwh` = Σ C; hedged + short + long + unpriced is the composition total; `coveragePct` = hedged ÷ metered × 100 (1 dp, null when Σ C is 0).
 > - **uncoveredMwh** = Σ max(C−B, 0) over all intervals; **uncoveredEstimateEur** = the same energy × day-ahead price over priced intervals only (null when none is priced). MWh to 3 dp (uncovered 2 dp), euro 2 dp.
 > - `latestDay` carries the latest metered day's `{ start, consumptionKwh, blockKwh }` for the Dashboard chart; `connectionCount` counts connections with data in the month; `asOf` is the latest interval included.
 >
-> This is a Dashboard summary on gross consumption against blocks. It does not replace the chart's net-usage coverage ([DEC-22]).
+> This is a Dashboard summary on gross consumption against blocks. It does not replace the chart's net-usage coverage ([DEC-22]). ⚠ **Departure, awaiting a ruling on gross versus net:** e.g. 100 MWh consumed, 30 MWh produced, blocks covering 60 MWh show 60 % here where [DEC-22] gives about 86 %, and an uncovered exposure near 40 MWh where net settlement would be about 10 MWh ([DEC-149] costs on net usage).
 
 ## 6. Screens
 

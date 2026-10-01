@@ -255,13 +255,13 @@ support request away from being turned on.
 {
   "month": "2026-10", "monthLabel": "October 2026",
   "asOf": "2026-10-01T09:45:00+02:00", "connectionCount": 3,
-  "meteredMwh": 12.4, "hedgedMwh": 9.1, "shortMwh": 2.8, "longMwh": 0.2, "unpricedMwh": 0.3,
+  "meteredMwh": 12.4, "hedgedMwh": 9.1, "shortMwh": 2.8, "longMwh": 0.2, "unpricedMwh": 0.5,
   "coveragePct": 73.4, "uncoveredMwh": 3.3, "uncoveredEstimateEur": 214.5,
   "latestDay": { "date": "2026-10-01", "intervals": [ { "start": "2026-10-01T00:00:00+02:00", "consumptionKwh": 180, "blockKwh": 250 } ] }
 }
 ```
 
-Nullables: `asOf`, `coveragePct`, `uncoveredMwh`, `uncoveredEstimateEur` and `latestDay` are null when nothing is metered (the estimate also when no interval is priced).
+Nullables: `asOf`, `uncoveredMwh` and `latestDay` are null when no interval was metered at all; `coveragePct` is null when Σ C is 0, which also covers a month whose intervals are all metered at 0 kWh (a connection shut for the summer), so `latestDay` present does not imply `coveragePct` present; `uncoveredEstimateEur` is null when nothing is metered and also when no interval is priced. The composition total (hedged + short + long + unpriced) is not `meteredMwh` unless long is 0: in the example above 12.6 against 12.4.
 
 ### 2.3 Prices
 

@@ -318,7 +318,7 @@ change is audited **[F12-R24]**.
 | Screen | Mockup |
 | --- | --- |
 | Prices | [`price-indications.svg`](../60-mockups/price-indications.svg) |
-| ~~Dashboard price strip~~ | [`customer-dashboard.svg`](../60-mockups/customer-dashboard.svg) |
+| Dashboard price strip ⚠ Reinstated 2026-10-01 by [DEC-167] (19) | [`customer-dashboard.svg`](../60-mockups/customer-dashboard.svg) |
 
 ⚠ **As-built drift from the mockup, found 2026-09-24 by reading the built portal.** The mockup is a
 structural wireframe, not a pixel reference, and two things it draws are not what shipped: the built
@@ -357,8 +357,7 @@ palette's own brand-blue fill, 8,6:1 on white) for Base and `--pp-chart-peak:#3C
 cooler blue, 3,1:1 on white) for Peak, chosen so the two series are never mistaken for one line at a
 glance — distinct from the teal/indigo pairing this document's own mockup generator draws, which is
 the generic wireframe palette every screen in this set uses and is not a claim about the built
-component's actual colours. ⚠ **The dashboard price strip
-is deferred, not removed from the mockup file** — **[DEC-161]** (7) keeps `/prices` as the only screen
+component's actual colours. ⚠ **Reinstated 2026-10-01 by [DEC-167] (19): the dashboard price strip is back** (raw prices, no deltas, [OQ-117] applies). It was **deferred, not removed from the mockup file** — **[DEC-161]** (7) keeps `/prices` as the only screen
 for Phase 1, so `customer-dashboard.svg` drops its trade-request call-to-action and its per-tile delta,
 and its remaining price panel carries the same label and no banned wording, but it is not the primary
 surface this feature's requirements describe. A tile no longer links into the trade wizard in this

@@ -261,7 +261,7 @@ support request away from being turned on.
 }
 ```
 
-Nullables: `asOf`, `uncoveredMwh` and `latestDay` are null when no interval was metered at all; `coveragePct` is null when Σ C is 0, which also covers a month whose intervals are all metered at 0 kWh (a connection shut for the summer), so `latestDay` present does not imply `coveragePct` present; `uncoveredEstimateEur` is null when nothing is metered and also when no interval is priced. The composition total (hedged + short + long + unpriced) is not `meteredMwh` unless long is 0: in the example above 12.6 against 12.4.
+Nullables: `asOf`, `uncoveredMwh` and `latestDay` are null when no interval was metered at all; `coveragePct` is null when Σ C is 0, which also covers a month whose intervals are all metered at 0 kWh (a connection shut for the summer), so `latestDay` present does not imply `coveragePct` present; `uncoveredEstimateEur` is null when nothing is metered and also when no interval is priced. The composition total (hedged + short + long + unpriced) equals Σ max(C, B), so it equals `meteredMwh` only when no metered interval has B > C (long can be 0 while unpriced intervals still have B > C): in the example above 12.6 against 12.4.
 
 ### 2.3 Prices
 

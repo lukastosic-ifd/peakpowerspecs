@@ -330,8 +330,7 @@ structure, not the final visual design.
 ⚠ **Amended 2026-09-23 by [DEC-160] and [DEC-161] — the mockup contradicted "tiles only" because
 "tiles only" is no longer the shape.** It is generated from
 [`screens-customer.mjs`](../60-mockups/screens-customer.mjs) (`priceIndications()`) and is not edited
-by hand, so any change is a regeneration, not a redraw. The **Prices** screen (**`/prices`**, the only
-screen this feature ships in Phase 1 — **[DEC-161]**) now draws, in this order: a granularity selector
+by hand, so any change is a regeneration, not a redraw. The **Prices** screen (**`/prices`**; original, kept readable: *"the only screen this feature ships in Phase 1"* — **[DEC-161]**, no longer true since the dashboard price strip was reinstated 2026-10-01 by **[DEC-167]** (19)) now draws, in this order: a granularity selector
 (Month / Quarter / Year — a *set of periods*, never a date range, **[DEC-160]**); a hand-rolled SVG
 forward-curve chart, Base and Peak both plotted, x-axis the delivery periods of the selected
 granularity, y-axis today's raw €/MWh (⚠ 2026-09-29 [DEC-167]; drawn marked-up before), with a distinct marker style for a stale point and a gap
@@ -357,8 +356,7 @@ palette's own brand-blue fill, 8,6:1 on white) for Base and `--pp-chart-peak:#3C
 cooler blue, 3,1:1 on white) for Peak, chosen so the two series are never mistaken for one line at a
 glance — distinct from the teal/indigo pairing this document's own mockup generator draws, which is
 the generic wireframe palette every screen in this set uses and is not a claim about the built
-component's actual colours. ⚠ **Reinstated 2026-10-01 by [DEC-167] (19): the dashboard price strip is back** (raw prices, no deltas, [OQ-117] applies). It was **deferred, not removed from the mockup file** — **[DEC-161]** (7) keeps `/prices` as the only screen
-for Phase 1, so `customer-dashboard.svg` drops its trade-request call-to-action and its per-tile delta,
+component's actual colours. ⚠ **Reinstated 2026-10-01 by [DEC-167] (19): the dashboard price strip is back** (raw prices, no deltas, [OQ-117] applies). It was **deferred, not removed from the mockup file** — original, kept readable: *"[DEC-161] (7) keeps `/prices` as the only screen for Phase 1"*, so `customer-dashboard.svg` dropped its trade-request call-to-action and its per-tile delta,
 and its remaining price panel carries the same label and no banned wording, but it is not the primary
 surface this feature's requirements describe. A tile no longer links into the trade wizard in this
 phase — **F04-R08** is deferred with F05.

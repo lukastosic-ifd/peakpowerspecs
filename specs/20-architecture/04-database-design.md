@@ -970,7 +970,7 @@ CREATE TABLE market.day_ahead_price (
 -- DELETE … WHERE source <> 'ENTSOE' once (its Down does nothing), the seeder is removed, and no schema or
 -- model-snapshot change was made. The job also deletes rows with delivery_date < DayAheadIngestion:BackfillFrom
 -- (2026-01-01) at the start of each tick. The job writes with INSERT … ON CONFLICT (delivery_date, pos) DO UPDATE,
--- which completes a half-written day [DEC-149].
+-- which completes a half-written day [DEC-172] (4).
 -- The table is read-only to the customer and employee roles (SELECT only), market reference data, no RLS.
 
 -- The customer never sees a raw Montel quote  [DEC-80], [F04-R17]. Every customer-facing indication

@@ -9,7 +9,8 @@ missing price **[F08-R07]**
 > day-ahead source of [F08](../10-features/F08-day-ahead-prices.md) (the Montel day-ahead job of
 > **[DEC-36]**, **[DEC-75]** and **[DEC-96]** was never built). Forward prices stay on Montel, see
 > [02 Montel API](02-montel-api.md). The token is **optional**: with none, the job logs one warning
-> and stays idle, and **no day-ahead price is stored or served**.
+> and stays idle, and the 2026 EPEX seed **[DEC-149]** keeps working. ⚠ **Amended 2026-10-02 by [DEC-172]:** there is no seed any more, so with
+> no token **no day-ahead price is stored or served**.
 >
 > **As built 2026-10-02 by [DEC-172] — ENTSO-E only, from 2026-01-01.** The EPEX/DERIVED seed is gone
 > (migration `RemoveSeededDayAheadPrices`), `BackfillFrom` defaults to **2026-01-01** and the job deletes

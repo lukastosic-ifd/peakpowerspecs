@@ -964,11 +964,13 @@ CREATE TABLE market.day_ahead_price (
 -- created market.day_ahead_price keyed (delivery_date date, pos smallint) — PRIMARY KEY (delivery_date, pos),
 -- no id, no market_area, no validity range, no EXCLUDE — with interval_start timestamptz (the Amsterdam-local
 -- start instant) and price_eur_per_kwh numeric(12,5), signed, because a negative day-ahead price is ordinary.
--- The next migration added source varchar(32) NOT NULL, with no default. A row's source is EPEX (the seeded
--- export), DERIVED_FROM_yyyy-MM-dd (a re-dated price, naming the delivery date it came from) or ENTSOE (the
--- ENTSO-E A44 feed). Precedence: ENTSOE outranks the others. The day-ahead ingestion job writes with
--- INSERT … ON CONFLICT (delivery_date, pos) DO UPDATE, so an ENTSOE row overwrites an EPEX or DERIVED row at the
--- same position; the Migrator's seeder is ON CONFLICT DO NOTHING and never takes one back [DEC-149].
+-- The next migration added source varchar(32) NOT NULL, with no default. A row's source was EPEX (the seeded
+-- export), DERIVED_FROM_yyyy-MM-dd (a re-dated price) or ENTSOE (the ENTSO-E A44 feed).
+-- ⚠ As built 2026-10-02 by [DEC-172]: only ENTSOE is stored. The migration RemoveSeededDayAheadPrices runs
+-- DELETE … WHERE source <> 'ENTSOE' once (its Down does nothing), the seeder is removed, and no schema or
+-- model-snapshot change was made. The job also deletes rows with delivery_date < DayAheadIngestion:BackfillFrom
+-- (2026-01-01) at the start of each tick. The job writes with INSERT … ON CONFLICT (delivery_date, pos) DO UPDATE,
+-- which completes a half-written day [DEC-149].
 -- The table is read-only to the customer and employee roles (SELECT only), market reference data, no RLS.
 
 -- The customer never sees a raw Montel quote  [DEC-80], [F04-R17]. Every customer-facing indication

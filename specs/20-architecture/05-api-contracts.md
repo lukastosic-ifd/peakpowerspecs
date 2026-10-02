@@ -155,6 +155,7 @@ token.
 
 **Onboarding [DEC-113]** — the nine-step self-service wizard. **Every route here is anonymous**: a
 prospect has no company and no token until step 9 signs.
+⚠ **As built 2026-10-02, [DEC-171] (5), (6):** step 1 sends `termsAccepted: true` on the click of *Create account* (no tick), and step 6 may be saved with a blank IBAN (*Skip*). No contract changes.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

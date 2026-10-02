@@ -232,7 +232,7 @@ was drafted.
 | --- | --- |
 | **NFR-43** | Customer portal meets **WCAG 2.1 AA** |
 | **NFR-44** | Employee portal meets WCAG 2.1 AA for core workflows |
-| **NFR-45** | Customer portal usable on tablet; core read views usable on phone |
+| **NFR-45** | Customer portal usable on tablet; core read views usable on phone ⚠ **Amended 2026-10-02 by [DEC-173]: the customer portal is responsive on every screen, not only the core read views: phone below 600 px, tablet 600–1023 px, desktop 1024 px and up, with no horizontal page scroll, 44 px primary touch targets and 16 px inputs on phones. The back office stays a fixed 1280 desktop layout and has no phone or tablet requirement.** |
 | **NFR-46** | Dutch primary, English secondary; no hard-coded user-facing strings **[AS-19]** |
 | **NFR-47** | All money and energy figures shown with unit and currency; no bare numbers |
 | **NFR-48** | Every figure derived from non-final data is visibly labelled |

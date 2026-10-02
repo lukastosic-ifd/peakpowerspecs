@@ -21,7 +21,7 @@ USB stick or a static host and it works identically.
 | **Open questions** | All 77, filterable by priority, owner and free text; every `[OQ-nn]` reference anywhere in the set links straight to its row |
 | **Risk register** | Sorted by score with the scoring visible |
 | **Decisions & assumptions** | The two registers side by side, linked from every `[DEC-nn]` and `[AS-nn]` in the text |
-| **Mockup gallery** | All 19 wireframes inline, click to enlarge |
+| **Mockup gallery** | All 20 wireframes inline, click to enlarge |
 | **Search** | Full text across every document, ranked, with highlighted snippets — `⌘K` or `/` |
 
 Cross-references become clickable chips throughout: <code>[OQ-14]</code>, <code>[DEC-07]</code>,

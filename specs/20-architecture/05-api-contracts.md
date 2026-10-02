@@ -155,6 +155,7 @@ token.
 
 **Onboarding [DEC-113]** — the nine-step self-service wizard. **Every route here is anonymous**: a
 prospect has no company and no token until step 9 signs.
+⚠ **As built 2026-10-02, [DEC-171] (5), (6):** step 1 sends `termsAccepted: true` on the click of *Create account* (no tick), and step 6 may be saved with a blank IBAN (*Skip*). The step 2 search box has the placeholder *Business name or KvK number*, and step 9 shows the sign-code expiry as content. No contract changes.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -180,6 +181,8 @@ the wizard, not an omission in this table.
 | `PATCH` | `/metering-points/{id}/naming` | Set friendly name and description |
 | `GET` | `/ean-pool` | ⚠ **Added 2026-09-03 [DEC-113].** The unclaimed pool. It is **shared reference data**, not tenant-scoped — two different companies must receive byte-identical bodies — so it has its own tenancy classification rather than being labelled tenant-scoped and lying about it. It still requires a token |
 | `GET` | `/metering-points/{id}/data-quality` | Per-date data state for a range |
+
+⚠ **As built 2026-10-01, [DEC-169] (4) — `displayLabel` is the name or the unspaced EAN.** The metering-point read models carry `displayLabel` = `name ?? ean` with the EAN as **raw digits, no spaces**, and `ean` is the unspaced EAN; `eanDisplay` (grouped) stays on the wire for the back office but a customer screen no longer prints it. Sorting by `displayLabel` is unchanged.
 
 > **Renamed from `/label` on 2026-08-26**, following the friendly name settling as `name` +
 > `description` columns on `metering_point`. The route had no consumers when it was renamed, so it
@@ -269,7 +272,7 @@ Nullables: `asOf`, `uncoveredMwh` and `latestDay` are null when no interval was 
 | --- | --- | --- |
 | `GET` | `/prices/indications` | Price board — one entry per active product (**24** as of **[DEC-161]**). The price is the raw quote **× (1 + markup)** **[DEC-80]**, **[F04-R17]** ⚠ **Amended 2026-09-29 by [DEC-167]** — the price is the **raw quote as received**, no markup. |
 | ~~`GET`~~ | ~~`/prices/indications/{productCode}/history?from=&to=`~~ | ~~Trend~~ ⚠ **Removed 2026-08-19 by [DEC-81]** — customers see the **current** curve and nothing from which an earlier price can be recovered **[F04-R20]**. The observation series is still stored, for **[F04-R10]** and staleness **[F04-R06]**; it is internal |
-| `GET` | `/prices/day-ahead?from=&to=` | Day-ahead curve. **Portal surface only** — it is not on the usage API and there is no export of it **[DEC-81]**, **[NFR-67]** |
+| `GET` | `/prices/day-ahead?from=&to=` | Day-ahead curve. **Portal surface only** — it is not on the usage API and there is no export of it **[DEC-81]**, **[NFR-67]** ⚠ **Amended 2026-10-01 by [DEC-169]: the day-ahead curve now has an export and a day read — §2.3A — and they are the only price data a customer can export.** |
 
 ⚠ **Amended 2026-09-23 by [DEC-161] — payload and roll example replaced.** Additive to §2.3 as it
 stood on 2026-08-19, reconciled with the binding interfaces built for Phase 1 of the forward-curve
@@ -343,8 +346,33 @@ markup itself is reference data with a default of 2%, maintained through the Emp
 
 ⚠ **Amended 2026-09-29 by [DEC-167] — `price` is the raw quote.** The last paragraph's claims that `price` *"is already marked up"* and that the markup applies at display are **reversed**: `GET /prices/indications` returns the **raw** quote as `price` (4 dp on the wire, unchanged shape); no field is added or removed. The markup table stays and is **unused by customer reads**. The *no markup row in force ⇒ `UNAVAILABLE`* cause listed above no longer applies. The trade-wizard estimate in `POST /trades/quote` uses the same raw indication (§2.4). Licence caveat before Montel goes live: **[OQ-117]**. ⚠ **As built (2026-09-29, final review) the Prices read no longer consults the markup table at all** — the gate was removed from `IndicationStatusRules`, so `GET /prices/indications` and the wizard estimate are raw on the same observation (see the "Slice 1 as built" box in F05 and [DEC-167]).
 
-### 2.4 Trading
+⚠ **As built 2026-10-01, [DEC-169] (3) — four fields on `PriceIndicationDto`, and `price` is unchanged.** `buyPrice` (= `price`, the raw indication), `sellPrice` = `price` − |`price`| × (spread ÷ 100), rounded half away from zero to 2 decimals (the spread comes off the magnitude, so Sell stays below Buy for a negative price too: −50.00 gives −51.00 at 2 percent) with `ForwardPrices:SellSpreadPercent` (default **2**, validated **0–20**), `eodPrice` and `eodObservedAt` — the latest `PriceIndicationObservation` for the product with `ObservedAt` **before today's Amsterdam midnight**, or both null. All four are null when `price` is null. `GET /trades/products` carries `buyPrice` with its `price`. This bends the *one current value* rule of [F04-R20] for the end-of-day price, by a user decision.
 
+### 2.3A Market day-ahead — [DEC-169], added 2026-10-01
+
+Two reads for **any signed-in customer, of any role**. They return **market data with no tenant**, so — like `/prices/indications` — they are classified tenant-agnostic reference data, not tenant-scoped. They are **not** on the usage API ([DEC-97]).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/market/day-ahead?date=YYYY-MM-DD` | One delivery day, **default today in Amsterdam** → `DayAheadDayDto` |
+| `GET` | `/market/day-ahead/export.csv?from=&to=&resolution=hour\|quarter` | `text/csv` through `Results.File`, `Content-Disposition: attachment; filename="peakpower-day-ahead-{from}_{to}-{resolution}.csv"`, documented with the `FileDownloadOperationTransformer` pattern |
+
+```jsonc
+// GET /api/v1/market/day-ahead?date=2027-03-28   (a DST day: 23 hours)
+{
+  "date": "2027-03-28", "timeZone": "Europe/Amsterdam",
+  "published": true, "source": "ENTSOE",          // ENTSOE | EPEX | DERIVED | null
+  "resolutionMinutes": 15,                          // the source's resolution, 15 or 60
+  "quarters": [ { "pos": 1, "start": "2027-03-28T00:00:00+01:00", "end": "2027-03-28T00:15:00+01:00", "priceEurMwh": 61.2 } ],
+  "hours":    [ { "start": "2027-03-28T00:00:00+01:00", "end": "2027-03-28T01:00:00+01:00", "priceEurMwh": 60.4 } ],
+  "averageEurMwh": 71.8,
+  "availableFrom": "2020-01-01", "availableTo": "2027-03-29"   // the min and max stored delivery dates
+}
+```
+
+`hours[]` is the **average of the hour's quarters** — **23 or 25** entries on a DST day. An unpublished day answers `published: false` with empty arrays and a null `source`, not an error. **The CSV** has the columns `delivery_date,start,end,price_eur_mwh,source`, with times as ISO with the Amsterdam offset. **Caps:** `quarter` up to **366 days**, `hour` unlimited within the available range; a bad range (missing, reversed, outside the range or over the cap) is a `400`. Source: [06 ENTSO-E](../30-integrations/06-entsoe-day-ahead.md).
+
+### 2.4 Trading
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/trades` | List with state filter |
@@ -597,6 +625,11 @@ New error `type` URIs, all `409`:
 | Method and path | Body → 200 | Other |
 | --- | --- | --- |
 | `GET /trades?category=&state=&page=&pageSize=` | → `TradeListResponse` (`state` repeatable; `pageSize` 1–100). ⚠ **2026-09-30 [DEC-167] (18):** `category` is `open`, `balance-due` (CONFIRMED BUY, balance unpaid, ordered by due date, overdue first) or `all`; the response adds `counts: { open, balanceDue, all }` for the token's company whatever the filter; each item's nullable `settlement` summary carries `balanceAmount`, `balanceDueDate`, `balanceState`; an omitted `category` means no category filter (every state), and `category` and `state` are both applied (AND) | 400 |
+
+⚠ **As built 2026-10-01, [DEC-169] (5) — `category` also takes `confirmed` and `closed`, and `counts` is `{ open, balanceDue, all, confirmed, closed }`.** `confirmed` is state `CONFIRMED`; `closed` is `EXPIRED`, `DECLINED`, `WITHDRAWN`, `REJECTED`, `APPROVAL_REFUSED`, `CANCELLED` and `FAILED`. `open` (REQUESTED, OFFERED, ACCEPTED, AWAITING_APPROVAL) and `balance-due` are unchanged, and no state is in two of open, confirmed and closed. The trade detail honours `?action=confirm|decline` in the portal only; no API field changes.
+
+⚠ **As built 2026-10-01, [DEC-170] (16) — `TradeCountsDto` gains `offered`.** `offered` is the number of the company's `OFFERED` trades (a subset of `open`); the customer portal's Trades navigation badge shows it and hides it at 0. No state moves between categories.
+
 | `POST /trades/quote` | `TradeQuoteRequest` → `TradeQuoteResponse` (no side effects) | 400 |
 | `POST /trades` | `SubmitTradeRequest` → `SubmitTradeResponse` | 400, 409 `customer-not-active` / `insufficient-available-balance` |
 | `GET /trades/{tradeId}` | → `TradeDetailDto` | 404 |
@@ -1141,6 +1174,8 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 | `POST` | `/trades/{id}/internal-notes` | Add an internal note |
 | `GET` | `/trade-desk/balances?state=&limit=` | ⚠ **New 2026-09-30 [DEC-167] (17)** — every company's `CONFIRMED` trades with an unpaid balance, **overdue first**, then by due date, then by reference. See §3.1.2 |
 
+⚠ **As built 2026-10-01, [DEC-170] (16) — the employee trades list has categories and counts.** `GET /trades` (back office) accepts `category` = `all` (or empty), `to-price` (`REQUESTED`), `offer-out` (`OFFERED`), `awaiting-approval`, `to-confirm` (`ACCEPTED`), `confirmed` (`CONFIRMED`) or `closed` (`REJECTED`, `EXPIRED`, `FAILED`, `DECLINED`, `WITHDRAWN`, `CANCELLED`, `APPROVAL_REFUSED`), 400 on anything else; the repeatable `state` filter still works. The response gains `counts` = `{ all, toPrice, offerOut, awaitingApproval, toConfirm, confirmed, closed }` ignoring `category` and `state` and following the `customerId` filter when one is given (the whole book otherwise). The six specific categories are disjoint and each count equals the length of its own filter's results. The trade detail honours `?action=offer|confirm` in the portal only; no API field changes.
+
 ```jsonc
 // POST /api/v1/trades/{id}/offer
 {
@@ -1296,13 +1331,13 @@ no approve and no reject **[DEC-83]**. Both routes carry the back-office policy,
     }
   ],
   "total": 12,
-  "counts": { "toPay": 12, "awaitingApproval": 3 }
+  "counts": { "toPay": 12, "awaitingApproval": 3, "paid": 40, "closed": 9, "all": 64 }
 }
 ```
 
 - **Ordering.** `to-pay` and `awaiting-approval` are **oldest first**, first come first served; the rest are newest
   first; the id breaks ties, so a page boundary is stable between two loads.
-- **`total` is the filtered count; `counts` are not.** `counts.toPay` and `counts.awaitingApproval` are totals across
+- **`total` is the filtered count; `counts` are not.** ⚠ **As built 2026-10-01, [DEC-170] (16): `counts` gains `paid`, `closed` and `all`, each equal to the length of the desk's own filter of that name.** `counts.toPay` and `counts.awaitingApproval` are totals across
   **every company**, independent of `status` and `customerId`.
 - **`status`** on an item is the existing withdrawal wire value (`REQUESTED`, `AWAITING_APPROVAL`, `APPROVAL_DECLINED`,
   `REJECTED`, `PAID`, `CANCELLED`). `companyName` is the trade name, falling back to the legal name.

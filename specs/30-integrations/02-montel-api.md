@@ -4,6 +4,8 @@
 PeakPower's own Montel service is one of the four things [DEC-96] leaves to be read — §2.1* ·
 **Criticality:** high
 
+> ⚠ **Amended 2026-10-01 by [DEC-169]** — the second use below, **day-ahead prices, no longer comes from Montel**: it is read from the ENTSO-E Transparency Platform, see [06 ENTSO-E](06-entsoe-day-ahead.md). Forward price indications stay on Montel.
+
 Two distinct uses of one provider:
 
 1. **Price indications** — forward prices for base and peak, month/quarter/year, shown to customers

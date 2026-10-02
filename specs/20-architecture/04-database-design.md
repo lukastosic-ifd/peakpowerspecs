@@ -960,6 +960,17 @@ CREATE TABLE market.day_ahead_price (
     EXCLUDE USING gist (market_area WITH =, validity WITH &&) WHERE (is_current)
 );
 
+-- ⚠ As built 2026-10-01 by [DEC-169] and [DEC-149] — the table above is NOT what was migrated. Migration 12
+-- created market.day_ahead_price keyed (delivery_date date, pos smallint) — PRIMARY KEY (delivery_date, pos),
+-- no id, no market_area, no validity range, no EXCLUDE — with interval_start timestamptz (the Amsterdam-local
+-- start instant) and price_eur_per_kwh numeric(12,5), signed, because a negative day-ahead price is ordinary.
+-- The next migration added source varchar(32) NOT NULL, with no default. A row's source is EPEX (the seeded
+-- export), DERIVED_FROM_yyyy-MM-dd (a re-dated price, naming the delivery date it came from) or ENTSOE (the
+-- ENTSO-E A44 feed). Precedence: ENTSOE outranks the others. The day-ahead ingestion job writes with
+-- INSERT … ON CONFLICT (delivery_date, pos) DO UPDATE, so an ENTSOE row overwrites an EPEX or DERIVED row at the
+-- same position; the Migrator's seeder is ON CONFLICT DO NOTHING and never takes one back [DEC-149].
+-- The table is read-only to the customer and employee roles (SELECT only), market reference data, no RLS.
+
 -- The customer never sees a raw Montel quote  [DEC-80], [F04-R17]. Every customer-facing indication
 -- is quote × (1 + markup_rate), and the rate is REFERENCE DATA with a default of 2% (0.0200), changed
 -- by an employee without a release  [F04-R18] — not a constant, not an appsettings value.
@@ -1306,6 +1317,15 @@ The Worker's `TradeDeskNotificationJob` takes unsent rows (at most `BatchSize` =
 | `employee.employee` | New column **`receives_trade_desk_mail boolean NOT NULL DEFAULT true`**. The default backfills every existing row to `true`, so each operator keeps receiving desk mail until an admin unticks it. It governs only the two desk mails, never the reset or invite mail. The Worker's recipient query is `is_active = true AND receives_trade_desk_mail = true` |
 | **Grants** | `app_employee_role`'s grants on `employee.employee` are **column-scoped** and named column by column, and the new column is added to each: **`SELECT`** (migration 7's list, which had grown by `is_admin` in migration 20), **`INSERT`** (migration 20's list: `id, username, display_name, security_stamp, is_active, is_admin`, plus the new column) and **`UPDATE`** (migration 20's list: `display_name, is_admin, is_active, security_stamp`, plus the new column). **`password_hash` stays in none of the three**, and nothing on the app-role connection may name it, so the operator-create raw `INSERT` names only granted columns. The Worker connects as the owner and needs no grant |
 | Reversal | A real `Down()` drops the column; the grants go with it. Tests pin the backfill to `true`, that the app role can `SELECT` and `UPDATE` the column, and that it still cannot name `password_hash` |
+
+**Buy / Sell / EOD — migration 34 `PriceIndicationDailyClose` (`20261001132506`), added 2026-10-01 ([DEC-169] (3)).** It adds one read object in the `market` schema, a function, and no table. It gives the customer **one price a day per product, never the tick history**: migration 25 revoked `app_customer_role`'s `SELECT` on the append-only `market.price_indication_observation` ([DEC-161] D7), and that stays.
+
+| Object | What it is |
+| --- | --- |
+| `market.price_indication_close_before(p_source text, p_day date, p_product_ids uuid[], p_delivery_starts date[])` (function) | **What the endpoint reads.** `SECURITY DEFINER`, `STABLE`, `search_path = market, pg_temp`. For each (product, delivery start) pair it returns the newest observation before `p_day`'s Amsterdam midnight (`observed_at DESC, received_at DESC`, `LIMIT 1`), seeking the observation index once per pair. It takes a DATE, never an instant, so it can only return the last row of an earlier Amsterdam day, one close a day per product, never the tick history. `EXECUTE` is revoked from `PUBLIC` and granted to `app_customer_role`. An earlier draft filtered a daily-close view by "newest before the cutoff"; that ran a correlated subquery per row and took 46 s on a year of 10-minute ticks, hence the function. |
+| Reversal | `Down()` drops the function. An earlier draft also created a `market.price_indication_daily_close` view; nothing read it, so it was removed before landing. |
+
+**The Sell price for a negative indication.** `sellPrice` = `buyPrice` − |`buyPrice`| × `ForwardPrices:SellSpreadPercent` ÷ 100, rounded half away from zero to 2 decimals (`IndicationPricing.SellPrice`). The spread comes off the magnitude, so Sell is always at or below Buy: −50.00 at 2 percent gives −51.00, not −49.00. `buyPrice` is the raw indication, unrounded.
 
 **Locks.** One global order — §5 and [DEC-167] (7): admin roster, company row, trade, wallet. Trade locks are taken by `id` only; the company row is locked **owner-privileged** with the token's company named explicitly (§3.1.4).
 

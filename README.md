@@ -72,10 +72,10 @@ specs/
 ├── 00-overview/       vision & scope · glossary · actors · decisions & assumptions
 ├── 10-features/       F01–F15, each with numbered requirements
 ├── 20-architecture/   C4 · .NET/Aspire solution · domain model · schema · API · security · NFRs
-├── 30-integrations/   PVNed · Montel · payments · Odoo · identity provider
+├── 30-integrations/   PVNed · Montel · payments · Odoo · identity provider · ENTSO-E
 ├── 40-processes/      trade lifecycle · data flow · top-up · invoicing · annual true-up
 ├── 50-calculations/   energy block maths · position & coverage · invoice calculation
-├── 60-mockups/        19 generated SVG wireframes + the generator
+├── 60-mockups/        20 generated SVG wireframes + the generator
 ├── 70-delivery/       roadmap & phasing · risk register
 ├── 80-open-questions.md
 ├── pvned_docs/        PVNed source material — NOT in this repo, see below

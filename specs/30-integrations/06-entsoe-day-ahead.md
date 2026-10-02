@@ -63,14 +63,19 @@ delivery day** mapped through `IMarketCalendar`, so a DST day has **92 or 100** 
 price is written to the hour's four quarters. The price is stored as EUR/kWh = EUR/MWh ÷ 1000, with
 `source = 'ENTSOE'`.
 
-**Only `ENTSOE` is stored.** ⚠ **As built 2026-10-02 by [DEC-172].** The EPEX seed and its `DERIVED_*` rows
+**Precedence.** An `ENTSOE` row **overwrites** a row from any other source (the EPEX seed, a
+`DERIVED_*` row). The Migrator's seeder keeps `ON CONFLICT DO NOTHING`, so an `ENTSOE` row survives a
+re-seed.
+
+⚠ **Amended 2026-10-02 by [DEC-172]: only `ENTSOE` is stored.** The EPEX seed and its `DERIVED_*` rows
 are deleted (migration `RemoveSeededDayAheadPrices`) and nothing inserts a non-`ENTSOE` price any more.
 The `source` column stays. The job's upsert stays `DO UPDATE`, because it completes a half-written day.
 
 ## 5. The job
 
 A Worker schedule host mirroring `TradeExpiryJob`, every `DayAheadIngestion:Interval`. Each tick fills
-the **missing delivery days** — a day with fewer stored positions than it has, counting `ENTSOE` rows only —
+the **missing delivery days** — a day with fewer stored positions than it has, or a non-`ENTSOE` source
+(⚠ [DEC-172]: no other source exists any more, so this counts `ENTSOE` rows only) —
 **oldest first**, from `max(BackfillFrom, earliest gap)` up to tomorrow. The work per tick is bounded
 (three month-chunks), so the backfill is resumable and polite. **Tomorrow is fetched only after 12:00
 Amsterdam**; a not-yet-published reply is fine.

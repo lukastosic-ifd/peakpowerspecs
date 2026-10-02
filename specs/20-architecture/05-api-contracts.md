@@ -361,16 +361,18 @@ Two reads for **any signed-in customer, of any role**. They return **market data
 // GET /api/v1/market/day-ahead?date=2027-03-28   (a DST day: 23 hours)
 {
   "date": "2027-03-28", "timeZone": "Europe/Amsterdam",
-  "published": true, "source": "ENTSOE",          // ENTSOE | EPEX | DERIVED | null
+  "published": true, "source": "ENTSOE",          // ENTSOE | null (the stored value; only ENTSOE is stored, DEC-172)
   "resolutionMinutes": 15,                          // the source's resolution, 15 or 60
   "quarters": [ { "pos": 1, "start": "2027-03-28T00:00:00+01:00", "end": "2027-03-28T00:15:00+01:00", "priceEurMwh": 61.2 } ],
   "hours":    [ { "start": "2027-03-28T00:00:00+01:00", "end": "2027-03-28T01:00:00+01:00", "priceEurMwh": 60.4 } ],
   "averageEurMwh": 71.8,
-  "availableFrom": "2020-01-01", "availableTo": "2027-03-29"   // the min and max stored delivery dates
+  "availableFrom": "2026-01-01", "availableTo": "2027-03-29"   // the min and max stored delivery dates
 }
 ```
 
 `hours[]` is the **average of the hour's quarters** — **23 or 25** entries on a DST day. An unpublished day answers `published: false` with empty arrays and a null `source`, not an error. **The CSV** has the columns `delivery_date,start,end,price_eur_mwh,source`, with times as ISO with the Amsterdam offset. **Caps:** `quarter` up to **366 days**, `hour` unlimited within the available range; a bad range (missing, reversed, outside the range or over the cap) is a `400`. Source: [06 ENTSO-E](../30-integrations/06-entsoe-day-ahead.md).
+
+⚠ **As built 2026-10-02 by [DEC-172].** The DTO shape is unchanged (`quarters[]`, `hours[]`, `resolutionMinutes`, `source`). `source` is the stored value passed through, in the DTO and in the CSV column, and only `ENTSOE` is ever stored; it is null when the day is not published. Once a tick with a token has run, `availableFrom` is no earlier than `DayAheadIngestion:BackfillFrom` (2026-01-01), because that tick deletes older rows; with no token nothing is pruned, so a database that already holds older `ENTSOE` rows reports them until the first tick with a token. Both reads are from the database and never call ENTSO-E. The Dashboard draws `quarters[]`.
 
 ### 2.4 Trading
 | Method | Path | Purpose |

@@ -30,6 +30,7 @@ and an entirely avoidable one.
 | `wallet` | wallets, entries, reservations, payments, **deposit intents, incoming payments [DEC-106]**, **withdrawal requests [DEC-83]** |
 | `billing` | ~~surcharges~~, ~~**feed-in tariffs [DEC-44]**~~, **energiebelasting brackets, reductions and results [DEC-74]**, invoice runs, **invoice drafts [DEC-88]**, sections, lines, credit notes |
 | `audit` | generic audit records, internal notes |
+| `legal` | **document types, document versions and the PDF files [DEC-174]** — platform reference data, no `customer_id`, no RLS (§3.7) |
 | `hangfire` | Hangfire's own tables |
 
 ⚠ **Amended 2026-08-19.** Six of the eight schemas changed contents.
@@ -749,6 +750,7 @@ CREATE TABLE customer.onboarding_application (
     email                citext NOT NULL,
     password_hash        varchar(200) NOT NULL,     -- Argon2id, from the first keystroke
     terms_accepted_at    timestamptz NOT NULL,
+    terms_version_id     uuid REFERENCES legal.document_version(id),  -- [DEC-174]: the Terms of Use version current when the applicant accepted; NULL if none was published. Written by the server, never sent by the client
 
     organization_name    varchar(200),              -- steps 2-4
     legal_entity_type    text,                      -- BV | NV | EENMANSZAAK | VOF | ...
@@ -1835,6 +1837,59 @@ the day-ahead delivery are one pushed draft or two is undecided. The schema supp
 `period` do not constrain how many rows a run produces per customer), so nothing here blocks; what
 the answer changes is how many drafts the bookkeeping program is asked to number.
 
+### 3.7 Legal documents — [DEC-174], added 2026-10-05
+
+Platform **reference data**: no `customer_id`, **no row-level security**, in the style of `market`. Three tables. The file bytes live in their own table so that listing versions never loads a file. Feature: [F16](../10-features/F16-legal-documents.md).
+
+```sql
+CREATE TABLE legal.document_type (
+    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    key                   varchar(64)  NOT NULL UNIQUE,        -- immutable; ^[a-z0-9]+(-[a-z0-9]+)*$
+    title                 varchar(120) NOT NULL,
+    visible_to_customers  boolean NOT NULL,
+    sort_order            int NOT NULL,
+    built_in              boolean NOT NULL,                    -- immutable
+    created_at            timestamptz NOT NULL,
+    CONSTRAINT ck_document_type_key CHECK (key ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+    CONSTRAINT ck_document_type_built_in_visible CHECK (NOT built_in OR visible_to_customers)
+);
+
+CREATE TABLE legal.document_version (                         -- metadata only
+    id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    type_id                    uuid NOT NULL REFERENCES legal.document_type(id),
+    version_number             int  NOT NULL,                  -- 1, 2, 3 … per type, no gaps
+    file_name                  varchar(200) NOT NULL,          -- sanitised, display only
+    size_bytes                 int  NOT NULL,                  -- 1 … 10 485 760
+    sha256                     char(64) NOT NULL,
+    effective_from             timestamptz NOT NULL,
+    uploaded_at                timestamptz NOT NULL,
+    uploaded_by_employee_id    text,                           -- NULL = a system import
+    change_note                varchar(500),
+    UNIQUE (type_id, version_number),
+    CONSTRAINT ck_document_version_size CHECK (size_bytes BETWEEN 1 AND 10485760),
+    CONSTRAINT ck_document_version_sha256 CHECK (sha256 ~ '^[0-9a-f]{64}$')
+);
+
+CREATE TABLE legal.document_file (
+    version_id  uuid PRIMARY KEY REFERENCES legal.document_version(id) ON DELETE CASCADE,
+    content     bytea NOT NULL
+);
+```
+
+| Rule | Where it is enforced |
+| --- | --- |
+| `key` and `built_in` never change; a built-in type stays visible | The domain aggregate, with the `CHECK`s above as the last line of defence |
+| The **current** version is the highest `version_number` with `effective_from <= now`; a **scheduled** one has `effective_from > now`; **at most one scheduled per type** | The domain and the upload handler. Not a database constraint: "scheduled" depends on the clock |
+| A **withdrawn** scheduled version is hard-deleted with its file (`ON DELETE CASCADE`); an effective version is never deleted | The domain refuses; the `DELETE` grant exists for the withdrawal and nothing else |
+| `version_number` = max + 1 per type, **allocated under `SELECT … FOR UPDATE` on the type's row**, so two concurrent uploads cannot both take the next number and a withdrawn scheduled number is reused | The upload handler; `UNIQUE (type_id, version_number)` is the net |
+| `uploaded_by_employee_id` is nullable | A null is the Privacy Statement v1 import, which has no employee |
+
+**Seed.** The migration inserts two built-in, visible types: `terms-of-use` (*Terms of Use*, sort 10) and `privacy-statement` (*Privacy Statement*, sort 20). Privacy Statement **v1** is **not** a migration row: an idempotent Migrator seeder, `LegalDocumentSeeder`, outside the demo-seeding gate, inserts it from an embedded copy of the portal's PDF only when `privacy-statement` has no version. The Terms of Use have no version until an admin uploads one.
+
+**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly, as for `market`: `app_customer_role` gets `SELECT` on the three tables; `app_employee_role` gets `SELECT`, `INSERT`, `UPDATE` on `document_type` and `SELECT`, `INSERT`, `DELETE` on `document_version` and `document_file`. No `UPDATE` on either version table: a version is immutable. The migrator's verification script pins these grants.
+
+**Consent.** `customer.onboarding_application.terms_version_id` (§3.1) is a nullable foreign key to `legal.document_version`. This is a **cross-schema edge from `customer` to `legal`**, admitted on the same reasoning as `customer.metering_point.brp_id` → `metering.brp` (§1): `legal` is reference data with no foreign key of its own, so the edge adds no cycle between aggregates. The assertion list in the schema-boundary integration test gains the pair. Because a version that has been **accepted against** is effective, the withdrawal rule (never delete an effective version) also keeps this key from dangling; the foreign key has no `ON DELETE` action, so a stray delete fails loudly.
+
 ## 4. Materialised rollups
 
 ```sql
@@ -2143,6 +2198,17 @@ Roll forward only, as every migration here.
 | `wallet.ledger_entry` **[DEC-167]** | Two partial unique indexes, `ux_ledger_entry_trade_reserved` and `ux_ledger_entry_trade_exit`, keyed `(wallet_id, caused_by_id)` where `caused_by_type = 'Trade'` | One reservation and one exit per trade. Created in the same migration as the first producer of `TRADE_*` entries |
 | A wallet for every company | **Not a migration:** an unconditional, idempotent Migrator step, `WalletBackfill`, runs after seeding, and the back-office `POST /api/v1/customers` creates the wallet in the same `SaveChanges` | Only onboarding created wallets before; deposits answered 404 without one |
 | The migration pins, `PeakPowerDbContextModelSnapshot.cs` and `tools/verify-migrator.sh` | Updated in the same commits | The history length and the applied list, the `CHECK`, grant and policy pins, the query-filter and row-level-security catalogue pins, the model-shape and enum-wire pins, and the migrator script move with the migration |
+
+### 7.9 The 2026-10-05 legal documents migration
+
+⚠ **One migration, `LegalDocuments`**, the next free number after `RemoveSeededDayAheadPrices` ([DEC-172]) in the platform lane. Roll forward only. It creates a schema, so nothing is backfilled.
+
+| Change | Form | Note |
+| --- | --- | --- |
+| `legal` schema **[DEC-174]** | Three tables, the `CHECK`s and the unique keys of §3.7, the two seeded built-in types, the grants | Every `CHECK` is declared in EF so the snapshot agrees. The `Down` drops the tables and the schema |
+| `customer.onboarding_application` **[DEC-174]** | One nullable column, `terms_version_id`, and its foreign key | No backfill: every application before the migration has no recorded version, and none can be reconstructed |
+| Privacy Statement v1 **[DEC-174]** | **Not a migration:** the Migrator's `LegalDocumentSeeder` | Idempotent, every pass, only when the type has no version |
+| The migration pins, `PeakPowerDbContextModelSnapshot.cs`, `tools/verify-migrator.sh` and both OpenAPI snapshots | Updated in the same commits | The history length, the grant pins, the schema list and the route classification move with the migration |
 
 ## 8. Retention & archival
 

@@ -439,8 +439,20 @@ structural test.
 | Headers | HSTS with preload, CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` |
 | Dependencies | Dependabot / Renovate; `dotnet list package --vulnerable` and `npm audit` gate the build |
 | Secrets | Azure Key Vault via managed identity; no secrets in code, config files or environment variables in source control |
-| File uploads | None in the first release. If added, out-of-band scanning and content-type validation |
+| File uploads | None in the first release. If added, out-of-band scanning and content-type validation. ⚠ **Amended 2026-10-05 by [DEC-174]: one upload exists** — an admin uploads a legal-document PDF (§6.1). Validation is the `%PDF-` magic bytes and a 10 MiB cap; there is **no** out-of-band scanning, and the file is served back, never executed or rendered by the platform |
 | Error responses | Problem details with no stack traces, no SQL, no internal identifiers on the customer API |
+
+### 6.1 Legal documents — [DEC-174], added 2026-10-05
+
+| Concern | Control |
+| --- | --- |
+| **Anonymous endpoints** | Four customer-API reads (`/legal-documents…`, [API contracts §2.12](05-api-contracts.md)) are `AllowAnonymous` **by design**, classified shared reference data. They expose only **effective** versions of **visible** types; a scheduled version and a hidden type answer `404`, so a future document is never leaked before its date. They have **no write route**, and an existing anonymous rate-limit policy is applied. The route-table test classifies each one explicitly, so a new anonymous route cannot appear unreviewed |
+| **Upload validation** | The first bytes must be `%PDF-`; the content type and extension are not trusted. The size is 1 byte to 10 MiB. The file name is sanitised (`[A-Za-z0-9._ -]`, `.pdf` forced) and is **display-only**; downloads use a generated name, so a name can never reach a header or a path |
+| **Admin-only writes** | Upload, withdraw, type creation and type update need the `BackOfficeAdmin` policy. Reads need any signed-in employee. A non-admin is refused, and the test suite drops the policy from the upload as a mutation to prove the test notices |
+| **Serving a user-supplied file** | `Content-Type: application/pdf` fixed, `X-Content-Type-Options: nosniff`, `Content-Disposition` with the generated filename (`inline` to customers, `attachment` in the back office). The content is verified as a PDF at upload, and a PDF is not rendered by the platform. Residual risk: a PDF can carry active content the platform does not inspect; the uploader is a named admin, every upload is audited, and the customer's own PDF viewer handles it |
+| **Proxy limit** | The global limit stays 2 MB. `client_max_body_size 12m` applies to `/api/v1/legal-documents/` on the **admin host only**, behind the employee API's authentication; the customer host cannot receive a large body ([deployment §4.6](09-deployment.md)) |
+| **Integrity** | A version is immutable once effective; the SHA-256 is stored and is the `ETag`. The platform's roles have no `UPDATE` on the version tables |
+| **Audit** | Every write is an `AuditRecord` with the employee, the type key, the version number and the effective-from time ([§9](#9-audit)) |
 
 ## 7. Data protection
 
@@ -494,7 +506,7 @@ email provider and the cloud provider. **[OQ-58]**
 Every security-relevant event is recorded in the audit trail **[F15](../10-features/F15-audit-and-observability.md)**:
 sign-in and sign-out, failed authorisation, role changes, impersonation start and end, cross-customer
 reads by employees, manual wallet adjustments, reference-data changes, invoice finalisation, and
-message replay.
+message replay. ⚠ **Extended 2026-10-05 by [DEC-174]:** legal-document upload, withdrawal, type creation and type update.
 
 Audit records are append-only, retained per **[OQ-48]**, and cannot be deleted by any application
 path.

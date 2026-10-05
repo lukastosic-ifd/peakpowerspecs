@@ -155,7 +155,7 @@ token.
 
 **Onboarding [DEC-113]** — the nine-step self-service wizard. **Every route here is anonymous**: a
 prospect has no company and no token until step 9 signs.
-⚠ **As built 2026-10-02, [DEC-171] (5), (6):** step 1 sends `termsAccepted: true` on the click of *Create account* (no tick), and step 6 may be saved with a blank IBAN (*Skip*). The step 2 search box has the placeholder *Business name or KvK number*, and step 9 shows the sign-code expiry as content. No contract changes.
+⚠ **As built 2026-10-02, [DEC-171] (5), (6):** step 1 sends `termsAccepted: true` on the click of *Create account* (no tick), and step 6 may be saved with a blank IBAN (*Skip*). The step 2 search box has the placeholder *Business name or KvK number*, and step 9 shows the sign-code expiry as content. No contract changes. ⚠ **Amended 2026-10-05 by [DEC-174] (9):** the platform now also stores, server-side, the Terms of Use version current at that instant in `terms_version_id`; the request is **unchanged** and the client never sends a version (§2.12).
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -1157,6 +1157,23 @@ which is why **[F13-R46]** puts the tenancy scope, not the authentication streng
 position. It rides on the **[DEC-67]** claim-mapping spike, which now has three claims and a machine
 identity to prove against the corporate tenancy.
 
+### 2.12 Legal documents — [DEC-174], added 2026-10-05
+
+Four reads, **`AllowAnonymous`** — people read the Terms and the Privacy Statement before they have an account — classified **shared reference data** like `/market/day-ahead` (§2.3A). No tenant, no token. An existing anonymous rate-limit policy applies where the host has one. They are **not** on the usage API ([DEC-97]). Feature: [F16](../10-features/F16-legal-documents.md).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/legal-documents` | The **visible** types in `sortOrder`. Each: `key`, `title`, `currentVersion` (`number`, `effectiveFrom`, `sizeBytes`) or **null**, and `fileUrl` (the `/current` URL when a version is published, else null) |
+| `GET` | `/legal-documents/{key}` | A visible type with its **effective** versions only, newest first. `404` for an unknown **or hidden** key |
+| `GET` | `/legal-documents/{key}/current` | The current PDF. `404` when nothing is published |
+| `GET` | `/legal-documents/{key}/versions/{n}` | That **effective** version's PDF. `404` for a **scheduled** or unknown version |
+
+**A scheduled version is never exposed** — not in the list, not in a type's versions, not by its number. **PDF responses:** `Content-Type: application/pdf`; `Content-Disposition: inline; filename="PeakPower-{Title words joined by -}-v{n}.pdf"`; an `ETag` built from the SHA-256; `Cache-Control: no-cache` (it always revalidates); `X-Content-Type-Options: nosniff`. `If-None-Match` is honoured with `304`. The two download routes are documented with the existing `FileDownloadOperationTransformer`.
+
+**The old static URL.** `GET /peakpower-privacy-policy.pdf` on the customer host answers **`302`** to `/api/v1/legal-documents/privacy-statement/current`. Static files run first, so while the web build still ships that file the file wins; once the web removes it the redirect answers. It is a mapped endpoint outside `/api/v1` and appears in no OpenAPI document.
+
+**Onboarding.** `POST /onboarding/applications` is unchanged. The server stores the Terms of Use version current at acceptance in `terms_version_id`, or null when none is published; the sign-up succeeds either way.
+
 ## 3. Employee API
 
 Explicitly cross-customer; `customerId` is a real parameter here.
@@ -1391,6 +1408,24 @@ no approve and no reject **[DEC-83]**. Both routes carry the back-office policy,
 | `PUT /api/v1/operators/{id}` | `EditOperatorRequest` takes `receivesTradeDeskMail` as **required**, because the `PUT` replaces the editable fields (display name, `isAdmin`, the setting). Flipping it either way takes effect for the next Worker tick |
 
 The setting governs **only** the two trade-desk mails *new trade request* and *accepted — ready to confirm* **[DEC-168]**; the invite and password-reset mails ignore it. Deactivate, reactivate and resend-invite are unchanged, and a deactivated operator receives no desk mail whatever the stored setting says. The OpenAPI artifact the harness pins gains the field, and the generated employee client follows [§7](#7-openapi).
+
+### 3.4 Legal documents — [DEC-174], added 2026-10-05
+
+Reads need **any signed-in employee**. **Every write is `.BackOffice(...)` and the `BackOfficeAdmin` policy**, as for the operator routes (§3.3); an ordinary operator is refused. Feature: [F16](../10-features/F16-legal-documents.md).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/legal-documents` | Each type (visible or not) with its **current** version, any **scheduled** version (metadata) and its version count |
+| `GET` | `/legal-documents/{key}` | The type plus **all** versions' metadata, newest first, with the uploader's display name (null for a system import) |
+| `GET` | `/legal-documents/{key}/versions/{n}/file` | The PDF of **any** version, scheduled included. `Content-Disposition: attachment`. Needs the session's bearer token, so a client fetches it as a blob |
+| `POST` | `/legal-documents/{key}/versions` | **Admin.** `multipart/form-data`: `file` (required), `effectiveFrom` (`yyyy-MM-dd`, optional), `changeNote` (optional, at most 500). `201` with the version metadata |
+| `DELETE` | `/legal-documents/{key}/versions/{n}` | **Admin.** Withdraws a **scheduled** version. `409` for an effective one |
+| `POST` | `/legal-documents` | **Admin.** Creates a custom type: `title`, an optional `key` (derived from the title when absent), `visibleToCustomers` |
+| `PATCH` | `/legal-documents/{key}` | **Admin.** `title`, `visibleToCustomers`, `sortOrder`. Hiding a built-in type is `422` |
+
+**Upload status codes.** `201` created; `401` / `403` not signed in, or not an admin; `404` unknown key; `409` a scheduled version already exists (*withdraw the scheduled version first*); `413` over 10 MiB; `422` a non-PDF (the `%PDF-` magic bytes decide) or empty file, a past `effectiveFrom`, a malformed date or a bad key. A date equal to today means **now**. The endpoint carries request-size metadata of about **12 MB** and the **proxy** raises its limit to 12 MB for this prefix on the admin host only ([deployment §4.6](09-deployment.md)). The route is bearer-token authenticated, so antiforgery is disabled on it as on the other employee `POST`s.
+
+**Audit.** Upload, withdrawal, type creation and type update each write an `AuditRecord` naming the employee, the type key, the version number and the effective-from time.
 
 ## 4. Worker endpoints
 

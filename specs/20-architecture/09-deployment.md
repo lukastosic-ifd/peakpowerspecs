@@ -420,6 +420,17 @@ the same way the database schema already was:
   bracket table can be loaded and reconciled before any amount is pushed; and the **bank-transfer
   deposit route** **[DEC-106]**, which cannot go live before **[OQ-93]** names the feed it consumes.
 
+### 4.6 The proxy's request-size limit — [DEC-174], added 2026-10-05
+
+The proxy's global `client_max_body_size` is **2 MB**, which suits every JSON API. The legal-document upload ([F16-R32](../10-features/F16-legal-documents.md), a 10 MiB PDF plus multipart overhead) needs more, for one route:
+
+| Host | Location | Limit |
+| --- | --- | --- |
+| **Admin (employee) host only** | `location ^~ /api/v1/legal-documents/` | `client_max_body_size 12m;` |
+| Customer host | — | stays **2 MB**; it has no upload route |
+
+A nested `location` does **not** inherit the parent's `proxy_pass`, so the new location **repeats the proxy directives of that server's `location /` exactly**; a limit added without them would answer `404` or `502`. Every test that pins the nginx template is updated in the same change (the AppHost VM-override tests among them). The API's own request-size metadata (12 MiB) and the domain's 10 MiB check sit behind it: the proxy answers its own HTML `413` to anything over 12 MB, and between 10 MiB and 12 MB the API answers a `413` problem document. `VmOverrideTests` pin the single `12m`, its one host and path, and the exact copy of the proxy directives. ⚠ No `nginx -t` was run when it was built; run one on the VM or in CI.
+
 ## 5. Configuration & secrets
 
 | Kind | Where |

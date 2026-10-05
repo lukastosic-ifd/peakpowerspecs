@@ -439,8 +439,21 @@ structural test.
 | Headers | HSTS with preload, CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` |
 | Dependencies | Dependabot / Renovate; `dotnet list package --vulnerable` and `npm audit` gate the build |
 | Secrets | Azure Key Vault via managed identity; no secrets in code, config files or environment variables in source control |
-| File uploads | None in the first release. If added, out-of-band scanning and content-type validation |
+| File uploads | None in the first release. If added, out-of-band scanning and content-type validation. ⚠ **Amended 2026-10-05 by [DEC-174]: one upload exists** — an admin uploads a legal-document PDF (§6.1). Validation is the `%PDF-` magic bytes and a 10 MiB cap; there is **no** out-of-band scanning, and the file is served back, never executed or rendered by the platform |
 | Error responses | Problem details with no stack traces, no SQL, no internal identifiers on the customer API |
+
+### 6.1 Legal documents — [DEC-174], added 2026-10-05
+
+| Concern | Control |
+| --- | --- |
+| **Anonymous endpoints** | Two customer-API reads (the slim list and `/legal-documents/{key}/current`, [API contracts §2.12](05-api-contracts.md)) and two short redirects on the customer host (`/legal/{key}`, `/legal/user-agreement`) are anonymous **by design**; the API reads are labelled `.AnonymousEndpoint(reason)` (the reason records that they serve shared reference data; the `SharedReferenceData` arm requires authentication). They expose only the **current** PDF of **visible** types: **no version history, no old version and no version number** reach a customer, so the surface is a list of titles and one file per type. A scheduled version, a hidden type, an unpublished type and an unknown key answer `404` with byte-identical bodies (the redirect's is a short plain-text `404`, never the portal shell), so a future document is never leaked before its date. They have **no write route**. The redirects have a **fixed target** (`/api/v1/legal-documents/{key}/current`, relative, the key checked against the visible types), so they are not an open redirect **No rate limit applies:** neither host has a rate-limit policy. The customer route-table test and the anonymous allow-list name each one explicitly, so a new anonymous route cannot appear unreviewed |
+| **Upload validation** | The first bytes must be `%PDF-`; the content type and extension are not trusted. The size is 1 byte to 10 MiB. The file name is sanitised (`[A-Za-z0-9._ -]`, `.pdf` forced) and is **display-only**; downloads use a generated name, so a name can never reach a header or a path |
+| **Admin-only writes** | Upload, withdraw, type creation and type update need the `BackOfficeAdmin` policy. Reads need any signed-in employee. A non-admin is refused `403` before the body is read, and a test proves nothing is written (it was shown to fail when the policy is dropped from the upload) |
+| **Serving a user-supplied file** | `Content-Type: application/pdf` fixed, `X-Content-Type-Options: nosniff`, `Content-Disposition` with the generated filename (`inline` to customers, `attachment` in the back office). The content is verified as a PDF at upload, and a PDF is not rendered by the platform. Residual risk: a PDF can carry active content the platform does not inspect; the uploader is a named admin, every upload is audited, and the customer's own PDF viewer handles it |
+| **Public link** | The employee API's `publicUrl` is built from the existing `CustomerPortal__BaseUrl` setting and the type's key, never from request input. It discloses nothing a customer could not already open: it resolves only for a visible, published type |
+| **Proxy limit** | The global limit stays 2 MB. `client_max_body_size 12m` applies to `/api/v1/legal-documents/` on the **admin host only**, behind the employee API's authentication; the customer host cannot receive a large body ([deployment §4.6](09-deployment.md)) |
+| **Integrity** | A version is immutable once effective; the SHA-256 is stored and is the `ETag`. The platform's roles have no `UPDATE` on the version tables, and `UPDATE` on `document_type` is column-scoped to `title`, `visible_to_customers` and `sort_order`. That an effective version is never **deleted** is enforced by the withdraw endpoint under the type's row lock, not by the database |
+| **Audit** | Every write is an `AuditRecord` naming the employee and the type key; a version's record also names the version number and the effective-from time ([§9](#9-audit), [API contracts §3.4](05-api-contracts.md)) |
 
 ## 7. Data protection
 
@@ -494,7 +507,7 @@ email provider and the cloud provider. **[OQ-58]**
 Every security-relevant event is recorded in the audit trail **[F15](../10-features/F15-audit-and-observability.md)**:
 sign-in and sign-out, failed authorisation, role changes, impersonation start and end, cross-customer
 reads by employees, manual wallet adjustments, reference-data changes, invoice finalisation, and
-message replay.
+message replay. ⚠ **Extended 2026-10-05 by [DEC-174]:** legal-document upload, withdrawal, type creation and type update.
 
 Audit records are append-only, retained per **[OQ-48]**, and cannot be deleted by any application
 path.

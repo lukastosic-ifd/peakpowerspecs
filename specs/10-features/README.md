@@ -1,6 +1,6 @@
 # Feature Index
 
-Fifteen features, each specified in its own document with user stories, numbered functional
+Sixteen features, each specified in its own document with user stories, numbered functional
 requirements, business rules and edge cases.
 
 **Requirement IDs** are stable: `F05-R12` is requirement 12 of feature F05, and can be referenced from
@@ -35,11 +35,14 @@ resolves.
 | [F13](F13-identity-and-access.md) | Identity & Access | Both | **Must** | 1 | M |
 | [F14](F14-public-website.md) | Public Website | Public | **Could** | 4 | S |
 | [F15](F15-audit-and-observability.md) | Audit Trail & Observability | Both | **Must** | 1–3 | M |
+| [F16](F16-legal-documents.md) | Legal Documents | Both | **Must** | 1 | S |
 
 Sizes are relative, for sequencing only: **S** ≈ 1 sprint or less, **M** ≈ 1–2, **L** ≈ 2–4,
 **XL** ≈ 4+ with meaningful unknowns.
 
-**The customer usage API [DEC-97] is not a sixteenth feature.** It is a second read surface over data
+> **F16 is the sixteenth, added 2026-10-05 by [DEC-174].** Versioned legal documents (the Terms of Use and the Privacy Statement), their back-office management (the only place with the list and the version history), the PDF links customers open (no customer page) and the recorded Terms version at sign-up. Its requirements are not in the *Requirement count by feature* table below, which was counted on 2026-08-19 and is not maintained by hand since; the stakeholder site counts F16 from its own table.
+
+**The customer usage API [DEC-97] is not a seventeenth feature.** It is a second read surface over data
 that already exists, split across the two features that own its halves: the data and the scoping in
 [F03](F03-consumption-visualisation.md) (**F03-R27**), the unattended credential and the
 company-scoped authorisation in [F13](F13-identity-and-access.md) (**F13-R46**, **F13-R47**). It gets

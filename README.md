@@ -70,7 +70,7 @@ PeakPower carries that risk in full `[DEC-25]`.
 ```
 specs/
 ├── 00-overview/       vision & scope · glossary · actors · decisions & assumptions
-├── 10-features/       F01–F15, each with numbered requirements
+├── 10-features/       F01–F16, each with numbered requirements
 ├── 20-architecture/   C4 · .NET/Aspire solution · domain model · schema · API · security · NFRs
 ├── 30-integrations/   PVNed · Montel · payments · Odoo · identity provider · ENTSO-E
 ├── 40-processes/      trade lifecycle · data flow · top-up · invoicing · annual true-up

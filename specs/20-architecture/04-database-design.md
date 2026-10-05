@@ -750,7 +750,7 @@ CREATE TABLE customer.onboarding_application (
     email                citext NOT NULL,
     password_hash        varchar(200) NOT NULL,     -- Argon2id, from the first keystroke
     terms_accepted_at    timestamptz NOT NULL,
-    terms_version_id     uuid REFERENCES legal.document_version(id),  -- [DEC-174]: the Terms of Use version current when the applicant accepted; NULL if none was published. Written by the server, never sent by the client
+    terms_version_id     uuid REFERENCES legal.document_version(id) ON DELETE RESTRICT,  -- [DEC-174]: the Terms of Use version current when the applicant accepted; NULL if none was published. Written by the server, never sent by the client
 
     organization_name    varchar(200),              -- steps 2-4
     legal_entity_type    text,                      -- BV | NV | EENMANSZAAK | VOF | ...
@@ -1848,26 +1848,27 @@ CREATE TABLE legal.document_type (
     title                 varchar(120) NOT NULL,
     visible_to_customers  boolean NOT NULL,
     sort_order            int NOT NULL,
-    built_in              boolean NOT NULL,                    -- immutable
+    built_in              boolean NOT NULL DEFAULT false,      -- immutable
     created_at            timestamptz NOT NULL,
-    CONSTRAINT ck_document_type_key CHECK (key ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+    CONSTRAINT ck_document_type_key_format CHECK (key ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
     CONSTRAINT ck_document_type_built_in_visible CHECK (NOT built_in OR visible_to_customers)
 );
 
 CREATE TABLE legal.document_version (                         -- metadata only
     id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    type_id                    uuid NOT NULL REFERENCES legal.document_type(id),
+    type_id                    uuid NOT NULL REFERENCES legal.document_type(id) ON DELETE RESTRICT,
     version_number             int  NOT NULL,                  -- 1, 2, 3 … per type, no gaps
     file_name                  varchar(200) NOT NULL,          -- sanitised, display only
-    size_bytes                 int  NOT NULL,                  -- 1 … 10 485 760
-    sha256                     char(64) NOT NULL,
+    size_bytes                 bigint NOT NULL,                -- 1 … 10 485 760
+    sha256                     varchar(64) NOT NULL,           -- lower-case hex; the ETag
     effective_from             timestamptz NOT NULL,
     uploaded_at                timestamptz NOT NULL,
-    uploaded_by_employee_id    text,                           -- NULL = a system import
+    uploaded_by_employee_id    uuid REFERENCES employee.employee(id) ON DELETE RESTRICT,  -- NULL = a system import
     change_note                varchar(500),
     UNIQUE (type_id, version_number),
+    CONSTRAINT ck_document_version_number_positive CHECK (version_number >= 1),
     CONSTRAINT ck_document_version_size CHECK (size_bytes BETWEEN 1 AND 10485760),
-    CONSTRAINT ck_document_version_sha256 CHECK (sha256 ~ '^[0-9a-f]{64}$')
+    CONSTRAINT ck_document_version_sha256_format CHECK (sha256 ~ '^[0-9a-f]{64}$')
 );
 
 CREATE TABLE legal.document_file (
@@ -1880,15 +1881,15 @@ CREATE TABLE legal.document_file (
 | --- | --- |
 | `key` and `built_in` never change; a built-in type stays visible | The domain aggregate, with the `CHECK`s above as the last line of defence |
 | The **current** version is the highest `version_number` with `effective_from <= now`; a **scheduled** one has `effective_from > now`; **at most one scheduled per type** | The domain and the upload handler. Not a database constraint: "scheduled" depends on the clock |
-| A **withdrawn** scheduled version is hard-deleted with its file (`ON DELETE CASCADE`); an effective version is never deleted | The domain refuses; the `DELETE` grant exists for the withdrawal and nothing else |
+| A **withdrawn** scheduled version is hard-deleted with its file (`ON DELETE CASCADE`); an effective version is never deleted | The withdraw endpoint, which asks the domain (`CheckCanBeWithdrawn`) under the type's row lock and answers `409` for an effective version. **Not a database rule:** the `DELETE` grant exists for the withdrawal, and the database cannot tell a scheduled row from an effective one without the application's clock |
 | `version_number` = max + 1 per type, **allocated under `SELECT … FOR UPDATE` on the type's row**, so two concurrent uploads cannot both take the next number and a withdrawn scheduled number is reused | The upload handler; `UNIQUE (type_id, version_number)` is the net |
-| `uploaded_by_employee_id` is nullable | A null is the Privacy Statement v1 import, which has no employee |
+| `uploaded_by_employee_id` is nullable | A null is the Privacy Statement v1 import, which has no employee. The endpoint resolves it from the signed-in employee's username (the token carries the username, not the row id) |
 
 **Seed.** The migration inserts two built-in, visible types: `terms-of-use` (*Terms of Use*, sort 10) and `privacy-statement` (*Privacy Statement*, sort 20). Privacy Statement **v1** is **not** a migration row: an idempotent Migrator seeder, `LegalDocumentSeeder`, outside the demo-seeding gate, inserts it from an embedded copy of the portal's PDF only when `privacy-statement` has no version. The Terms of Use have no version until an admin uploads one.
 
-**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly, as for `market`: `app_customer_role` gets `SELECT` on the three tables; `app_employee_role` gets `SELECT`, `INSERT`, `UPDATE` on `document_type` and `SELECT`, `INSERT`, `DELETE` on `document_version` and `document_file`. No `UPDATE` on either version table: a version is immutable. The migrator's verification script pins these grants.
+**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly, as for `market`: `app_customer_role` gets `SELECT` on the three tables; `app_employee_role` gets `SELECT`, `INSERT` and a **column-scoped** `UPDATE (title, visible_to_customers, sort_order)` on `document_type`, so `key` and `built_in` are immutable by grant, and `SELECT`, `INSERT`, `DELETE` on `document_version` and `document_file`. No `UPDATE` on either version table: a version is immutable. `SELECT … FOR UPDATE` on `document_type` works with the column-scoped grant. Both roles get `USAGE` on the schema; no default privileges are added for `legal`. `tools/verify-migrator.sh` pins these grants and `LegalDocumentsSchemaTests` exercises them on the real login roles.
 
-**Consent.** `customer.onboarding_application.terms_version_id` (§3.1) is a nullable foreign key to `legal.document_version`. This is a **cross-schema edge from `customer` to `legal`**, admitted on the same reasoning as `customer.metering_point.brp_id` → `metering.brp` (§1): `legal` is reference data with no foreign key of its own, so the edge adds no cycle between aggregates. The assertion list in the schema-boundary integration test gains the pair. Because a version that has been **accepted against** is effective, the withdrawal rule (never delete an effective version) also keeps this key from dangling; the foreign key has no `ON DELETE` action, so a stray delete fails loudly.
+**Consent.** `customer.onboarding_application.terms_version_id` (§3.1) is a nullable foreign key to `legal.document_version`. This is a **cross-schema edge from `customer` to `legal`**, admitted on the same reasoning as `customer.metering_point.brp_id` → `metering.brp` (§1): `legal` is reference data whose only outbound key is `document_version.uploaded_by_employee_id` → `employee.employee`, so the edge adds no cycle between aggregates. The column is indexed. Because a version that has been **accepted against** is effective, the withdrawal rule (never delete an effective version) also keeps this key from dangling; the foreign key is `ON DELETE RESTRICT`, so a stray delete fails loudly.
 
 ## 4. Materialised rollups
 
@@ -2201,14 +2202,14 @@ Roll forward only, as every migration here.
 
 ### 7.9 The 2026-10-05 legal documents migration
 
-⚠ **One migration, `LegalDocuments`**, the next free number after `RemoveSeededDayAheadPrices` ([DEC-172]) in the platform lane. Roll forward only. It creates a schema, so nothing is backfilled.
+⚠ **One migration, migration 36 `20261005040247_LegalDocuments`**, the next after `RemoveSeededDayAheadPrices` ([DEC-172]). Roll forward only. It creates a schema, so nothing is backfilled.
 
 | Change | Form | Note |
 | --- | --- | --- |
 | `legal` schema **[DEC-174]** | Three tables, the `CHECK`s and the unique keys of §3.7, the two seeded built-in types, the grants | Every `CHECK` is declared in EF so the snapshot agrees. The `Down` drops the tables and the schema |
-| `customer.onboarding_application` **[DEC-174]** | One nullable column, `terms_version_id`, and its foreign key | No backfill: every application before the migration has no recorded version, and none can be reconstructed |
+| `customer.onboarding_application` **[DEC-174]** | One nullable column, `terms_version_id`, its index and its foreign key (`ON DELETE RESTRICT`) | No backfill: every application before the migration has no recorded version, and none can be reconstructed |
 | Privacy Statement v1 **[DEC-174]** | **Not a migration:** the Migrator's `LegalDocumentSeeder` | Idempotent, every pass, only when the type has no version |
-| The migration pins, `PeakPowerDbContextModelSnapshot.cs`, `tools/verify-migrator.sh` and both OpenAPI snapshots | Updated in the same commits | The history length, the grant pins, the schema list and the route classification move with the migration |
+| The migration pins, `PeakPowerDbContextModelSnapshot.cs`, `tools/verify-migrator.sh` and both OpenAPI snapshots | Updated in the same commits | The history length, the grant pins, the schema list and the route classification move with the migration. `verify-migrator.sh` also pins the seeded v1 to the embedded file's size and SHA-256 |
 
 ## 8. Retention & archival
 

@@ -40,7 +40,7 @@ resolves.
 Sizes are relative, for sequencing only: **S** ≈ 1 sprint or less, **M** ≈ 1–2, **L** ≈ 2–4,
 **XL** ≈ 4+ with meaningful unknowns.
 
-> **F16 is the sixteenth, added 2026-10-05 by [DEC-174].** Versioned legal documents (the Terms of Use and the Privacy Statement), their back-office management, the public customer pages and the recorded Terms version at sign-up. Its requirements are not in the *Requirement count by feature* table below, which was counted on 2026-08-19 and is not maintained by hand since; the stakeholder site counts F16 from its own table.
+> **F16 is the sixteenth, added 2026-10-05 by [DEC-174].** Versioned legal documents (the Terms of Use and the Privacy Statement), their back-office management (the only place with the list and the version history), the PDF links customers open (no customer page) and the recorded Terms version at sign-up. Its requirements are not in the *Requirement count by feature* table below, which was counted on 2026-08-19 and is not maintained by hand since; the stakeholder site counts F16 from its own table.
 
 **The customer usage API [DEC-97] is not a seventeenth feature.** It is a second read surface over data
 that already exists, split across the two features that own its halves: the data and the scoping in

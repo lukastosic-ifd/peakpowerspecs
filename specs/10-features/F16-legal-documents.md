@@ -11,7 +11,7 @@ PeakPower asks a customer to agree to its **Terms of Use** when an account is cr
 placeholder route **[DEC-126]**, and the only real file was a static PDF baked into the customer portal's
 build, so a change meant a web release and left no record of which text a customer had agreed to.
 
-This feature makes both **versioned PDFs** that the back office manages and anyone can read. It is one
+This feature makes both **versioned PDFs** that the back office manages and customers open as links. It is one
 decision, **[DEC-174]**, taken from four user decisions:
 
 | Question | Decision |
@@ -19,7 +19,7 @@ decision, **[DEC-174]**, taken from four user decisions:
 | Which documents | A **fixed list** (Terms of Use, Privacy Statement) that admins can **extend with custom types**. |
 | When the Terms change | **Record which Terms of Use version each sign-up accepted.** Existing customers are **not** asked to re-accept. |
 | How publishing works | Each upload is a **new immutable version**, effective now or on a chosen date. History is kept, **admins only**, everything audited. |
-| Where customers see them | **Public anonymous links** and a **Legal** page in the customer portal. |
+| Where customers see them | **Links that open the current PDF**, and nothing more: no Legal page, no version history, no version numbers. Only the back office lists and manages the documents and their versions. |
 
 The files live **in Postgres**, in a new platform-reference `legal` schema, so backup, restore and
 transactions are the mechanisms the platform already has.
@@ -29,8 +29,8 @@ flowchart LR
     ADM["Back office admin<br/>uploads a PDF"] -->|"POST …/versions<br/>(multipart, ≤ 10 MiB)"| EMP["Employee API"]
     EMP --> DB[("legal schema<br/>type · version · file")]
     DB --> CUS["Customer API<br/>anonymous"]
-    CUS --> LEG["Customer portal<br/>/legal pages"]
-    CUS --> LNK["Consent links,<br/>public URLs"]
+    CUS --> LNK["Consent and footer links,<br/>/legal/{key} redirects"]
+    LNK --> PDF["Current PDF,<br/>inline preview"]
     ONB["Onboarding step 1<br/>accept"] -->|"server stamps the<br/>current Terms version"| APP["onboarding_application<br/>terms_version_id"]
     DB -.-> APP
 ```
@@ -57,14 +57,15 @@ flowchart LR
 
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
-| F16-R12 | The **customer API serves legal documents anonymously**, without a token, because people read them before they have an account: the visible types in sort order (key, title, current version or null, `fileUrl`), one type with its **effective versions only**, the **current PDF**, and an **effective version's PDF**. A token, if sent, changes nothing. The routes are labelled anonymous in the route table, with a reason that records they serve shared reference data. | Must |
-| F16-R13 | **A scheduled version is never exposed on the customer API**: not in a list, not in a type's version list, not by its number. A hidden, unknown or malformed key, an unpublished type's `/current`, and a scheduled, unknown or non-numeric version number are all `404`. | Must |
+| F16-R12 | The **customer API serves legal documents anonymously**, without a token, because people read them before they have an account, and it has **two reads only**: a **slim list** of the visible types in sort order (`key`, `title`, `fileUrl`; `fileUrl` is the current PDF's URL when a version is published, else null; **no version number, no date, no size**) and the **current PDF**. A token, if sent, changes nothing. The routes are labelled anonymous in the route table, with a reason that records they serve shared reference data. **There is no history route and no old-version route**: a customer cannot read an earlier version. | Must |
+| F16-R13 | **A scheduled version is never exposed on the customer API**: not in the list, not as `/current`. A hidden, unknown or malformed key and an unpublished type's `/current` are all `404`. No customer response carries a version number or an effective date. | Must |
 | F16-R14 | A PDF response is `Content-Type: application/pdf`, `Content-Disposition: inline` with the generated filename, an **`ETag` built from the SHA-256**, `Cache-Control: no-cache` (it always revalidates) and `X-Content-Type-Options: nosniff`. `If-None-Match` is honoured with `304`. No rate limit applies: neither host has a rate-limit policy. | Must |
 | F16-R15 | The old static URL **`GET /peakpower-privacy-policy.pdf`** on the customer host answers **`302`** to `/api/v1/legal-documents/privacy-statement/current`. While the web build still ships that file, the static file wins; once it is removed the redirect answers. | Must |
-| F16-R16 | The **customer portal** has an unguarded **Legal** area, working signed out (bare) and signed in (in the shell): `/legal` lists the visible documents (title, current version and effective date, *Open PDF*, *Details*); `/legal/terms-of-use`, `/legal/privacy-statement` and `/legal/:key` (custom types) show the title, *Version N · in effect since <date>*, an *Open PDF* link and an *Earlier versions* list of effective versions. `/legal/user-agreement` remains as an alias of the Terms of Use. | Must |
-| F16-R17 | A document with **no published version** shows the *Not published yet* state; an **unknown or hidden key** shows *Document not found* with a link back to `/legal`. | Must |
-| F16-R18 | The customer nav's **Account** group gains **Legal documents** (signed in), and the sign-in page carries a small line, *Terms of Use · Privacy Statement*, linking to the two pages. | Should |
-| F16-R19 | **Consent links** (the onboarding account step's *By creating an account, I agree to the Terms of Use*, and the signing page's Terms of Use and Privacy Statement links; the account step has no privacy mention) go **straight to the current PDF** when that document is published, and to its `/legal/...` page otherwise. They open in a new tab (`rel="noopener noreferrer"`). The link exists before the list has loaded and falls back to the page URL until it does. | Must |
+| F16-R15a | **Short public links** on the customer host, anonymous server redirects that win over the portal's SPA fallback: **`GET /legal/{key}`** answers **`302`** to `/api/v1/legal-documents/{key}/current` when the type is visible and has a published version, and otherwise a plain-text **`404`**, *This document is not available.* (hidden, unpublished, scheduled-only, unknown and malformed alike), never the portal shell. **`GET /legal/user-agreement`** is a legacy alias of the Terms of Use under the same rule. They are not in OpenAPI. | Must |
+| F16-R16 | The **customer portal has no legal page**: no `/legal` route, no document page, no *Earlier versions* list. The server answers every `/legal/*` path (F16-R15a), so the portal's router is never reached for them in production, and the dev proxy forwards `/legal` to the API. | Must |
+| F16-R17 | When the list says a document is **unpublished** (`fileUrl` null, or the type is not listed), or the list has **not loaded** yet or **failed**, the document's **name is plain text**, not a link, and the sentence stays grammatical (*By creating an account, I agree to the Terms of Use.*). The link appears when the list arrives. The portal never links to a page that does not exist. | Must |
+| F16-R18 | The customer nav has **no** legal entry. The sign-in page's small footer line, *Terms of Use · Privacy Statement*, is two links to the current PDFs (plain text where unpublished or not yet loaded). | Should |
+| F16-R19 | **Consent links** (the onboarding account step's *By creating an account, I agree to the Terms of Use*, the signing page's Terms of Use and Privacy Statement links, and the sign-in footer of F16-R18; the account step has no privacy mention) are `<a>` elements whose `href` is the document's **`fileUrl`**, with `target="_blank"` and `rel="noopener noreferrer"`; the browser opens the PDF inline, which is the preview. **There are no other legal links anywhere in the customer portal.** | Must |
 | F16-R20 | The customer portal's build **ships no PDF**. The documents come from the platform; the static `peakpower-privacy-policy.pdf` and its constant are removed, and a test asserts that no PDF remains in the portal's public folder. | Must |
 
 ### Consent recording
@@ -82,7 +83,7 @@ flowchart LR
 | --- | --- | :--: |
 | F16-R25 | The back office has a rail item **Legal documents**, visible to **all staff**, placed after *Reference data*. `/legal-documents` is the list and `/legal-documents/:key` the detail. Non-admins see both **read-only**. | Must |
 | F16-R26 | The **list** shows, per type: document, current version (v*N* and its effective date), **Scheduled** (a badge with the date, or —), number of versions, and *Visible to customers* (Yes / No). Each row links to its detail. Admins also get **Add document type** (title, an optional key prefilled from the title and editable until saved, *Visible to customers*). | Must |
-| F16-R27 | The **detail page** shows the title, the key and a *Built-in* or *Custom* badge; for admins, edit title, *Visible to customers* (disabled for a built-in type, **with the reason shown in words**) and sort order; a **current version card** (v*N*, effective since, size, uploaded by and when, the change note, **Download**); a **scheduled version card** when one exists (the effective date, **Download**, and for admins **Withdraw** behind a confirmation); and a **version history** of every version, effective or scheduled, with **Download**. | Must |
+| F16-R27 | The **detail page** shows the title, the key and a *Built-in* or *Custom* badge; for admins, edit title, *Visible to customers* (disabled for a built-in type, **with the reason shown in words**) and sort order; a **current version card** (v*N*, effective since, size, uploaded by and when, the change note, **Download**); a **scheduled version card** when one exists (the effective date, **Download**, and for admins **Withdraw** behind a confirmation); and a **version history** of every version, effective or scheduled, with **Download**. A **Public link** row shows the type's `publicUrl` as text, with **Copy** (clipboard, then the announcement *Link copied*) and **Open** (a new tab); when the type is hidden from customers or nothing is published yet, a short muted line says why the link does not open a document yet (*Not visible to customers*, else *No version published yet*) **[F16-R37]**. | Must |
 | F16-R28 | **Upload new version** (admins): a PDF input with client-side checks of the type and the 10 MiB size, an **Effective from** date defaulting to today with a minimum of today, a change note of at most 500 characters, a busy state, and the server's `409` / `413` / `422` messages shown inline (the proxy's own HTML `413` gets the same sentence). On success the page reloads, the form resets and the result is announced. **While a scheduled version exists the upload is disabled, with the reason: the scheduled version must be withdrawn first.** | Must |
 | F16-R29 | **Downloads go through the signed-in session**, not a plain link: the file is fetched as a blob with the session's credentials and saved under the server's filename, through a temporary object URL that is revoked afterwards. | Must |
 | F16-R30 | The back office stays a **fixed 1280 desktop layout [DEC-173]**; this feature adds no responsive rules to it. | Must |
@@ -91,12 +92,13 @@ flowchart LR
 
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
-| F16-R31 | The **employee API** (`/api/v1/legal-documents`): reads need any signed-in employee; **every write needs the `BackOfficeAdmin` policy** (upload, withdraw, create type, edit type). Routes are in the API contracts, §3.4. | Must |
+| F16-R31 | The **employee API** (`/api/v1/legal-documents`): reads need any signed-in employee; **every write needs the `BackOfficeAdmin` policy** (upload, withdraw, create type, edit type). Every type carries a **`publicUrl`**, `{CustomerPortal:BaseUrl}/legal/{key}`, always present (the employee host's existing `CustomerPortal__BaseUrl` setting). Routes are in the API contracts, §3.4. | Must |
 | F16-R32 | The upload route accepts `multipart/form-data` (`file`, `effectiveFrom`, `changeNote`) and carries request-size metadata of **12 MiB**, so a 10 MiB file plus form overhead is accepted by the host; the 10 MiB limit itself is the domain's **[F16-R04]**. It is protected exactly as the other employee `POST`s are (bearer token, so antiforgery does not apply). | Must |
 | F16-R33 | The **proxy** raises `client_max_body_size` to **12 MB for `/api/v1/legal-documents/` on the admin (employee) host only**; the global limit stays 2 MB and the customer host stays at 2 MB. | Must |
 | F16-R34 | **Audit.** Upload, withdrawal, type creation and type update each write an `AuditRecord` (`LEGAL_DOCUMENT_UPLOADED`, `LEGAL_DOCUMENT_VERSION_WITHDRAWN`, `LEGAL_DOCUMENT_TYPE_CREATED`, `LEGAL_DOCUMENT_TYPE_UPDATED`) naming the **employee** and the **type key**; a version's record also names the **version number** and the **effective-from** time, a type's its title, visibility and sort order **[F15](F15-audit-and-observability.md)**. | Must |
 | F16-R35 | **Privacy Statement v1** is imported by an idempotent Migrator seeder, outside the demo-seeding gate, **only when `privacy-statement` has no version**: v1 from an embedded copy of the portal's last static PDF, effective from 00:00 Amsterdam on the date that file was first committed in the web repository, uploaded by nobody, with the change note *Imported from the customer portal build*. One log line. The **Terms of Use have no version until an admin uploads one.** | Must |
 | F16-R36 | Grants: `app_customer_role` has `SELECT` on the three `legal` tables; `app_employee_role` has `SELECT`, `INSERT` and a column-scoped `UPDATE (title, visible_to_customers, sort_order)` on `document_type` (so the key and the built-in flag cannot change, by grant) and `SELECT`, `INSERT`, `DELETE` on `document_version` and `document_file`. The tables carry no `customer_id` and **no row-level security**. | Must |
+| F16-R37 | The back office is the **only** place that lists, manages and shows version history; customers see none of it. The **public link** a staff member can copy is the type's `publicUrl` (F16-R15a), which resolves to a document only while `visibleToCustomers` is true and the type has a current version. | Must |
 
 ## 3. Business rules
 
@@ -108,8 +110,9 @@ flowchart LR
 3. **The server is the authority on time and version.** The effective-from is evaluated by the platform's
    clock in Amsterdam time; the consent version is chosen by the server at the instant of acceptance; neither
    is accepted from a client.
-4. **Anonymous reading is the point, and it is bounded.** The customer API exposes **effective** versions of
-   **visible** types and nothing else; it has no write route and no listing of scheduled content.
+4. **Anonymous reading is the point, and it is bounded.** The customer API exposes the **current** PDF of
+   **visible** types and a slim list of links, nothing else: no write route, no history, no old version, no
+   version number, no scheduled content.
 5. **No re-acceptance.** A customer who accepted v1 is recorded as having accepted v1. The platform does not
    ask again and does not notify. This is a legal position, recorded in **[DEC-174]**, not an oversight.
 6. **Documents are per platform, not per customer, and in one language.** One PDF per version. A Dutch and an
@@ -124,11 +127,9 @@ flowchart LR
 | Legal documents — list | Back office | **[F16-R25]**, **[F16-R26]**. *No mockup yet* |
 | Legal documents — detail, upload and history | Back office | **[F16-R27]**, **[F16-R28]**, **[F16-R29]**. *No mockup yet* |
 | Add document type | Back office | **[F16-R26]**, admin only |
-| Legal | Customer portal | `/legal` — **[F16-R16]** |
-| A document | Customer portal | `/legal/terms-of-use`, `/legal/privacy-statement`, `/legal/:key` — **[F16-R16]**, **[F16-R17]** |
+| Public link row | Back office | On the detail page, **[F16-R27]**, **[F16-R37]** |
 
-The customer pages follow the responsive conventions of **[DEC-173]**: no horizontal scroll at 375 px,
-full-width cards, 44 px targets.
+**The customer portal has no legal screen.** Its legal links sit inside existing screens (the onboarding account step, the signing page, the sign-in page) **[F16-R19]**.
 
 ## 5. Edge cases
 
@@ -136,11 +137,13 @@ full-width cards, 44 px targets.
 | --- | --- |
 | No Terms of Use published at sign-up | `terms_version_id` is null; the sign-up succeeds **[F16-R21]**. It is never filled in later. |
 | Terms v2 scheduled for next month | The current version stays v1 until then; sign-ups until then record v1; customers cannot see v2 **[F16-R13]**. |
+| Terms v2 takes effect | The same link now opens v2; nothing in the customer portal shows v1 again (staff still can) **[F16-R12]**. |
 | An admin schedules a version, then wants a different date | Withdraw it, then upload again; the number is reused **[F16-R08]**, **[F16-R09]**. |
 | An admin uploads a PDF dated today | It is effective immediately and cannot be withdrawn **[F16-R05]**, **[F16-R08]**. |
 | A scheduled version becomes effective | Nothing runs. The current-version rule is evaluated at read time, so it is current at the moment its time passes **[F16-R06]**. |
 | Upload with a `.pdf` name but other content | `422`; the magic bytes decide **[F16-R04]**. |
-| A custom type is hidden | It disappears from the customer list and its customer routes answer `404`; the back office still shows it **[F16-R13]**. |
+| A custom type is hidden | It disappears from the customer list, `/current` and `/legal/{key}` answer `404`; the back office still shows it, with its public link and *Not visible to customers* **[F16-R13]**, **[F16-R37]**. |
+| A link for a document with no published version | The portal shows the name as plain text; `/legal/{key}` answers the short text `404` **[F16-R15a]**, **[F16-R17]**. |
 | The portal build still ships the static PDF | The static file wins over the redirect **[F16-R15]**; the web release that removes it hands over to the platform. |
 | A bookmarked `/peakpower-privacy-policy.pdf` | `302` to the current Privacy Statement **[F16-R15]**. |
 
@@ -148,6 +151,7 @@ full-width cards, 44 px targets.
 
 - **Re-acceptance** when the Terms change, and **notifying** customers of a change **[DEC-174]**.
 - **Per-customer** documents and **languages**.
+- A **customer-facing page, version history or version number**; customers get links to the current PDF only.
 - Rendering, virus scanning or text extraction of the uploaded PDF. The first release validates the magic
   bytes and the size only.
 - Signing the PDFs, or a customer-visible record of which version they accepted (the version is stored for

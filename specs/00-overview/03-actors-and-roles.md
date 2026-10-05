@@ -61,7 +61,7 @@ A person at the customer **company** who holds a **customer account** and uses t
 | **Goals** | Understand consumption, judge whether to hedge, execute a purchase, keep the wallet funded, check invoices. ⚠ **Amended 2026-08-19 by [DEC-77]** — the wallet funds **trading only** (**[AS-12]** reversed): delivery invoices are paid to the bank and never touch it. Invoices are still read in the portal, but the number and the PDF come from the bookkeeping program **[DEC-88]**, **[DEC-89]** |
 | **Frequency** | Weekly to daily during volatile markets; monthly otherwise |
 | **Expertise** | Energy-aware but not a trader. Comfortable with MWh and €/MWh; will not know what an ISP is |
-| **Context** | Desktop, office hours, often comparing the portal against their own consumption planning |
+| **Context** | Desktop, office hours, often comparing the portal against their own consumption planning ⚠ **Amended 2026-10-02 by [DEC-173]: the customer portal is also used on phones and tablets, so it is responsive; this persona's desktop context is unchanged.** |
 | **Key screens** | Consumption chart, price indications, trade wizard, offer countdown, wallet, invoices — and, for an **admin** of a company with four-eyes enabled, the approval queue **[DEC-71]** |
 
 #### One company, several accounts

@@ -152,5 +152,5 @@ not yet drawn — listed so the gap is visible rather than forgotten:
   true-up statement, which **[DEC-99]** made continuous rather than annual
 - Login and invitation-acceptance flows ([F13](../10-features/F13-identity-and-access.md))
 - Public website ([F14](../10-features/F14-public-website.md))
-- Mobile and tablet breakpoints
+- Mobile and tablet breakpoints ⚠ **Amended 2026-10-02 by [DEC-173]: the built customer portal is responsive; these wireframes are still drawn at desktop width, and the design-system gallery's nested specimen shells may overflow.**
 - Empty states, loading states and error states — these need a pass of their own before build

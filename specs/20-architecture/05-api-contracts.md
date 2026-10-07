@@ -251,6 +251,30 @@ field: it is rendered in the tooltip and the KPI strip **[F03-R05]**, **[F03-R19
 the payloads, not by a flag on the export endpoint — a `?includePrices=` parameter would be one
 support request away from being turned on.
 
+**Volume position** ⚠ added 2026-10-07 ([DEC-175]). `GET /api/v1/consumption/position?from=YYYY-MM-DD&to=YYYY-MM-DD` — any member; tenant-scoped, with the authentication, tenancy and row-level security of `GET /consumption/intervals`; account-level; at most **92 days**, otherwise `400`; no `meteringPointIds`. A **separate DTO**, so [DEC-149] holds: the consumption DTOs gain no block field. The server does not gate it on Future Trading; the portal calls it only when the product is held. Dense: every quarter-hour of the range, the future included. Not documented, published or opened for programmatic use ([F03-R26]). Calculation, null, partial and totals rules: [DEC-175] (4), (5); the field names are those of the generated OpenAPI document.
+
+```jsonc
+// GET /api/v1/consumption/position?from=2026-11-01&to=2026-11-02   (illustrative values)
+{
+  "from": "2026-11-01", "to": "2026-11-02",
+  "intervals": [
+    { "start": "2026-11-01T08:00:00+01:00",
+      "hedgeKwh": 2500.0, "hedgeCostEur": 175.0,       // always present, also in the future
+      "netUsageKwh": 2310.5,                            // null when not metered; everything below is then null
+      "priceEurPerKwh": 0.08123,                        // day-ahead, may be negative
+      "coveredKwh": 2310.5, "shortKwh": 0.0, "longKwh": 189.5,
+      "buyLegEur": 0.0, "sellLegEur": 15.39,           // sell leg is a credit
+      "actualCostEur": 159.61,                          // hedge cost + buy leg - sell leg
+      "partial": false, "connectionsExpected": 3, "connectionsReported": 3 }
+  ],
+  "totals": { "metered": { "netUsageKwh": 0, "hedgeKwh": 0, "hedgeCostEur": 0, "coveredKwh": 0, "shortKwh": 0, "longKwh": 0,
+                             "buyLegEur": 0, "sellLegEur": 0, "actualCostEur": 0 },
+               "range":   { "hedgeKwh": 0, "hedgeCostEur": 0 } },
+  "blocks": [ { "id": "...", "reference": "...", "direction": "BUY", "shape": "BASE",
+                 "deliveryStart": "...", "deliveryEnd": "...", "powerMw": 10.0, "priceEurPerMwh": 70.0 } ]
+}
+```
+
 **Dashboard position** ⚠ added 2026-10-01 ([DEC-167] (19)). Any member; tenant-scoped; `month` defaults to the current Amsterdam month, a malformed value is a `400`. A **separate DTO** from the consumption ones, so [DEC-149] holds. The server does not gate it on Future Trading; the portal calls it only when the product is enabled. Definitions (per 15-minute interval, C against the confirmed BUY block energy B) are in [F03](../10-features/F03-consumption-visualisation.md).
 
 ```jsonc

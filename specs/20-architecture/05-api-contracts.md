@@ -254,24 +254,39 @@ support request away from being turned on.
 **Volume position** ⚠ added 2026-10-07 ([DEC-175]). `GET /api/v1/consumption/position?from=YYYY-MM-DD&to=YYYY-MM-DD` — any member; tenant-scoped, with the authentication, tenancy and row-level security of `GET /consumption/intervals`; account-level; at most **92 days**, otherwise `400`; no `meteringPointIds`. A **separate DTO**, so [DEC-149] holds: the consumption DTOs gain no block field. The server does not gate it on Future Trading; the portal calls it only when the product is held. Dense: every quarter-hour of the range, the future included. Not documented, published or opened for programmatic use ([F03-R26]). Calculation, null, partial and totals rules: [DEC-175] (4), (5); the field names are those of the generated OpenAPI document.
 
 ```jsonc
-// GET /api/v1/consumption/position?from=2026-11-01&to=2026-11-02   (illustrative values)
+// GET /api/v1/consumption/position?from=2026-11-01&to=2026-11-01   (illustrative values; the day is dense, two of its 96 intervals shown)
 {
-  "from": "2026-11-01", "to": "2026-11-02",
-  "intervals": [
-    { "start": "2026-11-01T08:00:00+01:00",
-      "hedgeKwh": 2500.0, "hedgeCostEur": 175.0,       // always present, also in the future
-      "netUsageKwh": 2310.5,                            // null when not metered; everything below is then null
-      "priceEurPerKwh": 0.08123,                        // day-ahead, may be negative
-      "coveredKwh": 2310.5, "shortKwh": 0.0, "longKwh": 189.5,
-      "buyLegEur": 0.0, "sellLegEur": 15.39,           // sell leg is a credit
-      "actualCostEur": 159.61,                          // hedge cost + buy leg - sell leg
-      "partial": false, "connectionsExpected": 3, "connectionsReported": 3 }
+  "from": "2026-11-01", "to": "2026-11-01", "dayCount": 1, "connectionsExpected": 3,
+  "days": [
+    { "date": "2026-11-01", "intervalCount": 96, "connectionsExpected": 3,
+      "intervals": [
+        { "pos": 33, "start": "2026-11-01T08:00:00+01:00", "end": "2026-11-01T08:15:00+01:00", "dstPass": null,
+          "hedgeKwh": 2500.0, "hedgeCostEur": 175.0,       // always present, also in the future
+          "netUsageKwh": 2310.5,                            // null when not metered; everything below it is then null
+          "priceEurPerKwh": 0.08123,                        // day-ahead, may be negative; null when unpriced
+          "coveredKwh": 2310.5, "shortKwh": 0.0, "longKwh": 189.5,
+          "buyLegEur": 0.0, "sellLegEur": 15.39,            // sell leg is a credit; both null when unpriced
+          "actualCostEur": 159.61,                          // hedge cost + buy leg - sell leg
+          "costWithoutHedgeEur": 187.68,                    // net usage x price: today's costEur
+          "connectionsReported": 3, "partial": false },
+        { "pos": 34, "start": "2026-11-01T08:15:00+01:00", "end": "2026-11-01T08:30:00+01:00", "dstPass": null,
+          "hedgeKwh": 2500.0, "hedgeCostEur": 175.0,       // a future or unmetered interval: the hedge only
+          "netUsageKwh": null, "priceEurPerKwh": null, "coveredKwh": null, "shortKwh": null, "longKwh": null,
+          "buyLegEur": null, "sellLegEur": null, "actualCostEur": null, "costWithoutHedgeEur": null,
+          "connectionsReported": 0, "partial": false }
+      ] }
   ],
-  "totals": { "metered": { "netUsageKwh": 0, "hedgeKwh": 0, "hedgeCostEur": 0, "coveredKwh": 0, "shortKwh": 0, "longKwh": 0,
-                             "buyLegEur": 0, "sellLegEur": 0, "actualCostEur": 0 },
-               "range":   { "hedgeKwh": 0, "hedgeCostEur": 0 } },
-  "blocks": [ { "id": "...", "reference": "...", "direction": "BUY", "shape": "BASE",
-                 "deliveryStart": "...", "deliveryEnd": "...", "powerMw": 10.0, "priceEurPerMwh": 70.0 } ]
+  "blocks": [ { "id": "...", "reference": "...", "direction": "BUY", "shape": "BASE", "periodCode": "...",
+                 "deliveryStart": "2026-11-01", "deliveryEnd": "2026-12-01", "powerMw": 10.0, "priceEurMwh": 70.0 } ],
+  "totals": {
+    "meteredIntervals": 1, "costedIntervals": 1, "partialIntervals": 0,
+    "netUsageKwh": 2310.5, "coveredKwh": 2310.5, "shortKwh": 0.0, "longKwh": 189.5,
+    "coveragePct": 100.0,                                   // sum covered / sum max(U, 0); null when that sum is 0
+    "meteredHedgeKwh": 2500.0, "meteredHedgeCostEur": 175.0,
+    "rangeHedgeKwh": 5000.0, "rangeHedgeCostEur": 350.0,    // the whole range, measured or not
+    "cost": { "hedgeCostEur": 175.0, "buyLegEur": 0.0, "sellLegEur": 15.39,
+              "actualCostEur": 159.61, "costWithoutHedgeEur": 187.68 }   // metered AND priced intervals only; null when none
+  }
 }
 ```
 

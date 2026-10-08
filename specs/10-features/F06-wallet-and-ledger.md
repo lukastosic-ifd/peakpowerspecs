@@ -24,6 +24,8 @@
 > — keeping this file's own Debit/Credit/Available-after ledger columns **[F06 §7]** unchanged. Deposit and
 > Withdraw are now focused pages of their own, and every deposit and withdrawal has a permanent detail page.
 > `wallet-ledger.svg` in §8 is redrawn against this built UI. See also **[DEC-162]**, **[DEC-163]**.
+>
+> ⚠ **Amended 2026-10-08 by [DEC-176] (8, 9): the Settled and Reserved summary, the Statement action, the Ledger / Deposits / Withdrawals views, the filters, the search and the export are removed from the customer Balance page. Activity is a table of Type, Amount and Date with a view action, and paging. The Bank account card moves to the Company page.**
 
 Every customer **company** has one prepaid EUR wallet **[AS-02]**, shared by all of its accounts. It
 funds trades, absorbs invoices, and is the single place a customer can answer "where did my money
@@ -106,7 +108,7 @@ availableBalance  = settledBalance − reservedAmount
 | Balance | What it means | Where it appears |
 | --- | --- | --- |
 | **Settled** | Money actually in the wallet | Ledger running balance, statements |
-| **Reserved** | Committed to accepted-but-unconfirmed trades, and to requested-but-unpaid withdrawals **[DEC-83]** | Wallet header, trade screens |
+| **Reserved** | Committed to accepted-but-unconfirmed trades, and to requested-but-unpaid withdrawals **[DEC-83]** | Wallet header, trade screens; ⚠ **no longer in the customer Balance page header since 2026-10-08, [DEC-176] (8)** |
 | **Available** | What can be committed right now | Everywhere a spending decision is made |
 
 **Available balance is the number the customer cares about**, so it is the largest one on the screen.
@@ -344,12 +346,12 @@ bookkeeping program either — it learns about both from its bank feed **[DEC-10
 
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
-| F06-R18 | Both customer and employee can view the full ledger, newest first, paginated. | Must |
-| F06-R19 | Each row shows: date/time, type (human-readable), description, direction, amount, resulting available balance, and — for customer-initiated movements — **the colleague who caused it**. | Must |
-| F06-R20 | Each row links to the object that caused it — trade, ~~invoice,~~ payment, ~~credit note~~ withdrawal request (⚠ **amended 2026-08-19 by [DEC-77]**: no ledger row can link to an invoice or a credit note any more, because neither ever produces one). Clicking a reservation row opens that trade **(explicitly required by the brief)**. ⚠ **Built for trades 2026-09-29 by [DEC-167]** — every `TRADE_*` entry links to its trade (`caused_by_type = Trade`) and carries the reconciliation mapping in the same commit as its first producer. | Must |
-| F06-R21 | The ledger can be filtered by date range, type, direction and **acting account**, and searched by description or linked reference. | Must |
-| F06-R22 | The ledger can be exported to CSV and PDF for a chosen period. | Should |
-| F06-R23 | A period statement shows opening balance, movements grouped by type, and closing balance. | Should |
+| F06-R18 | Both customer and employee can view the full ledger, newest first, paginated. ⚠ **Kept 2026-10-08 by [DEC-176] (8): paging stays in the customer table (Previous / Next).** | Must |
+| F06-R19 | Each row shows: date/time, type (human-readable), description, direction, amount, resulting available balance, and — for customer-initiated movements — **the colleague who caused it**. ⚠ **Amended 2026-10-08 by [DEC-176] (8): the customer table shows Type, signed Amount and Date, with a view action; description, resulting balance and the colleague are not shown in the customer portal. The employee ledger is unaffected.** | Must |
+| F06-R20 | Each row links to the object that caused it — trade, ~~invoice,~~ payment, ~~credit note~~ withdrawal request (⚠ **amended 2026-08-19 by [DEC-77]**: no ledger row can link to an invoice or a credit note any more, because neither ever produces one). Clicking a reservation row opens that trade **(explicitly required by the brief)**. ⚠ **Satisfied 2026-10-08 by [DEC-176] (8): the view action opens the deposit, the withdrawal, or the trade behind a Margin or Balance payment row; where no target is found the action is omitted.** ⚠ **Built for trades 2026-09-29 by [DEC-167]** — every `TRADE_*` entry links to its trade (`caused_by_type = Trade`) and carries the reconciliation mapping in the same commit as its first producer. | Must |
+| F06-R21 | The ledger can be filtered by date range, type, direction and **acting account**, and searched by description or linked reference. ⚠ **Amended 2026-10-08 by [DEC-176] (8): removed from the customer portal.** | Must |
+| F06-R22 | The ledger can be exported to CSV and PDF for a chosen period. ⚠ **Amended 2026-10-08 by [DEC-176] (8): removed from the customer portal; [OQ-113] is moot.** | Should |
+| F06-R23 | A period statement shows opening balance, movements grouped by type, and closing balance. ⚠ **Amended 2026-10-08 by [DEC-176] (8): the Statement action is removed from the customer portal.** | Should |
 | F06-R24 | Employees see the same ledger, plus the acting employee on manual entries. | Must |
 
 ### Employee operations
@@ -414,6 +416,8 @@ bookkeeping program either — it learns about both from its bank feed **[DEC-10
     size.
 
 ## 7. Ledger presentation
+
+⚠ **Superseded for customers 2026-10-08 by [DEC-176] (8): the customer table shows Type, signed Amount (+ or −, available-balance movements only), Date and a view action; the held part of a settled trade and of a paid withdrawal is not shown again. The Debit / Credit / Available after layout below remains the employee-side specification.**
 
 The required format, as described in the brief:
 

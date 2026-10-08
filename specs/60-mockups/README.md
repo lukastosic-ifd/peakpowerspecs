@@ -33,7 +33,7 @@ provider now redirects to.
 
 | Screen | Feature | What it shows |
 | --- | --- | --- |
-| [customer-dashboard.svg](customer-dashboard.svg) | [F03](../10-features/F03-consumption-visualisation.md) | Wallet, coverage, exposure, a live offer banner with countdown, price strip, chart, activity feed |
+| [customer-dashboard.svg](customer-dashboard.svg) | [F03](../10-features/F03-consumption-visualisation.md) | Wallet, coverage, exposure, a live offer banner with countdown, price strip, chart, activity feed | ⚠ not redrawn: [DEC-176] (2) removes the KPI row, price strip and activity feed
 | [ean-list.svg](ean-list.svg) | [F01](../10-features/F01-customer-and-metering-points.md) | Portfolio of connections with friendly names, data freshness and coverage per site |
 | [ean-detail.svg](ean-detail.svg) | [F01](../10-features/F01-customer-and-metering-points.md) · [F02](../10-features/F02-metering-data-ingestion.md) | Label editor, master data, 14-day data-quality strip, block positions |
 | [chart-day-view.svg](chart-day-view.svg) | [F03](../10-features/F03-consumption-visualisation.md) | **The core screen.** 96 intervals, block step line, covered/uncovered bands, peak-window shading, interval tooltip |

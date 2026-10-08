@@ -812,10 +812,6 @@ export function walletLedger() {
   });
   b += table(cx + 18, acY + 94, cw - 36, cols, rows, { rowH: 34 });
 
-  const footY = acY + 94 + 30 + rows.length * 34 + 22;
-  b += text(cx + 18, footY, 'Trade holds and trade debits include VAT; prices are quoted without VAT.', { size: 10.5, fill: C.faint });
-  b += text(cx + 18, footY + 16, 'This balance funds trading only. Delivery invoices are paid by bank transfer and are never taken from it.', { size: 10.5, fill: C.faint });
-
   return svgDoc(b, { label: 'Customer portal — Balance overview' });
 }
 

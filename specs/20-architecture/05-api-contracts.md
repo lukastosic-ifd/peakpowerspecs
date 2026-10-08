@@ -928,7 +928,7 @@ never amended. It is listed here now, so the section's inventory is complete:
 mechanism from an administration screen, and *"add a user"* has now left that approval list
 altogether. What is unchanged: company **details** are still maintained by PeakPower employees, and a
 bank account **cannot be edited once added** — correcting an IBAN is *deactivate the old, add the
-new*, two audited events with two named actors **[F01-R44]**, **[F01-R46]**. ⚠ **Amended 2026-09-28 by [DEC-165]:** *who* and *how* changed, not *whether it can be edited* — a company **admin** replaces the account from the Balance page, `POST /bank-account` §2.5, as **one** operation recorded against one acting account; it is still never edited.
+new*, two audited events with two named actors **[F01-R44]**, **[F01-R46]**. ⚠ **Amended 2026-09-28 by [DEC-165]:** *who* and *how* changed, not *whether it can be edited* — a company **admin** replaces the account from the Balance page, `POST /bank-account` §2.5, as **one** operation recorded against one acting account; it is still never edited. ⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.**
 
 ⚠ **The company's four-eyes mode — new 2026-09-29 by [DEC-166].** Six routes at `/api/v1/company/four-eyes`,
 tenant-scoped like the other company routes and tagged *Company*. The read is open to every member of the token's

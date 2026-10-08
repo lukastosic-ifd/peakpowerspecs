@@ -591,7 +591,7 @@ is how a "second" approval could otherwise be manufactured by clicking twice.
 ⚠ **Added 2026-09-28.** The `customer.customer_bank_account` DDL above is the 2026-08-19 design
 **[DEC-71]**, kept for the record. **Migration 26** (`CompanyBankAccounts`) built the table, and it differs
 from that sketch in the respects below. A company **admin** now adds or replaces the account from the
-Balance page, so a row is written by the customer host, not by an employee **[F01-R44]**.
+Balance page, so a row is written by the customer host, not by an employee **[F01-R44]**. ⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.**
 
 | Design sketch above | As built |
 | --- | --- |

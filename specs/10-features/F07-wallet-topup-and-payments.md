@@ -98,7 +98,7 @@ neither can be a stub.
 > **deposit-intent reference [F07-R23]**, which identifies one expected payment rather than a wallet;
 > **IBAN matching is the fallback for the customer who omits it [F07-R21]**.
 
-> **The wallet funds trading only — [DEC-77].** A deposit is not sized against an invoice, because
+> **The wallet funds trading only — [DEC-77].** ⚠ **Amended 2026-10-08 by [DEC-176] (12): the Balance page no longer repeats this as a footnote under its table; the rule stands.** A deposit is not sized against an invoice, because
 > **no invoice is ever settled from the wallet**: monthly day-ahead, export and energiebelasting
 > amounts are pushed to the bookkeeping program **[DEC-88]** and paid to the bank. Top-up sizing is
 > therefore driven by **the volume the customer intends to trade** — which is exactly why **[DEC-84]**

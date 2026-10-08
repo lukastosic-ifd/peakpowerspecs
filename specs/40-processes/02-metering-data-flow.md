@@ -139,6 +139,7 @@ sequenceDiagram
     PL->>PL: version 2 → current · version 1 superseded
     PL->>PL: rebuild rollups
     PL->>C: chart updates, "corrected on 3 Sep"
+    Note over PL,C: Amended 2026-10-08 by DEC-176 (12) - the corrected on note is no longer shown; the chart still updates
 
     Note over PL: 5 Sep — August invoice run, on provisional data
     PL->>C: invoice issued, 31 Aug disclosed as provisional

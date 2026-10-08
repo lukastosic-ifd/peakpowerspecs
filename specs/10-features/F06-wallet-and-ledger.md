@@ -33,7 +33,7 @@ go" — and, because every movement names the account that caused it, "who spent
 entries are never edited or deleted, and each one records the balances that resulted from it.
 
 ⚠ **Amended 2026-08-19 by [DEC-77] — "absorbs invoices" is no longer true.** The wallet **funds
-trading only**. There are two money paths and they do not meet:
+trading only**. ⚠ **Amended 2026-10-08 by [DEC-176] (12): the customer Balance page no longer carries a footnote saying so; the rule stands.** There are two money paths and they do not meet:
 
 | Path | What moves | Where it settles |
 | --- | --- | --- |
@@ -432,7 +432,7 @@ The required format, as described in the brief:
 
 Reference cells in bold are links. Three things this table now shows and did not before:
 
-- **The trade rows are VAT-inclusive [DEC-78]** — €18 400,00 ex-VAT × 1,21 = €22 264,00. The
+- **The trade rows are VAT-inclusive [DEC-78]** — €18 400,00 ex-VAT × 1,21 = €22 264,00. ⚠ **Amended 2026-10-08 by [DEC-176] (12): the customer Balance page no longer has a footnote saying that holds and debits include VAT.** The
   description says so, because the price the customer was quoted was the ex-VAT one **[DEC-26]**.
 - **The "Trade confirmed" row** shows the reservation converting to a settled debit: available is
   unchanged because the money was already committed, while the settled balance drops.

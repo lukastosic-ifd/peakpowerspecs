@@ -133,6 +133,7 @@ sequenceDiagram
     P->>PL: 1 Sep 09:14 — document v1 (96 points)
     PL->>PL: version 1 → current · state PROVISIONAL
     PL->>C: chart shows data, labelled provisional
+    Note over PL,C: Amended 2026-10-08 by DEC-176 (4) - not shown in the customer portal
 
     P->>PL: 3 Sep 11:02 — corrected document (96 points)
     PL->>PL: version 2 → current · version 1 superseded
@@ -151,6 +152,7 @@ sequenceDiagram
     Note over PL: 14 Sep — 10 working days elapsed
     PL->>PL: state → FINAL · "nothing newer arrived in the window" · F02-R23
     PL->>C: figures no longer labelled provisional
+    Note over PL,C: Amended 2026-10-08 by DEC-176 (4) - not shown in the customer portal
 
     Note over P,C: months later — DEC-98 reverses DEC-57
     P->>PL: 20 Nov — reconciliation for 31 Aug, on the feed or entered manually (F02-R47)
@@ -227,7 +229,7 @@ stateDiagram-v2
 | --- | --- | --- | --- |
 | `NO_DATA` | Gap | Excluded | Blocks the run |
 | `PARTIAL` | Gap for missing intervals, marked | Flagged | Blocks the run |
-| `PROVISIONAL` | Normal | Labelled provisional | **Allowed**, disclosed on the invoice |
+| `PROVISIONAL` | Normal | Labelled provisional ⚠ **Amended 2026-10-08 by [DEC-176] (4): not shown in the customer portal.** | **Allowed**, disclosed on the invoice |
 | `FINAL` | Normal | Clean | Allowed. ⚠ **Amended 2026-08-19 by [DEC-98]** — allowed because nothing newer arrived in the window, **not** because nothing can arrive later. A later version reopens the date and settles through a correction invoice **[DEC-99]** rather than being prevented |
 
 ⚠ **What [DEC-98] costs, stated rather than absorbed.** Every consumer of `FINAL` — the invoice run,

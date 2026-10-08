@@ -676,7 +676,7 @@ Coverage and settlement figures are only as good as the interval data. Each deri
 | --- | --- | --- |
 | `NO_DATA` | No PVNed document received for this delivery date yet | Gap in the chart, not a zero |
 | `PARTIAL` | Fewer intervals received than the day requires (96 / 92 / 100) | Chart shows the gap; totals flagged |
-| `PROVISIONAL` | Complete, but inside the 10-working-day correction window | Chart normal; totals labelled *provisional* |
+| `PROVISIONAL` | Complete, but inside the 10-working-day correction window | Chart normal; totals labelled *provisional* ⚠ **Amended 2026-10-08 by [DEC-176] (4): not shown in the customer portal.** |
 | `FINAL` | ~~Correction window closed~~ ⚠ **Amended 2026-08-19 by [DEC-98], [DEC-99]** — the 10-working-day window has closed and **no correction has arrived yet**. It is not a terminal state | Clean — but never labelled "closed" to the customer |
 
 **Zero is a value; missing is not.** A missing interval must never be rendered or summed as `0`.

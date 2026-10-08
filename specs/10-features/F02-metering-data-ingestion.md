@@ -71,7 +71,7 @@ behaviour around it.
 | Employee | see why a message failed and replay it after a fix | a bad day doesn't require the BRP to resend |
 | Employee | be alerted when a metering point stops reporting | I can chase it |
 | Employee | enter a day's data by hand when the BRP cannot resend it | a date that will never arrive does not block invoicing forever **[DEC-60]** |
-| Customer user | see clearly whether the data I'm looking at is provisional or final | I know how much to trust a number |
+| Customer user | see clearly whether the data I'm looking at is provisional or final ⚠ **Amended 2026-10-08 by [DEC-176] (4): not shown in the customer portal.** | I know how much to trust a number |
 | Finance | know that an invoiced month cannot silently change underneath me | a correction becomes a visible **correction invoice** for the delta whenever it lands, not a mystery **[DEC-99]** |
 
 ## 3. Ingestion flow

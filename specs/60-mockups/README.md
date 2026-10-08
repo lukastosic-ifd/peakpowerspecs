@@ -85,7 +85,7 @@ long overnight; netting to one number hides the thing the customer is trying to 
 
 **Provisional data is labelled everywhere it appears** — a badge in the toolbar, a note on the
 invoice, a state cell in the data strip. This is [NFR-48], and it is a usability requirement with
-financial consequences.
+financial consequences. ⚠ **Amended 2026-10-08 by [DEC-176] (4): not shown in the customer portal.** The badge and the state cell are removed; the invoice disclosure stays.
 
 **The countdown appears three times** on the customer side — dashboard banner, offer screen ring,
 notification — because a missed reaction window is a lost trade for both parties.

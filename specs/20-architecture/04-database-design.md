@@ -751,6 +751,7 @@ CREATE TABLE customer.onboarding_application (
     password_hash        varchar(200) NOT NULL,     -- Argon2id, from the first keystroke
     terms_accepted_at    timestamptz NOT NULL,
     terms_version_id     uuid REFERENCES legal.document_version(id) ON DELETE RESTRICT,  -- [DEC-174]: the Terms of Use version current when the applicant accepted; NULL if none was published. Written by the server, never sent by the client
+    terms_language       varchar(2) CHECK (terms_language IN ('en', 'nl')),  -- [DEC-177]: the language actually served; NULL where terms_version_id is NULL and for rows from before migration 37
 
     organization_name    varchar(200),              -- steps 2-4
     legal_entity_type    text,                      -- BV | NV | EENMANSZAAK | VOF | ...
@@ -1839,6 +1840,8 @@ the answer changes is how many drafts the bookkeeping program is asked to number
 
 ### 3.7 Legal documents — [DEC-174], added 2026-10-05
 
+⚠ **Amended 2026-10-09 by [DEC-177] (2), (5), (8): a version is one edition with an English and a Dutch file.** `file_name`, `size_bytes` and `sha256` move from `legal.document_version` to `legal.document_file`, which is now keyed by `(version_id, language)`, and `onboarding_application` gains `terms_language`. The DDL below is the shape after migration 37 (§7.10); the first-release shape (one file per version, `version_id` as the file's key) is in migration 36 (§7.9).
+
 Platform **reference data**: no `customer_id`, **no row-level security**, in the style of `market`. Three tables. The file bytes live in their own table so that listing versions never loads a file. Feature: [F16](../10-features/F16-legal-documents.md).
 
 ```sql
@@ -1854,26 +1857,29 @@ CREATE TABLE legal.document_type (
     CONSTRAINT ck_document_type_built_in_visible CHECK (NOT built_in OR visible_to_customers)
 );
 
-CREATE TABLE legal.document_version (                         -- metadata only
+CREATE TABLE legal.document_version (                         -- one edition; metadata only
     id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     type_id                    uuid NOT NULL REFERENCES legal.document_type(id) ON DELETE RESTRICT,
     version_number             int  NOT NULL,                  -- 1, 2, 3 … per type, no gaps
-    file_name                  varchar(200) NOT NULL,          -- sanitised, display only
-    size_bytes                 bigint NOT NULL,                -- 1 … 10 485 760
-    sha256                     varchar(64) NOT NULL,           -- lower-case hex; the ETag
     effective_from             timestamptz NOT NULL,
     uploaded_at                timestamptz NOT NULL,
     uploaded_by_employee_id    uuid REFERENCES employee.employee(id) ON DELETE RESTRICT,  -- NULL = a system import
     change_note                varchar(500),
     UNIQUE (type_id, version_number),
-    CONSTRAINT ck_document_version_number_positive CHECK (version_number >= 1),
-    CONSTRAINT ck_document_version_size CHECK (size_bytes BETWEEN 1 AND 10485760),
-    CONSTRAINT ck_document_version_sha256_format CHECK (sha256 ~ '^[0-9a-f]{64}$')
+    CONSTRAINT ck_document_version_number_positive CHECK (version_number >= 1)
 );
 
-CREATE TABLE legal.document_file (
-    version_id  uuid PRIMARY KEY REFERENCES legal.document_version(id) ON DELETE CASCADE,
-    content     bytea NOT NULL
+CREATE TABLE legal.document_file (                            -- one row per language of an edition
+    version_id  uuid NOT NULL REFERENCES legal.document_version(id) ON DELETE CASCADE,
+    language    varchar(2) NOT NULL,                           -- 'en' | 'nl'
+    file_name   varchar(200) NOT NULL,                         -- sanitised, display only
+    size_bytes  bigint NOT NULL,                               -- 1 … 10 485 760
+    sha256      varchar(64) NOT NULL,                          -- lower-case hex; the ETag
+    content     bytea NOT NULL,
+    PRIMARY KEY (version_id, language),
+    CONSTRAINT ck_document_file_language CHECK (language IN ('en', 'nl')),
+    CONSTRAINT ck_document_file_size CHECK (size_bytes BETWEEN 1 AND 10485760),
+    CONSTRAINT ck_document_file_sha256_format CHECK (sha256 ~ '^[0-9a-f]{64}$')
 );
 ```
 
@@ -1883,13 +1889,14 @@ CREATE TABLE legal.document_file (
 | The **current** version is the highest `version_number` with `effective_from <= now`; a **scheduled** one has `effective_from > now`; **at most one scheduled per type** | The domain and the upload handler. Not a database constraint: "scheduled" depends on the clock |
 | A **withdrawn** scheduled version is hard-deleted with its file (`ON DELETE CASCADE`); an effective version is never deleted | The withdraw endpoint, which asks the domain (`CheckCanBeWithdrawn`) under the type's row lock and answers `409` for an effective version. **Not a database rule:** the `DELETE` grant exists for the withdrawal, and the database cannot tell a scheduled row from an effective one without the application's clock |
 | `version_number` = max + 1 per type, **allocated under `SELECT … FOR UPDATE` on the type's row**, so two concurrent uploads cannot both take the next number and a withdrawn scheduled number is reused | The upload handler; `UNIQUE (type_id, version_number)` is the net |
+| **Both languages on every new version**; the `language` of a file is `en` or `nl` | The domain and the upload handler (`fileEn`, `fileNl`); `ck_document_file_language` and the primary key allow a single language, so a version with one file is *possible* in the table and is **not** produced by any code path. A `CHECK` cannot count a version's files. Migration 37 leaves none (§7.10) |
 | `uploaded_by_employee_id` is nullable | A null is the Privacy Statement v1 import, which has no employee. The endpoint resolves it from the signed-in employee's username (the token carries the username, not the row id) |
 
-**Seed.** The migration inserts two built-in, visible types: `terms-of-use` (*Terms of Use*, sort 10) and `privacy-statement` (*Privacy Statement*, sort 20). Privacy Statement **v1** is **not** a migration row: an idempotent Migrator seeder, `LegalDocumentSeeder`, outside the demo-seeding gate, inserts it from an embedded copy of the portal's PDF only when `privacy-statement` has no version. The Terms of Use have no version until an admin uploads one.
+**Seed.** The migration inserts two built-in, visible types: `terms-of-use` (*Terms of Use*, sort 10) and `privacy-statement` (*Privacy Statement*, sort 20). Privacy Statement **v1** is **not** a migration row: an idempotent Migrator seeder, `LegalDocumentSeeder`, outside the demo-seeding gate, inserts it from an embedded copy of the portal's PDF only when `privacy-statement` has no version. ⚠ **Amended 2026-10-09 by [DEC-177] (8):** it inserts that English PDF as **both** the `en` and the `nl` file of v1 (the same bytes, name, size and SHA-256). The Terms of Use have no version until an admin uploads one.
 
-**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly, as for `market`: `app_customer_role` gets `SELECT` on the three tables; `app_employee_role` gets `SELECT`, `INSERT` and a **column-scoped** `UPDATE (title, visible_to_customers, sort_order)` on `document_type`, so `key` and `built_in` are immutable by grant, and `SELECT`, `INSERT`, `DELETE` on `document_version` and `document_file`. No `UPDATE` on either version table: a version is immutable. `SELECT … FOR UPDATE` on `document_type` works with the column-scoped grant. Both roles get `USAGE` on the schema; no default privileges are added for `legal`. `tools/verify-migrator.sh` pins these grants and `LegalDocumentsSchemaTests` exercises them on the real login roles.
+**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly, as for `market`: `app_customer_role` gets `SELECT` on the three tables; `app_employee_role` gets `SELECT`, `INSERT` and a **column-scoped** `UPDATE (title, visible_to_customers, sort_order)` on `document_type`, so `key` and `built_in` are immutable by grant, and `SELECT`, `INSERT`, `DELETE` on `document_version` and `document_file`. No `UPDATE` on either version table: a version is immutable. `SELECT … FOR UPDATE` on `document_type` works with the column-scoped grant. Both roles get `USAGE` on the schema; no default privileges are added for `legal`. `tools/verify-migrator.sh` pins these grants and `LegalDocumentsSchemaTests` exercises them on the real login roles. ⚠ **Amended 2026-10-09 by [DEC-177]:** the grants are unchanged; `document_file` keeps `SELECT` for the customer role and `SELECT`, `INSERT`, `DELETE` (no `UPDATE`) for the employee role, and the new primary key and columns need no new grant. `verify-migrator.sh` pins the file columns, the language `CHECK`, the seeded v1's two file rows (one size and SHA-256) and the `terms_language` column.**
 
-**Consent.** `customer.onboarding_application.terms_version_id` (§3.1) is a nullable foreign key to `legal.document_version`. This is a **cross-schema edge from `customer` to `legal`**, admitted on the same reasoning as `customer.metering_point.brp_id` → `metering.brp` (§1): `legal` is reference data whose only outbound key is `document_version.uploaded_by_employee_id` → `employee.employee`, so the edge adds no cycle between aggregates. The column is indexed. Because a version that has been **accepted against** is effective, the withdrawal rule (never delete an effective version) also keeps this key from dangling; the foreign key is `ON DELETE RESTRICT`, so a stray delete fails loudly.
+**Consent.** `customer.onboarding_application.terms_version_id` (§3.1) is a nullable foreign key to `legal.document_version`. This is a **cross-schema edge from `customer` to `legal`**, admitted on the same reasoning as `customer.metering_point.brp_id` → `metering.brp` (§1): `legal` is reference data whose only outbound key is `document_version.uploaded_by_employee_id` → `employee.employee`, so the edge adds no cycle between aggregates. The column is indexed. Because a version that has been **accepted against** is effective, the withdrawal rule (never delete an effective version) also keeps this key from dangling; the foreign key is `ON DELETE RESTRICT`, so a stray delete fails loudly. ⚠ **Amended 2026-10-09 by [DEC-177] (5):** `customer.onboarding_application.terms_language varchar(2) NULL`, `CHECK (terms_language IN ('en', 'nl'))` (`ck_onboarding_application_terms_language`), holds the language **actually served** beside `terms_version_id`; it is null where `terms_version_id` is null and for every row that existed before migration 37 (no backfill: the single-file era, and the two copies of that version are identical bytes).**
 
 ## 4. Materialised rollups
 
@@ -2210,6 +2217,19 @@ Roll forward only, as every migration here.
 | `customer.onboarding_application` **[DEC-174]** | One nullable column, `terms_version_id`, its index and its foreign key (`ON DELETE RESTRICT`) | No backfill: every application before the migration has no recorded version, and none can be reconstructed |
 | Privacy Statement v1 **[DEC-174]** | **Not a migration:** the Migrator's `LegalDocumentSeeder` | Idempotent, every pass, only when the type has no version |
 | The migration pins, `PeakPowerDbContextModelSnapshot.cs`, `tools/verify-migrator.sh` and both OpenAPI snapshots | Updated in the same commits | The history length, the grant pins, the schema list and the route classification move with the migration. `verify-migrator.sh` also pins the seeded v1 to the embedded file's size and SHA-256 |
+
+### 7.10 The 2026-10-09 legal documents in English and Dutch migration
+
+⚠ **New 2026-10-09 by [DEC-177]: one migration, migration 37 `LegalDocumentLanguages`**, the next after `LegalDocuments` (migration 36, §7.9). Roll forward only. It changes a schema that already holds rows, so it **backfills**, and the backfill has a test (the `CompanyBankAccountsBackfillTests` pattern): existing single-file versions become **two identical rows**.
+
+| Change | Form | Note |
+| --- | --- | --- |
+| `legal.document_file` **[DEC-177]** | Add `language`, `file_name`, `size_bytes` and `sha256`; backfill each existing row from its version with `language = 'en'`; insert, for every one of those rows, an `nl` row with the **same bytes, name, size and SHA-256** (two identical rows per existing version); then make the columns `NOT NULL`, change the primary key to `(version_id, language)` and add `ck_document_file_language`, `ck_document_file_size` and `ck_document_file_sha256_format` | Every version holds both languages afterwards, so the fallback of F16-R38 has nothing to fall back on (it stays built and tested). Each existing file is stored twice |
+| `legal.document_version` **[DEC-177]** | Drop `file_name`, `size_bytes`, `sha256` and the two `CHECK`s that moved | After the backfill, in the same migration. Version ids do not change, so `terms_version_id` foreign keys stay valid |
+| `customer.onboarding_application` **[DEC-177]** | One nullable column, `terms_language varchar(2)` with `ck_onboarding_application_terms_language` | **No backfill:** pre-existing rows keep `NULL` (the single-file era; the version's two copies are identical bytes). The write grant that covers `terms_version_id` covers the new column |
+| Privacy Statement v1 **[DEC-177]** | **Not a migration:** the Migrator's `LegalDocumentSeeder`, now importing the English PDF in both languages | Idempotent; acts only when the type has no version, so a database that migrated keeps its two copies |
+| Audit | **Nothing rewritten** | Old `LEGAL_DOCUMENT_UPLOADED` payloads keep their single file fields; new ones carry `files` |
+| The migration pins, `PeakPowerDbContextModelSnapshot.cs`, `tools/verify-migrator.sh`, `LegalDocumentsSchemaTests` and both OpenAPI snapshots | Updated in the same commits | The history length, the file columns and `CHECK` names, the seeded v1's two rows, the `terms_language` column and the changed contracts move with the migration. Run `tools/verify-migrator.sh` before landing |
 
 ## 8. Retention & archival
 

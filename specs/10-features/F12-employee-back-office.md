@@ -278,7 +278,7 @@ removed. What remains is review, push, and the status of the push.
 | --- | --- | :--: |
 | F12-R62 | The platform is operated after go-live by a **single named operator — Thinh [DEC-104]**. Operational alerts and job/integration failures route to that one person; there is no rota and no secondary. The operator role sees integration and background-job health first on the home screen **[F12-R05]**. | Must |
 | F12-R63 | ⚠ **The single-point-of-failure is recorded, not solved.** With one operator and no rota, a **P1 alert raised while that person is unavailable is not seen by anyone**. The back office mitigates only what a screen can mitigate: every alert is **persistent and visible in the portal**, not fire-and-forget email, so an unacknowledged P1 is still on the operations home when someone next looks; and every alert shows **when it was raised and whether it was acknowledged, by whom**. This is a smaller mitigation than a rota and is not a substitute for one — see [70-delivery/02-risks.md](../70-delivery/02-risks.md), which owns the risk. | Must |
-| F12-R68 | ⚠ **New 2026-10-05 by [DEC-174].** A **Legal documents** screen lets staff see, and admins manage, the versioned Terms of Use, Privacy Statement and any custom document type: the rail item, list, detail, upload, scheduled-version withdrawal, download and the copyable public link are specified in **[F16](F16-legal-documents.md)**, **[F16-R25]** to **[F16-R30]** and **[F16-R37]**. Every staff member sees it; only `employee.admin` (the `BackOfficeAdmin` policy) can write. | Must |
+| F12-R68 | ⚠ **Amended 2026-10-09 by [DEC-177] (6):** every document is in English and Dutch. ⚠ **New 2026-10-05 by [DEC-174].** A **Legal documents** screen lets staff see, and admins manage, the versioned Terms of Use, Privacy Statement and any custom document type: the rail item, list, detail, upload, scheduled-version withdrawal, download and the copyable public link are specified in **[F16](F16-legal-documents.md)**, **[F16-R25]** to **[F16-R30]** and **[F16-R37]**; the upload takes an English and a Dutch PDF, and the screen shows the language beside the version (a Languages column, two downloads, two slots) **[F16-R26]** to **[F16-R29]**, **[F16-R38]** to **[F16-R40]**. Every staff member sees it; only `employee.admin` (the `BackOfficeAdmin` policy) can write. | Must |
 
 ### View-as-customer
 
@@ -339,7 +339,7 @@ removed. What remains is review, push, and the status of the push.
 | Ingestion health | [`employee-ingestion-health.svg`](../60-mockups/employee-ingestion-health.svg) | ⚠ Per-BRP rather than PVNed-only **[F12-R51]**; adds unassigned-BRP configuration errors **[F12-R26]** |
 | **Energiebelasting brackets** | *No mockup yet* | **New [DEC-74]**. The largest new screen in the round **[F12-R44]**…**[F12-R47]** |
 | **BRP administration** | *No mockup yet* | **New [DEC-69]** — **[F12-R49]** |
-| **Legal documents** | *No mockup yet* | **New [DEC-174]** — **[F12-R68]**, [F16](F16-legal-documents.md) **[F16-R25]**…**[F16-R30]** |
+| **Legal documents** | *No mockup yet* | **New [DEC-174]**, ⚠ **amended 2026-10-09 by [DEC-177]** (English and Dutch files) — **[F12-R68]**, [F16](F16-legal-documents.md) **[F16-R25]**…**[F16-R30]** |
 | **Withdrawal requests** | *No mockup yet* | **New [DEC-83]** — **[F12-R53]**…**[F12-R55]**. ⚠ **Built 2026-09-29 as the Withdrawals desk — [DEC-166]**; still no mockup |
 | **Unmatched incoming payments** | *No mockup yet* | **New [DEC-106]** — **[F12-R56]**, **[F12-R57]** |
 

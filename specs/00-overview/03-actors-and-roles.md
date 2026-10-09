@@ -62,7 +62,7 @@ A person at the customer **company** who holds a **customer account** and uses t
 | **Frequency** | Weekly to daily during volatile markets; monthly otherwise |
 | **Expertise** | Energy-aware but not a trader. Comfortable with MWh and €/MWh; will not know what an ISP is |
 | **Context** | Desktop, office hours, often comparing the portal against their own consumption planning ⚠ **Amended 2026-10-02 by [DEC-173]: the customer portal is also used on phones and tablets, so it is responsive; this persona's desktop context is unchanged.** |
-| **Key screens** | Consumption chart, price indications, trade wizard, offer countdown, wallet, invoices — and, for an **admin** of a company with four-eyes enabled, the approval queue **[DEC-71]** |
+| **Key screens** | Consumption chart, price indications, trade request (Prices page), offer countdown, wallet, invoices — and, for an **admin** of a company with four-eyes enabled, the approval queue **[DEC-71]** |
 
 #### One company, several accounts
 

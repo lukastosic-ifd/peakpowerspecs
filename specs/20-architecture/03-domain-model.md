@@ -205,7 +205,7 @@ removes a class of bug rather than a line of code.
 
 **On `Mw.TradeIncrement`.** ⚠ **Reversed 2026-08-19 by [DEC-70]** — **[DEC-32]** set the minimum and
 the increment at 0,1 MW; both are now 0,01 MW, ten times finer. The constant is on the value object
-rather than in a validator so the trade wizard, the API contract and the allocation rounding read the
+rather than in a validator so the request panel, the API contract and the allocation rounding read the
 same number. Cost: every per-EAN allocation is now a multiple of 0,01 MW, so the largest-remainder
 split in `IBlockVolumeCalculator` distributes a tail that is ten times smaller and ten times more
 frequent. Nothing about the algorithm changes; the residue does.

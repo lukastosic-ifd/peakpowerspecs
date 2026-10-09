@@ -19,7 +19,7 @@ const SCREENS = [
   ['chart-day-view',            cust.chartDayView,          'Customer portal — day chart with block overlay'],
   ['chart-month-view',          cust.chartMonthView,        'Customer portal — month chart'],
   ['price-indications',         cust.priceIndications,      'Customer portal — price indications'],
-  ['trade-wizard',              cust.tradeWizard,           'Customer portal — trade request wizard'],
+  ['trade-wizard',              cust.tradeWizard,           'Customer portal — trade request wizard (retired, DEC-178)'],
   ['trade-offer-countdown',     cust.tradeOfferCountdown,   'Customer portal — offer with countdown'],
   ['trade-history',             cust.tradeHistory,          'Customer portal — trade history'],
   ['wallet-ledger',             cust.walletLedger,          'Customer portal — Balance overview'],

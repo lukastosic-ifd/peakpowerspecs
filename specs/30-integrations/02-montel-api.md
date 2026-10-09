@@ -354,7 +354,7 @@ feed-in fee touch export volume. For this integration that means:
 **configurable markup, default 2%** — reference data with a default, not a constant — and an indication
 is **never firm unless PeakPower says so**; only PeakPower's response to a trade request binds
 **[F04-R05]**. Which side of the market is marked up is carried on **[OQ-23]** (§3): the comment column
-governs and says **bid**, the answer column says ask. ⚠ **2026-09-29 [DEC-167] reverses this for the customer:** the Prices page and the trade-wizard estimate now show the **raw** quote; the margin lives in the firm offer price the trader types, and the markup table is unused. Licence caveat before Montel goes live: **[OQ-117]**.
+governs and says **bid**, the answer column says ask. ⚠ **2026-09-29 [DEC-167] reverses this for the customer:** the Prices page and the request-panel estimate now show the **raw** quote; the margin lives in the firm offer price the trader types, and the markup table is unused. Licence caveat before Montel goes live: **[OQ-117]**.
 
 This creates two prices where there was one, so the boundary has to be stated rather than implied:
 
@@ -362,7 +362,7 @@ This creates two prices where there was one, so the boundary has to be stated ra
 | --- | --- | --- |
 | Montel / the Montel service returns | Raw quote | Untouched. §2.1 forbids the service applying a markup |
 | This adapter stores (`price_indication_observation`) | **Raw quote** | **No markup column, no adjusted column.** What is stored is what was quoted |
-| Portal price board, trade-wizard estimate | **Raw × (1 + markup)** | Computed at render time from the stored raw value and the markup in force **[DEC-80]** ⚠ **2026-09-29 [DEC-167]:** now **raw**, with no markup: customer reads (the Prices page) and the wizard estimate both show the raw stored value. Licence caveat: **[OQ-117]**. |
+| Portal price board, request-panel estimate | **Raw × (1 + markup)** | Computed at render time from the stored raw value and the markup in force **[DEC-80]** ⚠ **2026-09-29 [DEC-167]:** now **raw**, with no markup: customer reads (the Prices page) and the request-panel estimate both show the raw stored value. Licence caveat: **[OQ-117]**. |
 | `day_ahead_price` store | **Raw** | Unchanged by [DEC-80], which is about indications |
 | Day-ahead shown to a customer (tooltip, exposure KPI) | **Raw** | It is the price they are actually charged; marking it up would break their own reconciliation |
 | Settlement — [Invoice calculation](../50-calculations/03-invoice-calculation.md) | **Raw day-ahead, always** | **[DEC-44]** first half, confirmed by **[DEC-87]**. No marked-up value is an input to any invoice line |

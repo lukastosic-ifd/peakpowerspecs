@@ -450,7 +450,7 @@ not higher because **[F05-R69]** says in as many words that the path is "specifi
 open to volumes beyond confirmed holdings", and not lower because that sentence is a note inside a
 requirement rather than a gate in the code.
 
-**Signals it is materialising:** the sell wizard shipping to customers with [OQ-94] still open; any
+**Signals it is materialising:** the sell request shipping to customers with [OQ-94] still open; any
 "we will watch it manually" answer; a first short larger than the seller's total historical
 production; open short volume that nobody can report on demand.
 

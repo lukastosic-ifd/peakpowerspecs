@@ -274,7 +274,7 @@ platform can, on its own, move money to a bank account.
 | F07-R09 | If the browser returns before the webhook, the UI shows "processing" and polls until resolved or a timeout, then explains what to do. ⚠ **Amended 2026-09-23 by [DEC-164]** — the visible budget is **60 s**; past it the page reads "Still confirming…" with a **Check again** action, and it never shows failure while the deposit is still in flight. | Must |
 | F07-R10 | A reconciliation job queries the provider for payments stuck in `INITIATED`/`PENDING` beyond a threshold and resolves them. | Must |
 | F07-R11 | The customer's payment history is visible with state and timestamps. | Must |
-| F07-R12 | The suggested top-up amount is prefilled when the customer arrives from a blocked trade — the shortfall, rounded up. | Should |
+| F07-R12 | The suggested top-up amount is prefilled when the customer arrives from a blocked trade — the shortfall, rounded up. ⚠ **Dormant 2026-10-09 ([DEC-178]):** no screen sends `?returnTo=` (the wallet strip, the request alert and the trade pages link to plain `/wallet`), so the shortfall prefill, its note and *Back to your trade* never show; `?amount=` is still sent by the deposit retry actions. The code is kept. | Should |
 
 ### Bank transfer
 

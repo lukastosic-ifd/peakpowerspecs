@@ -422,14 +422,16 @@ the same way the database schema already was:
 
 ### 4.6 The proxy's request-size limit — [DEC-174], added 2026-10-05
 
-The proxy's global `client_max_body_size` is **2 MB**, which suits every JSON API. The legal-document upload ([F16-R32](../10-features/F16-legal-documents.md), a 10 MiB PDF plus multipart overhead) needs more, for one route:
+⚠ **Amended 2026-10-09 by [DEC-177] (6):** the admin legal-documents limit is **22m**, not 12m: an upload is now two PDFs of up to 10 MiB each (an English and a Dutch one) plus multipart overhead. The values below were raised from 12 to 22 by DEC-177.
+
+The proxy's global `client_max_body_size` is **2 MB**, which suits every JSON API. The legal-document upload ([F16-R32](../10-features/F16-legal-documents.md), two 10 MiB PDFs plus multipart overhead) needs more, for one route:
 
 | Host | Location | Limit |
 | --- | --- | --- |
-| **Admin (employee) host only** | `location ^~ /api/v1/legal-documents/` | `client_max_body_size 12m;` |
+| **Admin (employee) host only** | `location ^~ /api/v1/legal-documents` | `client_max_body_size 22m;` |
 | Customer host | — | stays **2 MB**; it has no upload route |
 
-A nested `location` does **not** inherit the parent's `proxy_pass`, so the new location **repeats the proxy directives of that server's `location /` exactly**; a limit added without them would answer `404` or `502`. Every test that pins the nginx template is updated in the same change (the AppHost VM-override tests among them). The API's own request-size metadata (12 MiB) and the domain's 10 MiB check sit behind it: the proxy answers its own HTML `413` to anything over 12 MB, and between 10 MiB and 12 MB the API answers a `413` problem document. `VmOverrideTests` pin the single `12m`, its one host and path, and the exact copy of the proxy directives. ⚠ No `nginx -t` was run when it was built; run one on the VM or in CI.
+A nested `location` does **not** inherit the parent's `proxy_pass`, so the new location **repeats the proxy directives of that server's `location /` exactly**; a limit added without them would answer `404` or `502`. Every test that pins the nginx template is updated in the same change (the AppHost VM-override tests among them). The API's own request-size metadata (22 MiB) and the domain's 10 MiB check per file sit behind it: the proxy answers its own HTML `413` to anything over 22 MB, and between 10 MiB for a file and 22 MB for the body the API answers a `413` problem document. `VmOverrideTests` pin the single `22m`, its one host and path, and the exact copy of the proxy directives. ⚠ No `nginx -t` was run when it was built; run one on the VM or in CI.
 
 ## 5. Configuration & secrets
 

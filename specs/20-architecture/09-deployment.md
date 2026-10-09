@@ -422,7 +422,7 @@ the same way the database schema already was:
 
 ### 4.6 The proxy's request-size limit — [DEC-174], added 2026-10-05
 
-⚠ **Amended 2026-10-09 by [DEC-177] (6):** the admin legal-documents limit is **22m**, not 12m: an upload is now two PDFs of up to 10 MiB each (an English and a Dutch one) plus multipart overhead. The text below says 12 where the first release did; read it as 22.**
+⚠ **Amended 2026-10-09 by [DEC-177] (6):** the admin legal-documents limit is **22m**, not 12m: an upload is now two PDFs of up to 10 MiB each (an English and a Dutch one) plus multipart overhead. The values below were raised from 12 to 22 by DEC-177.
 
 The proxy's global `client_max_body_size` is **2 MB**, which suits every JSON API. The legal-document upload ([F16-R32](../10-features/F16-legal-documents.md), two 10 MiB PDFs plus multipart overhead) needs more, for one route:
 

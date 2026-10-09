@@ -383,7 +383,7 @@ markup itself is reference data with a default of 2%, maintained through the Emp
 **[F12-R48]** once **[F04-R18]**'s screen ships; for Phase 1 it is the single seeded row
 (**[DEC-161]**).
 
-⚠ **Amended 2026-09-29 by [DEC-167] — `price` is the raw quote.** The last paragraph's claims that `price` *"is already marked up"* and that the markup applies at display are **reversed**: `GET /prices/indications` returns the **raw** quote as `price` (4 dp on the wire, unchanged shape); no field is added or removed. The markup table stays and is **unused by customer reads**. The *no markup row in force ⇒ `UNAVAILABLE`* cause listed above no longer applies. The trade-wizard estimate in `POST /trades/quote` uses the same raw indication (§2.4). Licence caveat before Montel goes live: **[OQ-117]**. ⚠ **As built (2026-09-29, final review) the Prices read no longer consults the markup table at all** — the gate was removed from `IndicationStatusRules`, so `GET /prices/indications` and the wizard estimate are raw on the same observation (see the "Slice 1 as built" box in F05 and [DEC-167]).
+⚠ **Amended 2026-09-29 by [DEC-167] — `price` is the raw quote.** The last paragraph's claims that `price` *"is already marked up"* and that the markup applies at display are **reversed**: `GET /prices/indications` returns the **raw** quote as `price` (4 dp on the wire, unchanged shape); no field is added or removed. The markup table stays and is **unused by customer reads**. The *no markup row in force ⇒ `UNAVAILABLE`* cause listed above no longer applies. The request-panel estimate in `POST /trades/quote` uses the same raw indication (§2.4). Licence caveat before Montel goes live: **[OQ-117]**. ⚠ **As built (2026-09-29, final review) the Prices read no longer consults the markup table at all** — the gate was removed from `IndicationStatusRules`, so `GET /prices/indications` and the request-panel estimate are raw on the same observation (see the "Slice 1 as built" box in F05 and [DEC-167]).
 
 ⚠ **As built 2026-10-01, [DEC-169] (3) — four fields on `PriceIndicationDto`, and `price` is unchanged.** `buyPrice` (= `price`, the raw indication), `sellPrice` = `price` − |`price`| × (spread ÷ 100), rounded half away from zero to 2 decimals (the spread comes off the magnitude, so Sell stays below Buy for a negative price too: −50.00 gives −51.00 at 2 percent) with `ForwardPrices:SellSpreadPercent` (default **2**, validated **0–20**), `eodPrice` and `eodObservedAt` — the latest `PriceIndicationObservation` for the product with `ObservedAt` **before today's Amsterdam midnight**, or both null. All four are null when `price` is null. `GET /trades/products` carries `buyPrice` with its `price`. This bends the *one current value* rule of [F04-R20] for the end-of-day price, by a user decision.
 
@@ -419,7 +419,7 @@ Two reads for **any signed-in customer, of any role**. They return **market data
 | `GET` | `/trades` | List with state filter |
 | `GET` | `/trades/{id}` | Detail including the shared event timeline |
 | `POST` | `/trades/quote` | Compute volume and estimated value — **no side effects**. ⚠ 2026-09-30 ([DEC-167] (16)): one `powerMw`, no lines; also returns the covered and excluded connections and `currentCoverMw` |
-| `GET` | `/trades/products` | ⚠ **New 2026-09-30 [DEC-167] (16)** — the wizard's product tables: the products per shape (12 each, 24 in all) with the RAW price, hours and the value of 1 MW |
+| `GET` | `/trades/products` | ⚠ **New 2026-09-30 [DEC-167] (16)** — the product list of the Prices table and its request panel (⚠ formerly the wizard's two tables, [DEC-178]): the products per shape (12 each, 24 in all) with the RAW price, hours and the value of 1 MW |
 | `POST` | `/trades` | Submit a request |
 | `POST` | `/trades/{id}/cancel` | Cancel while `REQUESTED` |
 | `POST` | `/trades/{id}/accept` | Accept the offer. **May return state `AWAITING_APPROVAL`** — see below |
@@ -444,7 +444,7 @@ Two validation rules changed on 2026-08-19, in opposite directions: one got stri
 
 `powerMw` is validated as a decimal with **at most two decimal places and a value ≥ 0.01**, which is
 the whole rule: "multiple of 0,01" and "two decimals" are the same statement, so the API expresses it
-once. ⚠ **2026-09-29 [DEC-167] (9):** `invalid-volume` is a **400** validation shape, not a 409; every other trading problem type is a 409. `0.005`, `0.0`, and a negative value are all rejected as `invalid-volume` (⚠ **2026-09-30 [DEC-167] (16): there are no lines, so there is no line index** — as built the `ValidationProblem` `errors` is keyed by `powerMw`). The check is server-side and repeated at acceptance, because the wizard is not the only
+once. ⚠ **2026-09-29 [DEC-167] (9):** `invalid-volume` is a **400** validation shape, not a 409; every other trading problem type is a 409. `0.005`, `0.0`, and a negative value are all rejected as `invalid-volume` (⚠ **2026-09-30 [DEC-167] (16): there are no lines, so there is no line index** — as built the `ValidationProblem` `errors` is keyed by `powerMw`). The check is server-side and repeated at acceptance, because the request panel is not the only
 client this API will ever have.
 
 ⚠ **What ten-times-finer granularity costs downstream.** ⚠ **Superseded 2026-09-30 by [DEC-167] (16): there are no allocations** — the paragraph below is the pre-2026-09-30 per-EAN model, and the one account-level `powerMw` is the only volume. Per-EAN allocation rounds to 0,01 MW instead
@@ -500,7 +500,7 @@ Two changes in that body, both from 2026-08-19.
 
 **`estimatedValue` is now VAT-inclusive [DEC-78].** Prices are quoted, offered and stored **ex-VAT**
 **[DEC-26]** and the platform computes no VAT for accounting purposes **[DEC-76]** — this gross-up is
-a **sizing rule for a wallet hold**, nothing else **[F05-R70]**, **[F06-R32]**. The wizard must show
+a **sizing rule for a wallet hold**, nothing else **[F05-R70]**, **[F06-R32]**. The request panel must show
 the number the wallet will actually hold, or the customer passes the balance check on screen and fails
 it on acceptance. Both figures are on the wire, and the rate that produced them is too, so a client
 never re-derives one from the other:
@@ -521,9 +521,9 @@ resolves a value and **[DEC-33]**'s reference table is not built **[F13-R42]**. 
 `requestedBy` is taken from the token, never from the request body. A client cannot act on behalf of
 a colleague.
 
-`POST /trades/quote` exists so the wizard can show live figures without creating anything. It takes
+`POST /trades/quote` exists so the request panel can show live figures without creating anything. It takes
 the same body and returns the volume, estimate and wallet impact — **and the same `fourEyes` block**,
-so the wizard can warn before submission **[F05-R56]** rather than at acceptance. ⚠ **Amended
+so the request panel can warn before submission **[F05-R56]** rather than at acceptance. ⚠ **Amended
 2026-08-19 by [DEC-71]**: the warning is no longer *"this one is above your threshold"* but *"your
 company runs four-eyes, so every trade needs a second admin"* — it is the same warning on every trade
 of that company, which is what makes it cheap to render and impossible to get wrong.

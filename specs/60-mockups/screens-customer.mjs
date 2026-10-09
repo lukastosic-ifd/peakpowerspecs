@@ -514,7 +514,7 @@ export function priceIndications() {
   return svgDoc(b, { label: 'Customer portal — prices' });
 }
 
-/* ───────────────────────────────────────────────────────── trade wizard */
+/* ───────────────────────────────────────────────────────── trade wizard (RETIRED 2026-10-09, DEC-178: kept as a record of the removed wizard) */
 export function tradeWizard() {
   const s = shell({ portal: 'customer', title: 'Request a trade', crumb: 'Step 2 of 3 · volume per connection', nav: NAV, active: 4, user: USER });
   let b = s.svg;
@@ -582,7 +582,7 @@ export function tradeWizard() {
   b += button(rx + 18, cy + 494, rw - 36, 'Continue to review', 'primary', { h: 40 });
   b += button(rx + 18, cy + 542, rw - 36, 'Back', 'secondary', { h: 36 });
 
-  return svgDoc(b, { label: 'Customer portal — trade request wizard' });
+  return svgDoc(b, { label: 'Customer portal — trade request wizard (retired, DEC-178)' });
 }
 
 /* ────────────────────────────────────────────────────── offer countdown */

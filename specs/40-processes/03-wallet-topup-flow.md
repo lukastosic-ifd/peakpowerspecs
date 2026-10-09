@@ -297,7 +297,7 @@ built, and the portal must not promise a crediting time it cannot keep **[F07-R1
 settle an invoice, and after **[DEC-77]** it cannot: monthly day-ahead, export and energiebelasting
 amounts go to the bookkeeping program as a draft **[DEC-88]** and are paid to the bank. So a top-up
 answers exactly one question — *can I afford the block I want to buy?* — and the moment that question
-is asked is the moment the customer is blocked at the trade wizard.
+is asked is the moment the customer is blocked in the trade request panel.
 
 ```mermaid
 flowchart LR
@@ -308,7 +308,7 @@ flowchart LR
     E --> F{"Fits under the customer's<br/>own iDEAL limit?<br/>DEC-86"}
     F -->|yes| G["iDEAL flow<br/>seconds"]
     F -->|no| H["Bank transfer<br/>deposit intent + reference<br/>DEC-106"]
-    G --> I["Returns to the wizard<br/>with the request intact"]
+    G --> I["Returns to the request<br/>(dormant: DEC-178)"]
     I --> B
     H --> J["Offer window is lost;<br/>customer requests again<br/>once the funds land"]
 
@@ -316,7 +316,7 @@ flowchart LR
     class J warn
 ```
 
-The request draft survives the round trip. Losing it would mean re-entering per-EAN volumes across
+⚠ **Dormant since 2026-10-09 ([DEC-178]):** the trade wizard and its sessionStorage draft are removed, so nothing sends the customer back to a request; the Prices panel is not restored after a deposit. The paragraph below is the original design. The request draft survives the round trip. Losing it would mean re-entering per-EAN volumes across
 several sites, which is exactly the moment a customer gives up and phones instead.
 
 **The check and the top-up are both VAT-inclusive — [DEC-78].** Prices are quoted and stored ex-VAT

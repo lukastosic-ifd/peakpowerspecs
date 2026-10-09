@@ -591,7 +591,7 @@ is how a "second" approval could otherwise be manufactured by clicking twice.
 ⚠ **Added 2026-09-28.** The `customer.customer_bank_account` DDL above is the 2026-08-19 design
 **[DEC-71]**, kept for the record. **Migration 26** (`CompanyBankAccounts`) built the table, and it differs
 from that sketch in the respects below. A company **admin** now adds or replaces the account from the
-Balance page, so a row is written by the customer host, not by an employee **[F01-R44]**.
+Balance page, so a row is written by the customer host, not by an employee **[F01-R44]**. ⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.**
 
 | Design sketch above | As built |
 | --- | --- |
@@ -600,7 +600,7 @@ Balance page, so a row is written by the customer host, not by an employee **[F0
 | `added_by_account_id NOT NULL` | **Nullable** — a row copied from an onboarding application that recorded no signing account. Every portal write names the acting account |
 | `approved_by_account_id`, `approved_at`, `deactivation_approved_by_account_id` and their `CHECK`s | **Not built.** They arrive with the four-eyes approval flow **[F01-R45]**, which is deferred |
 | `status IN ('PENDING_APPROVAL','ACTIVE','DEACTIVATED')` | The same `CHECK` (`ck_customer_bank_account_status_valid`). `PENDING_APPROVAL` is admitted for the deferred flow and **never written**: a four-eyes company is blocked from changing its account instead |
-| — | **New: `source`** — `ONBOARDING`, `PORTAL` or `BACKFILL`, with `ck_customer_bank_account_source_valid`. `ONBOARDING` is the wizard's signing **and** migration 26's own copy; `PORTAL` is a Balance-page add or replace; `BACKFILL` is reserved for a later data repair and written by nothing |
+| — | **New: `source`** — `ONBOARDING`, `PORTAL` or `BACKFILL`, with `ck_customer_bank_account_source_valid`. `ONBOARDING` is the wizard's signing **and** migration 26's own copy; `PORTAL` is a Balance-page add or replace (⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.**); `BACKFILL` is reserved for a later data repair and written by nothing |
 | `CHECK (status <> 'DEACTIVATED' OR deactivated_at IS NOT NULL)` | `ck_customer_bank_account_deactivation_consistency`: `deactivated_at` **and** `deactivated_by_account_id` are set if, and only if, `status = 'DEACTIVATED'` |
 | `ux_bank_account_active` | The same partial unique index, named `ux_customer_bank_account_active` — at most one `ACTIVE` row per company **[F01-R46]** |
 | `bank_account_is_immutable()` and `trg_bank_account_immutable` | **Not built.** What stops an edit is that no application role holds `UPDATE` or `DELETE` on the table, and its only two writers — the add/replace endpoint, which deactivates and inserts, and onboarding's signing, which inserts — both run owner-privileged and never edit a row in place |

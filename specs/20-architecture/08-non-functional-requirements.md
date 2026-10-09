@@ -235,7 +235,7 @@ was drafted.
 | **NFR-45** | Customer portal usable on tablet; core read views usable on phone ⚠ **Amended 2026-10-02 by [DEC-173]: the customer portal is responsive on every screen, not only the core read views: phone below 600 px, tablet 600–1023 px, desktop 1024 px and up, with no horizontal page scroll, 44 px primary touch targets and 16 px inputs on phones. The back office stays a fixed 1280 desktop layout and has no phone or tablet requirement.** |
 | **NFR-46** | Dutch primary, English secondary; no hard-coded user-facing strings **[AS-19]** |
 | **NFR-47** | All money and energy figures shown with unit and currency; no bare numbers |
-| **NFR-48** | Every figure derived from non-final data is visibly labelled |
+| **NFR-48** | Every figure derived from non-final data is visibly labelled ⚠ **Amended 2026-10-08 by [DEC-176] (4): not applied in the customer portal; provisional marking is removed completely at the product owner's decision. The back office is unaffected.** |
 | **NFR-49** | Browser support: last two major versions of Chrome, Edge, Firefox and Safari |
 
 **NFR-48** is a usability requirement with financial consequences: an unlabelled provisional number

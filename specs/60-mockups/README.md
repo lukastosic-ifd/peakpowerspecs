@@ -33,7 +33,7 @@ provider now redirects to.
 
 | Screen | Feature | What it shows |
 | --- | --- | --- |
-| [customer-dashboard.svg](customer-dashboard.svg) | [F03](../10-features/F03-consumption-visualisation.md) | Wallet, coverage, exposure, a live offer banner with countdown, price strip, chart, activity feed |
+| [customer-dashboard.svg](customer-dashboard.svg) | [F03](../10-features/F03-consumption-visualisation.md) | Wallet, coverage, exposure, a live offer banner with countdown, price strip, chart, activity feed | ⚠ not redrawn: [DEC-176] (2) removes the KPI row, price strip and activity feed
 | [ean-list.svg](ean-list.svg) | [F01](../10-features/F01-customer-and-metering-points.md) | Portfolio of connections with friendly names, data freshness and coverage per site |
 | [ean-detail.svg](ean-detail.svg) | [F01](../10-features/F01-customer-and-metering-points.md) · [F02](../10-features/F02-metering-data-ingestion.md) | Label editor, master data, 14-day data-quality strip, block positions |
 | [chart-day-view.svg](chart-day-view.svg) | [F03](../10-features/F03-consumption-visualisation.md) | **The core screen.** 96 intervals, block step line, covered/uncovered bands, peak-window shading, interval tooltip |
@@ -85,7 +85,7 @@ long overnight; netting to one number hides the thing the customer is trying to 
 
 **Provisional data is labelled everywhere it appears** — a badge in the toolbar, a note on the
 invoice, a state cell in the data strip. This is [NFR-48], and it is a usability requirement with
-financial consequences.
+financial consequences. ⚠ **Amended 2026-10-08 by [DEC-176] (4): not shown in the customer portal.** The badge and the state cell are removed; the invoice disclosure stays.
 
 **The countdown appears three times** on the customer side — dashboard banner, offer screen ring,
 notification — because a missed reaction window is a lost trade for both parties.

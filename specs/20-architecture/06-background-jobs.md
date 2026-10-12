@@ -23,7 +23,7 @@ Separating them is the whole point.
 ⚠ ~~**[DEC-47] puts two very different urgencies on one queue.** The monthly run enqueues one invoice
 email per customer at 02:00 on the 5th; an offer notification has a 30-minute window to be useful and
 **[DEC-63]** sends one to every active account. The outbox is therefore drained in priority order —
-offer ~~, approval~~ and expiry notifications ahead of invoices — rather than in insertion order. If
+offer, approval and expiry notifications ahead of invoices — rather than in insertion order. If
 invoice volume ever makes that insufficient, the answer is a second `notification-bulk` queue, not a
 larger worker count on this one.~~
 

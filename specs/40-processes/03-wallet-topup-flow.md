@@ -463,6 +463,6 @@ everyone. The narrower audience is the same trade-off **[DEC-111]** makes for of
 deliberate: see [F11](../10-features/F11-notifications.md) §2.
 
 The **withdrawal** notifications are not courtesies. **[F11-R29]** is part of the mechanism — the
-payout is a manual bank transfer, so nothing happens at all unless a person is told.~~ — and the
+payout is a manual bank transfer, so nothing happens at all unless a person is told. ~~— and the
 four-eyes approval mail **[F11-R26]** is the only way the second admin learns there is something to
 approve.~~

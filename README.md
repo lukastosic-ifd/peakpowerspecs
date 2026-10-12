@@ -12,8 +12,8 @@ Specification and scope definition for the **PeakPower** energy trading platform
 > were reversed**, and the platform's boundary moved in both directions: invoice numbering, the PDF,
 > the invoice email, VAT, surcharges, chargebacks and invoice-payment matching left the platform for
 > a **bookkeeping program**, while **energiebelasting**, short selling, configurable BRPs,
-> platform-matched bank-transfer deposits, withdrawals, a customer usage API and four-eyes as a
-> per-company mode came in. The wallet now funds **trading only** — it no longer settles invoices.
+> platform-matched bank-transfer deposits, withdrawals, a customer usage API came in ~~and four-eyes as a
+> per-company mode~~ *(four-eyes was removed again on 2026-10-12, [DEC-179])*. The wallet now funds **trading only** — it no longer settles invoices.
 > ⚠ **One question is blocking again:** `[OQ-69]` — the bookkeeping program's version, hosting and
 > API. Five decisions moved work into that program, so the invoice cannot be issued without it.
 > **2026-08-11:** three review rounds. The eleven blocking (P1) questions were decided as `[DEC-19]`…
@@ -56,8 +56,7 @@ Everything lives in [`specs/`](specs/). Start with the
 A self-service portal that lets grootverbruik customers see their energy position per metering point
 and buy or sell wholesale energy blocks against it, with PeakPower brokering every trade. The
 customer requests; PeakPower responds with a firm, time-limited price; the customer accepts or
-rejects — and if that company has **four-eyes** switched on, a second admin of the same company must
-approve it, with no threshold `[DEC-71]`. A prepaid wallet backs every trade and **nothing else**
+rejects, and an accepted offer goes straight to the desk to be confirmed `[DEC-179]` (there is no four-eyes). A prepaid wallet backs every trade and **nothing else**
 `[DEC-77]`. Monthly invoicing settles measured **net usage** — consumption minus production —
 against purchased blocks and the raw day-ahead price, which also credits surplus cover and physical
 export `[DEC-87]`, plus **energiebelasting** on bracketed tiers `[DEC-74]`. The platform computes no

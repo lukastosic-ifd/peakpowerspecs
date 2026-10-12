@@ -651,7 +651,7 @@ export function tradeHistory() {
 
   const events = [
     ['30 Jul 2026, 14:25:02', 'Request submitted', 'J. de Vries · Energy Manager (you)', 'Peak Q1-2027 · 1,000 MW across 4 connections. Comment: “Hedging Q1 baseload growth.” Indication at submission: € 96,1500/MWh.', 'accent'],
-    ['30 Jul 2026, 14:31:00', 'Offer published', 'PeakPower Trading', 'Price € 94,7500/MWh · total € 72.768,00 ex VAT · reaction window 30 minutes, expiring 15:01:00. The requester was notified; under four-eyes the second admin too.', 'indigo'],
+    ['30 Jul 2026, 14:31:00', 'Offer published', 'PeakPower Trading', 'Price € 94,7500/MWh · total € 72.768,00 ex VAT · reaction window 30 minutes, expiring 15:01:00. The requester was notified.', 'indigo'],
     ['30 Jul 2026, 14:44:18', 'Offer accepted', 'M. Vandersteen · Finance Director', '€ 88.049,28 reserved on the company wallet — the ex-VAT price plus 21% VAT. Reservation RES-0912. Accepted by a different colleague than the requester.', 'amber'],
     ['30 Jul 2026, 14:52:41', 'Trade confirmed', 'PeakPower Trading', 'Executed on the market, reference ICE-88213-A. Reservation settled — wallet debited € 88.049,28. Block BLK-0431 created with 4 allocations.', 'green'],
   ];
@@ -742,15 +742,14 @@ export function walletLedger() {
 
   // In progress — one action each, and highlighted when it is waiting on THIS reader [DEC-164].
   const ipY = heroY + heroH + 16;
-  b += text(cx + 18, ipY + 20, 'In progress (2)', { size: 15, weight: 700, fill: C.text });
+  b += text(cx + 18, ipY + 20, 'In progress (1)', { size: 15, weight: 700, fill: C.text });
   const ipItems = [
     ['Checkout not finished', 'amber', 'Deposit via iDEAL', 'PeakPower test checkout · started 14:12', 12472.56, 'Continue checkout'],
-    ['Needs your approval', 'amber', 'Withdrawal request', 'To NL18 INGB 0007 2519 44', 5000, 'Review request'],
   ];
   const ipRowH = 52;
   ipItems.forEach((it, i) => {
     const y = ipY + 34 + i * (ipRowH + 10);
-    b += rect(cx, y, cw, ipRowH, { fill: it[0] === 'Needs your approval' ? C.amberBg : C.panel, stroke: it[0] === 'Needs your approval' ? '#fcd34d' : C.border, r: 9 });
+    b += rect(cx, y, cw, ipRowH, { fill: C.panel, stroke: C.border, r: 9 });
     b += badge(cx + 16, y + 8, it[0], it[1], { w: it[0].length * 6.2 + 20 });
     b += text(cx + 16, y + 40, it[2], { size: 12.5, weight: 700, fill: C.text });
     b += text(cx + 190, y + 40, it[3], { size: 11, fill: C.muted });

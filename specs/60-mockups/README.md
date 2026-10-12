@@ -54,7 +54,7 @@ provider now redirects to.
 | [employee-home.svg](employee-home.svg) | [F12](../10-features/F12-employee-back-office.md) | Operational counters, "needs attention now" ranked by urgency, exposure, integration health |
 | [employee-trade-desk.svg](employee-trade-desk.svg) | [F05](../10-features/F05-energy-block-trading.md) | Three queues — to price, awaiting customer (counting down), to confirm |
 | [employee-trade-detail.svg](employee-trade-detail.svg) | [F05](../10-features/F05-energy-block-trading.md) | Everything needed to price without switching context: request, customer position, market reference, wallet, pricing panel |
-| [employee-customer-admin.svg](employee-customer-admin.svg) | [F01](../10-features/F01-customer-and-metering-points.md) | Company master data incl. **KvK and bank accounts** — added and deactivated, never edited — **the company's accounts with the admin flag**, four-eyes mode **[DEC-71]**, metering points with validity, commercial settings |
+| [employee-customer-admin.svg](employee-customer-admin.svg) | [F01](../10-features/F01-customer-and-metering-points.md) | Company master data incl. **KvK and bank accounts** — added and deactivated, never edited — **the company's accounts with the admin flag**, ~~four-eyes mode **[DEC-71]**~~ *(removed 2026-10-12, [DEC-179])*, metering points with validity, commercial settings |
 | [employee-wallet-admin.svg](employee-wallet-admin.svg) | [F06](../10-features/F06-wallet-and-ledger.md) | Wallets sorted by lowest available, with no minimum column and no low-balance alert **[DEC-90]** and no manual adjustment **[DEC-85]** — the two manual worklists instead: withdrawals awaiting payout **[DEC-83]**, incoming payments that arrived without their reference **[DEC-106]** |
 | [employee-invoice-run.svg](employee-invoice-run.svg) | [F10](../10-features/F10-invoicing-and-settlement.md) | Run outcome, a hard failure, skipped customers with named causes, and drafts pushed to the bookkeeping program — which assigns the number **[DEC-88]** and renders and sends the document **[DEC-89]** |
 | [employee-ingestion-health.svg](employee-ingestion-health.svg) | [F02](../10-features/F02-metering-data-ingestion.md) | Data-state heat map, inbound message log, quarantine with a resolve action |
@@ -74,7 +74,7 @@ right; when they disagree about a **URL**, the mockup is.
 ⚠ **`employee-customer-admin.svg` is stale for a different reason and is deliberately left alone.**
 It predates `[DEC-71]` and still shows editable bank details with an Edit button, no admin flag and
 no four-eyes toggle. Regenerating it needs the current requirements read first, so it is a follow-up
-rather than a half-fix.
+rather than a half-fix. ⚠ **2026-10-12, [DEC-179]:** the generator source no longer draws any four-eyes badge, note, column or *approved by* line on this screen, the trade desk, the trade detail, the wallet administration, the operations home, the trade history or the Balance overview; the other staleness stays.
 
 **The block step line is the signature element.** Its 08:00 and 20:00 steps are the clearest possible
 expression of what a peak block is. Everything about the day chart is arranged so that step is
@@ -142,8 +142,7 @@ not yet drawn — listed so the gap is visible rather than forgotten:
   exist; the payout itself and the match of a payment to a wallet are not drawn
 - BRP reference data — endpoint, credentials, document format, and which metering points are assigned
   to which BRP ([F12](../10-features/F12-employee-back-office.md), **[DEC-69]**)
-- The four-eyes approval screen the second admin sees, and the decline with its reason
-  ([F13](../10-features/F13-identity-and-access.md), **[DEC-71]**)
+- ~~The four-eyes approval screen the second admin sees, and the decline with its reason ([F13](../10-features/F13-identity-and-access.md), **[DEC-71]**)~~ *(⚠ struck 2026-10-12, [DEC-179]: there is no approval screen)*
 - Notification centre and preferences ([F11](../10-features/F11-notifications.md))
 - The rest of reference-data administration: peak calendars, ticker mapping, the price-indication
   markup ([F12](../10-features/F12-employee-back-office.md))

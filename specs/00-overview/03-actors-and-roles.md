@@ -15,7 +15,7 @@ flowchart LR
 
     subgraph humans["People"]
         CU["Customer user"]
-        CA["Customer admin<br/><i>four-eyes approver · DEC-71</i>"]
+        CA["Customer admin<br/><i>administers the business · DEC-152</i>"]
         TR["Trader / back office"]
         FIN["Finance"]
         ADM["Platform admin"]
@@ -26,7 +26,6 @@ flowchart LR
     PP(("PeakPower<br/>platform"))
 
     CU -->|"views position,<br/>requests trades,<br/>funds wallet"| PP
-    CA -->|"approves or declines<br/>four-eyes actions"| PP
     TR -->|"prices offers,<br/>confirms trades"| PP
     FIN -->|"pushes draft invoices,<br/>pays withdrawals"| PP
     ADM -->|"reference data,<br/>users, tariffs"| PP
@@ -62,7 +61,7 @@ A person at the customer **company** who holds a **customer account** and uses t
 | **Frequency** | Weekly to daily during volatile markets; monthly otherwise |
 | **Expertise** | Energy-aware but not a trader. Comfortable with MWh and €/MWh; will not know what an ISP is |
 | **Context** | Desktop, office hours, often comparing the portal against their own consumption planning ⚠ **Amended 2026-10-02 by [DEC-173]: the customer portal is also used on phones and tablets, so it is responsive; this persona's desktop context is unchanged.** |
-| **Key screens** | Consumption chart, price indications, trade request (Prices page), offer countdown, wallet, invoices — and, for an **admin** of a company with four-eyes enabled, the approval queue **[DEC-71]** |
+| **Key screens** | Consumption chart, price indications, trade request (Prices page), offer countdown, wallet, invoices — ~~and, for an **admin** of a company with four-eyes enabled, the approval queue **[DEC-71]**~~ *(⚠ no approval queue since 2026-10-12, [DEC-179])* |
 
 #### One company, several accounts
 
@@ -75,8 +74,8 @@ shapes:
 | Mid-size, multi-site | 2–4 — energy manager, finance, an operations backup |
 | Larger organisation | 5+ — energy team, controller, plant managers per site |
 
-A one-account company is still a normal shape, but it cannot enable four-eyes — see *The admin flag
-and four-eyes* below, rule **FE-1**.
+A one-account company is still a normal shape ~~, but it cannot enable four-eyes — see *The admin flag
+and four-eyes* below, rule **FE-1**~~ *(⚠ four-eyes removed 2026-10-12, [DEC-179])*.
 
 **All accounts of one company are equal [DEC-16].** Every account sees the same data, can raise a
 trade request, can accept or reject an offer, can top up the wallet, and can read the full ledger and
@@ -100,24 +99,24 @@ viewer/trader/approver split inside a company"* is **no longer true**: a members
 above intact. **Data visibility is still identical for every member** — `trader` and `viewer` gate
 nothing at all and exist to be recorded and displayed **[F01-R14]** — so nobody in a company sees a
 smaller product than a colleague. And exactly **one** role gates anything: `admin`, which now covers
-invitations, role changes, removals and entitlements **[DEC-150]** as well as four-eyes eligibility.
+invitations, role changes, removals and entitlements **[DEC-150]** ~~as well as four-eyes eligibility~~ *(⚠ four-eyes removed 2026-10-12, [DEC-179])*.
 ⚠ **Narrowed 2026-09-23 by [DEC-163]** — depositing is a second exception: it gates on admin-or-trader,
-not on `admin` alone; see *The admin flag and four-eyes* below.
+not on `admin` alone; see *The admin flag* below.
 What is reversed outright is the second half of **[DEC-16]** quoted above: account administration is
 **no longer** PeakPower's alone — a customer admin brings colleagues in and takes them out of their
 own business, while PeakPower keeps its F12 path.
 
-#### The admin flag and four-eyes [DEC-71]
+#### The admin flag [DEC-71] — four-eyes removed [DEC-179]
 
 A customer account is either an **admin account** or an ordinary account. ~~That is the whole role
 model inside a customer company: exactly two levels, and it exists for one reason — four-eyes cannot
-be expressed without a second population to draw the approver from.~~ ⚠ **Reversed 2026-09-10 by
+be expressed without a second population to draw the approver from.~~ ⚠ **Four-eyes was removed 2026-10-12 by [DEC-179]**, so that reason is gone as well. ⚠ **Reversed 2026-09-10 by
 [DEC-152].** A customer account instead carries a **`membershipRole`** of `admin`, `trader` or
 `viewer` — three levels, not two. `trader` and `viewer` gate nothing and exist only to be recorded and
-displayed **[F01-R14]**, so for **four-eyes purposes** the acting population is still admin-or-not,
+displayed **[F01-R14]**, so ~~for **four-eyes purposes** the acting population is still admin-or-not~~ *(⚠ four-eyes removed 2026-10-12, [DEC-179])*,
 which is what the struck sentence got right; what it no longer gets right is *"the whole role
 model"* and *"one reason"* — `admin` also gates invitations, role changes, removals and entitlements
-outside four-eyes entirely **[DEC-150]**. It is not a permission ladder and it is not the
+outside four-eyes entirely **[DEC-150]** *(⚠ and, since 2026-10-12, with no four-eyes at all, [DEC-179])*. It is not a permission ladder and it is not the
 intra-company role model **[DEC-16]** rejected: `trader` and `viewer` still differ from each other in
 nothing but the label. A non-admin account keeps every privilege it had: same data, same trade
 requests, same offer acceptance, same wallet top-ups, same ledger and invoices. ⚠ **Amended
@@ -128,64 +127,14 @@ thing `trader` and `viewer` now gate. Depositing (iDEAL, bank transfer, and comp
 own simulated checkout) is admin and trader; a viewer may not. Every other privilege in this list, and
 every other respect in which `trader` and `viewer` differ only by label, is unchanged.
 
-A **customer company** has four-eyes either **enabled** or **disabled**. There is **no threshold** —
-not in euros, not in megawatts — so there is no threshold table to build, no default to ship and no
-row that has to be in force before the control works. This **replaces [DEC-33]** and **closes
-[OQ-85]**, which existed only to supply the missing figure.
+~~A **customer company** has four-eyes either **enabled** or **disabled**, with **no threshold**, and an action in a closed set (add or deactivate a bank account, execute a trade, withdraw funds; never a deposit, and, from 2026-09-10, never a user) took effect only after a **different admin account of the same company** approved it. Rules **FE-1** to **FE-4** made the mode safe: it could not be enabled below two active admins, no deactivation or demotion could drop a four-eyes company below two, an action that could never be approved was refused at submission, and nothing escalated or approved on a timeout.~~
 
-With four-eyes **disabled**, an account acts and the action takes effect. With four-eyes **enabled**,
-these actions take effect only after a **second admin** approves them:
+⚠ **Removed 2026-10-12 by [DEC-179].** There is no four-eyes in the platform. The table of gated actions, the *who may approve* constraints and the rules **FE-1** to **FE-4** are struck (the rule ids keep their numbers as tombstones, so earlier references still resolve), and the two readings that were recorded under them (*who may initiate*, *add-a-user against [DEC-16]*) and the source tension carried from [DEC-71] are moot. What replaces them:
 
-| Action | Four-eyes | Why this one |
-| --- | :--: | --- |
-| Add a bank account | required | It creates a new destination for money leaving the company. A bank account **cannot be edited once added** — it can only be deactivated **[DEC-71]** — so adding is the only moment the control can sit on |
-| Deactivate a bank account | required | It removes a payout destination and forces the next withdrawal onto whatever remains |
-| Execute a trade | required | It commits the company's money, and once the delivery month starts the hedge cannot be changed **[DEC-78]**. For a trade the gate sits **after acceptance and before PeakPower executes**, so the wallet reservation is already held and the offer's reaction window is the only clock — see [F05](../10-features/F05-energy-block-trading.md) |
-| ~~Add a user~~ | ~~required~~ | ~~A new account holds every ordinary privilege the moment it exists, so adding one changes who may spend~~ ⚠ **Reversed 2026-09-10 by [DEC-152] — removed from this list, not merely re-approved.** Membership changes bypass four-eyes entirely: a customer `admin` invites, re-roles and removes colleagues of their own business unilaterally, with no second admin's approval. The cost of the bypass was priced and re-confirmed rather than overlooked — see the **[DEC-152]** row |
-| Withdraw funds | required | A manual outbound bank payment **[DEC-83]** — the only path that moves money out of the platform |
-| **Deposit funds** | **not required** | Deliberately excluded. One person can wire money or use iDEAL on their own **[DEC-106]**, so gating a deposit gates nothing while costing a second person's time |
-
-**Who may approve.** A **different admin account of the same company**. Three constraints, all of them
-a comparison of ids rather than a permission check, and all of them made recordable by **[DEC-17]**:
-
-1. the approver holds the **admin** flag;
-2. the approver belongs to the **same customer company** — no PeakPower employee may approve on the
-   customer's behalf, and no admin of another company may;
-3. the approver is **not the account that raised the action** — a self-approval attempt is refused
-   with a specific error, never silently ignored.
-
-**A four-eyes company therefore needs at least two admin accounts.** These are rules the feature
-specs must honour, not advice:
-
-| Rule | Behaviour |
-| --- | --- |
-| **FE-1** | Four-eyes **cannot be enabled** for a company that does not have **two active admin accounts**. The employee action that enables it is refused with the reason; it is not queued until a second admin appears |
-| **FE-2** | While four-eyes is enabled, deactivating an admin account or clearing an admin flag that would leave **fewer than two active admins** is refused. The company appoints another admin first, or an employee switches four-eyes off deliberately — a recorded action **[DEC-17]**, not a side effect |
-| **FE-3** | If a company reaches one active admin anyway — a lockout, a person who has left — every four-eyes action is refused **at submission**, with the reason and with what to do about it. It is not accepted and left pending until it expires: an action that can never be approved must not look like one that is merely waiting |
-| **FE-4** | There is **no escalation and no timeout that approves**. An unapproved action expires unapproved, and PeakPower cannot approve for the customer (constraint 2 above). Declining is as valid an outcome as approving and is recorded the same way |
-
-Cost, stated plainly: a two-admin company where one admin is on holiday cannot execute a trade inside
-a 30-minute offer window. That is the control working, not failing, and it is why four-eyes is a
-per-company choice rather than a platform default — the customer decides whether the delay is worth
-the protection.
-
-⚠ **Two readings the feature specs must settle, recorded rather than resolved here:**
-
-- **Who may *initiate*.** **[DEC-71]** is worded around an action "taken by one admin account", but it
-  explicitly leaves **[DEC-16]**'s ordinary privileges intact for non-admin accounts. The reading
-  taken here is that **any account may initiate** and **an admin other than the initiator approves**;
-  when the initiator is an admin, the approver is a different admin. The alternative — only admins may
-  initiate a sensitive action — would take privileges away from non-admin accounts, which is
-  precisely what the ledger says did not happen.
-- **Add-a-user against [DEC-16].** Accounts are created and deactivated by PeakPower employees, so
-  the customer-side action a second admin approves is the **request** for a new account, not the
-  creation itself; the employee acts on an approved request. Where that request and its approval are
-  captured — [F01](../10-features/F01-customer-and-metering-points.md) or
-  [F13](../10-features/F13-identity-and-access.md) — is not decided here.
-
-⚠ **Source tension carried from [DEC-71]:** the two source rows differ on withdrawals. The union
-recorded above takes withdrawal **in** (a manual outbound payment is exactly what the control is for)
-and leaves deposits **out** (both rows agree). Confirm at the next session.
+- **Every action takes effect when the account that takes it takes it.** A trade accepted by any active member is `ACCEPTED` at once; a withdrawal requested by an admin is `REQUESTED` at once and the next step is the staff payout **[DEC-83]**; a bank account added or replaced by an admin is `ACTIVE` at once.
+- **Who may do what is the role, not an approval.** `admin` gates invitations, role changes, removals, entitlements, the company bank account and withdrawals; deposits gate on admin or trader **[DEC-163]**; accepting a firm offer is open to every active member, a viewer included **[F05-R43]**.
+- **The admin floor is one for every company.** The last active admin cannot be demoted or removed **[DEC-157]**; there is no second population to draw an approver from.
+- **Past approvals stay as facts** in the trade timeline and the audit log, with read-only labels.
 
 #### Actions are attributed to the account, not the company [DEC-17]
 
@@ -208,7 +157,6 @@ when an offer arrived. It no longer does. Notification now goes to:
 | Recipient | When |
 | --- | --- |
 | The account that **raised the request** | Always |
-| The **admin who must approve** | Only when the company has four-eyes enabled **[DEC-71]** |
 
 Nobody else is notified. ⚠ Cost, recorded because **[DEC-63]**'s reasoning was exactly this:
 **[DEC-18]** still lets any account of the company accept an offer, so the platform now notifies
@@ -224,13 +172,13 @@ will make.
 | Password | Held by the identity provider, never by the platform — see [F13](../10-features/F13-identity-and-access.md) and [OQ-78] |
 | First name, last name | Shown in the audit trail and in notifications |
 | **Role in the company** | Free text job title. Displayed for context; grants nothing. ⚠ **Amended 2026-08-19 by [DEC-71]** — still grants nothing. The **admin** flag below is the only field on an account that grants anything |
-| **Admin** | Boolean **[DEC-71]**. Set and cleared by a PeakPower employee **[DEC-16]**, subject to rule **FE-2**. It grants exactly one capability: approving or declining a four-eyes action of the same company. No extra data access, no extra ordinary privilege, no seniority |
+| **Admin** | Boolean **[DEC-71]**, since 2026-09-10 the membership role `admin` **[DEC-152]**. ~~Set and cleared by a PeakPower employee **[DEC-16]**, subject to rule **FE-2**. It grants exactly one capability: approving or declining a four-eyes action of the same company.~~ ⚠ **Amended 2026-10-12 by [DEC-179]:** it no longer approves anything; it gates the administrative writes above. No extra data access, no seniority |
 | Contact phone | |
-| Contact email | Notification destination; may differ from the username. Under **[DEC-111]** an admin of a four-eyes company receives offer notifications for requests they did not raise |
+| Contact email | Notification destination; may differ from the username. Offer notifications go to the account that raised the request **[DEC-111]** ~~and, under four-eyes, to the admin who must approve~~ |
 
 Self-service account management by the customer is **out of scope** — accounts are created,
-deactivated and edited by PeakPower employees, and that includes setting the **admin** flag and the
-company's **four-eyes mode** **[DEC-71]**. See
+deactivated and edited by PeakPower employees, and that includes setting the **admin** flag ~~and the
+company's **four-eyes mode** **[DEC-71]**~~ *(⚠ no four-eyes mode since 2026-10-12, [DEC-179])*. See
 [F13](../10-features/F13-identity-and-access.md).
 
 ### 2.2 Trader / back office
@@ -257,7 +205,7 @@ The PeakPower employee who turns a request into a price and executes it with the
 
 | | |
 | --- | --- |
-| **Goals** | Reference data is right: peak calendars, energiebelasting **brackets and per-customer reductions** **[DEC-74]**, ~~surcharges~~ ⚠ **Reversed 2026-08-19 by [DEC-73]** (the surcharge left the platform; the bookkeeping program multiplies volume by the topup fee), Montel ticker mapping, the **price-indication markup percentage** (default 2%) **[DEC-80]**, ~~wallet threshold rules~~ ⚠ **Reversed 2026-08-19 by [DEC-90]** (no thresholds, no low-balance alerts), **BRP configuration** — endpoint, credentials, document format **[DEC-69]** — customer **four-eyes mode and admin flags** **[DEC-71]**, employee accounts |
+| **Goals** | Reference data is right: peak calendars, energiebelasting **brackets and per-customer reductions** **[DEC-74]**, ~~surcharges~~ ⚠ **Reversed 2026-08-19 by [DEC-73]** (the surcharge left the platform; the bookkeeping program multiplies volume by the topup fee), Montel ticker mapping, the **price-indication markup percentage** (default 2%) **[DEC-80]**, ~~wallet threshold rules~~ ⚠ **Reversed 2026-08-19 by [DEC-90]** (no thresholds, no low-balance alerts), **BRP configuration** — endpoint, credentials, document format **[DEC-69]** — customer ~~**four-eyes mode and~~ admin flags** **[DEC-71]**, employee accounts |
 | **Frequency** | Low but high-impact. A wrong calendar or tariff corrupts every downstream calculation, and a wrong energiebelasting bracket now corrupts a **legally owed** amount **[DEC-74]** |
 | **Key screens** | Reference data admin, customer configuration, user management, integration health |
 
@@ -301,7 +249,7 @@ function set) and [OQ-62] (single region versus warm secondary). See
 | **Identity provider** | Both | Login | OIDC authorisation code + PKCE. ⚠ **Amended 2026-08-19 by [DEC-92]** — **MFA is mandatory for customer users**. It is still enforced by Conditional Access in the tenant **[DEC-66]** rather than implemented in the platform, but the platform verifies the authentication-method claim on the token instead of trusting the tenant silently. |
 | **Bank** | Both | Deposits in, payouts out | ~~No direct integration in the first track. Finance registers received transfers manually or from a statement import. See [OQ-07].~~ ⚠ **Amended 2026-08-19 by [DEC-106]**, **[DEC-83]** — a bank transfer is a **first-class deposit method**: the platform issues a **unique payment reference** per deposit intent, matches the incoming payment on it, credits the wallet and emails the customer that funds were received. IBAN matching **[DEC-61]** is the fallback when the reference is omitted; manual registration is the fallback to that. **Withdrawals are paid out manually** by an employee to the company bank account. [OQ-07] is **closed** — an incoming-payment feed is in scope for wallet deposits only; **which** feed (CAMT.053 import, PSP webhook, SEPA-instant push) is [OQ-93]. |
 | **Customer systems** | Inbound | Customer-initiated | New **[DEC-97]** — interval and aggregated **net usage** per metering point, scoped to the calling company. Nothing priced: no forward prices, no price history, no export of prices **[DEC-81]**. Whether the transport is an API, file/FTP or both is [OQ-95]. |
-| **Notification channels** | Outbound | Rules + events | Email first; in-app notification centre. SMS/push out of scope. ⚠ **Amended 2026-08-19 by [DEC-89]**, **[DEC-111]** — invoice emails are sent by the **bookkeeping program**, so this channel carries the platform's own notifications only (offers, wallet events, alerts) over SendGrid **[DEC-48]**; and an offer notifies the **requester plus, under four-eyes, the approving admin**, not every active account. |
+| **Notification channels** | Outbound | Rules + events | Email first; in-app notification centre. SMS/push out of scope. ⚠ **Amended 2026-08-19 by [DEC-89]**, **[DEC-111]** — invoice emails are sent by the **bookkeeping program**, so this channel carries the platform's own notifications only (offers, wallet events, alerts) over SendGrid **[DEC-48]**; and an offer notifies the **requester** *(⚠ "plus, under four-eyes, the approving admin" struck 2026-10-12, [DEC-179])*, not every active account. |
 
 ## 4. Role & permission model
 
@@ -311,7 +259,7 @@ Two disjoint identity populations, two portals, two APIs.
 flowchart TB
     subgraph cust["Customer realm — two levels · DEC-71"]
         CUSER["customer.user<br/><i>held by every account<br/>of every company</i>"]
-        CADMIN["customer.admin<br/><i>the admin flag ·<br/>approves four-eyes actions</i>"]
+        CADMIN["customer.admin<br/><i>the admin role ·<br/>administers the business</i>"]
     end
     subgraph emp["Employee realm"]
         VIEWER["employee.viewer"]
@@ -330,8 +278,8 @@ Arrows read as *"is a superset of"*: `employee.admin` holds everything.
 
 ⚠ **Amended 2026-08-19 by [DEC-71]** — the customer realm was labelled *one role only* and is now two.
 The arrow in that realm is deliberately the shallowest one on the diagram: `customer.admin` is
-`customer.user` **plus a single capability**, approving or declining a four-eyes action of its own
-company. It carries no wider data access and no other privilege, which is what keeps the amendment to
+`customer.user` **plus a single capability**, ~~approving or declining a four-eyes action of its own
+company~~ ⚠ **amended 2026-10-12 by [DEC-179]:** administering its own business (invitations, role changes, removals, entitlements, the bank account, withdrawals) and no longer approving anything. It carries no wider data access and no other privilege, which is what keeps the amendment to
 **[DEC-16]** a qualification rather than the intra-company role model that decision rejected.
 
 ### 4.1 Permission matrix
@@ -343,9 +291,10 @@ account of any company can do within its own company.
 `customer.user` column everywhere except **one row**, and a ✅ in it means *inherited*, never
 *wider*. Two reading rules for the whole table:
 
-- **⚖** marks an action that, when the company has four-eyes **enabled**, takes effect only after a
-  **different admin of the same company** approves it. A ✅ next to ⚖ still means *may initiate*.
-- Deposits carry no ⚖ deliberately **[DEC-71]**.
+- ~~**⚖** marks an action that, when the company has four-eyes **enabled**, takes effect only after a
+  **different admin of the same company** approves it. A ✅ next to ⚖ still means *may initiate*.~~
+  ⚠ **Removed 2026-10-12 by [DEC-179]:** no row carries ⚖ any more; every ✅ below takes effect when the account takes the action.
+- ~~Deposits carry no ⚖ deliberately **[DEC-71]**.~~
 
 | Capability | customer.user | customer.admin | employee.viewer | employee.trader | employee.finance | employee.admin |
 | --- | :--: | :--: | :--: | :--: | :--: | :--: |
@@ -353,8 +302,8 @@ account of any company can do within its own company.
 | Edit metering point name/description | ✅ | ✅ | — | ✅ | — | ✅ |
 | View any customer's data | — | — | ✅ | ✅ | ✅ | ✅ |
 | Create/cancel a trade request for own company | ✅ | ✅ | — | — | — | — |
-| Accept/reject **any** offer of own company — **⚖ on acceptance only**; rejecting releases the reservation and needs no second pair of eyes | ✅ | ✅ | — | — | — | — |
-| **Approve / decline a four-eyes action of own company [DEC-71]** | — | ✅ | — | — | — | — |
+| Accept/reject **any** offer of own company — acceptance reserves the deposit at once; rejecting releases nothing because nothing is held *(⚠ the ⚖ and the second pair of eyes struck 2026-10-12, [DEC-179]; any active member may accept [F05-R43])* | ✅ | ✅ | — | — | — | — |
+| ~~**Approve / decline a four-eyes action of own company [DEC-71]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** | — | ~~✅~~ | — | — | — | — |
 | Create trade request on behalf of a customer | — | — | — | ✅ | — | ✅ |
 | Price an offer / set reaction window | — | — | — | ✅ | — | ✅ |
 | Confirm or fail a pending trade | — | — | — | ✅ | — | ✅ |
@@ -364,16 +313,16 @@ account of any company can do within its own company.
 | ~~Manual wallet adjustment (with mandatory reason)~~ ⚠ **Reversed 2026-08-19 by [DEC-85]** — chargebacks and reversals are handled in the bookkeeping program; the adjustment-with-a-reason path leaves the platform | — | — | — | — | ~~✅~~ | ~~✅~~ |
 | Initiate a deposit for own company, or complete its own simulated checkout — iDEAL **or bank transfer with a platform-issued reference [DEC-106]**, **[DEC-162]** — **admin or trader** ⚠ **Amended 2026-09-23 by [DEC-163]** | ✅ | ✅ | — | — | — | — |
 | Initiate a deposit for own company, or complete its own simulated checkout — **viewer** ⚠ **Amended 2026-09-23 by [DEC-163]** — the first row in this table where `customer.user` does not mean every non-admin account | — | — | — | — | — | — |
-| **Request a withdrawal to the company bank account ⚖ [DEC-83]** | ✅ | ✅ | — | — | — | — |
-| **Pay out an approved withdrawal, manually [DEC-83]** | — | — | — | — | ✅ | ✅ |
-| **Add / deactivate a bank account, customer-side ⚖ [DEC-71]** — a bank account **cannot be edited once added**, only deactivated | ✅ | ✅ | — | — | — | — |
-| **Request a new account for own company ⚖ [DEC-71]** — the account itself is still created by a PeakPower employee **[DEC-16]**, on an approved request | ✅ | ✅ | — | — | — | — |
+| **Request a withdrawal to the company bank account [DEC-83]** — admin only **[DEC-163]** | ✅ | ✅ | — | — | — | — |
+| **Pay out a requested withdrawal, manually [DEC-83]** | — | — | — | — | ✅ | ✅ |
+| **Add / replace a bank account, customer-side — admin only [DEC-165]** — a bank account **cannot be edited once added**, only deactivated | ✅ | ✅ | — | — | — | — |
+| **Request a new account for own company [DEC-71]** — the account itself is still created by a PeakPower employee **[DEC-16]**; a customer admin also invites colleagues directly **[DEC-152]** | ✅ | ✅ | — | — | — | — |
 | View own company's invoices — number and PDF come from the bookkeeping program **[DEC-88]**, **[DEC-89]** | ✅ | ✅ | — | — | — | — |
 | Run / re-run invoicing — produces a **draft** **[DEC-88]** | — | — | — | — | ✅ | ✅ |
 | ~~Finalise & push invoice to Odoo~~ ⚠ **Amended 2026-08-19 by [DEC-88]** — push a **draft** to the bookkeeping program; it checks, numbers and issues. The platform never finalises or mints a number | — | — | — | — | ✅ | ✅ |
 | ~~Credit an invoice~~ ⚠ **Amended 2026-08-19 by [DEC-99]**, **[DEC-88]** — calculate the delta from a late metering correction and push a **correction draft**; the bookkeeping program credits and numbers it | — | — | — | — | ✅ | ✅ |
 | Manage customers & metering points | — | — | — | ✅ | — | ✅ |
-| **Set a company's four-eyes mode and an account's admin flag [DEC-71]** — subject to rules **FE-1**/**FE-2** | — | — | — | ✅ | — | ✅ |
+| **Set an account's admin flag [DEC-71]** ~~and a company's four-eyes mode — subject to rules **FE-1**/**FE-2**~~ *(⚠ no four-eyes mode since 2026-10-12, [DEC-179])* | — | — | — | ✅ | — | ✅ |
 | ~~Manage surcharges per customer~~ ⚠ **Reversed 2026-08-19 by [DEC-73]** — the surcharge left the platform; the bookkeeping program multiplies pushed volume by the topup fee | — | — | — | — | ~~✅~~ | ~~✅~~ |
 | Manage peak calendar & ~~tax tariffs~~ **energiebelasting brackets and per-customer reductions [DEC-74]** | — | — | — | — | — | ✅ |
 | Manage Montel ticker mapping | — | — | — | ✅ | — | ✅ |
@@ -404,27 +353,31 @@ account of any company can do within its own company.
    ⚠ **Reversed 2026-08-19 by [DEC-71].** Four-eyes is in scope, as a **per-customer-company mode
    with no threshold** — which also **replaces [DEC-33]** and **closes [OQ-85]**, the question that
    existed to supply the threshold figure. When a company has it enabled, the **four** actions listed
-   under *The admin flag and four-eyes* (§2.1) take effect only after a **different admin account of
+   under *The admin flag* (§2.1) take effect only after a **different admin account of
    the same company** approves them; deposits are excluded. ⚠ **Amended 2026-09-10 by [DEC-152]:**
    this rule said **five** when four-eyes shipped on 2026-08-19; **add a user** is reversed out of that
    table entirely, not merely re-approved — a customer `admin` now invites, re-roles and removes
    colleagues of their own business unilaterally, with no second admin's approval **[DEC-150]** —
    leaving **four**. What this rule got right was the mechanism — **[DEC-17]** attribution is what
    carries the approval trail. What it got wrong was the release, and now also the count.
-5. **A company with four-eyes enabled always has at least two active admin accounts** **[DEC-71]**.
+   ⚠ **Struck 2026-10-12 by [DEC-179]:** four-eyes is removed entirely; this rule, as amended, is kept as the record. What stands is the mechanism's premise: **[DEC-17]** attribution records who acted.
+
+5. ~~**A company with four-eyes enabled always has at least two active admin accounts** **[DEC-71]**.
    Rules **FE-1** to **FE-4** in §2.1 are binding on the feature specs, not advisory: no enabling
    below two admins, no deactivation that drops below two, refusal **at submission** if a company
    ends up with one anyway, and no escalation path that lets PeakPower approve on the customer's
    behalf. A control that cannot be satisfied must fail loudly at the moment it is invoked, not
-   silently at expiry.
+   silently at expiry.~~
+   ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no four-eyes mode, so no company needs two admins. The floor is **one** for every company: the last active admin cannot be demoted or removed **[DEC-157]**.
+
 6. ~~**The admin flag grants approval, nothing else** **[DEC-71]**. It is not seniority, not wider data
    access and not a prerequisite for any ordinary action — **[DEC-16]** still gives a non-admin
    account every ordinary privilege.~~
    ⚠ **Reversed 2026-09-10 by [DEC-152].** There is no admin *flag* to grant it any more —
    `is_admin` leaves both the account record and the token, replaced by a **`membershipRole`** of
-   `admin`, `trader` or `viewer` per business (§2.1 above). `admin` still grants approval, but that is
-   no longer its only effect: it also gates invitations, role changes, removals and entitlements
-   outside four-eyes entirely **[DEC-150]** — ordinary writes a non-admin account cannot perform,
+   `admin`, `trader` or `viewer` per business (§2.1 above). ~~`admin` still grants approval, but that is
+   no longer its only effect:~~ ⚠ **Amended 2026-10-12 by [DEC-179]:** `admin` no longer grants approval (there is none); it gates invitations, role changes, removals and entitlements
+   **[DEC-150]**, the company bank account and withdrawals **[DEC-163]** — ordinary writes a non-admin account cannot perform,
    which is exactly the "prerequisite for an ordinary action" this rule said did not exist. What
    survives: `admin` still grants **no additional read** — every member of a business sees identical
    business data **[F01-R14]** — and `trader`/`viewer` still differ from each other in nothing but the

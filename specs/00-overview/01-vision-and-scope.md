@@ -64,7 +64,6 @@ mindmap
       Price indications — raw quote since DEC-167, margin in the firm offer
       Trade requests + offer acceptance
       Selling short
-      Four-eyes as a per-company mode
       Wallet, ledger, iDEAL + bank-transfer deposits
       Withdrawal requests
       Calculated invoice data — numbered elsewhere
@@ -87,7 +86,7 @@ mindmap
       Notifications
 ```
 
-⚠ **The mindmap was redrawn on 2026-08-19.** What left it: the four-eyes threshold **[DEC-71]**,
+⚠ **The mindmap was redrawn on 2026-08-19.** What left it: the four-eyes threshold **[DEC-71]** (and, on 2026-10-12, four-eyes as a per-company mode **[DEC-179]**),
 surcharge and feed-in reference data **[DEC-73]** **[DEC-87]**, feed-in on exported volume
 **[DEC-87]**, and invoice numbering, the PDF and the invoice email **[DEC-88]** **[DEC-89]**. What
 arrived: short selling **[DEC-72]**, bank-transfer deposits **[DEC-106]**, withdrawals **[DEC-83]**,
@@ -115,7 +114,7 @@ netted against each other — they stay separate lines because they are separate
 they carry separate rates. The first half of **[DEC-44]** (day-ahead used raw, no spread) is
 confirmed.
 
-**Sensitive actions need a second pair of eyes when the customer company asks for it.** ~~Trades
+~~**Sensitive actions need a second pair of eyes when the customer company asks for it.**~~ ⚠ **Removed 2026-10-12 by [DEC-179]:** there is no four-eyes in the platform; the paragraph below is kept as the record, and nothing in it is in scope. What stands from it: a bank account cannot be edited once added, only deactivated; the admin flag survives as the `admin` membership role; every action records the acting account **[DEC-17]**. ~~Trades
 above a value threshold need a second pair of eyes. Four-eyes approval **[DEC-33]** is in scope: an
 approval state on the trade machine, an approving account that must differ from the accepting one,
 and a threshold held as reference data.~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** — there is **no
@@ -128,7 +127,7 @@ gates nothing. A bank account cannot be edited once added; it can only be deacti
 **qualifies [DEC-16]**: customer accounts now carry an **admin** flag. That is the smallest role
 model that makes four-eyes expressible — exactly two levels — and **[DEC-17]** (every action records
 the acting account) is what makes the approval trail worth keeping. Under **[DEC-111]** the admin who
-must approve is notified alongside the requester.
+must approve is notified alongside the requester.~~
 
 **A customer may sell a block they do not hold [DEC-72].** The sell path no longer validates against
 confirmed holdings for the delivery period; the motivating case is a customer with solar production
@@ -160,7 +159,7 @@ transfer against a unique payment reference the platform issues**; the platform 
 payment on that reference, credits the wallet and emails the customer that the funds arrived
 **[DEC-106]**, with **[DEC-61]**'s IBAN matching as the fallback when the reference is omitted. A
 withdrawal is requested in the portal, notified to PeakPower, paid out manually by bank transfer to
-the company bank account, and recorded as request, approval and debit **[DEC-83]**. There is **no
+the company bank account, and recorded as request and debit **[DEC-83]** *(⚠ "approval" struck 2026-10-12, [DEC-179])*. There is **no
 minimum and no maximum** deposit amount **[DEC-84]**, no balance threshold and no low-balance alert
 **[DEC-90]**, and **no invoice** is raised for either a deposit or a withdrawal.
 
@@ -251,7 +250,7 @@ These are not built in the first track, but the architecture must not preclude t
   not deferred [DEC-16]**. All accounts of a company have identical privileges; the customer governs
   internally, and the platform records *who acted* **[DEC-17]** rather than restricting who may act.
   [OQ-04] is closed. ⚠ **Qualified 2026-08-19 by [DEC-71]**: accounts now carry an **admin** flag —
-  two levels, not a role model, and it exists only to make four-eyes expressible. Who creates
+  two levels, not a role model, and ~~it exists only to make four-eyes expressible~~ *(⚠ four-eyes removed 2026-10-12, [DEC-179]; the flag stays as the `admin` membership role)*. Who creates
   accounts (PeakPower employees) is unchanged, and no other privilege hangs off the flag.
 
 ### 4.4 What crossed the scope boundary on 2026-08-19
@@ -273,6 +272,7 @@ can be audited in one place.
 | **Out** | Chargebacks and reversals | **[DEC-85]** | — |
 | **Out** | PSP settlement reconciliation | **[DEC-105]** | — |
 | **Out** | The four-eyes value threshold | **[DEC-71]** | replaces **[DEC-33]** |
+| **Out** | Four-eyes as a per-customer-company mode, every second-admin approval | **[DEC-179]** | reverses **[DEC-71]** |
 | **Out** | Wallet balance thresholds and low-balance alerts | **[DEC-90]** | reverses **[DEC-49]** |
 | **Out** | Minimum and maximum deposit amounts | **[DEC-84]** | — |
 | **In** | Energiebelasting — brackets, per-customer reductions, ledger push | **[DEC-74]** | reverses **[DEC-24]** |
@@ -281,7 +281,7 @@ can be audited in one place.
 | **In** | Bank-transfer deposits matched by the platform | **[DEC-106]** | amends **[DEC-58]**, opens **[OQ-93]** |
 | **In** | Withdrawals | **[DEC-83]** | reverses **[DEC-43]** |
 | **In** | Customer usage API | **[DEC-97]** | opens **[OQ-95]** |
-| **In** | Four-eyes as a per-customer-company mode | **[DEC-71]** | qualifies **[DEC-16]** |
+| ~~**In**~~ | ~~Four-eyes as a per-customer-company mode~~ | ~~**[DEC-71]**~~ | ~~qualifies **[DEC-16]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]**; now listed under **Out** |
 | **In** | Correction invoices at any time, no materiality threshold | **[DEC-99]**, **[DEC-100]** | replaces the annual true-up |
 | **Confirmed out** | Imbalance — but PeakPower carries the **full** risk | **[DEC-25]**, [OQ-15] | — |
 
@@ -310,7 +310,7 @@ bookkeeping program bolted to its side, rather than a billing system.
 3. **Money movements are never implicit.** Reserve, release, settle and adjust are distinct, named,
    logged operations. ~~Refund is no longer among them **[DEC-43]** — which makes the remaining four
    carry more weight, not less.~~ ⚠ **Amended 2026-08-19 by [DEC-83]**: **withdraw** joins them, as
-   request → approval → debit, each recorded separately. **Adjust** loses its chargeback case
+   request → ~~approval →~~ debit, each recorded separately *(⚠ no approval since 2026-10-12, [DEC-179])*. **Adjust** loses its chargeback case
    **[DEC-85]**, and **settle** no longer covers invoices at all **[DEC-77]** — it is now a trading
    verb only.
 4. **Time is hard; be explicit.** Every timestamp is stored in UTC with a known local calendar.
@@ -331,7 +331,7 @@ bookkeeping program bolted to its side, rather than a billing system.
 | **.NET Aspire** for local orchestration | Stakeholder preference — across two repositories **[DEC-55]** |
 | Cloud deployment, Azure as default target | Stakeholder preference; Aspire deploys cleanly to Azure Container Apps. **[DEC-56]**: there is no existing tenancy, landing zone or naming standard, so all three are this project's to set. [OQ-50] still open |
 | Production identity provider is **Microsoft Entra ID**; the PoC runs with **no authentication** | **[DEC-20]**. The provider owns credentials and the platform never stores a *customer* password **[DEC-29]**; named employee break-glass accounts are the one bounded exception **[DEC-53]**. ~~Customer MFA is a tenant-policy matter, not a platform one **[DEC-51]**.~~ ⚠ **Amended 2026-08-19 by [DEC-92]** — **MFA is mandatory for customer users**. It is still enforced by Conditional Access in the tenant **[DEC-66]** rather than implemented in the platform, but it is no longer optional and the platform **verifies the authentication-method claim on the token** rather than trusting the tenant silently. Onboarding friction is accepted. There is no existing customer-facing identity solution to migrate from **[DEC-110]**. It runs in PeakPower's **existing corporate Microsoft tenancy [DEC-66]**, which also hosts the Azure subscriptions — **[DEC-56]**'s "no Azure tenancy" means no subscription, landing zone or naming standard, not no directory. ⚠ *Access* to that tenancy is a Phase 0 dependency, not an open question; **[R-24]** carries what remains |
-| Transactional email through **SendGrid**, for the platform's **own** notifications only | **[DEC-48]**. A dedicated sending domain with SPF, DKIM and DMARC is required and is a lead-time item — offer notifications are time-critical ~~**[DEC-63]** and invoices are on the same channel **[DEC-47]**~~. ⚠ **Narrowed 2026-08-19 by [DEC-89]**: the invoice email is sent by the bookkeeping program, so SendGrid carries offers, wallet events (including the "funds received" mail of **[DEC-106]**) and alerts, not invoices. ⚠ **[DEC-63]** is **reversed by [DEC-111]** — an offer notifies the account that raised the request, plus the approving admin when four-eyes is on **[DEC-71]**, not every active account. Cost, recorded because DEC-63's rationale was exactly this: a 30-minute offer can now die because one person is in a meeting, and **[DEC-18]** still lets any account accept |
+| Transactional email through **SendGrid**, for the platform's **own** notifications only | **[DEC-48]**. A dedicated sending domain with SPF, DKIM and DMARC is required and is a lead-time item — offer notifications are time-critical ~~**[DEC-63]** and invoices are on the same channel **[DEC-47]**~~. ⚠ **Narrowed 2026-08-19 by [DEC-89]**: the invoice email is sent by the bookkeeping program, so SendGrid carries offers, wallet events (including the "funds received" mail of **[DEC-106]**) and alerts, not invoices. ⚠ **[DEC-63]** is **reversed by [DEC-111]** — an offer notifies the account that raised the request ~~, plus the approving admin when four-eyes is on **[DEC-71]**~~ *(⚠ the requester only since 2026-10-12, [DEC-179])*, not every active account. Cost, recorded because DEC-63's rationale was exactly this: a 30-minute offer can now die because one person is in a meeting, and **[DEC-18]** still lets any account accept |
 | Payments are **iDEAL** plus a **platform-matched bank transfer** | ~~Payments are **iDEAL only**, plus manual bank transfer. **[DEC-58]**. No SEPA via the provider, no Bancontact~~ ⚠ **Amended 2026-08-19 by [DEC-106]** — no SEPA direct debit via the provider and no Bancontact still hold, but bank transfer is a modelled deposit route with a platform-issued payment reference, not a manual step beside the platform. No PSP is chosen **[DEC-86]**; the feed the platform reads incoming payments from is **[OQ-93]** |
 | ~~Metering data arrives only from **PVNed**, push-only~~ ⚠ **Amended 2026-08-19 by [DEC-69]** — metering data arrives from a **configurable BRP**, push-only; PVNed is the first | Third-party contract. The PoC ingests **generated** data in the PVNed document format, driven through the real webhook and parser **[DEC-21]**; the real integration is validated later, and R-01 is deferred rather than closed. Each BRP brings its own credentials, endpoint, document format and adapter behind one port. **[DEC-98]** also reverses **[DEC-57]**: PVNed *does* supply reconciliation data after the 10-working-day correction window, sometimes as a manual process, which with **[DEC-99]** is what makes late correction invoices possible |
 | Price indications come from an **existing Montel API implementation** | Existing asset to be reused — **[DEC-96]** names it: a Montel service already built inside PeakPower, integrated first rather than the Montel API directly. Licence restricts onward display: no public display, authenticated portal only **[DEC-27]**, current curve only, no history and no export **[DEC-81]**, and shown as bid plus a configurable markup defaulting to 2% **[DEC-80]**. Montel day-ahead **history** is available, so positions can be settled retrospectively with no backfill cliff **[DEC-75]** ⚠ **Reversed 2026-09-29 by [DEC-167]** — customers now see the **raw** quote (Prices page and request-panel estimate); the margin is in the firm offer price the trader types. Licence caveat before Montel goes live: **[OQ-117]**. |

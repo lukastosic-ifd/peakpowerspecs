@@ -9,10 +9,10 @@
 > ⚠ **Built 2026-09-22 by [DEC-156]** — F06 is now implemented end to end on **test money [DEC-28]**: real
 > settled/reserved/available balances, the append-only `wallet.ledger_entry` (monotonic per-wallet sequence
 > under a row lock, entry+balance in one transaction, non-negative by domain guard **and** DB `CHECK`), a Worker
-> reconciliation job raising `LEDGER_MISMATCH`, withdrawals with the platform's first four-eyes approval runtime,
+> reconciliation job raising `LEDGER_MISMATCH`, withdrawals (~~with the platform's first four-eyes approval runtime~~ *no approval since 2026-10-12, [DEC-179]*),
 > and the customer **"Wallet"** page + back-office wallet admin. Trade ledger entries stay declared-but-unwired
-> (trading is a separate repo). Residuals: **[OQ-106]** (a SQL-injection-only four-eyes bypass, own-account,
-> no theft) and **[OQ-107]** (a read-thin back-office surface).
+> (trading is a separate repo). Residuals: ~~**[OQ-106]** (a SQL-injection-only four-eyes bypass, own-account,
+> no theft)~~ *(moot since 2026-10-12, [DEC-179])* and **[OQ-107]** (a read-thin back-office surface).
 >
 > ⚠ **Amended 2026-09-23 by [DEC-158]** — the customer-facing label reverts to **"Balance"**; the deposit-flow
 > copy uses **"deposit"** rather than "pay/payment". Display text only — the `wallet` domain term, the
@@ -74,13 +74,13 @@ requested money is spoken for before anyone at PeakPower has moved it.
 > ⚠ **Reversed 2026-08-19 by [DEC-83].** Money is **not** one-way. A customer raises a withdrawal
 > request in the portal, PeakPower is notified, and an **employee pays it out manually** by bank
 > transfer to the company bank account on the customer record **[DEC-61]**. The platform records
-> three things — the request, the approval and the debit — and performs none of the payment. Under
-> **[DEC-71]** the request needs a **second admin's approval** when four-eyes is on for that company.
+> ~~three things — the request, the approval and the debit —~~ ⚠ **two things since 2026-10-12 ([DEC-179]): the request and the debit** — and performs none of the payment. ~~Under
+> **[DEC-71]** the request needs a **second admin's approval** when four-eyes is on for that company.~~
 > **No invoice is raised for a deposit or a withdrawal** **[DEC-106]**; the bookkeeping program sees
 > both through its bank feed **[DEC-109]**.
 >
 > The three things DEC-43 removed come back in a cheaper form: the flow is manual (no provider payout
-> integration), the approver is the second admin under four-eyes (not a new role), and the
+> integration), ~~the approver is the second admin under four-eyes (not a new role),~~ and the
 > provider-versus-manual-transfer choice is settled as **manual transfer**. What it costs is an
 > operational commitment — a payout only happens when a human does it, so the turnaround is a working
 > day, not a webhook.
@@ -133,7 +133,7 @@ The one place the wallet meets VAT is the gross-up on a trade, at the **[DEC-64]
 | `DEPOSIT_IDEAL` | Credit | + | — | Payment provider webhook confirms | Payment |
 | `DEPOSIT_BANK` | Credit | + | — | ⚠ **Amended 2026-08-19 by [DEC-106]** — was "finance registers a received transfer". The platform matches the incoming transfer on the **unique payment reference it issued** for the deposit intent, credits the wallet and emails the customer. Registered-IBAN matching **[DEC-61]** is the fallback, and manual registration by finance **[F06-R25]** is the fallback to that | Deposit intent, payment reference, bank reference |
 | `TRADE_RESERVED` | — | 0 | + | Customer accepts an offer. Amount is **VAT-inclusive [DEC-78]** ⚠ **2026-09-30 [DEC-167] (17): for a BUY it is the DEPOSIT** — the company's percentage of that gross, frozen at accept; nothing is written at 0 % | Trade |
-| `TRADE_RESERVATION_RELEASED` | — | 0 | − | Trade marked failed ⚠ **or an approval refused (actor = the refusing admin), or an offer expired from `AWAITING_APPROVAL` [DEC-167]** | Trade |
+| `TRADE_RESERVATION_RELEASED` | — | 0 | − | Trade marked failed ⚠ ~~**or an approval refused (actor = the refusing admin), or an offer expired from `AWAITING_APPROVAL` [DEC-167]**~~ *(struck 2026-10-12, [DEC-179]: neither exists)* | Trade |
 | `TRADE_SETTLED` | Debit | − | − | Trader confirms a BUY. Amount is **VAT-inclusive [DEC-78]** ⚠ **2026-09-30 [DEC-167] (17): the deposit** (what was reserved) |  Trade, block |
 | `TRADE_BALANCE_PAID` | Debit | − | 0 | ⚠ **New 2026-09-30 [DEC-167] (17).** The **balance** of a confirmed BUY, paid by a customer's *Pay balance* or collected automatically on the due date. A **direct debit of settled and available with no reservation** — reserved does not move — and it may never take available below zero. **Once per (wallet, trade)**, by a partial unique index. Actor: the paying account, or the system for automatic collection | Trade |
 | `TRADE_PROCEEDS` | Credit | + | — | Trader confirms a SELL. Amount is **VAT-inclusive [DEC-78]** | Trade |
@@ -141,7 +141,7 @@ The one place the wallet meets VAT is the gross-up on a trade, at the **[DEC-64]
 | ~~`INVOICE_CREDIT`~~ | ~~Credit~~ | ~~+~~ | — | ⚠ **Removed 2026-08-19 by [DEC-77]**, consequentially: an invoice that never debited the wallet cannot be credited back to it. A credit note is raised, numbered and settled in the bookkeeping program **[DEC-88]**, **[DEC-89]**, against the bank | ~~Credit note~~ |
 | ~~`REFUND`~~ | ~~Debit~~ | ~~−~~ | — | **Not implemented [DEC-43]** — there is no refund payout path and no refund request to trigger it. The type is kept in the enumeration, unused, so the ledger's type list does not have to be renumbered if a payout path is ever specified. ⚠ **Amended 2026-08-19 by [DEC-83]:** a payout path now exists, but it is a **withdrawal**, not the refund of a payment. `REFUND` stays unused; the `WITHDRAWAL_*` types below carry the movement, because a withdrawal is not tied to an inbound payment and must not be modelled as reversing one | — |
 | `WITHDRAWAL_REQUESTED` | — | 0 | + | Customer **admin** requests a withdrawal **[DEC-83]**. Reserves the amount on the same mechanism as a trade **[DEC-05]**, so it cannot be traded away before it is paid | Withdrawal request |
-| `WITHDRAWAL_RELEASED` | — | 0 | − | The request is declined — by the second admin under four-eyes **[DEC-71]**, by PeakPower, or withdrawn by the customer. Returns the amount to available in full | Withdrawal request, reason |
+| `WITHDRAWAL_RELEASED` | — | 0 | − | The request is declined — ~~by the second admin under four-eyes **[DEC-71]**,~~ by PeakPower, or withdrawn by the customer. Returns the amount to available in full | Withdrawal request, reason |
 | `WITHDRAWAL_PAID` | Debit | − | − | An employee records the manual bank transfer they have made **[DEC-83]** | Withdrawal request, bank account, employee |
 | ~~`ADJUSTMENT`~~ | ~~Either~~ | ~~±~~ | — | ⚠ **Removed 2026-08-19 by [DEC-85]** — chargebacks and reversals are handled in the bookkeeping program, and the manual-adjustment-with-a-reason path goes with them. ⚠ **What this costs, recorded rather than glossed:** a charged-back iDEAL deposit takes money out of the bank but the platform has **no entry type left** to take it out of the wallet, so the balance overstates until someone decides otherwise. Reinstating an adjustment type is a decision, not an oversight | ~~Reason + actor~~ |
 | `FEE` | Debit | − | — | Contractual fee, if any | Fee definition |
@@ -256,16 +256,14 @@ flowchart LR
 ## 4a. Money movement out of the wallet — withdrawal
 
 **[DEC-83]** reverses **[DEC-43]**: a payout path exists, and it is manual end to end. The platform
-records the request, the approval and the debit; a human makes the payment.
+records the request and the debit; a human makes the payment. ~~The approval~~ is gone since 2026-10-12 **[DEC-179]**.
 
 ```mermaid
 stateDiagram-v2
     [*] --> REQUESTED
-    REQUESTED --> APPROVED: second admin approves
-    REQUESTED --> DECLINED: second admin declines
     REQUESTED --> DECLINED: customer cancels
-    APPROVED --> PAID: employee transfers and records it
-    APPROVED --> DECLINED: PeakPower refuses, reason mandatory
+    REQUESTED --> PAID: employee transfers and records it
+    REQUESTED --> DECLINED: PeakPower refuses, reason mandatory
     DECLINED --> [*]
     PAID --> [*]
 
@@ -279,9 +277,9 @@ stateDiagram-v2
 | Transition | Ledger entry | Settled Δ | Reserved Δ | Who |
 | --- | --- | :--: | :--: | --- |
 | → `REQUESTED` | `WITHDRAWAL_REQUESTED` | 0 | + | Customer **admin** account **[DEC-71]**, **[DEC-17]** |
-| `REQUESTED` → `APPROVED` | none — the approval is an audit record, not a movement | 0 | 0 | A **different** admin of the same company when four-eyes is on **[DEC-71]**; when it is off the request enters `APPROVED` on submission with the requester as the only actor |
-| → `DECLINED` | `WITHDRAWAL_RELEASED` | 0 | − | Second admin, the customer, or a PeakPower employee — reason mandatory |
-| `APPROVED` → `PAID` | `WITHDRAWAL_PAID` | − | − | PeakPower employee, after the bank transfer has actually been made **[DEC-83]** |
+| ~~`REQUESTED` → `APPROVED`~~ | ~~none — the approval is an audit record, not a movement~~ | ~~0~~ | ~~0~~ | ~~A **different** admin of the same company when four-eyes is on **[DEC-71]**; when it is off the request enters `APPROVED` on submission with the requester as the only actor~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no approval; the request is payable the moment it exists. |
+| → `DECLINED` | `WITHDRAWAL_RELEASED` | 0 | − | ~~Second admin,~~ the customer, or a PeakPower employee — reason mandatory |
+| `REQUESTED` → `PAID` | `WITHDRAWAL_PAID` | − | − | PeakPower employee, after the bank transfer has actually been made **[DEC-83]** |
 
 Worked example, continuing from **€27 736,00** settled after the trade above: the customer requests
 **€10 000,00**.
@@ -290,11 +288,11 @@ Worked example, continuing from **€27 736,00** settled after the trade above: 
 | --- | --- | --: | --: | --: |
 | After the trade settles | — | €27 736,00 | €0,00 | €27 736,00 |
 | Customer admin requests €10 000 | `WITHDRAWAL_REQUESTED` | €27 736,00 | €10 000,00 | €17 736,00 |
-| Second admin approves **[DEC-71]** | — (approval is audit, not a movement) | €27 736,00 | €10 000,00 | €17 736,00 |
+| ~~Second admin approves **[DEC-71]**~~ | ~~— (approval is audit, not a movement)~~ | ~~€27 736,00~~ | ~~€10 000,00~~ | ~~€17 736,00~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step. |
 | Employee transfers and records it | `WITHDRAWAL_PAID` | €17 736,00 | €0,00 | €17 736,00 |
 
-Had the second admin declined instead, `WITHDRAWAL_RELEASED` returns the reserved €10 000,00 and the
-wallet is back to €27 736,00 available, with the decline reason on the ledger row.
+Had the customer cancelled instead, `WITHDRAWAL_RELEASED` returns the reserved €10 000,00 and the
+wallet is back to €27 736,00 available, with the reason on the ledger row.
 
 **No invoice is raised for a deposit or for a withdrawal [DEC-106].** Neither is pushed to the
 bookkeeping program either — it learns about both from its bank feed **[DEC-109]**.
@@ -336,10 +334,10 @@ bookkeeping program either — it learns about both from its bank feed **[DEC-10
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
 | F06-R33 | A customer **admin** account can raise a withdrawal request for any amount up to `availableBalance`. The request writes `WITHDRAWAL_REQUESTED`, which reserves the amount **[DEC-05]** so it cannot be traded away before it is paid. No minimum and no maximum amount is defined — **[DEC-84]** removes them on the deposit side and no decision sets one here. | Must |
-| F06-R34 | When four-eyes is enabled for the company **[DEC-71]**, the request must be approved by a **different** admin account of the same company before PeakPower is asked to pay. A decline writes `WITHDRAWAL_RELEASED` with a mandatory reason and returns the amount to available in full. When four-eyes is off, the request is approved on submission by the requester alone. | Must |
+| ~~F06-R34~~ | ~~When four-eyes is enabled for the company **[DEC-71]**, the request must be approved by a **different** admin account of the same company before PeakPower is asked to pay. A decline writes `WITHDRAWAL_RELEASED` with a mandatory reason and returns the amount to available in full. When four-eyes is off, the request is approved on submission by the requester alone.~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — a withdrawal needs no second admin; it is payable once requested, and an admin can cancel it while it is `REQUESTED`. A request that was waiting for a second admin when migration 39 ran became `REQUESTED` with an audit row that says so. | Must |
 | F06-R35 | PeakPower is notified when a withdrawal request becomes payable ([F11](F11-notifications.md)). There is no automatic payout and no provider integration: an employee makes the transfer by hand **[DEC-83]**. | Must |
 | F06-R36 | An employee records the payment they have made. `WITHDRAWAL_PAID` debits the settled balance and clears the reservation in one transaction, and stores the value date, the bank reference and the acting employee **[DEC-17]**. The entry is written **after** the transfer, never as an instruction to make one. | Must |
-| F06-R37 | A withdrawal may be paid **only** to the company bank account on the customer record **[DEC-61]**, **[F01-R01]**. That account **cannot be edited** — it can only be deactivated and a new one added — and both adding and deactivating need a second admin's approval when four-eyes is on **[DEC-71]**. ⚠ **Amended 2026-09-28 by [DEC-165]** — twin of **[F07-R33]**: a company **admin** replaces the account themselves from the Balance page, and a company with four-eyes on is blocked from changing it (`409`) until the approval flow **[F01-R45]** is built. ⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.** The payout goes to the `ACTIVE` account as resolved at payout time. | Must |
+| F06-R37 | A withdrawal may be paid **only** to the company bank account on the customer record **[DEC-61]**, **[F01-R01]**. That account **cannot be edited** — it can only be deactivated and a new one added — and ~~both adding and deactivating need a second admin's approval when four-eyes is on **[DEC-71]**.~~ ⚠ **Amended 2026-09-28 by [DEC-165]** — twin of **[F07-R33]**: a company **admin** replaces the account themselves from the Balance page, ~~and a company with four-eyes on is blocked from changing it (`409`) until the approval flow **[F01-R45]** is built~~. ⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.** The payout goes to the `ACTIVE` account as resolved at payout time. ⚠ **Amended 2026-10-12 by [DEC-179]:** the payout goes to the company's `ACTIVE` bank account; adding or replacing it is one admin's action and needs no approval **[F01-R45]** (struck), and nothing is blocked at a four-eyes company. | Must |
 | F06-R38 | **No invoice is raised for a deposit or a withdrawal** **[DEC-106]**, and neither is pushed to the bookkeeping program; it learns about both through its bank feed **[DEC-109]**. | Must |
 
 ### Ledger view
@@ -437,8 +435,8 @@ Reference cells in bold are links. Three things this table now shows and did not
 - **The "Trade confirmed" row** shows the reservation converting to a settled debit: available is
   unchanged because the money was already committed, while the settled balance drops.
 - **The withdrawal pair** behaves the same way — the request reserves, the payment settles, and
-  available moves only once **[DEC-83]**. The approving admin, when four-eyes is on **[DEC-71]**, is
-  on the request's audit record, not on a ledger row, because approval moves no money.
+  available moves only once **[DEC-83]**. ~~The approving admin, when four-eyes is on **[DEC-71]**, is
+  on the request's audit record, not on a ledger row, because approval moves no money.~~ *(⚠ no approval since 2026-10-12, [DEC-179])*
 
 ⚠ **Removed 2026-08-19 by [DEC-77]:** the row `31-08-2026 23:59 | Invoice | August 2026 | System |
 INV-2026-08-0042 | €34 397.48 | | −€2 797.48`. There is no invoice row in a wallet ledger any more,
@@ -468,7 +466,7 @@ queue **[F06-R36]**.
 | `wallet` | customer_id (company), currency, settled_balance, reserved_amount, version |
 | `wallet_entry` | Append-only ledger, with sequence, deltas, resulting balances, links |
 | `wallet_reservation` | amount, state, trade_id **or** withdrawal_request_id, created/settled/released timestamps |
-| `wallet_withdrawal_request` | amount, state (`REQUESTED`/`APPROVED`/`DECLINED`/`PAID`), requested_by (admin account), approved_by (a **different** admin **[DEC-71]**), decline reason, bank_account_id **[DEC-61]**, paid_by (employee), value date, bank reference **[DEC-83]** |
+| `wallet_withdrawal_request` | amount, state (`REQUESTED`/`DECLINED`/`PAID`; ~~`APPROVED`~~ struck 2026-10-12), requested_by (admin account), ~~approved_by (a **different** admin **[DEC-71]**)~~ *(dropped by migration 39, [DEC-179])*, decline reason, bank_account_id **[DEC-61]**, paid_by (employee), value date, bank reference **[DEC-83]** |
 | ~~`wallet_threshold_rule`~~ | ~~Minimum-balance rules, global and per customer — **fixed EUR amounts, never derived from trading volume [DEC-49]** — [F11](F11-notifications.md)~~ **Removed 2026-08-19 by [DEC-90]**, which reverses [DEC-49]. No table, no rows, no rule evaluation job. [F11](F11-notifications.md) loses the alert that read it |
 
 ## 10. Edge cases & failure modes
@@ -486,7 +484,7 @@ queue **[F06-R36]**.
 | Balance and ledger disagree | Reconciliation job raises a `LEDGER_MISMATCH` alert with both figures; no automatic repair |
 | **Customer requests a withdrawal, then tries to trade the same money** | The request reserved it on entry **[F06-R33]**, so `availableBalance` already excludes it and the pre-trade check **[DEC-41]** refuses the trade. The customer can cancel the request to free it |
 | **Second admin declines a withdrawal** | `WITHDRAWAL_RELEASED` returns the full amount to available with the mandatory reason on the row **[F06-R34]**. Nothing was paid, so nothing has to be recovered |
-| **An approved withdrawal is never paid** | It sits in `APPROVED` and the money stays reserved indefinitely — the platform cannot pay it itself **[DEC-83]**. Ageing of the approved queue is visible to employees **[F06-R17]**; it is an operational commitment, not a technical one |
+| ~~**An approved withdrawal is never paid**~~ | ~~It sits in `APPROVED` and the money stays reserved indefinitely — the platform cannot pay it itself **[DEC-83]**. Ageing of the approved queue is visible to employees **[F06-R17]**; it is an operational commitment, not a technical one~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no approved state; the same ageing applies to a `REQUESTED` withdrawal: it sits and the money stays reserved until an employee pays it **[F06-R17]**. |
 | **A paid withdrawal bounces back from the bank** | The returned money arrives as an ordinary incoming payment and is matched and credited as a deposit **[DEC-106]**. The `WITHDRAWAL_PAID` entry stands — it correctly records a transfer that was made |
 | **iDEAL deposit is charged back** | ⚠ **Known gap.** The bookkeeping program handles the chargeback **[DEC-85]**, but it cannot move a wallet balance and the platform no longer has an `ADJUSTMENT` to do it with. The wallet overstates by the charged-back amount until a decision reinstates a correction entry. Recorded plainly rather than assumed away |
 | **Customer closed with a positive balance** | ~~**No defined route for the money — a known gap [DEC-43].**~~ **Resolved by [DEC-83]**: the customer raises a withdrawal request and an employee pays it out **[F06-R33]**..**[F06-R37]**. Sequence: outstanding blocks run to the end of their delivery period and are sold at day-ahead **[DEC-82]**, **[DEC-23]**; the final delivery invoices settle in the bookkeeping program **[DEC-88]**; whatever is left is withdrawn |
@@ -529,8 +527,8 @@ queue **[F06-R36]**.
 | [F05](F05-energy-block-trading.md) | Reserve / settle / release, and the pre-trade check that reads `availableBalance` **[DEC-41]** against the VAT-inclusive figure **[DEC-78]** |
 | [F07](F07-wallet-topup-and-payments.md) | Deposits — iDEAL and the bank transfer matched on a platform-issued payment reference **[DEC-106]**, with IBAN as fallback **[DEC-61]** |
 | ~~[F10](F10-invoicing-and-settlement.md)~~ | ~~Invoice debits and credits~~ ⚠ **Dependency removed 2026-08-19 by [DEC-77]** — F10 no longer writes to the wallet. It pushes a draft invoice to the bookkeeping program **[DEC-88]**; the two features share no money path, only a customer |
-| [F11](F11-notifications.md) | ~~Low-balance alerts~~ ⚠ **Amended by [DEC-90]** — those are gone. What remains: the deposit-received email **[DEC-106]**, the withdrawal-request notification to PeakPower **[F06-R35]**, and the four-eyes approval notification to the second admin **[DEC-71]** — the same narrowed audience **[DEC-111]** sets for offers |
-| [F13](F13-identity-and-access.md) | The customer **admin** flag and the four-eyes mode that gate withdrawals and bank-account changes **[DEC-71]** |
+| [F11](F11-notifications.md) | ~~Low-balance alerts~~ ⚠ **Amended by [DEC-90]** — those are gone. What remains: the deposit-received email **[DEC-106]**, the withdrawal-request notification to PeakPower **[F06-R35]**, ~~and the four-eyes approval notification to the second admin **[DEC-71]**~~ *(struck 2026-10-12, [DEC-179])* — the same narrowed audience **[DEC-111]** sets for offers |
+| [F13](F13-identity-and-access.md) | The customer **admin** role that gates withdrawals and bank-account changes **[DEC-71]**, **[DEC-152]** ~~and the four-eyes mode~~ *(struck 2026-10-12, [DEC-179])* |
 | [F01](F01-customer-and-metering-points.md) | The company bank account a withdrawal is paid to **[DEC-61]**, **[F01-R01]** — addable and deactivatable, never editable **[DEC-71]** |
 
 ## 13. Open questions
@@ -539,7 +537,7 @@ queue **[F06-R36]**.
 | --- | --- |
 | ~~[OQ-17]~~ | ~~**Partly closed by [DEC-26]** — wallet amounts are VAT-**exclusive**. Still open: **(a)** the rate per line category plus exemptions and reverse charge, 21% NL standard assumed; **(b)** whether `INVOICE_DEBIT` settles the VAT-exclusive subtotal or the VAT-inclusive total. Resolve both before wallet settlement is built~~ **CLOSED 2026-08-19.** (a) was closed by **[DEC-64]** at 21% and is superseded as a platform behaviour by **[DEC-76]** — the platform computes no VAT at all. (b) is closed twice over: `INVOICE_DEBIT` is removed **[DEC-77]**, and the amount that does move is the **inclusive** trade reservation **[DEC-78]** |
 | ~~[OQ-19]~~ | ~~Full debit into negative, or partial settlement, when a wallet cannot cover an invoice?~~ **CLOSED by [DEC-77]** — neither. The wallet is **never asked to cover an invoice**: it funds trading only, and the monthly delivery amount is pushed to the bookkeeping program as a draft **[DEC-88]** and paid to the bank **[F06-R30]**. The premise of the question is gone, and the receivable half with it **[DEC-109]** |
-| ~~[OQ-30]~~ | ~~Is a refund of surplus balance to the customer's bank in scope, and who approves it?~~ ~~**Closed by [DEC-43]** — no refund payout path exists; surplus stays in the wallet **[F06-R29]**. ⚠ **This closes the question and leaves a gap**: offboarding a customer with a positive balance has no route for the money. Known gap, not an open question, and it interacts with **[OQ-29]** — see §1~~ ⚠ **Re-answered 2026-08-19 by [DEC-83]**, which reverses [DEC-43]: a payout **is** in scope, as a manually executed **withdrawal**, and the approver is a **second admin of the customer's own company** when four-eyes is on **[DEC-71]** — not a PeakPower approver. The gap this row recorded is closed **[F06-R33]**..**[F06-R37]**, and **[OQ-29]** is closed by **[DEC-82]** |
+| ~~[OQ-30]~~ | ~~Is a refund of surplus balance to the customer's bank in scope, and who approves it?~~ ~~**Closed by [DEC-43]** — no refund payout path exists; surplus stays in the wallet **[F06-R29]**. ⚠ **This closes the question and leaves a gap**: offboarding a customer with a positive balance has no route for the money. Known gap, not an open question, and it interacts with **[OQ-29]** — see §1~~ ⚠ **Re-answered 2026-08-19 by [DEC-83]**, which reverses [DEC-43]: a payout **is** in scope, as a manually executed **withdrawal**, ~~and the approver is a **second admin of the customer's own company** when four-eyes is on **[DEC-71]** — not a PeakPower approver~~ *(⚠ no approver since 2026-10-12, [DEC-179])*. The gap this row recorded is closed **[F06-R33]**..**[F06-R37]**, and **[OQ-29]** is closed by **[DEC-82]** |
 | ~~[OQ-83]~~ | ~~Does the wallet debit settle the VAT-**exclusive** subtotal or the VAT-**inclusive** total?~~ **CLOSED by [DEC-78]** — **inclusive**, for the trade reservation and the debit that settles it, grossed up at the **[DEC-64]** 21% rate **[F06-R32]**. This was the exposure **[AS-10]** was flagged for; [AS-10] is therefore **amended**, not confirmed |
 | [OQ-31] | Must wallet funds be held in a segregated client account, and does that carry regulatory obligations? **Deferred by [DEC-28]** — a go-live gate, not a build gate. [R-05](../70-delivery/02-risks.md) stays open. ⚠ Confirmed 2026-08-19 with a stated intent — *"Ideally we want to have a third party account. For now just use same bank account."* — and **[DEC-83]** raises the stake, because money now leaves the same undifferentiated account it sits in |
 | [OQ-93] | Which incoming-payment feed does the platform consume for wallet deposits — a CAMT.053 import, a PSP webhook, or a SEPA-instant push? **[DEC-106]** requires the platform to match a wire transfer on a reference it issued, which needs a feed, and the source names transports without choosing one. **Blocks the bank-transfer deposit route**: until it is answered `DEPOSIT_BANK` is no better than manual registration **[F06-R25]** |

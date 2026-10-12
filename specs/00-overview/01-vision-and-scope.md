@@ -117,7 +117,7 @@ confirmed.
 ~~**Sensitive actions need a second pair of eyes when the customer company asks for it.**~~ ⚠ **Removed 2026-10-12 by [DEC-179]:** there is no four-eyes in the platform; the paragraph below is kept as the record, and nothing in it is in scope. What stands from it: a bank account cannot be edited once added, only deactivated; the admin flag survives as the `admin` membership role; every action records the acting account **[DEC-17]**. ~~Trades
 above a value threshold need a second pair of eyes. Four-eyes approval **[DEC-33]** is in scope: an
 approval state on the trade machine, an approving account that must differ from the accepting one,
-and a threshold held as reference data.~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** — there is **no
+and a threshold held as reference data.~~ ~~⚠ **Reversed 2026-08-19 by [DEC-71]** — there is **no
 threshold**, in euros or in megawatts, so the threshold reference table is not built. Four-eyes is a
 **per-customer-company mode**: when a company has it enabled, an action taken by one **admin**
 account must be approved — or declined — by a *different* admin account of the same company. In

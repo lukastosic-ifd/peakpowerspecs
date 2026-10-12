@@ -350,7 +350,7 @@ account of any company can do within its own company.
    controller — see [Security](../20-architecture/07-security.md).
 4. ~~**Four-eyes is not required in the first release** but the audit model makes it addable
    ([OQ-09] asks whether high-value trades should require a second approver).~~
-   ⚠ **Reversed 2026-08-19 by [DEC-71].** Four-eyes is in scope, as a **per-customer-company mode
+   ~~⚠ **Reversed 2026-08-19 by [DEC-71].** Four-eyes is in scope, as a **per-customer-company mode
    with no threshold** — which also **replaces [DEC-33]** and **closes [OQ-85]**, the question that
    existed to supply the threshold figure. When a company has it enabled, the **four** actions listed
    under *The admin flag* (§2.1) take effect only after a **different admin account of
@@ -359,8 +359,8 @@ account of any company can do within its own company.
    table entirely, not merely re-approved — a customer `admin` now invites, re-roles and removes
    colleagues of their own business unilaterally, with no second admin's approval **[DEC-150]** —
    leaving **four**. What this rule got right was the mechanism — **[DEC-17]** attribution is what
-   carries the approval trail. What it got wrong was the release, and now also the count.
-   ⚠ **Struck 2026-10-12 by [DEC-179]:** four-eyes is removed entirely; this rule, as amended, is kept as the record. What stands is the mechanism's premise: **[DEC-17]** attribution records who acted.
+   carries the approval trail. What it got wrong was the release, and now also the count.~~
+   ⚠ **Struck 2026-10-12 by [DEC-179]:** four-eyes is removed entirely; this rule, as amended, is kept above as the record. What stands is the mechanism's premise: **[DEC-17]** attribution records who acted.
 
 5. ~~**A company with four-eyes enabled always has at least two active admin accounts** **[DEC-71]**.
    Rules **FE-1** to **FE-4** in §2.1 are binding on the feature specs, not advisory: no enabling

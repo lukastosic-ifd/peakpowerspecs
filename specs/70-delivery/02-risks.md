@@ -263,13 +263,13 @@ wrong. This is the one class of bug that is not recoverable by an apology.
 
 **Three decisions pulled in three directions and the net is a wash.**
 
-- ~~**[DEC-33]** puts a reservation behind a trade nobody has approved yet.~~ ⚠ **Moot since 2026-10-12 ([DEC-179]): no trade waits for approval, and `EXPIRED` no longer touches the wallet.** Kept as the record: **[DEC-33]** put a reservation behind a trade nobody had approved yet. The reservation is created
+- ~~**[DEC-33]** puts a reservation behind a trade nobody has approved yet.~~ ⚠ **Moot since 2026-10-12 ([DEC-179]): no trade waits for approval, and `EXPIRED` no longer touches the wallet.** Kept as the record: ~~**[DEC-33]** put a reservation behind a trade nobody had approved yet. The reservation is created
   at acceptance whichever state the trade lands in, and `AWAITING_APPROVAL` can now be left by three
   routes — approved, refused, expired — each of which must release or convert it **exactly once, in
   the same transaction**. `EXPIRED` in particular is the one state whose money column is now
   *conditional*, where before no expiry could touch the wallet at all. By construction these paths
   apply only to the largest trades, because that is what the threshold selects for. That is more
-  surface, and more expensive surface.
+  surface, and more expensive surface.~~
 - **[DEC-43]** removes the refund payout path outright. A whole money-out flow — approval, provider
   versus manual transfer, and reconciliation against a bank payout — no longer exists. That is a
   larger reduction than the four-eyes paths are an addition, in code if not in delicacy.

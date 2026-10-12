@@ -155,8 +155,8 @@ Three of these decisions **change work already specified** rather than merely fi
 ⚠ **All three were undone on 2026-08-19 — but only two of the three costs are recovered.** [DEC-35]'s
 surcharge left the platform altogether **[DEC-73]**, so the unit change is moot; [DEC-44]'s sixth line
 category was withdrawn **[DEC-87]**, so the volume identity reverts. [DEC-33] was **replaced rather
-than removed**: **[DEC-71]** makes four-eyes a per-customer-company mode with no threshold, which
-~~still needs an approval state, an approver identity distinct from the acceptor and back-office UI.
+than removed**: ~~**[DEC-71]** makes four-eyes a per-customer-company mode with no threshold, which
+still needs an approval state, an approver identity distinct from the acceptor and back-office UI.
 The state-machine change stands; only the threshold reference table it demanded is not built.~~
 ⚠ **Superseded 2026-10-12 by [DEC-179]:** four-eyes is removed entirely, so the state-machine change is removed too; the trade machine is back to the shape it had before [DEC-33].
 

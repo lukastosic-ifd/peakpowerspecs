@@ -313,9 +313,9 @@ account of any company can do within its own company.
 | ~~Manual wallet adjustment (with mandatory reason)~~ ⚠ **Reversed 2026-08-19 by [DEC-85]** — chargebacks and reversals are handled in the bookkeeping program; the adjustment-with-a-reason path leaves the platform | — | — | — | — | ~~✅~~ | ~~✅~~ |
 | Initiate a deposit for own company, or complete its own simulated checkout — iDEAL **or bank transfer with a platform-issued reference [DEC-106]**, **[DEC-162]** — **admin or trader** ⚠ **Amended 2026-09-23 by [DEC-163]** | ✅ | ✅ | — | — | — | — |
 | Initiate a deposit for own company, or complete its own simulated checkout — **viewer** ⚠ **Amended 2026-09-23 by [DEC-163]** — the first row in this table where `customer.user` does not mean every non-admin account | — | — | — | — | — | — |
-| **Request a withdrawal to the company bank account [DEC-83]** — admin only **[DEC-163]** | ✅ | ✅ | — | — | — | — |
+| **Request a withdrawal to the company bank account [DEC-83]** — admin only **[DEC-163]** | — | ✅ | — | — | — | — |
 | **Pay out a requested withdrawal, manually [DEC-83]** | — | — | — | — | ✅ | ✅ |
-| **Add / replace a bank account, customer-side — admin only [DEC-165]** — a bank account **cannot be edited once added**, only deactivated | ✅ | ✅ | — | — | — | — |
+| **Add / replace a bank account, customer-side — admin only [DEC-165]** — a bank account **cannot be edited once added**, only deactivated | — | ✅ | — | — | — | — |
 | **Request a new account for own company [DEC-71]** — the account itself is still created by a PeakPower employee **[DEC-16]**; a customer admin also invites colleagues directly **[DEC-152]** | ✅ | ✅ | — | — | — | — |
 | View own company's invoices — number and PDF come from the bookkeeping program **[DEC-88]**, **[DEC-89]** | ✅ | ✅ | — | — | — | — |
 | Run / re-run invoicing — produces a **draft** **[DEC-88]** | — | — | — | — | ✅ | ✅ |

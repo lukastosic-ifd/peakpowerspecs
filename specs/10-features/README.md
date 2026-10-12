@@ -202,7 +202,7 @@ is the authority on sequencing within a phase.
 > phase 2, `p3d` (the rest) in phase 3. Nothing about F11's scope changed here — the index was simply
 > disagreeing with the schedule. ⚠ **The reason it cannot slip has changed shape, not gone away.**
 > **[DEC-111]** reverses **[DEC-63]**: an offer no longer notifies every active account, only the
-> requester plus, under four-eyes **[DEC-71]**, both admins. That is *less* work and *more* risk in
+> requester plus, ~~under four-eyes **[DEC-71]**, both admins~~ ⚠ **struck 2026-10-12 by [DEC-179]:** the requester only. That is *less* work and *more* risk in
 > one change — a 30-minute offer can now die because one named person is in a meeting, and
 > **[DEC-18]** still lets any account accept. The phase-2 half of F11 is therefore not optional
 > whatever the feature-level **Should** tag says.
@@ -310,7 +310,7 @@ it and a pointer to what replaced it. Nothing was renumbered.
 | **[DEC-111]** narrower offer notification | F11-R02 — **1** | **F11-R25**: the requester ~~, plus both admins under four-eyes~~ |
 | **[DEC-91]** no same-period warning | F12-R37 — **1** | Nothing. **[DEC-50]**'s soft lock on a single request stands |
 | **[DEC-71]** four-eyes has no threshold | F12-R38 — **1** | ~~**F12-R42**: a per-company checkbox, not a versioned amount~~ |
-| **[DEC-179]** four-eyes is removed | 0 new, **34 struck and 35 amended** | Struck: F01-R42/R43/R45/R48/R49/R50, F05-R57/R58/R59/R60/R61/R62/R63/R64/R65/R66/R71, F06-R34, F07-R30, F11-R19/R20/R21/R26/R27, F12-R34/R35/R40/R41/R42/R55, F13-R42/R44, F15-R25/R26. Amended: F01-R06/R13/R15/R16/R19/R21/R44/R46/R47, F05-R24/R28/R31/R43/R55/R56/R67/R68/R75/R77, F06-R37, F07-R31/R32/R33, F11-R25/R29/R30, F12-R01/R06/R36/R39/R43/R53/R67, F13-R41/R43. Nothing is renumbered |
+| **[DEC-179]** four-eyes is removed | 0 new, **35 struck and 34 amended** | Struck: F01-R42/R43/R45/R48/R49/R50, F05-R57/R58/R59/R60/R61/R62/R63/R64/R65/R66/R71, F06-R34, F07-R30, F11-R19/R20/R21/R26/R27, F12-R34/R35/R40/R41/R42/R43/R55, F13-R42/R44, F15-R25/R26. Amended: F01-R06/R13/R15/R16/R19/R21/R44/R46/R47, F05-R24/R28/R31/R43/R55/R56/R67/R68/R75/R77, F06-R37, F07-R31/R32/R33, F11-R25/R29/R30, F12-R01/R06/R36/R39/R53/R67, F13-R41/R43. Nothing is renumbered |
 | **[DEC-93]** no CMS | F14-R05 — **1** | **F14-R11**: content is files in the repository, changed by release |
 
 ### Deferred

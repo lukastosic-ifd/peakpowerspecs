@@ -230,11 +230,11 @@ carried forward by habit:
 ~~**Four-eyes enabled is not a field on the account — it is a field on the *company* [DEC-71],
 [F13-R42].** The two flags do different jobs and belong at different levels: the company flag decides
 *whether* a second pair of eyes is required at all, the account flag decides *whose* eyes qualify.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no company flag.
-Keeping the mode on the company also means switching it on or off is one change for the whole
-customer, not a sweep across every account. Neither flag is derived from anything: there is no
+~~Keeping the mode on the company also means switching it on or off is one change for the whole
+customer, not a sweep across every account.~~ The role is not derived from anything: there is no
 threshold, no value, no first-account-is-admin rule and no default that quietly makes everyone an
-admin — an unset flag means non-admin, and a company with the mode on but fewer than two admins is
-the edge case in §6.
+admin — an unset role means non-admin. ~~A company with the mode on but fewer than two admins is
+the edge case in §6.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no mode and no such edge case.
 
 **[DEC-29] closes [OQ-78] and confirms this split.** The stakeholder described an account as
 "username, password, …", which reads naturally as the platform owning both. It does not: the identity
@@ -448,12 +448,14 @@ below**, which is not an identifier and answers a different kind of question:
 | `customer.admin` in `roles` | *May this person administer the business?* | ~~Four-eyes eligibility, and nothing else~~ **[DEC-152]**, **[F13-R41]** *(⚠ amended 2026-10-12, [DEC-179])* |
 
 Neither is ever accepted from the request. `account_id` grants nothing — two accounts of one company
-with different `account_id` values have byte-identical permissions. ⚠ **Amended 2026-08-19 by
+with different `account_id` values have byte-identical permissions. ~~⚠ **Amended 2026-08-19 by
 [DEC-71]**: the first sentence stands for all three claims, and `account_id` still grants nothing. The
 last clause is now narrower — two accounts have byte-identical permissions **on every ordinary read
 and write**, and differ only in whether they may stand as the second pair of eyes. That is the whole
 difference, and it is deliberately expressed in the `roles` claim rather than as a new boolean so the
-deny-by-default endpoint declaration **[F13-R18]** keeps one vocabulary.
+deny-by-default endpoint declaration **[F13-R18]** keeps one vocabulary.~~ ⚠ **Struck 2026-10-12 by
+[DEC-179]:** there is no second pair of eyes, so the original sentence stands again; the
+membership role [DEC-152] is the only thing that tells two accounts apart.
 
 The issuer and realm values above are illustrative. Under **[DEC-20]** they become the Entra corporate
 tenant for employees and an External ID tenant for customers; the **claim contract does not change**,

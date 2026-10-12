@@ -310,7 +310,7 @@ it and a pointer to what replaced it. Nothing was renumbered.
 | **[DEC-111]** narrower offer notification | F11-R02 — **1** | **F11-R25**: the requester ~~, plus both admins under four-eyes~~ |
 | **[DEC-91]** no same-period warning | F12-R37 — **1** | Nothing. **[DEC-50]**'s soft lock on a single request stands |
 | **[DEC-71]** four-eyes has no threshold | F12-R38 — **1** | ~~**F12-R42**: a per-company checkbox, not a versioned amount~~ |
-| **[DEC-179]** four-eyes is removed | 0 new, **44 struck or amended** | Struck: F01-R42/R43/R45/R48/R49/R50, F05-R57/R58/R59/R60/R61/R62/R63/R64/R65/R66/R71, F06-R34, F07-R30, F11-R19/R20/R21/R26/R27, F12-R34/R35/R40/R41/R42/R55, F13-R42/R44, F15-R25/R26. Amended: F01-R06/R13/R15/R16/R19/R21/R44/R46/R47, F05-R24/R28/R31/R43/R55/R56/R67/R68/R75/R77, F06-R37, F07-R31/R32/R33, F11-R25/R29/R30, F12-R01/R06/R36/R39/R43/R53/R67, F13-R41/R43. Nothing is renumbered |
+| **[DEC-179]** four-eyes is removed | 0 new, **34 struck and 35 amended** | Struck: F01-R42/R43/R45/R48/R49/R50, F05-R57/R58/R59/R60/R61/R62/R63/R64/R65/R66/R71, F06-R34, F07-R30, F11-R19/R20/R21/R26/R27, F12-R34/R35/R40/R41/R42/R55, F13-R42/R44, F15-R25/R26. Amended: F01-R06/R13/R15/R16/R19/R21/R44/R46/R47, F05-R24/R28/R31/R43/R55/R56/R67/R68/R75/R77, F06-R37, F07-R31/R32/R33, F11-R25/R29/R30, F12-R01/R06/R36/R39/R43/R53/R67, F13-R41/R43. Nothing is renumbered |
 | **[DEC-93]** no CMS | F14-R05 — **1** | **F14-R11**: content is files in the repository, changed by release |
 
 ### Deferred

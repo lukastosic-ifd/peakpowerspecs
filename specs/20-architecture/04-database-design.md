@@ -23,7 +23,7 @@ and an entirely avoidable one.
 
 | Schema | Contents |
 | --- | --- |
-| `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, **approval requests [DEC-71]**, metering points, **refresh tokens [DEC-117]**, **password-reset tokens [DEC-113]**, **onboarding applications [DEC-113]** |
+| `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, ~~**approval requests [DEC-71]**~~ *(never built; struck 2026-10-12, [DEC-179])*, metering points, **refresh tokens [DEC-117]**, **password-reset tokens [DEC-113]**, **onboarding applications [DEC-113]** |
 | `metering` | **BRPs [DEC-69]**, **the shared EAN pool [DEC-113]**, inbound messages, interval data versions, readings, imbalance, data state |
 | `market` | peak calendars, calendar intervals, price indications, **the indication markup [DEC-80]**, day-ahead prices |
 | `trading` | trades, ~~lines~~ connections, offers, events, blocks, ~~allocations~~, ~~**four-eyes thresholds [DEC-33]**~~ ⚠ **Built as designed by [DEC-167]** — ⚠ four tables (amended 2026-09-30, [DEC-167] (16)) and one sequence, §3.4.4; migration 30 (⚠ five from migration 32, `trade_desk_notice`, owner-only, [DEC-168]). |
@@ -37,9 +37,9 @@ and an entirely avoidable one.
 
 | Schema | Change | Driver |
 | --- | --- | --- |
-| `customer` | Bank accounts become their own table — a bank account is added and deactivated, never edited — and the four-eyes approval record joins them | **[DEC-71]**, **[DEC-61]** |
+| `customer` | Bank accounts become their own table — a bank account is added and deactivated, never edited — ~~and the four-eyes approval record joins them~~ *(never built; struck 2026-10-12)* | **[DEC-71]**, **[DEC-61]**, **[DEC-179]** |
 | `market` | The price-indication markup, as reference data with a default of 2% | **[DEC-80]** |
-| `trading` | `four_eyes_threshold` is **not built**. Four-eyes is a per-company on/off mode with **no threshold**, so the approval record is a customer-master object and lives in `customer` | **[DEC-71]** replaces **[DEC-33]**, closing **[OQ-85]** |
+| `trading` | `four_eyes_threshold` is **not built**. ~~Four-eyes is a per-company on/off mode with **no threshold**, so the approval record is a customer-master object and lives in `customer`~~ ⚠ **There is no four-eyes at all since 2026-10-12 ([DEC-179])**, no approval record and no mode column | **[DEC-71]** replaces **[DEC-33]**, closing **[OQ-85]** |
 | `billing` | `surcharge` is **not built** **[DEC-73]** and `feed_in_tariff` is **never created** **[DEC-87]**. `energy_tax_tariff` stops being an unpopulated placeholder and gains a reduction table and a result table | **[DEC-73]**, **[DEC-87]**, **[DEC-74]** reversing **[DEC-24]** |
 | `wallet` | Deposit intents with a platform-issued payment reference, the incoming-payment feed and its matches, and withdrawal requests | **[DEC-106]**, **[DEC-83]** |
 | `metering` | `brp` — the metering-data source is configurable reference data, and PVNed is the first row | **[DEC-69]** |
@@ -65,11 +65,11 @@ pair explicitly, so that a future key in the same direction to a non-reference t
 | `market.day_ahead_price` | 35 040 | Per market area |
 | `wallet.wallet_entry` | Thousands | Trades, ~~invoices~~ **[DEC-77]**, deposits **[DEC-106]** and withdrawals **[DEC-83]**. Fewer types than before, not more: nothing invoiced reaches the ledger |
 | `trading.trade_desk_notice` | Tens of thousands | ⚠ **New 2026-10-01 ([DEC-168])** — one row per desk mail: one *new request* per trade plus one *ready to confirm* per accepted-and-ready trade, so about two per trade; each is stamped sent within ~15 s |
-| `trading.trade_event` | Tens of thousands | ~8 events per trade; ~9 where a trade passes through `AWAITING_APPROVAL` ~~**[DEC-33]**~~ **[DEC-71]** — the state survives, the threshold that gated it does not |
+| `trading.trade_event` | Tens of thousands | ~8 events per trade; ~~~9 where a trade passes through `AWAITING_APPROVAL`~~ ~8 *(⚠ no trade passes through `AWAITING_APPROVAL` since 2026-10-12, [DEC-179])* |
 | ~~`billing.invoice_line`~~ | ~~about 30 000 per 100 points~~ | ~~100 × 12 × about 25 lines, plus one feed-in line per exporting EAN per rate period **[DEC-44]**~~ ⚠ **Amended 2026-08-19** — see the row below |
 | `billing.invoice_line` | **~3 600 per 100 points**, plus corrections | **100 × 12 × 3**: the surviving line categories are **1, 2 and 5** — categories 3, 4 and 6 are reserved and unused after **[DEC-73]** (no surcharge line) and **[DEC-87]** (no feed-in line), and category 5 returns with **[DEC-74]** (energiebelasting). Correction invoices **[DEC-99]** add delta lines at no fixed rate and with **no time bound**, which is why this figure is a floor rather than a bound |
 | `billing.energy_tax_result` | **1 200 per 100 points** | 100 × 12 — one snapshot per EAN per month, each carrying the bracket-table version and the ladder it used **[F09-R26]** |
-| `customer.approval_request` | **Hundreds** | Only companies with `four_eyes_enabled` write rows, and only for five action types **[DEC-71]** |
+| ~~`customer.approval_request`~~ | ~~**Hundreds**~~ | ~~Only companies with `four_eyes_enabled` write rows, and only for five action types **[DEC-71]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — the table was never built. |
 | `wallet.deposit_intent`, `wallet.incoming_payment` | **Thousands** | One intent per deposit the customer starts; one row per credit line on the feed, matched or not **[DEC-106]** |
 | `metering.brp` | **Single digits** | Reference data. PVNed is row one **[DEC-69]**, **[F02-R44]** |
 
@@ -121,15 +121,15 @@ CREATE TABLE customer.customer (
     -- bic                 text CHECK (bic ~ '^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$'),
     -- bank_account_holder text,
 
-    -- Four-eyes is a per-customer-company MODE, not a value comparison  [DEC-71], [F01-R42].
-    -- Default off. There is no threshold column here or anywhere else.
-    four_eyes_enabled   boolean NOT NULL DEFAULT false,
+    -- ⚠ Dropped 2026-10-12 by [DEC-179], migration 39 (§7.11): four-eyes is gone, and the column with it.
+    --   Was: Four-eyes is a per-customer-company MODE, not a value comparison  [DEC-71], [F01-R42].
+    --   Default off. There is no threshold column here or anywhere else.
+    --   four_eyes_enabled   boolean NOT NULL DEFAULT false,
     -- ⚠ As built 2026-09-30 by [DEC-167] (17) (migration 31): the company's DEPOSIT percentage on a bought
     --   block, incl. VAT, set by the back office only.
     deposit_pct         numeric(5,2) NOT NULL DEFAULT 20 CONSTRAINT ck_customer_deposit_pct_range CHECK (deposit_pct BETWEEN 0 AND 100),
-    -- ⚠ As built 2026-09-29 by [DEC-166] (migration 29): two more nullable columns on this table hold a
-    --   pending request to turn the mode OFF, and the mode is set by the company's own admins, not by an
-    --   employee — see §3.1.4.
+    -- ⚠ As built 2026-09-29 by [DEC-166] (migration 29): two more nullable columns on this table held a
+    --   pending request to turn the mode OFF — see §3.1.4. ⚠ Dropped with the mode by migration 39 (§7.11), [DEC-179].
     status              text NOT NULL
         CHECK (status IN ('PROSPECT','ACTIVE','SUSPENDED','CLOSED')),
     billing_address     jsonb NOT NULL,
@@ -171,7 +171,8 @@ CREATE TABLE customer.customer_account (
     email               citext NOT NULL,
     phone               text,
     status              text NOT NULL
-        -- PENDING_APPROVAL is new: adding a user is a four-eyes action  [DEC-71], [F01-R15]
+        -- PENDING_APPROVAL: a login lifecycle state (was: adding a user is a four-eyes action [DEC-71]; struck by
+        --   [DEC-152] and [DEC-179] - nothing writes it for that reason any more, and it is NOT removed from the CHECK)
         CHECK (status IN ('PENDING_APPROVAL','INVITED','ACTIVE','DEACTIVATED')),
 
     -- ⚠ DROPPED 2026-09-10 by [DEC-152], in migration 15. The role is a property of the
@@ -180,7 +181,7 @@ CREATE TABLE customer.customer_account (
     --   (admin -> 'admin', otherwise 'trader'), and the drop is sequenced after the policy swap.
     --   Was: is_admin            boolean NOT NULL DEFAULT false,
     --   with: "The whole of the role model [DEC-71], [F01-R47]. It grants exactly one capability:
-    --   approving or declining ANOTHER admin's sensitive action."
+    --   approving or declining ANOTHER admin's sensitive action."  (four-eyes removed 2026-10-12, [DEC-179])
 
     -- ⚠ Added 2026-09-03. The platform holds the credential  [DEC-113], and the stamp is what makes
     --   revocation of a stateless token immediate  [DEC-117], [F01-R16]. `password_hash` is Argon2id,
@@ -376,23 +377,19 @@ CREATE TABLE customer.customer_bank_account (
     bic           text CHECK (bic ~ '^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$'),
     holder_name   text NOT NULL,
     status        text NOT NULL
-        CHECK (status IN ('PENDING_APPROVAL','ACTIVE','DEACTIVATED')),
+        CHECK (status IN ('ACTIVE','DEACTIVATED')),   -- 'PENDING_APPROVAL' removed 2026-10-12, DEC-179 (migration 39)
     added_by_account_id       uuid NOT NULL REFERENCES customer.customer_account(id),
     added_at                  timestamptz NOT NULL DEFAULT now(),
-    approved_by_account_id    uuid REFERENCES customer.customer_account(id),
-    approved_at               timestamptz,
+    -- approved_by_account_id    uuid REFERENCES customer.customer_account(id),   -- never built; struck 2026-10-12, DEC-179
+    -- approved_at               timestamptz,
     deactivated_by_account_id uuid REFERENCES customer.customer_account(id),
     deactivated_at            timestamptz,
-    deactivation_approved_by_account_id uuid REFERENCES customer.customer_account(id),
+    -- deactivation_approved_by_account_id uuid REFERENCES customer.customer_account(id),
 
-    -- the second pair of eyes is a DIFFERENT account, in the database, not only in the domain
-    CHECK (approved_by_account_id IS NULL OR approved_by_account_id <> added_by_account_id),
-    CHECK (deactivation_approved_by_account_id IS NULL
-           OR deactivation_approved_by_account_id <> deactivated_by_account_id),
-    -- 'PENDING_APPROVAL' occurs only while the company has four-eyes on; with the mode off an
-    -- account is ACTIVE on insert. That rule is NOT expressible here — it depends on a column of
-    -- another row (customer.four_eyes_enabled) as it stood at the moment of the add — so the
-    -- domain owns it and this table records only what happened.
+    -- ⚠ Struck 2026-10-12 by [DEC-179]: there is no second pair of eyes. A bank account is ACTIVE on insert.
+    -- CHECK (approved_by_account_id IS NULL OR approved_by_account_id <> added_by_account_id),
+    -- CHECK (deactivation_approved_by_account_id IS NULL
+    --        OR deactivation_approved_by_account_id <> deactivated_by_account_id),
     CHECK (status <> 'DEACTIVATED' OR deactivated_at IS NOT NULL)
 );
 
@@ -417,38 +414,41 @@ $cba$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_bank_account_immutable BEFORE UPDATE ON customer.customer_bank_account
     FOR EACH ROW EXECUTE FUNCTION customer.bank_account_is_immutable();
 
--- The approval record for every four-eyes action  [DEC-71], [F01-R48]. One table, five action
--- types, so a company has ONE place that shows everything waiting on it. Trade rows are written by
--- [F05], withdrawal rows by [F06]/[F07].
-CREATE TABLE customer.approval_request (
-    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    customer_id           uuid NOT NULL REFERENCES customer.customer(id),
-    -- ⚠ 'ADD_USER' removed 2026-09-10 by [DEC-152]: membership changes bypass four-eyes
-    --   entirely [F01-R49], so no membership write ever raises an approval. Four arms, not five.
-    action                text NOT NULL CHECK (action IN (
-                              'ADD_BANK_ACCOUNT','DEACTIVATE_BANK_ACCOUNT',
-                              'TRADE','WITHDRAWAL')),
-    subject_id            uuid NOT NULL,        -- the bank account, account, trade or withdrawal
-    requested_by_account_id uuid NOT NULL REFERENCES customer.customer_account(id),
-    requested_at          timestamptz NOT NULL DEFAULT now(),
-    outcome               text NOT NULL DEFAULT 'PENDING'
-        CHECK (outcome IN ('PENDING','APPROVED','DECLINED')),
-    decided_by_account_id uuid REFERENCES customer.customer_account(id),
-    decided_at            timestamptz,
-    reason                text,
+-- ⚠ Struck 2026-10-12 by [DEC-179]. `customer.approval_request` was designed here and NEVER BUILT; there is no
+-- four-eyes, so it never will be. Kept as the record of [DEC-71] (commented out):
+--
+-- -- The approval record for every four-eyes action  [DEC-71], [F01-R48]. One table, five action
+-- -- types, so a company has ONE place that shows everything waiting on it. Trade rows are written by
+-- -- [F05], withdrawal rows by [F06]/[F07].
+-- CREATE TABLE customer.approval_request (
+--     id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+--     customer_id           uuid NOT NULL REFERENCES customer.customer(id),
+--     -- ⚠ 'ADD_USER' removed 2026-09-10 by [DEC-152]: membership changes bypass four-eyes
+--     --   entirely [F01-R49], so no membership write ever raises an approval. Four arms, not five.
+--     action                text NOT NULL CHECK (action IN (
+--                               'ADD_BANK_ACCOUNT','DEACTIVATE_BANK_ACCOUNT',
+--                               'TRADE','WITHDRAWAL')),
+--     subject_id            uuid NOT NULL,        -- the bank account, account, trade or withdrawal
+--     requested_by_account_id uuid NOT NULL REFERENCES customer.customer_account(id),
+--     requested_at          timestamptz NOT NULL DEFAULT now(),
+--     outcome               text NOT NULL DEFAULT 'PENDING'
+--         CHECK (outcome IN ('PENDING','APPROVED','DECLINED')),
+--     decided_by_account_id uuid REFERENCES customer.customer_account(id),
+--     decided_at            timestamptz,
+--     reason                text,
 
-    -- the entire four-eyes rule, in the database  [F01-R48], [DEC-17]
-    CHECK (decided_by_account_id IS NULL OR decided_by_account_id <> requested_by_account_id),
-    CHECK ((outcome = 'PENDING') = (decided_at IS NULL)),
-    CHECK ((outcome = 'PENDING') = (decided_by_account_id IS NULL)),
-    CHECK (outcome <> 'DECLINED' OR reason IS NOT NULL)
-);
+--     -- the entire four-eyes rule, in the database  [F01-R48], [DEC-17]
+--     CHECK (decided_by_account_id IS NULL OR decided_by_account_id <> requested_by_account_id),
+--     CHECK ((outcome = 'PENDING') = (decided_at IS NULL)),
+--     CHECK ((outcome = 'PENDING') = (decided_by_account_id IS NULL)),
+--     CHECK (outcome <> 'DECLINED' OR reason IS NOT NULL)
+-- );
 
--- the company's "waiting on you" queue, and the desk's
-CREATE INDEX ix_approval_pending ON customer.approval_request (customer_id, requested_at)
-    WHERE outcome = 'PENDING';
-CREATE UNIQUE INDEX ux_approval_open_subject
-    ON customer.approval_request (action, subject_id) WHERE outcome = 'PENDING';
+-- -- the company's "waiting on you" queue, and the desk's
+-- CREATE INDEX ix_approval_pending ON customer.approval_request (customer_id, requested_at)
+--     WHERE outcome = 'PENDING';
+-- CREATE UNIQUE INDEX ux_approval_open_subject
+--     ON customer.approval_request (action, subject_id) WHERE outcome = 'PENDING';
 
 -- Usernames are unique across the whole platform, not per company
 CREATE UNIQUE INDEX ux_account_username ON customer.customer_account (username);
@@ -556,35 +556,9 @@ that records it. Nothing above changes: the default is still `UNKNOWN`, `UNKNOWN
 changes is that the third state now has a moment at which it is meant to be resolved, which is what
 **[OQ-91]** asked for.
 
-#### 3.1.2 Four-eyes is two booleans and one table — [DEC-71]
+#### 3.1.2 ~~Four-eyes is two booleans and one table — [DEC-71]~~
 
-⚠ **Reversed 2026-08-19.** **[DEC-33]** made four-eyes a comparison against a value threshold and
-required a versioned reference table of amounts. **[DEC-71]** replaces it: four-eyes is a
-**per-customer-company mode with no threshold**, in euros or in megawatts. **[OQ-85] closes.**
-
-| Object | Column / table | Note |
-| --- | --- | --- |
-| The mode | `customer.four_eyes_enabled` | One boolean, default off, set by a PeakPower employee **[DEC-16]**, **[F01-R42]**. All five actions or none — there is no per-action override. ⚠ **Amended 2026-09-29 by [DEC-166]: set by the company's own admins, not an employee** — turned on at once, turned off by a request a different admin approves; a pending request is held in two further columns, §3.1.4 |
-| Eligibility to approve | ~~`customer_account.is_admin`~~ `customer_membership.role = 'admin'` | ⚠ **Moved 2026-09-10 by [DEC-152].** The column is dropped; eligibility is a **membership** role, per business, read from the database on every request rather than carried in a token. It no longer grants *only* the second pair of eyes — `admin` also gates invitations, role changes, removals and entitlements **[DEC-150]** **[F01-R47]** |
-| The record | `customer.approval_request` | Action, subject, initiating account, approving account, decision, timestamps **[F01-R48]** |
-| ~~The threshold~~ | ~~`trading.four_eyes_threshold`~~ | ⚠ **Not built** — §3.4 |
-
-What this costs, stated rather than implied: a schema that carries **no amount** cannot answer "was
-this trade large enough to need approval". It can only answer "was the mode on for this company",
-which is exactly what **[DEC-71]** decided the question is. Reinstating a threshold later means a new
-table and a re-pin on every trade, not a column.
-
-⚠ **Amended 2026-09-10 by [DEC-152]: four actions, not five.** **The actions in scope** are
-`ADD_BANK_ACCOUNT`, `DEACTIVATE_BANK_ACCOUNT`, `TRADE` and `WITHDRAWAL`. ~~`ADD_USER`~~ left the enum
-because membership changes bypass four-eyes entirely **[F01-R49]** — and note that api-contracts §2.10
-spells the same arm `USER_ADD`; both lose it, and the two spellings are a separate defect, not
-reconciled here. **Deposits are deliberately absent** from the enum: a customer can transfer money or
-use iDEAL unaided, so gating a deposit gates nothing **[DEC-71]**, **[DEC-106]**.
-
-`CHECK (decided_by_account_id <> requested_by_account_id)` is the whole control, in one line, in the
-database. It is checkable only because **[DEC-17]** already records the acting account on every
-action. `ux_approval_open_subject` stops the same subject accumulating two pending approvals, which
-is how a "second" approval could otherwise be manufactured by clicking twice.
+⚠ **Struck 2026-10-12 by [DEC-179].** This section described the mode (`customer.four_eyes_enabled`), the eligibility to approve (`customer_membership.role = 'admin'`), the record (`customer.approval_request`, **never built**) and the threshold (`trading.four_eyes_threshold`, **never built**), and the `CHECK (decided_by_account_id <> requested_by_account_id)` that was said to be the whole control. **Only the first existed in the database, and migration 39 (§7.11) drops it.** What remains true of the schema: eligibility to administer a business is `customer_membership.role = 'admin'`, read from the database on every request **[DEC-152]**, **[F01-R47]**; deposits were never gated **[DEC-106]**; and there is no amount in the schema, so "was this large enough" was never answerable **[DEC-71]**.
 
 #### 3.1.3 The company bank account, as built — [DEC-165]
 
@@ -598,8 +572,8 @@ Balance page, so a row is written by the customer host, not by an employee **[F0
 | `iban` and `bic` with regular-expression `CHECK`s | Plain `text`. The IBAN is validated in the domain type — shape (15 to 34 characters) and ISO 7064 mod-97 — and the BIC by shape, before anything is written; the per-country IBAN length table **[F01-R03]** describes is not built |
 | `holder_name text NOT NULL` | The same, with 1 to 200 characters enforced in the domain type, not by the column |
 | `added_by_account_id NOT NULL` | **Nullable** — a row copied from an onboarding application that recorded no signing account. Every portal write names the acting account |
-| `approved_by_account_id`, `approved_at`, `deactivation_approved_by_account_id` and their `CHECK`s | **Not built.** They arrive with the four-eyes approval flow **[F01-R45]**, which is deferred |
-| `status IN ('PENDING_APPROVAL','ACTIVE','DEACTIVATED')` | The same `CHECK` (`ck_customer_bank_account_status_valid`). `PENDING_APPROVAL` is admitted for the deferred flow and **never written**: a four-eyes company is blocked from changing its account instead |
+| `approved_by_account_id`, `approved_at`, `deactivation_approved_by_account_id` and their `CHECK`s | **Not built, and now never.** ~~They arrive with the four-eyes approval flow **[F01-R45]**, which is deferred~~ ⚠ **[F01-R45] is struck 2026-10-12, [DEC-179]** |
+| `status IN ('PENDING_APPROVAL','ACTIVE','DEACTIVATED')` | The same `CHECK` (`ck_customer_bank_account_status_valid`). `PENDING_APPROVAL` was admitted for the deferred flow and **never written**. ⚠ **Re-created without `PENDING_APPROVAL` by migration 39 (§7.11), [DEC-179]**, under the same name; the migration first asserts that no row carries it |
 | — | **New: `source`** — `ONBOARDING`, `PORTAL` or `BACKFILL`, with `ck_customer_bank_account_source_valid`. `ONBOARDING` is the wizard's signing **and** migration 26's own copy; `PORTAL` is a Balance-page add or replace (⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.**); `BACKFILL` is reserved for a later data repair and written by nothing |
 | `CHECK (status <> 'DEACTIVATED' OR deactivated_at IS NOT NULL)` | `ck_customer_bank_account_deactivation_consistency`: `deactivated_at` **and** `deactivated_by_account_id` are set if, and only if, `status = 'DEACTIVATED'` |
 | `ux_bank_account_active` | The same partial unique index, named `ux_customer_bank_account_active` — at most one `ACTIVE` row per company **[F01-R46]** |
@@ -611,7 +585,7 @@ and `app_employee_role`. **No role holds `DELETE`**: a bank account is a financi
 deactivated. Row-level security is enabled with two **`FOR SELECT`** policies — `customer_id = app.customer_id`
 for the customer role and `USING (true)` for the back office — narrower than the *"same policy"* §6 asks of
 this table, because neither role writes it through its own connection. Every write runs through
-`OwnerPrivilegedWrite` **after** the admin check, the four-eyes refusal and every field check have run in C#,
+`OwnerPrivilegedWrite` **after** the admin check ~~, the four-eyes refusal~~ and every field check have run in C#,
 the discipline migration 23 set for `wallet.withdrawal_request`. **Migration 26 also widens
 `app_employee_role`'s column-scoped `UPDATE` on `wallet.withdrawal_request`** from `(status, resolved_at)` to
 include `destination` — the payout records the account it resolved — and nothing else.
@@ -628,35 +602,13 @@ onboarding application and gets no row.
 
 ⚠ **`wallet.withdrawal_request` stores the IBAN itself.** The DDL in §3.5 sketches `bank_account_id` and
 `iban_at_request`; the built table (migration 23) has a single **`destination`** column. A bank-account replace
-re-points it for the company's open (`REQUESTED`, `AWAITING_APPROVAL`) requests, scoped through the company's
+re-points it for the company's open (`REQUESTED`; ~~`AWAITING_APPROVAL`~~ no longer exists) requests, scoped through the company's
 own wallet, and the payout sets it to the account it resolved, so it is where a request **will** be paid, not a
 frozen snapshot **[DEC-165]**.
 
-#### 3.1.4 The four-eyes disable request, as built — [DEC-166]
+#### 3.1.4 ~~The four-eyes disable request, as built — [DEC-166]~~
 
-⚠ **Added 2026-09-29.** Turning four-eyes **off** needs a **different** admin's approval **[F01-R48]**, so the
-request has to live somewhere between the asking and the answering. **Migration 29**
-(`CustomerFourEyesDisableRequest`) adds two nullable columns to `customer.customer`, beside `four_eyes_enabled`:
-
-| Column | As built |
-| --- | --- |
-| `four_eyes_disable_requested_by_account_id uuid NULL` | The admin who asked. Foreign key `fk_customer_customer_account_four_eyes_disable_requested_by_ac` to `customer.customer_account`, **`ON DELETE RESTRICT`**, so an account with a request pending cannot be deleted from under it; indexed (`ix_customer_four_eyes_disable_requested_by_account_id`) |
-| `four_eyes_disable_requested_at timestamptz NULL` | When they asked |
-| `ck_customer_four_eyes_disable_request_complete` | `(requested_by IS NULL) = (requested_at IS NULL)` — both null or both set |
-| `ck_customer_four_eyes_disable_request_implies_on` | `requested_by IS NULL OR four_eyes_enabled` — **a pending request implies four-eyes is on**, so a write that turns the mode off without clearing the request fails in the database rather than stranding a request nobody can approve |
-
-⚠ **The two `CHECK`s are the last line of defence, not the first.** The `Customer` aggregate refuses first
-(`RequestFourEyesDisable`, `ApproveFourEyesDisable`, `DeclineFourEyesDisable`, `CancelFourEyesDisable`), and
-approving clears the request and the mode in the same save. ⚠ **No grant changes.** `app_customer_role` holds a
-table-level `UPDATE` on `customer.customer`, but migration 16 left the table with a `SELECT` policy only, so
-row-level security silently drops it from any row-locking clause and a customer-role `UPDATE` affects zero rows.
-**Every customer-host lock or write on the row therefore runs owner-privileged** (`OwnerPrivilegedWrite`), with an
-explicit `id = <the token's company>` predicate and nothing taken from the request. ⚠ **Lock order,** one global
-order for every writer that takes more than one row: **admin roster** (`customer.customer_membership`), then the
-**company row**, then its **bank-account** rows, then the **withdrawal** row, then the **wallet** row — §3.5, and
-api-contracts §2.7 for the path-by-path check. Each change also writes an `audit.audit_record` (`FOUR_EYES_ENABLED`,
-`_DISABLE_REQUESTED`, `_DISABLE_APPROVED`, `_DISABLE_DECLINED` with the reason, `_DISABLE_CANCELLED`) in the same
-save.
+⚠ **Superseded 2026-10-12 by [DEC-179].** Migration 29 (`CustomerFourEyesDisableRequest`) added `four_eyes_disable_requested_by_account_id` (a foreign key to `customer.customer_account`, `ON DELETE RESTRICT`, indexed as `ix_customer_four_eyes_disable_requested_by_account_id`) and `four_eyes_disable_requested_at` to `customer.customer`, with the `CHECK`s `ck_customer_four_eyes_disable_request_complete` and `ck_customer_four_eyes_disable_request_implies_on`. **Migration 39 (§7.11) drops all of them, together with `four_eyes_enabled`**, after writing one audit row for every company that had the mode on, including any pending turn-off request. Old migrations are never edited: 29 stays in the history. What still stands from this section is the **lock order** it recorded, one global order for every writer that takes more than one row: **admin roster** (`customer.customer_membership`), then the **company row**, then its **bank-account** rows, then the **withdrawal** row, then the **wallet** row — §5, and api-contracts §2.7 for the path-by-path check. The `FOUR_EYES_*` audit rows that exist stay readable; no new ones are written.
 
 #### Self-service onboarding and the credential store — ⚠ added 2026-09-03
 
@@ -1087,12 +1039,12 @@ render time is `UNAVAILABLE`, never a silent 0%** — see the fixed §7.3 note b
 
 ### 3.4 Trading
 
-⚠ **Slice 1 is designed in §3.4.4 (2026-09-29, [DEC-167]).** The sketch below is the **2026-08 design**; where it and §3.4.4 differ — there is **no `approval_request_id`**, the refusal is stored on the trade, the gross is a stored column, and events carry no `payload` — §3.4.4 wins.
+⚠ **Slice 1 is designed in §3.4.4 (2026-09-29, [DEC-167]).** The sketch below is the **2026-08 design**; where it and §3.4.4 differ — there is **no `approval_request_id`**, ~~the refusal is stored on the trade,~~ *(⚠ the approver and refuser columns are dropped by migration 39, §7.11)* the gross is a stored column, and events carry no `payload` — §3.4.4 wins.
 
 ⚠ **Reversed 2026-08-19 by [DEC-71].** The table below is **not created**. It is kept, struck, with
 its reasoning readable, because it is the only record of what was designed against **[DEC-33]** and
 of what the reversal costs. **[F05-R50]**…**[F05-R54]** retire with it; the mode and the flag that
-replace them are in §3.1.2, and the shared approval record is `customer.approval_request`.
+replace them are in §3.1.2 ~~and the shared approval record is `customer.approval_request`~~ *(both struck 2026-10-12, [DEC-179])*.
 
 ```sql
 -- ~~Reference data, versioned, never mutated in place  [DEC-33], [F05-R50].~~
@@ -1141,11 +1093,11 @@ CREATE TABLE trading.trade (
     offered_at          timestamptz,
     expires_at          timestamptz,
 
-    -- four eyes  ~~[DEC-33]~~ **[DEC-71]**, [F05-R71]. Set by Accept, never re-set by Approve.
+    -- who accepted. (Was: four eyes [DEC-71], [F05-R71]. ⚠ approved_by, approval_request_id and the
+    -- other four-eyes columns are struck 2026-10-12, [DEC-179]; migration 39 drops the built ones.)
     accepted_by_account_id         uuid REFERENCES customer.customer_account(id),
-    approved_by_account_id         uuid REFERENCES customer.customer_account(id),
-    -- the shared company-wide queue row for this trade, when the mode was on  [F01-R48]
-    approval_request_id            uuid REFERENCES customer.approval_request(id),
+    -- approved_by_account_id         uuid REFERENCES customer.customer_account(id),
+    -- approval_request_id            uuid REFERENCES customer.approval_request(id),
     -- ⚠ Dropped 2026-08-19 by [DEC-71] — there is no threshold to pin and no amount to record:
     -- four_eyes_threshold_version_id uuid REFERENCES trading.four_eyes_threshold(id),
     -- threshold_amount_applied       numeric(18,6),
@@ -1153,24 +1105,23 @@ CREATE TABLE trading.trade (
     row_version         bigint NOT NULL DEFAULT 1,
     created_at          timestamptz NOT NULL DEFAULT now(),
 
-    -- four eyes is two account ids, not a permission  [T10], [F05-R59]
-    CHECK (approved_by_account_id IS NULL
-           OR approved_by_account_id <> accepted_by_account_id),
-    -- nothing is approved that was not accepted
-    CHECK (approved_by_account_id IS NULL OR accepted_by_account_id IS NOT NULL),
+    -- ⚠ Struck 2026-10-12 by [DEC-179]: four eyes is two account ids, not a permission  [T10], [F05-R59]
+    -- CHECK (approved_by_account_id IS NULL
+    --        OR approved_by_account_id <> accepted_by_account_id),
+    -- CHECK (approved_by_account_id IS NULL OR accepted_by_account_id IS NOT NULL),
     -- ⚠ Dropped by [DEC-71]: acceptance no longer pins anything, because there is no versioned
     --   threshold row to pin. What acceptance now reads is the company's four_eyes_enabled flag
     --   at that instant  [F05-R28], [F05-R71], and the evidence it happened is the approval row.
     -- CHECK (accepted_by_account_id IS NULL OR four_eyes_threshold_version_id IS NOT NULL)
-    CHECK (approved_by_account_id IS NULL OR approval_request_id IS NOT NULL)
+    -- CHECK (approved_by_account_id IS NULL OR approval_request_id IS NOT NULL)
 );
 CREATE INDEX ix_trade_open ON trading.trade (state, created_at)
-    WHERE state IN ('REQUESTED','OFFERED','AWAITING_APPROVAL','ACCEPTED');
+    WHERE state IN ('REQUESTED','OFFERED','ACCEPTED');                       -- 'AWAITING_APPROVAL' removed 2026-10-12, DEC-179
 CREATE INDEX ix_trade_expiring ON trading.trade (expires_at)
-    WHERE state IN ('OFFERED','AWAITING_APPROVAL');
+    WHERE state = 'OFFERED';                                                -- 'AWAITING_APPROVAL' removed 2026-10-12, DEC-179
 CREATE INDEX ix_trade_requester ON trading.trade (customer_id, requested_by_account_id, created_at DESC);
-CREATE INDEX ix_trade_awaiting_approval ON trading.trade (customer_id, expires_at)
-    WHERE state = 'AWAITING_APPROVAL';
+-- CREATE INDEX ix_trade_awaiting_approval ON trading.trade (customer_id, expires_at)   -- dropped by migration 39, DEC-179
+--     WHERE state = 'AWAITING_APPROVAL';
 
 CREATE TABLE trading.trade_event (
     id           bigserial PRIMARY KEY,
@@ -1207,51 +1158,21 @@ a deferred constraint trigger, because it is the kind of thing a bad migration c
 Under **[DEC-70]** both sides of that sum are multiples of 0,01 MW, so the sum is still exact — the
 `numeric` type and the `mod` check do the work, and no tolerance appears anywhere — §3.4.3.
 
-#### 3.4.1 Both trade indexes changed with ~~[DEC-33]~~ [DEC-71]
+#### 3.4.1 ~~Both trade indexes changed with [DEC-33] [DEC-71]~~ — back to their original shape by [DEC-179]
 
-`AWAITING_APPROVAL` is a new state between `OFFERED` and `ACCEPTED`
-([Domain model §4.2](03-domain-model.md)), and **both partial indexes were wrong the moment it was
-added** — a partial index silently returns fewer rows rather than failing.
+⚠ **Amended 2026-10-12 by [DEC-179].** `AWAITING_APPROVAL` was a state between `OFFERED` and `ACCEPTED` that made both partial indexes wrong the moment it was added (a partial index silently returns fewer rows rather than failing). With the state gone the indexes lose it again, in migration 39 (§7.11):
 
-| Index | Was | Now | Why |
+| Index | Was (2026-08, [DEC-71]) | Now | Why |
 | --- | --- | --- | --- |
-| `ix_trade_open` | `state IN ('REQUESTED','OFFERED','ACCEPTED')` | `+ 'AWAITING_APPROVAL'` | An accepted-but-unapproved trade is an open trade. Omitting it drops it out of every desk and customer list of live work |
-| `ix_trade_expiring` | `state = 'OFFERED'` | `state IN ('OFFERED','AWAITING_APPROVAL')` | **Load-bearing.** This index drives `ExpireOffersJob` ([Background jobs](06-background-jobs.md) §2), which is what **releases the reservation** on a trade accepted ~~above the threshold~~ **by a company with four-eyes on [DEC-71]** and never approved before the window closed **[F05-R62]**, **[T12]** |
+| `ix_trade_open` | `state IN ('REQUESTED','OFFERED','AWAITING_APPROVAL','ACCEPTED')` | `state IN ('REQUESTED','OFFERED','ACCEPTED')` | No live row can be `AWAITING_APPROVAL` |
+| `ix_trade_expiring` | `state IN ('OFFERED','AWAITING_APPROVAL')` | `state = 'OFFERED'` | It drives the expiry sweep, which releases nothing for an `OFFERED` trade (no money is held before acceptance) |
+| `ix_trade_awaiting_approval` | `state = 'AWAITING_APPROVAL'` per customer | **dropped** | It served the desk's *Awaiting approval* queue, which is removed |
 
-The expiring index is the sharper of the two. A trade in `AWAITING_APPROVAL` holds an **active
-reservation for the full trade value**, taken at acceptance **[T11]**, **[F05-R55]**. If the expiry
-job cannot see the row, the trade never leaves the state and the reservation is never released: the
-customer's money stays locked against a trade nobody can act on, and no error is raised anywhere.
-`ix_trade_awaiting_approval` is separate and serves the desk's "awaiting approval" queue, which is
-scoped per customer and must not appear in "to confirm" **[F05-R66]**.
+~~The expiring index was the sharper of the two: a trade in `AWAITING_APPROVAL` holds an active reservation, so a row the expiry job could not see was a reservation never released.~~ That risk is gone with the state. **A terminal `APPROVAL_REFUSED` row is not in either index** (it is closed), so tightening them touches no history.
 
-#### 3.4.2 The four-eyes columns
+#### 3.4.2 ~~The four-eyes columns~~
 
-`CHECK (approved_by_account_id <> accepted_by_account_id)` is the database's copy of the whole
-four-eyes rule. **[DEC-16]** gives every account of a company identical privileges, so there is no
-role to check and nothing else for the constraint to be — the control is a comparison of two account
-ids and nothing more, made recordable by **[DEC-17]**. It is enforced in the domain **[T10]** and
-again here, because a bug that lets one person approve their own acceptance produces no error
-message, only a large trade that went through on one person's say-so.
-
-~~`threshold_amount_applied` is nullable **and its being NULL is not "unpinned"**: a threshold row
-with a `NULL` amount is a valid, deliberate statement that this scope never requires approval
-**[F05-R50]**. The pinning is carried by `four_eyes_threshold_version_id`, which is `NOT NULL`
-whenever the trade has been accepted — that is what the third `CHECK` says, and it is the difference
-between "no approval was needed" and "nobody recorded what the rule was".~~
-
-⚠ **Both columns are dropped by [DEC-71]**, and the paragraph above is kept only to show what the
-reversal removed. There is no amount to apply and no version to pin. The replacement is weaker in one
-specific way, worth naming: the trade records **that** an approval happened
-(`approval_request_id`, `approved_by_account_id`) but **not what rule was in force when it did**,
-because the rule is now a mutable boolean on the customer row. Turning four-eyes off does not restate
-a past approval — the approval row survives — but a trade accepted with the mode **off** and one
-accepted with the mode **on** are distinguishable only by the presence of that row. That is the cost
-of a mode with no versioned reference data behind it, and it is accepted rather than patched with a
-snapshot column **[DEC-71]** does not ask for.
-
-⚠ **[DEC-16] is qualified, not reversed.** Everything it said about *who creates accounts* is
-unchanged, and `is_admin` confers nothing except the second pair of eyes **[F01-R47]**.
+⚠ **Struck 2026-10-12 by [DEC-179].** This section argued that `CHECK (approved_by_account_id <> accepted_by_account_id)` was the database's copy of the whole four-eyes rule, and recorded that the replacement for the threshold pinning was weaker (the trade records *that* an approval happened but not what rule was in force). Neither the columns nor the rule exist any more. Migration 39 (§7.11) drops `four_eyes_applied`, `approved_by_account_id`, `approval_decided_at` and `approval_refused_by_account_id`, their two foreign keys and indexes, and the `CHECK`s `ck_trade_awaiting_approval_is_four_eyes`, `ck_trade_four_eyes_approved`, `ck_trade_approver_not_acceptor`, `ck_trade_refuser_not_acceptor`, `ck_trade_single_approval_decision` and `ck_trade_refusal_recorded`, and re-creates `ck_trade_reservation_present` without `four_eyes_applied IS NOT NULL`, **after** a parity guard: every trade that has an approver or a refuser has the matching append-only `trade_event`, so the fact survives in the log. **Kept:** the `trade_event` `CHECK`s `ck_trade_event_type`, `_from_state` and `_to_state` are not touched, because the table is append-only by trigger and its history rows carry `APPROVED`, `APPROVAL_REFUSED` and `AWAITING_APPROVAL`. The state `APPROVAL_REFUSED` stays in `ck_trade_state` for terminal rows; `AWAITING_APPROVAL` leaves it.
 
 #### 3.4.3 Volume granularity and short selling — [DEC-70], [DEC-72]
 
@@ -1279,16 +1200,16 @@ schema.
 | Table | Contents and the constraints that matter |
 | --- | --- |
 | `trading.trade_reference_seq` | `bigint`, starts at **1001**. `trading.trade.reference` defaults to `'TRD-' \|\| nextval(...)` — **TRD-1001**, unique |
-| `trading.trade` | `id`, `reference`, `customer_id` (RESTRICT), `direction`, `shape`, `period_type`, `period_code`, `delivery_start`/`delivery_end` (exclusive), `delivery_starts_at` (Amsterdam local midnight, captured at submit), `calendar_version` (the constant text `NL-POWER-PEAK-EXCHANGE`), `state`, `total_power_mw numeric(12,6)`, `total_mwh numeric(18,6)`, `comment`, `requested_by_account_id`; the **captured indication** `indication_product_id`, `indication_raw_price numeric(12,4)`, `indication_observed_at`, `indication_source`; the **offer** `price_eur_mwh numeric(12,4)`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat numeric(20,8)`; the **acceptance** `vat_rate numeric(6,4)`, `wallet_amount_gross numeric(18,6)` (**the one stored number**), `four_eyes_applied`, `accepted_by_account_id`, `accepted_at`, `approved_by_account_id`, `approval_decided_at`, `approval_refused_by_account_id`; the **resolution** `resolution_reason`, `external_reference varchar(64)`, `actual_market_price numeric(12,4)`, `resolved_at`; `last_event_sequence`, `created_at`. **No `row_version`** — pessimistic lock-then-check |
+| `trading.trade` | `id`, `reference`, `customer_id` (RESTRICT), `direction`, `shape`, `period_type`, `period_code`, `delivery_start`/`delivery_end` (exclusive), `delivery_starts_at` (Amsterdam local midnight, captured at submit), `calendar_version` (the constant text `NL-POWER-PEAK-EXCHANGE`), `state`, `total_power_mw numeric(12,6)`, `total_mwh numeric(18,6)`, `comment`, `requested_by_account_id`; the **captured indication** `indication_product_id`, `indication_raw_price numeric(12,4)`, `indication_observed_at`, `indication_source`; the **offer** `price_eur_mwh numeric(12,4)`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat numeric(20,8)`; the **acceptance** `vat_rate numeric(6,4)`, `wallet_amount_gross numeric(18,6)` (**the one stored number**), `accepted_by_account_id`, `accepted_at` (~~`four_eyes_applied`, `approved_by_account_id`, `approval_decided_at`, `approval_refused_by_account_id`~~ dropped by migration 39, [DEC-179]); the **resolution** `resolution_reason`, `external_reference varchar(64)`, `actual_market_price numeric(12,4)`, `resolved_at`; `last_event_sequence`, `created_at`. **No `row_version`** — pessimistic lock-then-check |
 | ~~`trading.trade_line`~~ `trading.trade_connection` | ⚠ **Replaced 2026-09-30 by [DEC-167] (16) — migration 30 amended in place (never released).** `(trade_id, metering_point_id)` primary key, `ean character varying(18) NOT NULL`, `connection_name character varying(80)` **nullable** (both snapshots at submit; the portal shows *— no name set —* for a null name), **no power**: the volume is for the whole account and this is its unweighted roster of covered connections. Tenant policy through an `EXISTS` on the parent trade; customer `SELECT`, employee `SELECT`, no write privilege |
 | `trading.trade_event` | Append-only, one row per transition: `id` (a v7 uuid), `trade_id`, `sequence` (unique per trade), `event_type`, `from_state` (admits `DRAFT`, the `SUBMITTED` event's), `to_state`, `actor_type` (`CUSTOMER`/`EMPLOYEE`/`SYSTEM`), `actor_id`, `actor_name`, `actor_job_title`, `reason`, `comment`, `occurred_at`. Trigger `trg_trade_event_append_only` raises `restrict_violation` on `UPDATE` or `DELETE` |
 | `trading.block` (~~`block_allocation`~~ **dropped 2026-09-30, [DEC-167] (16)**) | The confirmed position, **account-level**: it keeps `power_mw`, price, period and company and has no per-connection split; **immutable** by trigger (`trg_block_immutable`; ~~`trg_block_allocation_immutable`~~ went with the table); `block.source_trade_id` is unique, so a trade confirms into at most one block |
 
-**`CHECK`s on `trading.trade`.** `state` is one of the **12 persisted states** (no `DRAFT`); `direction`, `shape` and `period_type` are closed sets; `delivery_end > delivery_start`; `total_power_mw >= 0.01 AND mod(total_power_mw, 0.01) = 0`, and the same grid on every line, block and allocation **[DEC-70]**; `total_mwh > 0`; `price_eur_mwh > 0`; `reaction_window_minutes BETWEEN 5 AND 1440`; `wallet_amount_gross > 0` **and** equal to `round(wallet_amount_gross, 2)`, so a stored gross is always whole cents; the approver and the refuser each differ from the acceptor; **never both approved and refused**; `AWAITING_APPROVAL` implies `four_eyes_applied`; `APPROVAL_REFUSED` implies a refuser and a decision time; a trade past `REQUESTED`/`CANCELLED`/`DECLINED` carries a complete offer; an accepted, awaiting, confirmed, failed or refused trade carries its reservation fields; and **`ck_trade_four_eyes_approved`** — a `four_eyes_applied` trade in `ACCEPTED`, `CONFIRMED` or `FAILED` must carry `approved_by_account_id` **and** `approval_decided_at`. The employee role can write neither column, so **no employee-role `UPDATE` can skip four-eyes** at the database. A `BEFORE UPDATE` transition trigger (state pairs, frozen price and money columns) is **deferred** — it would refuse the raw-`UPDATE` arranges the stored-number tests rely on **[DEC-167]** (c).
+**`CHECK`s on `trading.trade`.** `state` is one of the **12 persisted states** (no `DRAFT`) ⚠ **11 since migration 39 (§7.11): `AWAITING_APPROVAL` leaves `ck_trade_state`**; `direction`, `shape` and `period_type` are closed sets; `delivery_end > delivery_start`; `total_power_mw >= 0.01 AND mod(total_power_mw, 0.01) = 0`, and the same grid on every line, block and allocation **[DEC-70]**; `total_mwh > 0`; `price_eur_mwh > 0`; `reaction_window_minutes BETWEEN 5 AND 1440`; `wallet_amount_gross > 0` **and** equal to `round(wallet_amount_gross, 2)`, so a stored gross is always whole cents; ~~the approver and the refuser each differ from the acceptor; **never both approved and refused**; `AWAITING_APPROVAL` implies `four_eyes_applied`; `APPROVAL_REFUSED` implies a refuser and a decision time;~~ *(all dropped by migration 39, [DEC-179])* a trade past `REQUESTED`/`CANCELLED`/`DECLINED` carries a complete offer; an accepted, confirmed, failed or refused trade carries its reservation fields. ~~and **`ck_trade_four_eyes_approved`** — a `four_eyes_applied` trade in `ACCEPTED`, `CONFIRMED` or `FAILED` must carry `approved_by_account_id` **and** `approval_decided_at`. The employee role can write neither column, so **no employee-role `UPDATE` can skip four-eyes** at the database.~~ A `BEFORE UPDATE` transition trigger (state pairs, frozen price and money columns) is **deferred** — it would refuse the raw-`UPDATE` arranges the stored-number tests rely on **[DEC-167]** (c).
 
-**Indexes.** Unique `reference`; `(customer_id, created_at DESC)`; partial `ix_trade_open (state, created_at)` over `REQUESTED`, `OFFERED`, `AWAITING_APPROVAL`, `ACCEPTED`; partial `ix_trade_expiring (expires_at)` over `OFFERED`, `AWAITING_APPROVAL` — §3.4.1. **On `wallet.ledger_entry`, two partial unique indexes keyed per wallet:** `ux_ledger_entry_trade_reserved (wallet_id, caused_by_id)` where `caused_by_type = 'Trade'` and `entry_type = 'TRADE_RESERVED'`, and `ux_ledger_entry_trade_exit` over the same pair for `TRADE_SETTLED` and `TRADE_RESERVATION_RELEASED` — one reservation and one exit per trade. They are keyed on the wallet too, because the customer role holds `INSERT` on `ledger_entry` and another tenant's insert must never block this trade.
+**Indexes.** Unique `reference`; `(customer_id, created_at DESC)`; partial `ix_trade_open (state, created_at)` over `REQUESTED`, `OFFERED`, `ACCEPTED`; partial `ix_trade_expiring (expires_at)` over `OFFERED` — §3.4.1 (~~`AWAITING_APPROVAL`~~ removed from both by migration 39). **On `wallet.ledger_entry`, two partial unique indexes keyed per wallet:** `ux_ledger_entry_trade_reserved (wallet_id, caused_by_id)` where `caused_by_type = 'Trade'` and `entry_type = 'TRADE_RESERVED'`, and `ux_ledger_entry_trade_exit` over the same pair for `TRADE_SETTLED` and `TRADE_RESERVATION_RELEASED` — one reservation and one exit per trade. They are keyed on the wallet too, because the customer role holds `INSERT` on `ledger_entry` and another tenant's insert must never block this trade.
 
-**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly. **`app_customer_role` gets a column-scoped `SELECT` on `trading.trade` that excludes `indication_product_id`, `indication_raw_price`, `indication_observed_at`, `indication_source`, `actual_market_price` and `offered_by_employee_id`** (the house pattern of `GRANT SELECT (…)`, as on `onboarding_application` and on migration 25's revoke under **[DEC-161]** D7), plus `SELECT` on the other three tables and **no** write privilege anywhere — customer writes are owner-privileged. Consequence: any customer-role query that materialises a `Trade`, or selects `*`, fails with `42501`, so customer read models **project**. `app_employee_role` gets `SELECT` on all four, `INSERT` on the event and block tables, and a column `UPDATE` on `trading.trade` limited to `state`, `price_eur_mwh`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat`, `resolution_reason`, `external_reference`, `actual_market_price`, `resolved_at`, `last_event_sequence` — which is also what makes `FOR UPDATE` legal for the role. **No role has `DELETE`.** The approval columns are written by the owner only.
+**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly. **`app_customer_role` gets a column-scoped `SELECT` on `trading.trade` that excludes `indication_product_id`, `indication_raw_price`, `indication_observed_at`, `indication_source`, `actual_market_price` and `offered_by_employee_id`** (the house pattern of `GRANT SELECT (…)`, as on `onboarding_application` and on migration 25's revoke under **[DEC-161]** D7), plus `SELECT` on the other three tables and **no** write privilege anywhere — customer writes are owner-privileged. Consequence: any customer-role query that materialises a `Trade`, or selects `*`, fails with `42501`, so customer read models **project**. `app_employee_role` gets `SELECT` on all four, `INSERT` on the event and block tables, and a column `UPDATE` on `trading.trade` limited to `state`, `price_eur_mwh`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat`, `resolution_reason`, `external_reference`, `actual_market_price`, `resolved_at`, `last_event_sequence` — which is also what makes `FOR UPDATE` legal for the role. **No role has `DELETE`.** ~~The approval columns are written by the owner only.~~ *(The approval columns are dropped, [DEC-179].)*
 
 **Row-level security** — enabled, never forced, **eight** policies (⚠ was ten before 2026-09-30): `trading_trade_tenant_isolation` and `trading_block_tenant_isolation` on `customer_id = current_setting('app.customer_id')`; the connection and event tables reach it through an `EXISTS` on their parent; and a `*_back_office` policy per table for `app_employee_role`, `USING (true)`. Accepted residue: **employee actor names on `trade_event` stay `SELECT`-able by the customer role through raw SQL**; no customer API response carries them **[DEC-167]** (b).
 
@@ -1496,9 +1417,8 @@ CREATE TABLE wallet.withdrawal_request (
     requested_by_account_id uuid NOT NULL REFERENCES customer.customer_account(id),
     requested_at       timestamptz NOT NULL DEFAULT now(),
     state              text NOT NULL CHECK (state IN
-                           ('REQUESTED','AWAITING_APPROVAL','APPROVED','DECLINED','PAID')),
-    -- set only when the company has four-eyes on  [DEC-71]; the second admin decides here
-    approval_request_id uuid REFERENCES customer.approval_request(id),
+                           ('REQUESTED','DECLINED','PAID')),   -- 'AWAITING_APPROVAL' and 'APPROVED' struck 2026-10-12, DEC-179
+    -- approval_request_id uuid REFERENCES customer.approval_request(id),   -- struck: never built, DEC-179
     decided_by_account_id uuid REFERENCES customer.customer_account(id),
     decided_at         timestamptz,
     decline_reason     text,
@@ -1512,15 +1432,15 @@ CREATE TABLE wallet.withdrawal_request (
     value_date         date,
     paid_at            timestamptz,
 
-    CHECK (decided_by_account_id IS NULL
-           OR decided_by_account_id <> requested_by_account_id),
+    -- CHECK (decided_by_account_id IS NULL
+    --        OR decided_by_account_id <> requested_by_account_id),     -- the second admin; struck 2026-10-12, DEC-179
     CHECK (state <> 'DECLINED' OR decline_reason IS NOT NULL),
     CHECK (state <> 'PAID' OR (paid_by_employee IS NOT NULL AND bank_reference IS NOT NULL
                                AND paid_at IS NOT NULL)),
-    CHECK (state <> 'AWAITING_APPROVAL' OR approval_request_id IS NOT NULL)
+    -- CHECK (state <> 'AWAITING_APPROVAL' OR approval_request_id IS NOT NULL)
 );
 CREATE INDEX ix_withdrawal_open ON wallet.withdrawal_request (wallet_id, requested_at)
-    WHERE state IN ('REQUESTED','AWAITING_APPROVAL','APPROVED');
+    WHERE state = 'REQUESTED';   -- was IN ('REQUESTED','AWAITING_APPROVAL','APPROVED'); DEC-179
 ```
 
 The `CHECK (available_after = settled_after - reserved_after)` is trivial to write and catches an
@@ -1927,25 +1847,24 @@ rather than "recompute the month".
 | Path | Mechanism |
 | --- | --- |
 | Accept an offer | `SELECT … FROM wallet.wallet WHERE id = $1 FOR UPDATE`, then trade state guard, then reservation, all in one transaction — **whichever state the acceptance lands in [F05-R55]** ⚠ **Superseded 2026-09-29 by [DEC-167] (7):** the order is **admin roster → company row `FOR SHARE` (owner-privileged, token's company) → trade `FOR UPDATE` → wallet `FOR UPDATE`**, then the guards (`now` read after the trade lock), then the reservation, in one transaction — never the wallet first. |
-| Approve an acceptance ~~**[DEC-33]**~~ **[DEC-71]** | Trade row and its `approval_request` row. Still **no wallet lock and no second balance check**: the reservation was taken at acceptance and is not re-created **[T11]** ⚠ **2026-09-29 [DEC-167]:** roster → company row (`FOR SHARE`, status check) → trade. Still no wallet lock and no second balance check; approval is state on the trade, not an `approval_request` row. |
-| Refuse approval, or expire from `AWAITING_APPROVAL` | **Wallet first, then trade**, same as acceptance — both release a reservation in the same transaction **[T12]**, **[F05-R62]**, **[F05-R63]** ⚠ **Superseded 2026-09-29 by [DEC-167]:** refusal is roster → trade → wallet; the expiry sweep is trade → wallet, per trade. **Trade first, then wallet.** |
+| ~~Approve an acceptance **[DEC-33]** **[DEC-71]**~~ | ~~Trade row and its `approval_request` row. Still **no wallet lock and no second balance check**: the reservation was taken at acceptance and is not re-created **[T11]** ⚠ **2026-09-29 [DEC-167]:** roster → company row (`FOR SHARE`, status check) → trade. Still no wallet lock and no second balance check; approval is state on the trade, not an `approval_request` row.~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no approval of an acceptance. |
+| ~~Refuse approval, or expire from `AWAITING_APPROVAL`~~ ⚠ **Struck 2026-10-12, [DEC-179]** (the expiry sweep of an `OFFERED` trade touches no wallet) | **Wallet first, then trade**, same as acceptance — both release a reservation in the same transaction **[T12]**, **[F05-R62]**, **[F05-R63]** ⚠ **Superseded 2026-09-29 by [DEC-167]:** refusal is roster → trade → wallet; the expiry sweep is trade → wallet, per trade. **Trade first, then wallet.** |
 | Confirm a trade | Same lock ordering: **wallet first, then trade**, always, to prevent deadlock ⚠ **Superseded 2026-09-29 by [DEC-167]:** **trade first, then wallet** — the old "wallet first, then trade" deadlocks against the roster-first withdrawal paths. |
 | Interval supersession | Advisory lock on `hash(metering_point_id, delivery_date)` — under **[DEC-38]** exactly one document per key per day, so contention is limited to a document and its own correction |
 | Invoice run | Advisory lock per (period, customer) |
 | **Match an incoming payment [DEC-106]** | Wallet row lock, then the intent, then the entry — one transaction. ⚠ **2026-09-29, as built ([DEC-167] (7)):** the payment (or the deposit intent) is locked first and the wallet is credited last, through the ledger writer. Serialisation is **not** what makes it safe: `incoming_payment.bank_transaction_id UNIQUE` does, so a re-delivered feed line fails on insert rather than crediting twice **[F07-R25]** |
-| **Withdrawal request → payout [DEC-83]** | Wallet first, then the request, same ordering as a trade. The request holds a reservation from the moment it is raised, so the money cannot be traded away while it waits for a second admin **[F07-R29]** ⚠ **2026-09-29:** the order is the one in [DEC-166] and [DEC-167] (7) — as built, the request takes the company row `FOR SHARE`, then the wallet, then inserts the withdrawal (no roster and no bank-account lock); approve is roster, withdrawal; decline is roster, withdrawal, wallet — and no trade row is involved. |
-| **A four-eyes decision [DEC-71]** | The `approval_request` row. `ux_approval_open_subject` is what stops two pending approvals for one subject, so two admins deciding at once resolve on one row rather than on a read-modify-write |
+| **Withdrawal request → payout [DEC-83]** | Wallet first, then the request, same ordering as a trade. The request holds a reservation from the moment it is raised, so the money cannot be traded away while it waits for a second admin **[F07-R29]** ⚠ **2026-09-29:** the order is the one in [DEC-166] and [DEC-167] (7) — as built, the request takes the company row `FOR SHARE`, then the wallet, then inserts the withdrawal (no roster and no bank-account lock); ~~approve is roster, withdrawal;~~ decline is roster, withdrawal, wallet — and no trade row is involved. ⚠ **2026-10-12, [DEC-179]:** the withdrawal has no approve step; cancel and the payout lock the withdrawal and then the wallet. |
+| ~~**A four-eyes decision [DEC-71]**~~ | ~~The `approval_request` row. `ux_approval_open_subject` is what stops two pending approvals for one subject, so two admins deciding at once resolve on one row rather than on a read-modify-write~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no decision; `approval_request` was never built. |
 | Everything else | Optimistic concurrency via `row_version` |
 
-⚠ **Superseded in part 2026-09-29 by [DEC-167] (7).** The one global order is **admin roster → `customer.customer` → `trading.trade` → wallet**, and **the wallet is never locked before the trade**: "wallet before trade" below deadlocks against [DEC-166]'s roster-first withdrawal approve and decline, and is replaced. The roster is locked before the company row so an enabling four-eyes toggle (roster → company `UPDATE`) cannot deadlock with an accept; the company row is locked owner-privileged, naming the token's company (§3.1.4). Withdrawal row before wallet row, and deposit intent before wallet row, as [DEC-166] records and as built (decline, cancel and pay-out lock the withdrawal and only then reach the wallet through the ledger writer; deposit settlement locks the intent first).
+⚠ **Superseded in part 2026-09-29 by [DEC-167] (7).** The one global order is **admin roster → `customer.customer` → `trading.trade` → wallet**, and **the wallet is never locked before the trade**: "wallet before trade" below deadlocks against [DEC-166]'s roster-first withdrawal approve and decline, and is replaced. ~~The roster is locked before the company row so an enabling four-eyes toggle (roster → company `UPDATE`) cannot deadlock with an accept;~~ ⚠ **2026-10-12, [DEC-179]: the toggle is gone, so the accept path takes company row → trade → wallet and no roster lock; the roster is still locked first by the membership writes that enforce the admin floor (§3.1.4);** the company row is locked owner-privileged, naming the token's company (§3.1.4). Withdrawal row before wallet row, and deposit intent before wallet row, as [DEC-166] records and as built (decline, cancel and pay-out lock the withdrawal and only then reach the wallet through the ledger writer; deposit settlement locks the intent first).
 
 **Lock ordering is a written rule** — wallet before trade, always, and now wallet before withdrawal
 request and wallet before deposit intent as well. ⚠ **Superseded 2026-09-29 by [DEC-167] (7) and [DEC-166]:** the "wallet before trade", "wallet before withdrawal request" and "wallet before deposit intent" clauses are all replaced; the wallet is always the last lock. Deadlocks in a money path are the kind of bug that
-only shows up under production load. `Approve` is the one four-eyes transition that takes no wallet
+only shows up under production load. ~~`Approve` is the one four-eyes transition that takes no wallet
 lock, and that is a property of **[F05-R55]** rather than an optimisation: if approval had to
-re-check the balance, approval would be a race against the customer's own ~~invoices~~ **trades** —
-⚠ **amended by [DEC-77]**: invoices no longer touch the wallet at all, so the race it was guarding
-against can now only come from the customer's own trading.
+re-check the balance, approval would be a race against the customer's own trades —
+so the race it was guarding against can now only come from the customer's own trading.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no `Approve`.
 
 ## 6. Row-level security
 
@@ -1964,7 +1883,7 @@ employee API connects as a role with no such policy. If the application filter i
 mistake, the database still refuses.
 
 ⚠ **Four new tables need the same policy, 2026-08-19.** `customer.customer_bank_account`,
-`customer.approval_request`, `wallet.deposit_intent` and `wallet.withdrawal_request` all carry a
+`customer.approval_request` *(never built; struck 2026-10-12)*, `wallet.deposit_intent` and `wallet.withdrawal_request` all carry a
 `customer_id` or reach one through `wallet_id`, and all four are read by customer surfaces. They are
 the highest-value rows in the schema — a bank account, an approval and a payout instruction — so the
 policy is not optional on them. `wallet.incoming_payment` is the exception and gets **no customer
@@ -2025,7 +1944,7 @@ PostgreSQL reads as **zero rows** — and that costs nothing, because every writ
 runs on the owner connection (the anonymous onboarding wizard) or through the employee host's
 back-office policy.
 
-⚠ **The admin flag is not an RLS concept.** `is_admin` **[DEC-71]** decides who may *approve*, which
+⚠ **The admin flag is not an RLS concept.** `is_admin` **[DEC-71]** ~~decides who may *approve*~~ *(⚠ the role gates the administrative writes since [DEC-152], and approves nothing since [DEC-179])*, which
 is an authorisation check in the domain **[F13-R43]**, re-validated against the account record on
 every request. Row-level security answers "whose rows are these", and the answer is the same for an
 admin and a non-admin of the same company.
@@ -2112,8 +2031,8 @@ ALTER TABLE billing.surcharge RENAME COLUMN rate TO rate_eur_per_kwh;
 | --- | --- | --- |
 | ~~`billing.feed_in_tariff` **[DEC-44]**~~ | ~~New table~~ | ⚠ **Never created [DEC-87]** |
 | ~~`trading.four_eyes_threshold` **[DEC-33]**~~ | ~~New table~~ | ⚠ **Never created [DEC-71]** — there is no threshold, so nothing ships empty and nothing blocks acceptance |
-| `trading.trade` four-eyes columns | Additive, all nullable | Safe under expand/contract. ⚠ **[DEC-71]**: two of the four (`four_eyes_threshold_version_id`, `threshold_amount_applied`) are **not added**, and `approval_request_id` is added in their place. The `CHECK`s still hold for every existing row because the surviving columns are `NULL` on them |
-| `ix_trade_open`, `ix_trade_expiring` | `DROP INDEX` + `CREATE INDEX … CONCURRENTLY` | ⚠ **Must ship in the same release as the `AWAITING_APPROVAL` state, not after it.** Between the two there is a window in which accepted-but-unapproved trades are invisible to the expiry job and their reservations are never released — §3.4.1 |
+| ~~`trading.trade` four-eyes columns~~ | ~~Additive, all nullable~~ | ~~Safe under expand/contract. ⚠ **[DEC-71]**: two of the four (`four_eyes_threshold_version_id`, `threshold_amount_applied`) are **not added**, and `approval_request_id` is added in their place. The `CHECK`s still hold for every existing row because the surviving columns are `NULL` on them~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — dropped by migration 39 (§7.11). |
+| `ix_trade_open`, `ix_trade_expiring` | `DROP INDEX` + `CREATE INDEX … CONCURRENTLY` | ~~⚠ **Must ship in the same release as the `AWAITING_APPROVAL` state, not after it.** Between the two there is a window in which accepted-but-unapproved trades are invisible to the expiry job and their reservations are never released~~ — §3.4.1. ⚠ **Re-created without `AWAITING_APPROVAL` by migration 39 (§7.11), [DEC-179]** |
 | `customer.metering_point.production_expectation` **[DEC-65]** | Additive, `DEFAULT 'UNKNOWN'` | Deliberately **not** backfilled to `NEVER` or `EXPECTED`. Every existing point is `UNKNOWN` until someone establishes the answer, which is the whole point of the third state — §3.1.1. ⚠ **[DEC-112]** adds `CUSTOMER_DECLARED` to the `_source` check — a widening, safe in place |
 
 ### 7.3 The 2026-08-19 schema changes
@@ -2122,8 +2041,8 @@ ALTER TABLE billing.surcharge RENAME COLUMN rate TO rate_eur_per_kwh;
 | --- | --- | --- |
 | `metering.brp` **[DEC-69]** | New table, **created before** the column that references it | Seeded with **one row, PVNed** **[F02-R44]**, in the same migration — because `customer.metering_point.brp_id` is `NOT NULL` and every existing point has to point somewhere. Backfilling to the PVNed row is correct here and only here: it is the only BRP that has ever delivered a document |
 | `customer.metering_point.brp_id` **[DEC-69]** | Add nullable → backfill to PVNed → `SET NOT NULL`, across one release | Expand/contract, but the backfill is safe enough to run in the same release: the value is knowable for every row without asking anyone |
-| `customer.customer.four_eyes_enabled`, ~~`customer_account.is_admin`~~ **[DEC-71]** | Additive, `NOT NULL DEFAULT false` | Both default **off**, so no company changes behaviour on deploy. ⚠ A company cannot enable the mode until it has **two** admins **[F01-R43]** — an application guard, not a constraint, because it counts rows in another table. ⚠ **`is_admin` is dropped 2026-09-10 by [DEC-152]**; see the row below |
-| `customer.approval_request` **[DEC-71]** | New table | Empty on deploy and correctly so: there is no historic approval to reconstruct, and inventing rows for past trades would fabricate a control that was not applied |
+| `customer.customer.four_eyes_enabled` *(dropped by migration 39, [DEC-179])*, ~~`customer_account.is_admin`~~ **[DEC-71]** | Additive, `NOT NULL DEFAULT false` | Both default **off**, so no company changes behaviour on deploy. ⚠ A company cannot enable the mode until it has **two** admins **[F01-R43]** — an application guard, not a constraint, because it counts rows in another table. ⚠ **`is_admin` is dropped 2026-09-10 by [DEC-152]**; see the row below |
+| ~~`customer.approval_request` **[DEC-71]**~~ | ~~New table~~ | ~~Empty on deploy and correctly so: there is no historic approval to reconstruct, and inventing rows for past trades would fabricate a control that was not applied~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — never created. |
 | `customer.customer_bank_account` **[DEC-71]**, **[DEC-61]** | New table + **backfill from the three `customer` columns** + drop, across separate releases | ⚠ The one genuinely breaking move this round. Existing `iban`/`bic`/`bank_account_holder` become one `ACTIVE` row per customer that has them, with `added_by_account_id` set to the account that last edited the customer — **or the migration fails loudly** rather than inventing an actor, because the whole table exists to say who added an account. ⚠ **As built 2026-09-28 [DEC-165]:** the source was `customer.onboarding_application`, not `customer` columns — the built table never had them — in **one** migration (26, §7.6), with no actor invented: `added_by_account_id` is nullable, and the row's own `source` says where it came from |
 | `trading.trade.total_power_mw`, ~~`trading.block_allocation.power_mw`~~ **[DEC-70]** | `DROP CONSTRAINT` + `ADD CONSTRAINT … NOT VALID`, then `VALIDATE` | ⚠ **Check the existing rows before validating.** Every row written under **[DEC-32]** is a multiple of 0,1 MW, therefore also a multiple of 0,01 MW, therefore passes — the change is a **loosening**. If a row fails, it was written outside the old constraint and the migration has found a real defect |
 | `wallet.wallet_entry.entry_type`, `cause_type` **[DEC-77]**, **[DEC-85]** | `ADD CONSTRAINT … NOT VALID`, then `VALIDATE` | ⚠ **This is the one that can fail on real data.** If any `INVOICE_DEBIT`, `INVOICE_CREDIT` or `ADJUSTMENT` entry exists, validation fails — and it **must**, because the entry is append-only **[W7]** and cannot be rewritten. The resolution is a decision about those balances, not a migration flag |
@@ -2158,7 +2077,7 @@ already carrying production traffic.
 
 ⚠ **One migration, 25, sequential in the platform lane** — the last recorded here was **17**
 (§7.4); migrations 18–24 belong to work this register has not caught up on documenting. Neither
-**[OQ-106]** (the withdrawal four-eyes SQL-injection residual, closed) nor **[OQ-107]** (the
+**[OQ-106]** (the withdrawal four-eyes SQL-injection residual, closed; moot since 2026-10-12) nor **[OQ-107]** (the
 back-office wallet read surface) registers this documentation gap — it is a separate, undocumented
 shortfall of this register, not one either of those open questions carries, and this round does not
 attempt to backfill it.
@@ -2193,7 +2112,7 @@ Roll forward only, as every migration here.
 | --- | --- | --- |
 | `wallet.withdrawal_request` **[DEC-166]** | Three nullable columns, migration **28** (`WithdrawalPayoutDetails`, `20260929031716`): `bank_reference text`, `paid_by_employee_id text`, `paid_by_employee_name text` | `ck_withdrawal_request_bank_reference_length`: `bank_reference IS NULL OR char_length(bank_reference) <= 140`, because the API's `400` is not the last line of defence. All three stay null until a request is `PAID`. No foreign key to `employee.employee` — the customer role reads this table and a cross-realm key buys nothing the name snapshot does not give. `paid_by_employee_name` is a snapshot, so a later rename never rewrites history |
 | `wallet.withdrawal_request` grants **[DEC-166]** | `GRANT UPDATE (bank_reference, paid_by_employee_id, paid_by_employee_name) … TO app_employee_role`, migration **28** | Column-scoped, widening `(status, resolved_at, destination)` by exactly those three columns — the only ones the payout newly touches. `app_customer_role` gains nothing: its table-level `SELECT` already covers the new columns, so the customer role **can** read the payer columns although no customer API returns them (the customer DTO maps `bank_reference` only) |
-| `customer.customer` **[DEC-166]** | Two nullable columns, a foreign key, an index and two `CHECK`s, migration **29** (`CustomerFourEyesDisableRequest`, `20260929035903`) | §3.1.4. No grant change: customer-host writes to the table are already owner-privileged since migration 16. The `Down` drops the foreign key, index, `CHECK`s and columns in that order |
+| `customer.customer` **[DEC-166]** | Two nullable columns, a foreign key, an index and two `CHECK`s, migration **29** (`CustomerFourEyesDisableRequest`, `20260929035903`) — ⚠ **dropped again by migration 39, §7.11** | §3.1.4. No grant change: customer-host writes to the table are already owner-privileged since migration 16. The `Down` drops the foreign key, index, `CHECK`s and columns in that order |
 | `PeakPowerDbContextModelSnapshot.cs`, the migration pins and `tools/verify-migrator.sh` | Updated in the same commits | The Designer file, the snapshot, the pins for history, `CHECK`s and the employee `UPDATE` columns, and the migrator script move with each migration, not as a follow-up |
 
 ### 7.8 The 2026-09-29 trading migration
@@ -2231,6 +2150,21 @@ Roll forward only, as every migration here.
 | Audit | **Nothing rewritten** | Old `LEGAL_DOCUMENT_UPLOADED` payloads keep their single file fields; new ones carry `files` |
 | The migration pins, `PeakPowerDbContextModelSnapshot.cs`, `tools/verify-migrator.sh`, `LegalDocumentsSchemaTests` and both OpenAPI snapshots | Updated in the same commits | The history length, the file columns and `CHECK` names, the seeded v1's two rows, the `terms_language` column and the changed contracts move with the migration. Run `tools/verify-migrator.sh` before landing |
 
+### 7.11 The 2026-10-12 four-eyes removal migration
+
+⚠ **One migration, 39 (working name `RemoveFourEyes`)** — the next free number after 38 (§7.10) — in the platform lane, **[DEC-179]**. It is data **and** schema in one step, because the rollout is one coordinated landing; it is written to be correct for zero rows and for many, and a backfill test on a production-like database (awaiting, already approved, refused and expired trades; awaiting, approved and declined withdrawals; companies with the mode on, with and without a pending turn-off request) proves it. Roll forward only, as every migration here; old migrations are never edited. The steps run in this order, in one transaction:
+
+| Step | What | Why |
+| --- | --- | --- |
+| 1. Guards | **Raise** if any `customer_bank_account` is `PENDING_APPROVAL`; **raise** if a trade has an approver or a refuser without the matching `trade_event` (the parity guard) | Nothing may be dropped that exists nowhere else. The bank-account state was never written, so the guard is an assertion; the parity guard protects the one fact the trade columns hold |
+| 2. Companies | One `audit.audit_record` per company with `four_eyes_enabled` (action `FOUR_EYES_REMOVED`, system actor, before and after as jsonb **including a pending turn-off request**); then `four_eyes_enabled = false` and the two request columns `NULL` in one statement | Every company behaves as one that never had the mode. The row says why the setting went off without a second admin. The `customer.customer` version trigger bumps those rows, so an open back-office edit form gets one stale-version answer |
+| 3. Trades | Every trade in `AWAITING_APPROVAL` becomes `ACCEPTED`: an append-only `trade_event` (`ACCEPTED`, from `AWAITING_APPROVAL`, **system actor**, reason *four-eyes removed, DEC-179*) with the next sequence number, `last_event_sequence` advanced, the desk's *ready to confirm* notice written as for any accepted trade, and one audit row (`TRADE_APPROVAL_WAIVED`). The reservation already exists and is **not** touched; no ledger entry is written; no approver is invented | Acceptance stands **[DEC-179]** (2). The two `CHECK`s that tie `ACCEPTED` to an approver for a four-eyes trade (`ck_trade_four_eyes_approved`, `ck_trade_awaiting_approval_is_four_eyes`) are dropped **first, inside this step**, so that the update is legal and does not fake an approver; step 5 drops the rest |
+| 4. Withdrawals | Each approval already given is copied to the audit log (`WITHDRAWAL_APPROVED`, actor `account:<id>`; the row states that the approval time was never recorded) so that `approved_by_account_id` can be dropped; then one audit row per withdrawal in `AWAITING_APPROVAL` (`WITHDRAWAL_APPROVAL_WAIVED`) and `AWAITING_APPROVAL` → `REQUESTED` | The hold stays; the payout has no approver and the row says so; any admin can still cancel while it is `REQUESTED` |
+| 5. Drops | `customer.customer.four_eyes_enabled`, `four_eyes_disable_requested_by_account_id` (with its foreign key and index) and `four_eyes_disable_requested_at`, and the `CHECK`s `ck_customer_four_eyes_disable_request_complete` and `ck_customer_four_eyes_disable_request_implies_on`; on `trading.trade` the four columns of §3.4.2, their two foreign keys and two indexes (`ix_trade_awaiting_approval` and the approver index) and the six `CHECK`s of §3.4.2; on `wallet.withdrawal_request` `approved_by_account_id` and `ck_withdrawal_request_approver_not_requester` | Configuration and approver columns whose facts live in the append-only logs. Dropping a column removes its column grants; none is re-issued |
+| 6. Tightenings (re-created under the **same** names) | `ck_trade_state` without `AWAITING_APPROVAL` (it keeps `APPROVAL_REFUSED`); `ck_withdrawal_request_status_valid` without `AWAITING_APPROVAL` (it keeps `APPROVAL_DECLINED`); `ck_customer_bank_account_status_valid` without `PENDING_APPROVAL`; `ck_trade_reservation_present` without `four_eyes_applied IS NOT NULL`; `ix_trade_open` and `ix_trade_expiring` without `AWAITING_APPROVAL` | The state cannot come back |
+
+**Kept, and why.** The `trade_event` `CHECK`s (`ck_trade_event_type`, `_from_state`, `_to_state`) are **not touched**: the table is append-only by trigger and its rows carry `APPROVED`, `APPROVAL_REFUSED` and `AWAITING_APPROVAL`. `wallet.withdrawal_request.decline_reason` stays, shown on old declined rows. Every `audit.audit_record` row with a `FOUR_EYES_*` action stays, and the ledger is never touched. **`customer_account.status = 'PENDING_APPROVAL'`** is out of scope: it is not four-eyes. **Pins:** `tools/verify-migrator.sh` (the migration count and name, the `customer.customer` `CHECK` list becomes exactly `ck_customer_deposit_pct_range`, the `wallet.withdrawal_request` `CHECK` list loses the approver one, the customer-readable `trading.trade` column count falls by the four dropped columns, and new pins assert no `four_eyes_%` column on `customer.customer`, that the three status `CHECK`s no longer contain `AWAITING_APPROVAL` or `PENDING_APPROVAL`, and that `ck_trade_event_type` still allows `APPROVED` and `APPROVAL_REFUSED`), `PeakPowerDbContextModelSnapshot.cs`, the migration-count tests and both OpenAPI snapshots move in the same commits. **Audit action names** (`FOUR_EYES_REMOVED`, `TRADE_APPROVAL_WAIVED`, `WITHDRAWAL_APPROVAL_WAIVED`, `WITHDRAWAL_APPROVED`) are the working names of this spec; the platform change fixes them.
+
 ## 8. Retention & archival
 
 ⚠ **Settled 2026-08-19 by [DEC-95], closing [OQ-48].** Two things were decided, and the second is
@@ -2254,13 +2188,13 @@ the larger one:
 | Trade events | 7 years | Never deleted |
 | ~~Invoices and PDFs~~ **Invoice calculations** | 7 years (fiscal) | Never deleted. ⚠ **Amended by [DEC-89]** — there is **no PDF here to retain**; the document lives in the bookkeeping program, and so does the obligation to keep it |
 | Energiebelasting results **[DEC-74]** | 7 years (fiscal) | Never deleted. Each row snapshots the ladder that produced it **[F09-R26]**, which is what makes a seven-year-old amount re-readable without seven-year-old reference data |
-| Approval requests **[DEC-71]** | 7 years | Never deleted. It is the evidence a second person agreed |
+| ~~Approval requests **[DEC-71]**~~ | ~~7 years~~ | ~~Never deleted. It is the evidence a second person agreed~~ ⚠ **Never built, struck 2026-10-12 ([DEC-179]).** What exists of past approvals — the `trade_event` rows and the `FOUR_EYES_*` and `WITHDRAWAL_*` audit rows — keeps the retention of its own table |
 | Deposit intents, incoming payments, withdrawal requests **[DEC-106]**, **[DEC-83]** | 7 years | Never deleted. A matched payment is a money movement; an **unmatched** one is a fact about somebody's money and is kept for exactly as long |
 | Audit records | ~~Per **[OQ-48]**~~ **7 years [DEC-95]** | Never deleted within the window |
 
 ⚠ **What "the bookkeeping program holds the financial record" costs, stated.** Deleting this
 database after seven years is now safe for *finance* and not safe for *evidence*: the trade timeline,
-the approval trail and the ingestion history exist nowhere else. The retention above is therefore a
+~~the approval trail~~ and the ingestion history exist nowhere else. The retention above is therefore a
 floor for the audit trail even where the financial obligation has been discharged elsewhere.
 
 ## 9. Open questions
@@ -2273,7 +2207,7 @@ carried over unchanged.
 | ~~[OQ-48]~~ | ~~Audit retention period~~ ✅ **CLOSED — seven fiscal years, and the financial record of record is the bookkeeping program; the platform retains the action audit trail** **[DEC-95]** — §8 |
 | [OQ-53] | Expected number of metering points at year 1 and year 3 — this determines whether partitioning by month is enough. **[DEC-38]** makes it an inbound-request-rate question as well as a storage one — §2.1. **Still open**, and **[DEC-09]** still holds until the count reaches four digits |
 | [OQ-54] | Is a read replica needed for reporting, or is the primary sufficient? **Still open.** ⚠ **[DEC-97]** adds a reader: the customer usage API serves interval and aggregated net usage per metering point, which is the first customer-facing query shaped like a report |
-| ~~*(unnumbered, against **[DEC-33]**)*~~ | ~~The four-eyes threshold **value**…~~ ✅ **CLOSED — there is no threshold, in euros or in megawatts** **[DEC-71]**, closing **[OQ-85]**. The table is not built, nothing ships empty and nothing blocks acceptance — §3.1.2, §3.4 |
+| ~~*(unnumbered, against **[DEC-33]**)*~~ | ~~The four-eyes threshold **value**…~~ ✅ **CLOSED — there is no threshold, in euros or in megawatts** **[DEC-71]**, closing **[OQ-85]**. The table is not built, nothing ships empty and nothing blocks acceptance — §3.1.2, §3.4. ⚠ **And since 2026-10-12 there is no four-eyes at all [DEC-179]** |
 | ~~*(unnumbered, against **[DEC-44]**)*~~ | ~~When a customer exports and no feed-in tariff resolves, is the export valued at zero or at day-ahead?~~ ✅ **CLOSED — at day-ahead, raw** **[DEC-87]**, closing **[OQ-86]**. There is no feed-in tariff, so there is nothing to fail to resolve — §3.6 |
 | ~~*(new, against **[DEC-65]**)*~~ | ~~Who establishes `production_expectation` at onboarding, and from what source?~~ ✅ **CLOSED — the customer declares it, and it is the customer's responsibility** **[DEC-112]**, closing **[OQ-91]**. SJV and profile fractions sanity-check the declaration; `CUSTOMER_DECLARED` is the source value — §3.1.1 |
 | **[OQ-93]** | Which incoming-payment feed does the platform consume — CAMT.053 import, a PSP webhook, or a SEPA-instant push? `wallet.incoming_payment` is deliberately feed-independent, so the **tables** can ship; the **matcher** cannot — §3.5.2 |

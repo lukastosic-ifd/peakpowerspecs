@@ -44,7 +44,7 @@ mitigation in the plan, not just an entry in a table.
 > invoice payment matching **[DEC-105]**, chargebacks **[DEC-85]** and settlement from the wallet
 > **[DEC-77]** — and **gains** energiebelasting **[DEC-74]**, short selling **[DEC-72]**, configurable
 > BRPs **[DEC-69]**, platform-matched bank-transfer deposits **[DEC-106]**, withdrawals **[DEC-83]**,
-> a customer usage API **[DEC-97]** and four-eyes as a per-customer-company mode **[DEC-71]**.
+> a customer usage API **[DEC-97]** ~~and four-eyes as a per-customer-company mode **[DEC-71]**~~ *(removed 2026-10-12, [DEC-179])*.
 >
 > **Eleven risks are new — R-25…R-35.** **R-10 rises from 9 to 20** and is the headline: **[OQ-69]** is
 > the only blocking question left on the register, and no customer invoice can be issued at all until
@@ -263,7 +263,7 @@ wrong. This is the one class of bug that is not recoverable by an apology.
 
 **Three decisions pulled in three directions and the net is a wash.**
 
-- **[DEC-33]** puts a reservation behind a trade nobody has approved yet. The reservation is created
+- ~~**[DEC-33]** puts a reservation behind a trade nobody has approved yet.~~ ⚠ **Moot since 2026-10-12 ([DEC-179]): no trade waits for approval, and `EXPIRED` no longer touches the wallet.** Kept as the record: **[DEC-33]** put a reservation behind a trade nobody had approved yet. The reservation is created
   at acceptance whichever state the trade lands in, and `AWAITING_APPROVAL` can now be left by three
   routes — approved, refused, expired — each of which must release or convert it **exactly once, in
   the same transaction**. `EXPIRED` in particular is the one state whose money column is now
@@ -291,10 +291,10 @@ be false precision. What did change is the shape of the mitigation, below.
 - **[DEC-77] reverses [AS-12]**: invoices are never settled from the wallet, and the `INVOICE_DEBIT`
   entry type is removed. A whole money path leaves the ledger, and with it the negative-balance
   question **[AS-11]** was always uncomfortable about.
-- **[DEC-83] reverses [DEC-43]** and **puts the money-out path back** — hold, approve or decline, pay
+- **[DEC-83] reverses [DEC-43]** and **puts the money-out path back** — hold, ~~approve or decline,~~ pay
   manually, debit **[F06-R33]**…**[F06-R37]**. The reduction this row banked on 2026-08-11 is
   withdrawn, and what returns is worse than what left: a payout to an external IBAN, executed by hand.
-- **[DEC-71] replaces [DEC-33]'s threshold with a per-company mode.** Fewer moving parts — no
+- **[DEC-71] replaced [DEC-33]'s threshold with a per-company mode** ⚠ *(and [DEC-179] removed the mode, 2026-10-12)*. Fewer moving parts — no
   threshold table and no versioning of one — but **more traffic through the approval paths**: every
   trade of an enabled company, not only those above a value. **[DEC-90]** also removes balance
   thresholds and low-balance alerts, so nothing watches the balance except the pre-trade check
@@ -307,21 +307,15 @@ Held at 3 × 5 again. What changed is which paths the test gate has to name, bel
 - Row-level locking with a written lock order — wallet before trade, always. ⚠ **Superseded 2026-09-29 by [DEC-167] (7):** roster → `customer.customer` → trade → wallet, never the wallet before the trade.
 - The eight correctness tests in
   [Solution structure §6.1](../20-architecture/02-solution-structure.md) as a merge gate.
-- **Add the four-eyes release paths as named cases to that gate [DEC-33]**: approve, refuse and
-  expire from `AWAITING_APPROVAL`, each asserting the reservation is released or converted exactly
-  once; plus the races — refuse while approving, expire while approving, two accounts approving at
-  the same instant. ⚠ **Amended 2026-08-19 by [DEC-71]**: the paths are unchanged in kind but they
-  now apply to **every** trade of a four-eyes company, so the fixtures select on a **company flag**
-  **[F01-R42]** rather than on an amount above a threshold, and self-approval must be refused
-  **[F01-R48]**.
-- **Add the withdrawal paths to the same gate [DEC-83]**: hold, approve, decline, pay, each releasing
-  or converting the hold exactly once — plus the races that matter, decline while approving, a
+- ~~**Add the four-eyes release paths as named cases to that gate [DEC-33]**: approve, refuse and expire from `AWAITING_APPROVAL`, each asserting the reservation is released or converted exactly once; plus the races.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there are no such paths. The case that stays is **accept versus expiry** (the plain race, one outcome under the trade lock) and **fail releases the deposit exactly once**.
+- **Add the withdrawal paths to the same gate [DEC-83]**: hold, ~~approve, decline,~~ cancel, pay, each releasing
+  or converting the hold exactly once — plus the races that matter, ~~decline while approving~~ cancel while paying, a
   withdrawal and a trade competing for the same available balance, and a payout against a bank account
   being replaced in one operation **[F01-R46]**.
 - `CHECK (available_after = settled_after - reserved_after)` at the database level.
 - Database-level `REVOKE UPDATE, DELETE` on ledger entries.
 - Property-based tests on the balance identity under arbitrary operation sequences, now including a
-  trade that sits in `AWAITING_APPROVAL` across other wallet movements.
+  trade that sits in `ACCEPTED` ~~(was `AWAITING_APPROVAL`)~~ across other wallet movements.
 - ~~Settle [OQ-83] before wallet settlement is built. A reservation sized ex-VAT against a
   VAT-inclusive debit is a correctness defect that no amount of locking catches — and after
   **[DEC-41]** there is no buffer to hide it.~~ ✅ **Closed 2026-08-19 by [DEC-78]**. The rule that
@@ -487,7 +481,7 @@ customer can trade with immediately **[DEC-77]**. Three things sharpen it:
   **[F07-R24]** cannot be built and **[NFR-23]**'s degraded mode is currently a manual one.
 - **The fallback matches on IBAN [DEC-61].** A payment with no reference, or a mistyped one, falls back
   to the IBAN on the customer record — a weaker key. **[F01-R45]** already has to say that a
-  `PENDING_APPROVAL` bank account is neither a payout destination nor a matching key, and this risk is
+  `PENDING_APPROVAL` bank account is neither a payout destination nor a matching key ~~(no such account exists, [DEC-179])~~, and this risk is
   why that sentence exists.
 - **There is no cap.** **[DEC-84]** removes the minimum and the maximum rather than configuring them,
   so a mis-matched credit has no ceiling and no "that looks wrong" threshold behind it.
@@ -768,7 +762,7 @@ sittings. Two of this round's decisions make the concentration **operational** r
 editorial: **[DEC-104]** names **one** operator with no rota — carried separately as **[R-32]** — and
 **[DEC-107]** gives the chart of accounts an obligation and still no owner **[DEC-59]**, now with an
 energiebelasting account and a VAT rate per account on it **[R-10]**. Pulling the other way,
-**[DEC-71]** and **[DEC-74]** wrote down two things that genuinely lived in heads: who may approve
+**[DEC-71]** and **[DEC-74]** wrote down two things that genuinely lived in heads: ~~who may approve~~ *(four-eyes removed 2026-10-12, [DEC-179])*
 what, and how energiebelasting is actually calculated when an EAN changes hands mid-year. Held at
 3 × 4. Re-score when the operational practice is written down **and a second person has run it**, not
 when more of it has been dictated.
@@ -942,8 +936,8 @@ the route-table test and dependency scanning are all the team checking its own w
 
 ⚠ **The untested surface grew in the same round it stopped being tested.** A **customer usage API**
 called by machines rather than browsers **[DEC-97]**; a **payment-matching path that credits real
-money** **[DEC-106]**, **[R-26]**; and an **approval control** whose entire value is that it cannot be
-bypassed **[DEC-71]**. None of the three existed when **[NFR-36]** was written.
+money** **[DEC-106]**, **[R-26]**; and ~~an **approval control** whose entire value is that it cannot be
+bypassed **[DEC-71]**~~ *(removed 2026-10-12, [DEC-179])*. None of the three existed when **[NFR-36]** was written.
 
 **Likelihood 3** that a finding an external test would have caught reaches production. **Impact 4**: a
 tenancy or authentication defect is a reportable GDPR breach and commercially serious between
@@ -951,7 +945,7 @@ competing customers, and the first party to probe it from outside will not be un
 
 **Mitigation**
 - Write the **[NFR-36]** risk acceptance with the surface named, not as a formality. The list *is* the
-  deliverable: usage API, deposit matching, four-eyes approval, admin surface, break-glass.
+  deliverable: usage API, deposit matching, ~~four-eyes approval,~~ admin surface, break-glass.
 - Spend a fraction of the declined budget on the cheapest external signal available — an automated
   external scan against the test environment, and a review by someone who did not write the code.
 - Keep the go-live checklist item in
@@ -1269,9 +1263,9 @@ in the top section so that the reason each one is small is on the record and can
 
 | ID | Risk | L | I | Score | Why it is not higher — and what would raise it |
 | --- | --- | :-: | :-: | :-: | --- |
-| **R-31** | Four-eyes needs two admins, and a company can run short of them | 3 | 3 | 🟡 9 | ⚠ **The obvious failure mode is designed out.** A one-admin company cannot have the control *silently* absent: **[F01-R43]** refuses to **enable** four-eyes below two `ACTIVE` admin accounts, and **[F01-R50]** refuses any change that would drop below two while it is on. What is left is the opposite and smaller harm — a company that loses an admin to illness or departure is **blocked** on trades, withdrawals, bank-account changes and user additions until a PeakPower employee clears the flag **[F01-R42]**, an audited action that under **[DEC-104]** reaches one person **[R-32]**. Impact 3: commercially bad during a delivery window, fully recoverable. **Raise it to 12 if the degenerate case is ever softened to self-approval** — **[F01-R48]** forbidding self-approval is what holds this at 9 |
+| ~~**R-31**~~ | ~~Four-eyes needs two admins, and a company can run short of them~~ | ~~3~~ | ~~3~~ | ~~🟡 9~~ | ~~⚠ **The obvious failure mode is designed out.** A one-admin company cannot have the control *silently* absent: **[F01-R43]** refuses to **enable** four-eyes below two `ACTIVE` admin accounts, and **[F01-R50]** refuses any change that would drop below two while it is on. What is left is the opposite and smaller harm — a company that loses an admin to illness or departure is **blocked** on trades, withdrawals, bank-account changes and user additions until a PeakPower employee clears the flag **[F01-R42]**, an audited action that under **[DEC-104]** reaches one person **[R-32]**. Impact 3: commercially bad during a delivery window, fully recoverable. **Raise it to 12 if the degenerate case is ever softened to self-approval** — **[F01-R48]** forbidding self-approval is what holds this at 9~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — **retired 2026-10-12**: there is no four-eyes, and a company with one admin is a normal company (the floor is one). |
 | **R-34** | No contractual SLA removes the external forcing function on availability | 3 | 3 | 🟡 9 | **[DEC-103]** makes every availability figure an **internal engineering goal** with no remedy behind it, and **[NFR-17]**'s trade-offs get cheaper to wave through — the register itself records one dissolving outright. The live consequence is **[OQ-62]**, single region versus a warm secondary, which must now be decided on **[NFR-29]**'s RPO/RTO and on **[DEC-104]**'s single operator **[R-32]** against roughly double the infrastructure cost, with nothing contractual on the other side of the scale. Impact 3 because the harm is under-investment discovered *during* an incident rather than the incident itself. **Raise it if a customer contract ever names a number** |
-| **R-35** | A 30-minute offer dies in one person's calendar | 3 | 2 | 🟡 6 | ⚠ **[DEC-111] reverses [DEC-63]**: only the account that raised the request is notified, plus the approving admin when four-eyes is on **[DEC-71]**. **[DEC-63]**'s rationale was precisely this scenario, and the reversal accepts it deliberately — **[DEC-18]** still lets **any** account of the company accept, so the offer is not unacceptable, only **unseen**. Likelihood 3: a 30-minute window and a meeting are both ordinary. Impact 2: a lapsed offer is re-requestable, and the real loss is the trader's time and a customer's patience. **Raise it if offer expiry becomes a measured cause of lost trades** — G2 in [F05](../10-features/F05-energy-block-trading.md) is where that would show |
+| **R-35** | A 30-minute offer dies in one person's calendar | 3 | 2 | 🟡 6 | ⚠ **[DEC-111] reverses [DEC-63]**: only the account that raised the request is notified~~, plus the approving admin when four-eyes is on **[DEC-71]**~~ *(the requester only since 2026-10-12, [DEC-179]; the 30-minute exposure is back at the level [DEC-111] accepted)*. **[DEC-63]**'s rationale was precisely this scenario, and the reversal accepts it deliberately — **[DEC-18]** still lets **any** account of the company accept, so the offer is not unacceptable, only **unseen**. Likelihood 3: a 30-minute window and a meeting are both ordinary. Impact 2: a lapsed offer is re-requestable, and the real loss is the trader's time and a customer's patience. **Raise it if offer expiry becomes a measured cause of lost trades** — G2 in [F05](../10-features/F05-energy-block-trading.md) is where that would show |
 
 ---
 
@@ -1286,7 +1280,7 @@ R-03), of which **17 score 12 or above**.
 | **R-01** | ~~PVNed~~ **BRP** integration cannot be tested pre-production | 4 | 5 | 🔴 20 *(joint highest, with [R-10])* | ⚠ **Held at 20 on 2026-09-08 after PoC slice 2** — the pipeline is proven and the format is not; see `docs/what-slice-2-does-not-prove.md`. Deferred by [DEC-21], not closed — generate against the sample and XSD, through the real parser; close [OQ-65] first. Document half narrowed by [DEC-38] [DEC-65]; **transport half untouched**. ⚠ 2026-08-19: [DEC-69] makes the source a **configurable BRP** — build the seam in the PoC; [DEC-98] reverses [DEC-57] and gives back a late recovery route | Lead |
 | **R-10** | **The bookkeeping program is unnamed, and the invoice depends on it entirely** | 4 | 5 | 🔴 20 | **Was 9. [OQ-69] is the register's only blocking question** — [DEC-88] [DEC-89] [DEC-105] [DEC-108] [DEC-109] moved numbering, the document, its email, settlement reconciliation and customer records out; [DEC-74] [DEC-76] added to the mapping [DEC-107], which still has no owner. Name it in phase 0; port + stored draft + stub | Finance / IT |
 | **R-28** | **Full imbalance cost sits with PeakPower, and nothing measures it** | 4 | 4 | 🟠 16 | **New** — [OQ-15] confirms [DEC-25]: *"we take the full imbalance risk"*. Store `A12` **and report it**; measure deviation per customer; revisit the first month imbalance cost exceeds the spread earned [DEC-80] | Trading / MD |
-| **R-04** | Wallet correctness defect | 3 | 5 | 🟠 15 | Append-only ledger; locking; reconciliation; test gate. ⚠ 2026-08-19: [OQ-83] closed by [DEC-78] (reservation = debit, one stored number); [DEC-77] removes `INVOICE_DEBIT`; **[DEC-83] puts the payout path back**; [DEC-71] routes **every** trade of an enabled company through approval | Lead |
+| **R-04** | Wallet correctness defect | 3 | 5 | 🟠 15 | Append-only ledger; locking; reconciliation; test gate. ⚠ 2026-08-19: [OQ-83] closed by [DEC-78] (reservation = debit, one stored number); [DEC-77] removes `INVOICE_DEBIT`; **[DEC-83] puts the payout path back**; ~~[DEC-71] routes **every** trade of an enabled company through approval~~ *(removed 2026-10-12, [DEC-179]: the approval-path test legs go)* | Lead |
 | **R-05** | Client-money regulation applies | 3 | 5 | 🟠 15 | Deferred by [DEC-28] as an explicit **go-live gate**; legal opinion before the first real deposit; test money only. ⚠ 2026-08-19: [OQ-31] confirmed — same bank account for now — while [DEC-106] [DEC-83] [DEC-84] add an uncapped wire-in and a real payout | Legal |
 | **R-06** | Tenancy isolation failure | 3 | 5 | 🟠 15 | Four layers; route-table test; build the pipeline even though [DEC-20] skips auth in the PoC. ⚠ 2026-08-19: pen test **withdrawn** [DEC-102] → [R-33]; the **customer usage API** [DEC-97] joins the route-table test | Lead |
 | **R-25** | **Short selling is permitted, with no collateral rule** | 3 | 5 | 🟠 15 | **New** — [DEC-72] reverses [DEC-34]; a short is a promise to deliver that [AS-11] and [DEC-41] do not bound [F05-R69]. Answer **[OQ-94] before the sell path opens**; keep the old rule as a default-off flag; report open short volume | Trading / Risk |
@@ -1299,12 +1293,12 @@ R-03), of which **17 score 12 or above**.
 | **R-29** | **Margin and tax correctness depend on a downstream system** | 3 | 4 | 🟠 12 | **New** — [DEC-73] pushes volume for someone else to price, [DEC-76] pushes ex-VAT for someone else to tax. Assert the expected fee × volume against what was invoiced; unit on the field name; one named owner for both mappings [DEC-107] | Finance |
 | **R-30** | **A push failure or an unchecked draft leaves the customer with no invoice** | 3 | 4 | 🟠 12 | **New** — [DEC-88] reverses [DEC-45] and its rationale named this. `CALCULATED → PUSHED → NUMBERED` with an **alert** on a draft that never gets a number; idempotent push per customer and period; the portal shows calculated data labelled *not an invoice* | Finance / Lead |
 | **R-32** | **One named operator, no rota** | 4 | 3 | 🟠 12 | **New** — [DEC-104]; [NFR-68] says it plainly: an unacknowledged P1 escalates to nobody. Automate what a rota would do — retries and an idempotent catch-up run; rehearsed hand-over; break-glass still blocked on [OQ-89] | Lead / MD |
-| **R-33** | **Nothing external validates the security before go-live** | 3 | 4 | 🟠 12 | **New** — [DEC-102]; [NFR-36] stays **unmet** with a written risk acceptance. Name the untested surface — usage API [DEC-97], deposit matching [DEC-106], four-eyes [DEC-71], admin, break-glass; buy the cheapest external signal; revisit when real money is held [R-05] | Lead / Security |
+| **R-33** | **Nothing external validates the security before go-live** | 3 | 4 | 🟠 12 | **New** — [DEC-102]; [NFR-36] stays **unmet** with a written risk acceptance. Name the untested surface — usage API [DEC-97], deposit matching [DEC-106], ~~four-eyes [DEC-71],~~ admin, break-glass; buy the cheapest external signal; revisit when real money is held [R-05] | Lead / Security |
 | R-23 | ~~€/kWh surcharge migration~~ **€/kWh energiebelasting rate** misprices by 1000× | 2 | 5 | 🟡 10 | **Was 15, re-pointed** — [DEC-73] and [DEC-87] cancel both €/kWh rates and the migration with them; [DEC-74] introduces a third. Greenfield `numeric(14,8)` [F09-R18]; unit in every field name; no `/1000` beside a `_kwh` rate; reconcile at **line level** | Finance / Lead |
 | R-16 | Third-party lead times (contracts, DPIAs, licences) delay go-live | 3 | 3 | 🟡 9 | Start all in phase 0 — **Entra tenant access [DEC-66]**, dated in [Roadmap §2.1](01-roadmap-and-phasing.md). ⚠ 2026-08-19: [OQ-58] closed — Kikker holds the DPIA for the test phase and **the transfer to PeakPower is a dated go-live item [DEC-101]**; new items are the charting licence [DEC-79], the PSP that is still unchosen [DEC-86] and the bookkeeping program [R-10] | PO |
 | R-17 | Customer adoption lower than expected | 3 | 3 | 🟡 9 | Phase 1 ships value before any behaviour change is asked for. ⚠ 2026-08-19: **[DEC-92]** makes MFA mandatory and the onboarding friction is accepted; **[DEC-94]** gives the mockups the peakpower.nl brand to work from | Commercial |
 | R-24 | Entra tenant access outside the team's control; claim mapping unproven until it arrives | 3 | 3 | 🟡 9 | **Was 16, retitled** — [DEC-66] resolves the contradiction, [DEC-67] keeps the dependency: build against standard OIDC on a local container; dated Phase 0 dependency; never a second tenant. ⚠ 2026-08-19: **[DEC-92]** adds a Conditional Access policy to configure in that same tenancy, and **[DEC-110]** confirms there is nothing to migrate from | IT / Lead |
-| **R-31** | **Four-eyes needs two admins, and a company can run short of them** | 3 | 3 | 🟡 9 | **New** — the silent-absence case is designed out by [F01-R43] and [F01-R50]; what is left is a **lockout** cleared by a PeakPower employee [F01-R42], which under [DEC-104] means one person [R-32]. Rises to 12 if self-approval is ever allowed [F01-R48] | Lead / PO |
+| ~~**R-31**~~ | ~~**Four-eyes needs two admins, and a company can run short of them**~~ | 3 | 3 | 🟡 9 | ~~**New** — the silent-absence case is designed out by [F01-R43] and [F01-R50]; what is left is a **lockout** cleared by a PeakPower employee [F01-R42], which under [DEC-104] means one person [R-32]. Rises to 12 if self-approval is ever allowed [F01-R48]~~ ⚠ **Retired 2026-10-12 by [DEC-179]** — there is no four-eyes, so the risk cannot arise. | Lead / PO |
 | **R-34** | **No contractual SLA removes the forcing function on availability** | 3 | 3 | 🟡 9 | **New** — [DEC-103]; availability targets are internal goals with no remedy. [OQ-62] must now be decided on [NFR-29] and [DEC-104] against roughly double the cost, with nothing contractual opposite | IT / Lead |
 | R-12 | Identity provider becomes an availability single point of failure | 2 | 4 | 🟡 8 | Managed provider — Entra ID on the **corporate tenancy [DEC-66]**; break-glass answered by [DEC-53], bounded by [OQ-89]. ⚠ One directory gates the portal **and** the Azure control plane [Deployment §5](../20-architecture/09-deployment.md); see [R-24]. ⚠ 2026-08-19: **[DEC-92]** makes MFA mandatory, so a Conditional Access misconfiguration now locks customers out too | IT |
 | R-19 | Reference data (tariffs, calendars) not maintained | 2 | 4 | 🟡 8 | Named owner; annual reminder job; block invoicing on missing tariff. ⚠ 2026-08-19: **three tables leave and three arrive** — surcharge [DEC-73], feed-in [DEC-87] and the four-eyes threshold [DEC-71] go; the **energiebelasting brackets [DEC-74]**, the price markup [DEC-80] and the **`brp` table [DEC-69]** arrive. Held at 8 deliberately: the annual bracket load is scored on **[R-27]**, not counted twice here | Finance |
@@ -1314,7 +1308,7 @@ R-03), of which **17 score 12 or above**.
 | R-15 | Scope creep from gas being pulled forward | 2 | 3 | 🟡 6 | **Was 9** — ⚠ **[DEC-68] reverses [DEC-30]: gas is out of scope**, and [OQ-87] closes as not applicable until it returns. [DEC-15]'s discriminator stays, which is what keeps the later addition cheap — and what will make it look free when someone asks | PO |
 | R-18 | Trade desk response times slip in practice | 2 | 3 | 🟡 6 | Real-time desk; urgency ranking; escalation alerts; measure G2. ⚠ 2026-08-19: [DEC-70]'s 0,01 MW minimum means more, smaller requests per trader-hour | Trading |
 | R-22 | Insufficient realistic test data for performance work | 3 | 2 | 🟡 6 | `DevStubs` generates volume; production-shaped test environment. ⚠ 2026-08-19: it must now generate **per BRP** [DEC-69] and cover a **correction arriving months late** [DEC-98] [DEC-99] | QA |
-| **R-35** | **A 30-minute offer dies in one person's calendar** | 3 | 2 | 🟡 6 | **New** — ⚠ [DEC-111] reverses [DEC-63]: the requester is notified, plus the approving admin under four-eyes [DEC-71]. [DEC-18] still lets any account accept, so the offer is unseen rather than unacceptable. Measure lapsed offers before widening it again | Commercial |
+| **R-35** | **A 30-minute offer dies in one person's calendar** | 3 | 2 | 🟡 6 | **New** — ⚠ [DEC-111] reverses [DEC-63]: the requester is notified~~, plus the approving admin under four-eyes [DEC-71]~~ *(requester only since 2026-10-12, [DEC-179])*. [DEC-18] still lets any account accept, so the offer is unseen rather than unacceptable. Measure lapsed offers before widening it again | Commercial |
 | R-07 | Montel licence restricts display | 2 | 2 | 🟢 4 | **Was 6** — [DEC-81] settles the residual from the product side: current curve, **no history, no export**; [DEC-97] keeps prices out of the customer API; [DEC-80] already shows a **derived** figure ⚠ **2026-09-29 [DEC-167]:** no longer — customers now see the **raw** quote, so read the impact as **3** (score 6) until **[OQ-117]** is answered. ⚠ [OQ-23] stays a ⏸ partial (ticker symbols, bid-versus-ask); [DEC-96] adds an existing Montel service to reuse | Commercial |
 | R-21 | Angular/.NET version drift over a long build | 2 | 2 | 🟢 4 | Central package management; renovate; upgrade budget per phase | Lead |
 | ~~R-03~~ | ~~Peak-hour definition mismatch~~ — **retired by [DEC-19]** | — | — | ✅ Retired | Peak includes public holidays, matching the exchange convention; `excluded_dates[]` empty; [DEC-14] keeps the calendar as data. ✅ Confirmed verbatim 2026-08-19 by [OQ-02] — *"Peak is Mo-Fr 08:00 - 20:00"* | Closed |
@@ -1414,7 +1408,7 @@ cannot finish is one that quietly stops happening. The **threshold for the regis
 | At each phase gate | Full register re-scored; closed and retired risks archived with what actually happened |
 | On any open question closing | Re-score the risks that referenced it. The four rounds are the worked examples: the first closed eleven questions, retired one risk, reduced two and deferred two without a score change; the second closed thirty-six, moved none, and raised two — because a decision that changes specified work is not the same as a decision that removes an unknown; the third closed one and reduced one, because **[DEC-66]** removed an *outcome* rather than adding work; the fourth closed thirty-one, reduced four, re-pointed one, raised two and registered eleven — **a round can answer almost everything and still leave the register heavier**, if what it answers it answers by moving the work somewhere else |
 | Whenever a dated Phase 0 dependency slips | The date is the trigger, not the review. **R-24 specifically** — it sits at 9 and is therefore off the weekly list, so a missed tenant-access date is what puts it back on ([Roadmap §2.1](01-roadmap-and-phasing.md)) |
-| ~~Before the four-eyes state is built~~ | ~~R-04 specifically, once [OQ-85] gives it a threshold to exercise~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — there is **no threshold**; [OQ-85] is closed. Review **R-04 and R-31** together instead, once the per-company mode has two admin accounts to exercise **[F01-R43]** |
+| ~~Before the four-eyes state is built~~ | ~~R-04 specifically, once [OQ-85] gives it a threshold to exercise~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — there is **no threshold**; [OQ-85] is closed. Review **R-04 and R-31** together instead, once the per-company mode has two admin accounts to exercise **[F01-R43]** *(moot, [DEC-179])* |
 | Before the sell path opens to customers | **R-25** specifically. **[OQ-94]** is the gate: [DEC-72] permits the short, and nothing yet bounds it |
 | Before the bank-transfer deposit route goes live | **R-26** specifically, and only once **[OQ-93]** has named the payment feed. A matching rule written against a guessed feed is the risk, not a step towards it |
 | Before the first energiebelasting push | **R-27** and **R-23** together — the calculation and the unit — with **[OQ-96]** closed and the bracket version for the year **closed to edits** **[F09-R19]** |

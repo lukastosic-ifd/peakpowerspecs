@@ -18,7 +18,7 @@ What is actually worth protecting here, and from whom.
 | **Incoming-payment feed [DEC-106]** | A forged, replayed or altered credit line matching an open deposit intent | **A forged match credits real money.** The wallet is spendable on a trade the same second, no invoice is raised for a deposit **[F07-R27]** so there is no second document the fraud has to survive, and the withdrawal path **[DEC-83]** is a route back out to a bank account | Feed authentication (transport-dependent — **[OQ-93]**), idempotency on the **bank transaction id [F07-R25]**, amount taken from the feed and never from the intent, debit lines never actioned, unmatched queue rather than best-effort crediting — §4.3 |
 | **Customer usage API [DEC-97]** | An unattended credential used to read another company's usage | Same impact as any tenancy break, reached by a caller with no human at the keyboard to notice | Same `customer_id` scope and same global query filter as the portal **[F13-R46]**; no priced data on the surface at all **[F13-R47]**; per-company rate limiting — §6.1 |
 | **The bookkeeping push and its response [DEC-88]**, **[DEC-89]** | A tampered or spoofed response that returns an invoice number bound to the wrong draft | The platform displays a number it did not mint against amounts it did **[DEC-88]**; reconciliation between the two systems silently diverges | Mutual authentication, response bound to the pushed draft by external reference, a returned number never overwritten silently, every push and response audited — §5 |
-| **The four-eyes approval path [DEC-71]** | Self-approval, or the admin flag set from a request | The one control over adding a bank account, executing a trade and withdrawing funds is bypassed by the person it exists to check | The approving `account_id` comes from the token and must differ from the requesting one; the admin flag is platform data set by a PeakPower employee **[DEC-16]**, never client-supplied — §3.3 |
+| ~~**The four-eyes approval path [DEC-71]**~~ | ~~Self-approval, or the admin flag set from a request~~ | ~~The one control over adding a bank account, executing a trade and withdrawing funds is bypassed by the person it exists to check~~ | ~~The approving `account_id` comes from the token and must differ from the requesting one; the admin flag is platform data set by a PeakPower employee **[DEC-16]**, never client-supplied — §3.3~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no approval path to attack. The admin flag is now the `admin` membership role read from the database on every request **[DEC-152]**, never from a claim and never client-supplied; the abuse that remains is a single compromised admin account, which can now redirect the payout account and request a withdrawal alone, and any compromised member can accept an offer — accepted costs (a) of [DEC-179]. |
 | **Invoices** | Tampering post-finalisation | Fiscal and legal exposure | Immutability, gapless numbering, audit |
 | ⚠ **Amended 2026-08-19 by [DEC-88]**, **[DEC-89]** | The platform no longer finalises, numbers or renders an invoice, so *this* row's threat largely moves with the document | The asset the platform still holds is the **calculated** invoice data and the number returned to it | Immutability and audit stay. **Gapless numbering leaves** — it is the bookkeeping program's property now, and the platform cannot assert it. §5, §9 |
 | **Personal data** | Exfiltration | GDPR, reputation | Minimisation, encryption, access control, audit |
@@ -35,7 +35,7 @@ mechanics — numbering **[DEC-88]**, the PDF and its email **[DEC-89]**, VAT **
 those was an asset with a control in it. It gained, in the same round, a path that **credits real
 money on a match the platform makes itself [DEC-106]**, a path that **pays real money out by hand
 [DEC-83]**, a second unattended read surface **[DEC-97]**, a second inbound credential population
-**[DEC-69]**, and an intra-company approval control **[DEC-71]**. The net is not a smaller attack
+**[DEC-69]**, ~~and an intra-company approval control **[DEC-71]**~~ *(removed 2026-10-12, [DEC-179])*. The net is not a smaller attack
 surface. It is a differently-shaped one, weighted further towards **money movement** and away from
 **document integrity**, and the controls above have moved with it.
 
@@ -57,7 +57,7 @@ flowchart TB
     U["<b>Customer usage API caller</b><br/><i>unattended company credential</i><br/><i>[DEC-97] · transport [OQ-95]</i>"]
     T["JWT with <b>customer_id</b> + <b>account_id</b> claims<br/><i>set at provisioning, never client-supplied</i><br/><b>admin</b> flag projected alongside them [DEC-71]"]
     L1["<b>1 · Authentication</b><br/>audience + issuer + signature validated<br/>+ authentication-method claim checked [DEC-92]"]
-    L2["<b>2 · Authorisation</b><br/>endpoint role requirement, deny by default<br/>+ admin flag, for four-eyes approval only [DEC-71]"]
+    L2["<b>2 · Authorisation</b><br/>endpoint role requirement, deny by default<br/>+ admin role for the administrative writes [DEC-152]"]
     L3["<b>3 · Data access</b><br/>EF Core global query filter on customer_id"]
     L4["<b>4 · Database</b><br/>row-level security policy on app.customer_id"]
     D[("Data")]
@@ -102,7 +102,7 @@ SET LOCAL app.customer_id = '…';   -- set from the validated token, per reques
    ⚠ **Amended 2026-08-19 by [DEC-71].** The first and last clauses stand exactly as written:
    `account_id` still comes only from the token, and a client still cannot name a colleague. The
    middle clause — *never for authorisation* — is no longer literally true. Exactly one authorisation
-   decision now reads the account: **may this account approve or refuse a four-eyes action?**, decided
+   decision now reads the account: ~~**may this account approve or refuse a four-eyes action?**~~ **may this account administer the business?** *(⚠ since 2026-10-12, [DEC-179])*, decided
    by an **admin** flag **[F13-R41]**. That is one bit, it is used for nothing else, and §3.3 says
    what it costs.
 4. On every request, `account_id` is verified to belong to `customer_id` and to be `ACTIVE`. A
@@ -123,7 +123,7 @@ SET LOCAL app.customer_id = '…';   -- set from the validated token, per reques
    PeakPower employee **[DEC-16]**, projected into the token **[F13-R43]**, and re-validated against
    the platform record on every request that reads it. A token claiming `admin` for an account the
    platform does not record as one is rejected and alerted, on the same footing as rule 4 — the flag
-   is worth forging precisely because it is the whole of the four-eyes control.
+   is worth forging ~~precisely because it is the whole of the four-eyes control~~ because it gates every administrative write.
 
 ⚠ **Row-level security needs database roles, and this document never mentions them** (added
 2026-09-03). A superuser or a table owner **bypasses** RLS silently: with the APIs on the default
@@ -300,7 +300,7 @@ handful enumerated below.
 | # | Constraint | How it is met |
 | --- | --- | --- |
 | 1 | **Named accounts only** | One credential per named employee. No shared "admin" account, no service account, no generic `breakglass` login — an unattributable emergency login defeats the audit trail that the rest of this document exists to protect **[DEC-17]** |
-| 2 | **Disabled by default** | Each account carries an `enabled_until timestamptz`, `NULL` when disabled. Authentication is refused unless `now() < enabled_until`, and the box reverts to disabled on expiry with no action **[F13-R34]**. Enabling is an explicit, audited action by a **second** named administrator. ⚠ **The duration is deliberately not set here** — **[DEC-53]** does not state one and **[F13-R34]** ships no default, for the same reason as the four-eyes threshold: a guessed window is either too short to survive an incident or long enough to be a standing account. It must be configured before the path is first enabled |
+| 2 | **Disabled by default** | Each account carries an `enabled_until timestamptz`, `NULL` when disabled. Authentication is refused unless `now() < enabled_until`, and the box reverts to disabled on expiry with no action **[F13-R34]**. Enabling is an explicit, audited action by a **second** named administrator. ⚠ **The duration is deliberately not set here** — **[DEC-53]** does not state one and **[F13-R34]** ships no default, for the same reason as ~~the four-eyes threshold~~ any other figure nobody has decided: a guessed window is either too short to survive an incident or long enough to be a standing account. It must be configured before the path is first enabled |
 | 3 | **A second factor that does not depend on the identity provider** | TOTP (RFC 6238), seed generated by the platform and encrypted at rest, **or** a FIDO2 security key registered directly with the platform **[F13-R36]**. Explicitly **not** Entra MFA, not a push through the IdP app, and not SMS to a number held in the Entra directory — all three fail in exactly the outage this path exists for |
 | 4 | **Every use alerted and audited** | §3.2.3, **[F13-R37]** |
 | 5 | **Rehearsed** | §3.2.4, **[F13-R39]**. An unrehearsed break-glass path is not a break-glass path — it is an untested assumption with a password attached |

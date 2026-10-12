@@ -520,8 +520,8 @@ peakpower-web/
 
 ⚠ Two reference-data screens the earlier rounds implied are **not** built: the surcharge tariff table
 (⚠ **Reversed 2026-08-19 by [DEC-73]**) and the four-eyes threshold table (⚠ **Reversed 2026-08-19 by
-[DEC-71]** — four-eyes is a flag on the customer company, edited on the customer screen, not a
-reference table).
+[DEC-71]** — ~~four-eyes is a flag on the customer company, edited on the customer screen, not a
+reference table~~ four-eyes is removed altogether, 2026-10-12, [DEC-179]).
 
 Conventions: standalone components throughout, signals for state, lazy-loaded feature routes,
 strictly typed reactive forms, and generated API clients — now consumed as a published package

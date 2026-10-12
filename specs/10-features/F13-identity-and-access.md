@@ -317,7 +317,7 @@ which describe a surface **[DEC-97]** that does not exist in the PoC and whose t
 changed afterwards by a **PeakPower employee only** **[DEC-16]**, **[F13-R41]** — there is no
 self-service promotion and no customer-side user management (see the tension recorded in §1).
 ~~Deactivation **[F13-R24]** also removes the ability to approve, so deactivating the second admin of a
-four-eyes company disables the control without disabling the mode.~~ Deactivating a company's last active admin is flagged at the same point as deactivating its last active account **[F01-R19]**, and it is the edge case in §6.
+four-eyes company disables the control without disabling the mode.~~ Deactivation warns only when it removes a company's last active account **[F12-R17]**; the floor of one admin is enforced on demotion and removal **[DEC-157]**.
 
 ### Tenancy context
 

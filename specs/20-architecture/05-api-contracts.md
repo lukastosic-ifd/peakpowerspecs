@@ -1118,7 +1118,7 @@ The desk trade detail gains `settlement` (same shape as the customer's: `deposit
 | Market price, too many decimals | `ActualMarketPriceEurPerKwh` | The market price can have at most five decimals. |
 | Market price, too large | `ActualMarketPriceEurPerKwh` | The market price must be below 10 EUR/kWh in absolute value. |
 
-So 0,00001, 0,09475 and 9,99999 pass and 0, 0,000001, 10 and 81,25 are refused; a market price may be zero or negative. The ceiling of 10 euro per kWh is new: it refuses a price typed per MWh by habit. The desk's market reference is served per kWh (`TradeIndicationObservationDto.priceEurPerKwh`, for the captured and the current observation) and the resolution carries `actualMarketPriceEurPerKwh`.
+So 0,00001, 0,09475 and 9,99999 pass and 0, 0,000001, 10 and 81,25 are refused; a market price may be zero or negative. The ceiling of 10 euro per kWh is new: it refuses a price typed in the old unit by habit. The desk's market reference is served per kWh (`TradeIndicationObservationDto.priceEurPerKwh`, for the captured and the current observation) and the resolution carries `actualMarketPriceEurPerKwh`.
 
 
 ### 3.2 Customers, wallets, withdrawals, payments, invoicing, data, reference data

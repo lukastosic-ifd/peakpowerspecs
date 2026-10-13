@@ -193,7 +193,7 @@ holidays included **[DEC-19]**. The design must not smooth them.
 >
 > **Re-read on an open page ([F03-R30]).** The Volume page and the connection detail page read a day again while it has a measured quarter-hour without a cost; the position is read again while fewer quarter-hours are costed than measured, and also for a position day, from today minus 7 days to today, with nothing metered at all. The partial total counts the measured and costed quarter-hours of the answer by the server's definition and names no cause. A tick every 30 seconds while the tab is visible; a waiting cost every 30 seconds six times and then every 5 minutes; a day without a price every 5 minutes, and never a future day. The re-read is silent: no busy state, no error, no "this changed" notice.
 >
-> **The day-ahead card** shows euro per kWh with 5 decimals in its figures, its chart, its tooltip and its hidden table; the wire fields are per kWh and the CSV column is `price_eur_per_kwh`. **Four usage figures that printed MWh now print kWh**: the Volume totals strip, "Blocks contracted", the Dashboard tiles and the Connections list.
+> **The day-ahead card** shows euro per kWh with 5 decimals in its figures, its chart, its tooltip and its hidden table; the wire fields are per kWh and the CSV column is `price_eur_per_kwh`. **Four usage figures that printed in the old unit now print kWh**: the Volume totals strip, "Blocks contracted", the Dashboard tiles and the Connections list.
 
 
 ## 6. Screens

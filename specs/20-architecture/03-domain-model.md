@@ -220,7 +220,7 @@ public readonly record struct Kw(decimal Value)
 public readonly record struct PricePerKwh(decimal Value)
 {
     public const int Decimals = 5;
-    public const decimal Ceiling = 10m;     // refuses a price typed per MWh by habit (81,25)
+    public const decimal Ceiling = 10m;     // refuses a price typed in the old unit by habit (81,25)
 
     // Create refuses unless  value > 0,  value < Ceiling  and
     // Math.Round(value, 5, MidpointRounding.AwayFromZero) == value.

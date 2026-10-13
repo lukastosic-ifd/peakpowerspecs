@@ -52,7 +52,7 @@
 > **Specified 2026-10-13 by [DEC-180] (10): trading in kW, kWh and €/kWh.** The platform stores, serves and shows a trade in kW, kWh and euro per kWh; no stored euro amount changes.
 >
 > - **Request.** `POST /trades/quote` and `POST /trades` take `powerKw`, at least 10, a multiple of 10 and below 1 000 000 000. The answers carry `totalPowerKw` and `totalKwh` (= kW × hours, exact) and `priceEurPerKwh`; a product carries `priceEurPerKwh`, `kwhAt1Kw`, `valueAt1Kw` and `currentCoverKw`. The four request bodies (quote, submit, offer, confirm) refuse a member they do not know: a 400, nothing stored. The body of that 400 is the framework's, and is to be confirmed at build (task T4).
-> - **A new price** is above 0, below 10 and has at most 5 decimals per kWh, at the desk and in validation. A price of 10 or more is refused so that 81,25 typed per MWh by habit never becomes an offer.
+> - **A new price** is above 0, below 10 and has at most 5 decimals per kWh, at the desk and in validation. A price of 10 or more is refused so that 81,25 typed in the old unit by habit never becomes an offer.
 > - **An offer is its stored value.** The value ex VAT is frozen when the offer is made; the amount including VAT, the deposit and the balance are derived from that stored value and from nothing else, so an offer made before the change is accepted for exactly the amounts it showed. Two served fields make the screens print instead of multiply: `TradeSummaryDto.totalValueExVat` and `TradeDeskCardDto.totalInclVat`.
 > - **Refusals** (problem type `validation`, or `invalid-volume` for the volume):
 >

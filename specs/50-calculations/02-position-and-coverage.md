@@ -409,8 +409,6 @@ every volume kWh**, so the `/1000` appears in every settlement formula without e
 computed per calendar year on net usage and never touches the position maths — see
 [Invoice calculation](03-invoice-calculation.md) §7.
 
-⚠ **[DEC-180] (10):** `purchase` and `sale` sum the unrounded products, while `dayAheadSettlement` above is rounded to 5 decimals per quarter-hour (§5.4 sums rounded quarter-hours). How the invoice rounds these two legs is not decided here (the invoice pages carry the note on that).
-
 ⚠ Two signs are not guaranteed: a **negative day-ahead price** is a real market outcome, and it turns
 the purchase leg into a credit and the sale leg into a cost. That is correct behaviour, not a defect,
 and neither leg may be sign-clamped to "fix" it.
@@ -431,6 +429,8 @@ line2(m,P)    = purchase(m,P) + sale(m,P)
 // removed 2026-08-19 by [DEC-87]:
 // feedIn(m,P) = − Σ_{i ∈ P}  exported(i,m) × feedInRate(customer, i)
 ```
+
+⚠ **[DEC-180] (10):** `purchase` and `sale` sum the unrounded products, while `dayAheadSettlement` above is rounded to 5 decimals per quarter-hour (§5.4 sums rounded quarter-hours). How the invoice rounds these two legs is not decided here (the invoice pages carry the note on that).
 
 ⚠ **Note what the accumulators are summed over, because [DEC-72] changed it.** They are no longer a
 partition of the intervals by the sign of `dayAheadVolume`: each leg sums **its own volume in every

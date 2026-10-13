@@ -207,7 +207,7 @@ still moving.
 
 ```
 PeakPower.Domain/
-├── Common/                    # Money, MW, MWh, DateRange, EanCode, Result,
+├── Common/                    # Money, MW, MWh, DateRange, EanCode, Result,   ⚠ [DEC-180]: Kw and PricePerKwh; energy is a decimal in kWh
 │                              # VatRate — one reference rate, read by the trade
 │                              # reservation only                             [DEC-78]
 ├── Identity/                  # Account, IsAdmin                             [DEC-71]
@@ -682,7 +682,7 @@ first eight do: each one fails silently in production and shows up as money.
 | `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` | Cheap correctness |
 | No `DateTime.Now` / `DateTime.UtcNow` outside `IClock`; no date arithmetic outside `IMarketCalendar` | Enforced by an architecture test. This is the single highest-value rule in the codebase |
 | `decimal` for all money and energy; `double` banned in domain code | **[AS-20]** |
-| Value objects for `Money`, `Mw`, `MWh`, `EanCode`, `DateRange` | Makes unit and currency errors compile-time failures |
+| Value objects for `Money`, `Mw`, `MWh`, `EanCode`, `DateRange` | Makes unit and currency errors compile-time failures ⚠ **[DEC-180]: Kw and PricePerKwh; energy is a decimal in kWh.** |
 | `Result<T>` for expected failures; exceptions only for the unexpected | Business rejections are not exceptional |
 | Async everywhere, `CancellationToken` threaded through | |
 | Central package management | One version of everything |

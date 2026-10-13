@@ -73,7 +73,7 @@ erDiagram
 | **PeakCalendar** | excluded dates | Referenced by version, never mutated in place |
 | **Brp** | credentials, endpoint, document format | Reference data **[DEC-69]**. A metering point is assigned to one. Referenced by id, never mutated in a way that restates a past document |
 | ~~**FourEyesRequest**~~ | ~~decisions~~ | ~~The approval record for the four non-trade actions **[DEC-71]**. Small and short-lived; the acting and approving account ids are its whole point **[DEC-17]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — never built; struck with the approval model. |
-| ~~**FourEyesThreshold**~~ | ~~—~~ | ~~Reference data **[DEC-33]**. Referenced by version, never mutated in place, so a threshold change cannot restate a past trade~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** — there is no threshold in euros or in megawatts, so there is no reference data to version. Replaced by `Customer.FourEyesEnabled`, a single boolean ~~— which is itself removed 2026-10-12 by [DEC-179]~~. **[OQ-85] closed** |
+| ~~**FourEyesThreshold**~~ | ~~—~~ | ~~Reference data **[DEC-33]**. Referenced by version, never mutated in place, so a threshold change cannot restate a past trade~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** — there is no threshold in euros or in megawatts, so there is no reference data to version. ~~Replaced by `Customer.FourEyesEnabled`, a single boolean~~ — which is itself removed 2026-10-12 by [DEC-179]. **[OQ-85] closed** |
 
 **Trade and Wallet are separate aggregates that commit together.** Accepting an offer changes both.
 This is the one place where the "one aggregate per transaction" guideline is deliberately broken,

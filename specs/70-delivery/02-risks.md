@@ -481,7 +481,7 @@ customer can trade with immediately **[DEC-77]**. Three things sharpen it:
   **[F07-R24]** cannot be built and **[NFR-23]**'s degraded mode is currently a manual one.
 - **The fallback matches on IBAN [DEC-61].** A payment with no reference, or a mistyped one, falls back
   to the IBAN on the customer record — a weaker key. **[F01-R45]** already has to say that a
-  `PENDING_APPROVAL` bank account is neither a payout destination nor a matching key ~~(no such account exists, [DEC-179])~~, and this risk is
+  ~~`PENDING_APPROVAL` bank account is neither a payout destination nor a matching key~~ *(no such account exists, [DEC-179])*, and this risk is
   why that sentence exists.
 - **There is no cap.** **[DEC-84]** removes the minimum and the maximum rather than configuring them,
   so a mis-matched credit has no ceiling and no "that looks wrong" threshold behind it.

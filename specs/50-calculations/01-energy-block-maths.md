@@ -3,6 +3,8 @@
 How a purchased block turns into a volume, an amount of money, and a per-interval power profile.
 Everything downstream — coverage, invoicing, the chart overlay — depends on getting this right.
 
+> ⚠ **Rewritten 2026-10-13 by [DEC-180] (10): this page is in kW, kWh and €/kWh.** Before that date a block was stated in MW and MWh (1 MW held for one quarter-hour = 0,25 MWh = 250 kWh; the grid was 0,01 MW) and a price in €/MWh with 4 decimals. §5 is the per-connection model that [DEC-167] (16) withdrew; it keeps the units it was written in.
+
 ---
 
 ## 1. The unit of account
@@ -11,8 +13,8 @@ The atomic unit throughout the platform is the **15-minute interval**, aligned t
 `Europe/Amsterdam` local time.
 
 ```
-1    MW held for one 15-minute interval  =  0.25   MWh  =  250.0 kWh
-0.01 MW held for one 15-minute interval  =  0.0025 MWh  =    2.5 kWh
+1 kW held for one 15-minute interval  =  0.25 kWh
+10 kW held for one 15-minute interval  =  2.5 kWh      // one grid step
 ```
 
 A block is described by three things:
@@ -21,30 +23,30 @@ A block is described by three things:
 | --- | --- |
 | **Shape** — `BASE` or `PEAK` | `PEAK` |
 | **Delivery period** — a whole month, quarter or calendar year | `Q1-2027` |
-| **Power** — constant, **signed** MW for every interval the shape covers | `1.37 MW` — or `-0.46 MW` for a short **[DEC-72]**, §3.6 |
+| **Power** — constant, **signed** kW for every interval the shape covers | `1370 kW` — or `-460 kW` for a short **[DEC-72]**, §3.6 |
 
-Everything else — total MWh, the money, the chart overlay — is derived.
+Everything else — total kWh, the money, the chart overlay — is derived.
 
 ### 1.1 Granularity — [DEC-70]
 
-Volume is expressed in MW with a **minimum of 0,01 MW and an increment of 0,01 MW**, per
+Volume is expressed in kW with a **minimum of 10 kW and an increment of 10 kW** ⚠ **[DEC-180] (10): the 0,01 MW of [DEC-70], the same grid in the new unit**, per
 metering-point line and for the request total. Both are reference data with these as the shipped
 defaults — **[F05-R08]**.
 
 ⚠ **Reverses [DEC-32]** (minimum 0,1 MW, increment 0,1 MW). The step is **ten times finer**, and that
 single change propagates through every section below. What it costs, stated once here:
 
-| Consequence | Under ~~[DEC-32]~~ 0,1 MW | Under **[DEC-70]** 0,01 MW |
+| Consequence | Under ~~[DEC-32]~~ 100 kW | Under **[DEC-70]** 10 kW |
 | --- | --- | --- |
-| Smallest tradable base block, August 2026 | `0.1 × 744 h` = 74,4 MWh | `0.01 × 744 h` = **7,44 MWh** |
-| Requested totals landing on a whole MW | 1 in 10 reachable totals per clip | **1 in 100** — §5.3 stops being a path worth flagging and becomes the normal one |
-| Residual PeakPower carries to the next whole clip | 0…0,9 MW | 0…0,99 MW — no worse in the worst case, but **present on nearly every trade** |
-| Per-EAN allocation grid | multiples of 0,1 MW | **multiples of 0,01 MW** |
-| Distinct allocations inside one 1 MW clip | ≤ 10 | **≤ 100** |
+| Smallest tradable base block, August 2026 | `100 × 744 h` = 74 400 kWh | `10 kW × 744 h` = **7 440 kWh** |
+| Requested totals landing on a whole clip (a multiple of 1 000 kW) | 1 in 10 reachable totals per clip | **1 in 100** — §5.3 stops being a path worth flagging and becomes the normal one |
+| Residual PeakPower carries to the next whole clip | 0…900 kW | 0…990 kW — no worse in the worst case, but **present on nearly every trade** |
+| Per-EAN allocation grid | multiples of 100 kW | **multiples of 10 kW** |
+| Distinct allocations inside one 1 000 kW clip | ≤ 10 | **≤ 100** |
 | Per-EAN rounding residual §5.2 | rarer, larger relative to each line | **routine** — more lines, each smaller, so the largest-remainder correction fires more often |
 
-**The non-whole-MW tail is back.** Under **[DEC-32]** a customer could round their own request to a
-tenth and quite often onto a whole clip; at 0,01 MW that stops being practical, so the residual is
+**The tail beyond a whole 1 000 kW clip is back.** Under **[DEC-32]** a customer could round their own request to a
+tenth and quite often onto a whole clip; at 10 kW that stops being practical, so the residual is
 the rule rather than the exception and it sits on PeakPower's book. Nothing in the maths gets harder
 — every formula below is unchanged. What gets harder is every piece of copy, validation, input mask
 and test fixture that hard-codes `0,1`.
@@ -115,7 +117,7 @@ because **[DEC-15]**'s discriminator stays: it is nearly free to carry now, expe
 later, and gas is out *for now* rather than permanently. What goes away is every gas **row** and every
 gas-specific rule — there is no gas peak calendar, no gas window, no m³ volume and no calorific
 correction anywhere in this document (**[OQ-87]** closed as not applicable, and it reopens with gas).
-Every formula below is electricity, in MW and MWh.
+Every formula below is electricity, in kW and kWh.
 
 Each block records **which calendar version it was priced under**, so a later calendar change never
 retroactively alters a settled trade.
@@ -125,12 +127,12 @@ retroactively alters a settled trade.
 ### 3.1 General form
 
 ```
-totalMWh(b) = power_MW(b) × Σ_i active(b, i) × 0.25
+totalKWh(b) = power_kW(b) × Σ_i active(b, i) × 0.25      // = power_kW(b) × hours(b)
 ```
 
 Counting intervals — rather than multiplying days by hours — is what makes DST correct for free.
 
-`power_MW(b)` is a **signed** multiple of 0,01 MW **[DEC-70]**: positive for a BUY, negative for a
+`power_kW(b)` is a **signed** multiple of 10 kW **[DEC-70]**, **[DEC-180]**: positive for a BUY, negative for a
 short SELL **[DEC-72]**. The interval sum is always unsigned. See §3.6.
 
 ### 3.2 Base volume
@@ -154,7 +156,7 @@ At 15-minute resolution the same days have **92** and **100** intervals respecti
 ### 3.3 Peak volume
 
 ```
-peakMWh(b) = power_MW(b) × peakDays(period) × 12
+peakKWh(b) = power_kW(b) × peakDays(period) × 12
 ```
 
 `peakDays(period)` is the count of Monday–Friday days in the period, **holidays included [DEC-19]**,
@@ -165,45 +167,45 @@ Peak volume is not affected by DST: both transitions occur on a Sunday during th
 
 ### 3.4 Worked example
 
-**Customer buys 1 MW base + 1 MW peak for August 2026.**
+**Customer buys 1 000 kW base + 1 000 kW peak for August 2026.**
 
 August 2026 has 31 days, starts on a Saturday, and contains 21 Monday–Friday days
 (5 Saturdays, 5 Sundays). No DST transition.
 
 | | Calculation | Result |
 | --- | --- | --- |
-| Base volume | `1 MW × 31 × 96 intervals × 0.25` | **744 MWh** |
-| Peak volume | `1 MW × 21 days × 48 intervals × 0.25` | **252 MWh** |
-| Total | | **996 MWh** |
+| Base volume | `1000 kW × 31 × 96 intervals × 0.25` | **744 000 kWh** |
+| Peak volume | `1000 kW × 21 days × 48 intervals × 0.25` | **252 000 kWh** |
+| Total | | **996 000 kWh** |
 
 Delivered power profile:
 
 | Interval falls in | Base | Peak | **Total power** |
 | --- | --- | --- | --- |
-| Mon–Fri 08:00–20:00 | 1 MW | 1 MW | **2 MW** |
-| Mon–Fri outside 08:00–20:00 | 1 MW | — | **1 MW** |
-| Saturday, Sunday | 1 MW | — | **1 MW** |
+| Mon–Fri 08:00–20:00 | 1 000 kW | 1 000 kW | **2 000 kW** |
+| Mon–Fri outside 08:00–20:00 | 1 000 kW | — | **1 000 kW** |
+| Saturday, Sunday | 1 000 kW | — | **1 000 kW** |
 
 ```mermaid
 xychart-beta
-    title "Delivered power, Mon 3 Aug – Sun 9 Aug 2026 (1 MW base + 1 MW peak)"
+    title "Delivered power, Mon 3 Aug – Sun 9 Aug 2026 (1 000 kW base + 1 000 kW peak)"
     x-axis "hour of week" 0 --> 168
-    y-axis "MW" 0 --> 2.5
-    line [1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    y-axis "kW" 0 --> 2500
+    line [1000,1000,1000,1000,1000,1000,1000,1000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000]
 ```
 
-**The same month at [DEC-70] granularity: 1,37 MW base + 0,46 MW peak for August 2026.**
+**The same month at [DEC-70] granularity: 1 370 kW base + 460 kW peak for August 2026.**
 
 | | Calculation | Result |
 | --- | --- | --- |
-| Base volume | `1.37 MW × 31 days × 96 intervals × 0.25` | **1 019,28 MWh** |
-| Peak volume | `0.46 MW × 21 days × 48 intervals × 0.25` | **115,92 MWh** |
-| Total | | **1 135,20 MWh** |
+| Base volume | `1370 kW × 31 days × 96 intervals × 0.25` | **1 019 280 kWh** |
+| Peak volume | `460 kW × 21 days × 48 intervals × 0.25` | **115 920 kWh** |
+| Total | | **1 135 200 kWh** |
 
 The arithmetic is unchanged — only the volumes stop being round. `BASE` and `PEAK` are separate
 products, so each is its own block and the clip rounding of §5.3 applies to each: the trader buys
-2 MW base and carries **0,63 MW**, and buys 1 MW peak and carries **0,54 MW**, on PeakPower's own
-book. Under ~~[DEC-32]~~ the customer could only have asked for 1,4 and 0,5; under **[DEC-70]** the
+2 000 kW base and carries **630 kW**, and buys 1 000 kW peak and carries **540 kW**, on PeakPower's own
+book. Under ~~[DEC-32]~~ the customer could only have asked for 1 400 and 500 kW; under **[DEC-70]** the
 request matches the site's actual load, and the residual moves to the trader. That transfer is the
 whole substance of the decision.
 
@@ -211,9 +213,19 @@ Delivered power profile for that pair:
 
 | Interval falls in | Base | Peak | **Total power** |
 | --- | --- | --- | --- |
-| Mon–Fri 08:00–20:00 | 1.37 MW | 0.46 MW | **1.83 MW** |
-| Mon–Fri outside 08:00–20:00 | 1.37 MW | — | **1.37 MW** |
-| Saturday, Sunday | 1.37 MW | — | **1.37 MW** |
+| Mon–Fri 08:00–20:00 | 1 370 kW | 460 kW | **1 830 kW** |
+| Mon–Fri outside 08:00–20:00 | 1 370 kW | — | **1 370 kW** |
+| Saturday, Sunday | 1 370 kW | — | **1 370 kW** |
+
+⚠ **[DEC-180] (10): the quantities of §3, in the old unit and in the new.** The arithmetic is the same; only the unit moves. Every row is exact.
+
+| Quantity | Today (before 2026-10-13) | New | Same number? |
+| --- | --- | --- | --- |
+| Hours of a period | ~~`MwhPerMw(…)`: Base = the quarter-hours of each day × 0,25; Peak = weekdays × 48 × 0,25~~ | `BlockVolumeCalculator.HoursOf(…)`, body unchanged | yes |
+| Total volume | ~~`TotalMwh = MW × hours`~~ | `TotalKwh = kW × hours`, not rounded | × 1000, exact |
+| Energy of one quarter-hour | ~~`MW × 250`~~ | `kW × 0,25` | identical kWh |
+| One grid step | ~~0,01 MW = 2,5 kWh per quarter-hour~~ | 10 kW = 2,5 kWh per quarter-hour | identical |
+| Hedge cost of one quarter-hour | ~~`energy × PriceEurMwh / 1000`~~ | `energy × PriceEurPerKwh`, rounded once to 5 decimals | identical for a price that did not lose digits |
 
 ### 3.5 Reference: peak days per month
 
@@ -221,7 +233,7 @@ Peak-day counts under the **Mon–Fri, holidays included** convention — which 
 platform's convention, so these are the counts the platform computes. [OQ-02] is closed; no holiday
 subtraction applies.
 
-| 2026 | Mon–Fri days | Peak MWh per MW | | 2027 | Mon–Fri days | Peak MWh per MW |
+| 2026 | Mon–Fri days | Peak hours (kWh per kW) | | 2027 | Mon–Fri days | Peak hours (kWh per kW) |
 | --- | --: | --: | --- | --- | --: | --: |
 | Jan | 22 | 264 | | Jan | 21 | 252 |
 | Feb | 20 | 240 | | Feb | 20 | 240 |
@@ -241,8 +253,8 @@ subtraction applies.
 > the active calendar at runtime — a hard-coded table silently rots.
 
 Recomputed 2026-08-19 against the Amsterdam calendar: both years are unchanged — 261 Mon–Fri days,
-3 132 MWh per MW per year. **[DEC-70]** does not touch this table; it scales it. A 0,01 MW peak block
-for December 2026 is `0.01 × 276` = **2,76 MWh**.
+3 132 hours a year. **[DEC-70]** does not touch this table; it scales it. A 10 kW peak block
+for December 2026 is `10 × 276` = **2 760 kWh**.
 
 ### 3.6 Sign — a short position is negative volume [DEC-72]
 
@@ -252,20 +264,20 @@ forecast but cannot yet prove. Nothing in §3 assumed a non-negative volume, but
 either, so it is stated now:
 
 ```
-power_MW(b)  >  0   for a BUY  block   (the customer takes delivery)
-power_MW(b)  <  0   for a SELL block   (the customer owes delivery)
-power_MW(b)  ≠  0   always
-|power_MW(b)| is a whole multiple of 0.01                        [DEC-70]
+power_kW(b)  >  0   for a BUY  block   (the customer takes delivery)
+power_kW(b)  <  0   for a SELL block   (the customer owes delivery)
+power_kW(b)  ≠  0   always
+|power_kW(b)| is a whole multiple of 10                          [DEC-70], [DEC-180]
 ```
 
-`totalMWh(b)` carries the sign of `power_MW(b)`; `Σ_i active(b, i) × 0.25` is an unsigned interval
+`totalKWh(b)` carries the sign of `power_kW(b)`; `Σ_i active(b, i) × 0.25` is an unsigned interval
 count and never changes. Every formula in §3, §4 and §5 is sign-transparent as written. What is *not*
 sign-transparent is the code that consumes them:
 
 | Place | What must not assume a positive volume |
 | --- | --- |
 | Coverage — [Position and coverage](02-position-and-coverage.md) | A short block **reduces** covered volume for the period. It cannot be clamped at zero, and a customer can be covered *below* zero |
-| Money §4 | A negative `totalMWh` on a SELL produces a wallet **credit**, not a debit |
+| Money §4 | A negative `totalKWh` on a SELL produces a wallet **credit**, not a debit |
 | Allocation §5.2 | `allocation_MW > 0` becomes "same sign as the block, never zero" |
 | Rounding §4.1 | Half-**away-from-zero** already handles negatives correctly; half-up would bias every short by a cent in PeakPower's favour |
 
@@ -278,11 +290,11 @@ sell path is not safe to open beyond confirmed holdings.
 ## 4. Money
 
 ```
-tradeValue   = totalMWh × price_EUR_per_MWh                              // ex-VAT: quoted, offered, stored
-walletAmount = round(totalMWh × price_EUR_per_MWh × (1 + vatRate), 2)    // reserved, then debited
+tradeValue   = totalKWh × price_EUR_per_kWh                              // exact, not rounded; frozen when the offer is made
+walletAmount = round(tradeValue × (1 + vatRate), 2)                      // from the stored tradeValue; nothing multiplies volume and price again
 ```
 
-- `price` is the offer price from PeakPower, in €/MWh, VAT exclusive **[AS-09]**, **[DEC-26]**.
+- `price` is the offer price from PeakPower, in €/kWh, VAT exclusive **[AS-09]**, **[DEC-26]**, above 0, below 10 and with at most 5 decimals **[DEC-180] (10)**.
 - ~~`tradeValue` is the amount reserved on acceptance and settled on confirmation **[AS-10]**.~~
   ⚠ **Amended 2026-08-19 by [DEC-78]** — the amount **reserved** on acceptance and **debited** on
   confirmation is `walletAmount`: the trade value grossed up by the **[DEC-64]** rate of **21%**.
@@ -305,19 +317,21 @@ The exposure this closes is arithmetic, not theoretical. An ex-VAT reservation u
 debit by exactly the VAT rate, and **[DEC-41]** deliberately takes the pre-trade check at **100% of
 the estimate with no buffer** — there is nothing to absorb the shortfall:
 
-| One block: 1,37 MW **base**, August 2026, at €82,5000/MWh | Amount |
+| One block: 1 370 kW **base**, August 2026, at €0,08250/kWh | Amount |
 | --- | --: |
-| `totalMWh` (§3.4) | 1 019,28 MWh |
+| `totalKWh` (§3.4) | 1 019 280 kWh |
 | `tradeValue` — ex-VAT, what the customer is quoted **[DEC-26]** | € 84 090,60 |
 | VAT at 21% **[DEC-64]** — never a line, only a factor | € 17 659,03 |
 | `walletAmount` — reserved at acceptance, debited at confirmation **[DEC-78]** | **€ 101 749,63** |
 | Shortfall if the reservation had been sized ex-VAT | € 17 659,03 — **21%** of the trade |
 
 ⚠ **Compute the gross-up once, at full precision.** `walletAmount` is a single rounding of
-`totalMWh × price × 1.21`, **not** 1,21 × the rounded `tradeValue`. The two differ by a cent whenever
+`tradeValue × 1.21`, where `tradeValue` is the stored, unrounded value, **not** 1,21 × the value rounded to 2 decimals. The two differ by a cent whenever
 the ex-VAT product has a third decimal — the §5.2 worked split below is such a case
 (€ 85 744,38 against € 85 744,39). Rounding twice makes the reservation and the debit disagree, which
-is precisely what **[F05-R70]** forbids.
+is precisely what **[F05-R70]** forbids. ⚠ **[DEC-180] (10):** the stored value is the truth and nothing derives an amount from volume and price after the offer is made, so an offer made under the old unit is accepted for exactly the amounts the customer was shown.
+
+Two examples in the new unit. **A new trade:** 370 kW, Base, November 2026 is 2 880 quarter-hours, 720 hours and 266 400,0 kWh; at €0,09475/kWh the value is € 25 241,40 and the gross `round(25 241,4 × 1,21, 2)` is € 30 542,09. **A converted trade whose price lost digits:** 370 kW and 266 400,0 kWh priced at €95,1234/MWh before the change. Its stored value is € 25 340,87376, shown and reserved as € 30 662,46 (deposit at 20 % € 6 132,49, balance € 24 529,97). The price now reads €0,09512/kWh, and 266 400 × 0,09512 would give € 25 339,968 and a gross of € 30 661,36; that recomputation is exactly what the stored value rules out.
 
 This resolves the exposure **[OQ-83]** raised, in the direction it feared. ⚠ It does **not** make the
 wallet an invoice-settlement account: **[DEC-77]** reverses **[AS-12]**, so the wallet funds trading
@@ -329,17 +343,20 @@ a draft invoice **[DEC-88]** and paid to the bank — see
 
 | Stage | Precision |
 | --- | --- |
-| `power_MW`, `allocation_MW` | **Signed**, and always a whole multiple of `0.01` **[DEC-70]** — two decimals of *meaning*. ~~6 decimals — enough for a 0.001 MW allocation split across many EANs.~~ ⚠ **Amended 2026-08-19 by [DEC-70]**: stored at 6 decimals as headroom, but a third non-zero decimal is **invalid input**, not a rounding case. There is no sub-increment allocation to split |
-| `totalMWh` | 6 decimals, computed, never rounded intermediately. Carries the sign of `power_MW` §3.6 |
-| `price` | 4 decimals (€/MWh), ex-VAT **[DEC-26]** |
-| `tradeValue` | computed at full precision; **rounded half-away-from-zero to 2 decimals** for display and as the target of the per-EAN split §5.2. ⚠ **Amended 2026-08-19 by [DEC-78]** — it is no longer itself a wallet movement |
-| `walletAmount` | **one** rounding, half-away-from-zero to 2 decimals, of `totalMWh × price × (1 + vatRate)` **[DEC-78]**, **[F05-R70]**. Never `1.21 × round(tradeValue)` — see §4 |
+| `power_kW` | **Signed**, and always a whole multiple of 10 **[DEC-70]**, **[DEC-180]**, stored `numeric(12,3)`. ~~6 decimals — enough for a 0.001 MW allocation split across many EANs.~~ ⚠ **Amended 2026-08-19 by [DEC-70]**: a finer value is **invalid input**, not a rounding case. There is no sub-increment allocation to split |
+| `totalKWh` | Exact, at most one decimal, stored `numeric(18,3)`; computed, never rounded intermediately. Carries the sign of `power_kW` §3.6 |
+| `price` | At most 5 decimals (€/kWh), above 0 and below 10, stored `numeric(12,5)`, ex-VAT **[DEC-26]** |
+| `tradeValue` | Exact, at most 6 decimals, stored `numeric(20,8)`; **shown rounded half-away-from-zero to 2 decimals** and the target of the per-EAN split §5.2. ⚠ **Amended 2026-08-19 by [DEC-78]** — it is no longer itself a wallet movement |
+| `walletAmount` | **One** rounding, half-away-from-zero to 2 decimals, of the stored `tradeValue × (1 + vatRate)` **[DEC-78]**, **[DEC-180] (10)**, **[F05-R70]**. Never `1.21 × round(tradeValue)` — see §4 |
+| Hedge cost of a quarter-hour | `Σ block energy × block price`, rounded once to 5 decimals half-away-from-zero **[DEC-180] (5)**; see [Position and coverage](02-position-and-coverage.md) §5.4 |
 | Per-EAN split | see §5.2 |
 
-Half-**away-from-zero** rather than half-up matters now that `totalMWh` can be negative **[DEC-72]**:
+Half-**away-from-zero** rather than half-up matters now that `totalKWh` can be negative **[DEC-72]**:
 half-up rounds −0,005 to −0,00 and would shave a cent off every short in PeakPower's favour.
 
 ## 5. Bundling across metering points
+
+⚠ **[DEC-167] (16) withdrew this model: a block is account-level. The figures stay in the MW and €/MWh they were written in [DEC-180].**
 
 A trade request names **one or more metering points with a volume each**. The market trade is a single
 block; the platform tracks a per-metering-point allocation of it.
@@ -430,7 +447,7 @@ side: the trader buys a whole clip and carries the residual on PeakPower's own b
 
 ~~Minimum request size is reference data, defaulting to `0.1 MW` — see **[OQ-08]**.~~
 ⚠ **Amended 2026-08-19 by [DEC-70]**, which **closes [OQ-08]** and reverses **[DEC-32]**: minimum
-request size and increment are both **0,01 MW**, still held as reference data with those as the
+request size and increment are both **10 kW** ⚠ **[DEC-180] (10): the unit is kW; it was 0,01 MW**, still held as reference data with those as the
 shipped defaults **[F05-R08]**.
 
 ⚠ **This section stops being worth flagging.** On the tenth-MW grid 9 of every 10 reachable totals
@@ -455,11 +472,11 @@ A quarter or calendar-year block is stored as **one block** with a delivery peri
 range, not as three or twelve monthly blocks.
 
 ```
-Q1-2027 base, 1 MW
+Q1-2027 base, 1 000 kW
   intervals = Jan (31×96) + Feb (28×96) + Mar (31×96 − 4)     [spring forward 28 Mar 2027]
             = 2976 + 2688 + 2972
             = 8636 intervals
-  volume    = 8636 × 0.25 = 2159 MWh
+  volume    = 8636 × 0.25 h × 1000 kW = 2 159 000 kWh
 ```
 
 Invoicing then attributes the portion of the block falling inside each invoice month — see
@@ -475,13 +492,13 @@ contract ends there is no metering data for the EAN, so covered volume is **zero
 remaining block volume is surplus and settles at the day-ahead price under **[DEC-23]**. No new state,
 no unwind path, no early-termination price.
 
-Worked, on the Q1-2027 base block above — 1 MW, 2 159 MWh — with the contract ending 31 January 2027:
+Worked, on the Q1-2027 base block above — 1 000 kW, 2 159 000 kWh — with the contract ending 31 January 2027:
 
-| Segment | Intervals | Block MWh | Metering data | Settlement |
+| Segment | Intervals | Block kWh | Metering data | Settlement |
 | --- | --: | --: | --- | --- |
-| 1–31 Jan 2027 | 2 976 | 744,00 | present | Covered volume against usage; the remainder surplus at day-ahead **[DEC-23]** |
-| 1 Feb – 31 Mar 2027 | 5 660 | 1 415,00 | **none** | **100% surplus**, entirely at day-ahead **[DEC-23]** |
-| **Total** | **8 636** | **2 159,00** | | |
+| 1–31 Jan 2027 | 2 976 | 744 000 | present | Covered volume against usage; the remainder surplus at day-ahead **[DEC-23]** |
+| 1 Feb – 31 Mar 2027 | 5 660 | 1 415 000 | **none** | **100% surplus**, entirely at day-ahead **[DEC-23]** |
+| **Total** | **8 636** | **2 159 000** | | |
 
 ⚠ **What it costs the customer, stated plainly.** The block was paid for at the block price when the
 trade confirmed **[DEC-78]**; after the contract ends they receive the day-ahead value for volume
@@ -505,10 +522,10 @@ precisely the exposure **[OQ-94]** has to size.
 3. **Never trust `days × 24`.** Nor `24 × 4` intervals per day. Both are wrong twice a year.
 4. **Property-based tests** for: total intervals per year, the two DST days, peak counts per month,
    allocation summing exactly, and per-EAN rounding summing to the total. Added 2026-08-19: every
-   allocation lands on the **0,01 MW grid** and shares the block's sign **[DEC-70]**, **[DEC-72]**;
+   allocation lands on the **10 kW grid** and shares the block's sign **[DEC-70]**, **[DEC-72]**;
    the per-EAN correction picks the largest allocation **by absolute value**; and `walletAmount` is
-   **one** rounding of the full-precision gross product, never `1.21 ×` a rounded subtotal
-   **[DEC-78]**. Generate negative volumes and third-decimal inputs deliberately — both are new
+   **one** rounding of the stored trade value times 1.21, never `1.21 ×` a rounded subtotal
+   **[DEC-78]**, **[DEC-180]**. Generate negative volumes and third-decimal inputs deliberately — both are new
    failure modes this round created.
 5. **One money number reaches the wallet.** `tradeValue` is for quoting and for the per-EAN split;
    `walletAmount` is the only figure the wallet ever sees, on both the reserve and the debit side

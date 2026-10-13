@@ -22,6 +22,13 @@ Annual bracket close: [Annual true-up](05-annual-true-up.md).
 > Net effect on the line inventory: **three** implemented categories, not four — 1, 2 and 5. Line 3
 > stays deferred **[DEC-25]**; lines 4 and 6 are withdrawn. No line is renumbered.
 
+> ⚠ **Note 2026-10-13, [DEC-180] (2)(d).** The platform stores, serves and shows power in kW, energy in kWh
+> and every price in euro per kWh with five decimals. This page is specified, not built, and still states
+> block volumes in MWh and block and day-ahead prices in €/MWh, with a `/1000` in its formulas. It is not
+> rewritten by [DEC-180]. Before invoicing is built it must be restated in kWh and €/kWh, and the rounding of
+> an invoice line must be decided against the 5-decimal quarter-hour costs the platform now saves. Until then
+> read every €/MWh on this page as 1000 × the stored €/kWh.
+
 ---
 
 ## 1. Calendar

@@ -22,6 +22,13 @@ The complete line-item model for a monthly invoice, and the January annual true-
 > lines 4 and 6 are withdrawn, and their sections are struck in place rather than deleted so that the
 > reasoning stays readable and the line numbers stay still.
 
+> ⚠ **Note 2026-10-13, [DEC-180] (2)(d).** The platform stores, serves and shows power in kW, energy in kWh
+> and every price in euro per kWh with five decimals. This page is specified, not built, and still states
+> block volumes in MWh and block and day-ahead prices in €/MWh, with a `/1000` in its formulas. It is not
+> rewritten by [DEC-180]. Before invoicing is built it must be restated in kWh and €/kWh, and the rounding of
+> an invoice line must be decided against the 5-decimal quarter-hour costs the platform now saves. Until then
+> read every €/MWh on this page as 1000 × the stored €/kWh.
+
 <details>
 <summary>⚠ <b>Superseded in part 2026-08-19 — the previous readiness note, kept for the record</b></summary>
 

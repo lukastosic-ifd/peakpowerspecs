@@ -7,6 +7,13 @@ metering data — the other half of what this run used to do — left it and bec
 **[DEC-99]**. The name is kept because every cross-reference in the set points at it; what it does is
 narrower than the name suggests, and §7 draws the line.
 
+> ⚠ **Note 2026-10-13, [DEC-180] (2)(d).** The platform stores, serves and shows power in kW, energy in kWh
+> and every price in euro per kWh with five decimals. This page is specified, not built, and still states
+> block volumes in MWh and block and day-ahead prices in €/MWh, with a `/1000` in its formulas. It is not
+> rewritten by [DEC-180]. Before invoicing is built it must be restated in kWh and €/kWh, and the rounding of
+> an invoice line must be decided against the 5-decimal quarter-hour costs the platform now saves. Until then
+> read every €/MWh on this page as 1000 × the stored €/kWh.
+
 > ~~**Deferred [DEC-24].** Energiebelasting is out of scope for now, and the annual degressive tiers it
 > creates were this run's principal reason to exist — so the run is deferred alongside it. It is
 > **not cancelled**: it retains a **residual role**, correcting late metering data (§1.2), and that

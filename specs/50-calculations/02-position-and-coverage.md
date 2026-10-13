@@ -10,13 +10,15 @@ the energy lines on the invoice.
 > | --- | --- |
 > | **[DEC-87]** | Reverses the second half of **[DEC-44]**. Export is credited at the **raw day-ahead price**, not a feed-in tariff. §1's identity and §5's pricing return to a single sale term; §5.3 and invoice line 6 are withdrawn; §6's arithmetic is redone. **[OQ-86]** closes |
 > | **[DEC-72]** | Reverses **[DEC-34]**. Short selling is permitted, so `blockVolume < 0` is reachable: the §4 clamp becomes load-bearing, §5's two legs can fire in the same interval, and §8's gates stop implying "no data, no position". The exposure is unbounded — **[OQ-94]** |
-> | **[DEC-70]** | Reverses **[DEC-32]**. Allocation granularity is **0,01 MW**, so the interval volume quantum is **2,5 kWh** — §3.2 |
+> | **[DEC-70]** | Reverses **[DEC-32]**. Allocation granularity is **10 kW** (0,01 MW before [DEC-180]), so the interval volume quantum is **2,5 kWh** — §3.2 |
 > | **[DEC-99]** | With **[DEC-98]**: corrections arrive at any time, so `FINAL` is not terminal and no delivery date closes permanently — §8 |
 >
 > Also applied: **[DEC-73]** (the surcharge leaves the platform, taking the last €/kWh rate off this
 > page with it), **[DEC-75]** (day-ahead history is backfillable, closing **[OQ-16]**), **[DEC-112]**
 > (the production expectation is the customer's declaration) and **[DEC-82]** (a block outlives the
 > contract). **[DEC-22]** and **[DEC-23]** are **unchanged** and now carry the export case too.
+
+> ⚠ **Updated 2026-10-13 by [DEC-180] (3), (5), (10).** Block power is in kW and the day-ahead price in €/kWh, so no formula on this page divides by 1000; every euro figure of a quarter-hour is rounded to 5 decimals and saved.
 
 ---
 
@@ -112,9 +114,9 @@ than hiding a gap.
 
 ```
 blockPower(i,m)  =  Σ over confirmed blocks b:
-                       sign(b) × allocation_MW(b, m) × active(b, i)
+                       sign(b) × allocation_kW(b, m) × active(b, i)
 
-blockVolume(i,m) =  blockPower(i,m) × 250          // kWh, since 1 MW × 15 min = 250 kWh
+blockVolume(i,m) =  blockPower(i,m) × 0.25         // kWh: kW × a quarter of an hour
 
 where sign(BUY) = +1 and sign(SELL) = −1
 ```
@@ -130,44 +132,44 @@ state, not a data error, and §4 says what the coverage metrics do with it.
 
 ### 3.1 Stacking
 
-Blocks stack additively. A customer holding 1 MW base + 1 MW peak on the same metering point has
-2 MW of cover during peak intervals:
+Blocks stack additively. A customer holding 1 000 kW base + 1 000 kW peak on the same metering point has
+2 000 kW of cover during peak intervals:
 
 ```mermaid
 flowchart LR
     subgraph interval["Interval: Wed 12 Aug 2026, 14:00–14:15"]
         direction TB
-        B["BASE block · 1.0 MW<br/>active = 1"]
-        P["PEAK block · 1.0 MW<br/>active = 1 (Wed, 14:00)"]
-        S["SELL block · 0.37 MW<br/>active = 1 → sign −1"]
+        B["BASE block · 1000 kW<br/>active = 1"]
+        P["PEAK block · 1000 kW<br/>active = 1 (Wed, 14:00)"]
+        S["SELL block · 370 kW<br/>active = 1 → sign −1"]
     end
     B --> SUM
     P --> SUM
     S --> SUM
-    SUM["blockPower = 1.0 + 1.0 − 0.37<br/>= <b>1.63 MW</b>"] --> V["blockVolume<br/>= 1.63 × 250<br/>= <b>407.5 kWh</b>"]
+    SUM["blockPower = 1000 + 1000 − 370<br/>= <b>1630 kW</b>"] --> V["blockVolume<br/>= 1630 × 0.25<br/>= <b>407.5 kWh</b>"]
 ```
 
-The 0,37 MW sell line is drawn deliberately: it is legal under **[DEC-70]** and would not have been
+The 370 kW sell line is drawn deliberately: it is legal under **[DEC-70]** and would not have been
 under **[DEC-32]**, and it makes both the block power and the interval volume non-whole, which is now
 the ordinary case rather than the awkward one.
 
-### 3.2 Granularity — 0,01 MW **[DEC-70]**
+### 3.2 Granularity — 10 kW **[DEC-70]**, **[DEC-180]**
 
-`allocation_MW(b, m)` is a whole multiple of **0,01 MW**. ⚠ **[DEC-32]**'s 0,1 MW minimum and
+`allocation_kW(b, m)` is a whole multiple of **10 kW** ⚠ **[DEC-180] (10): the 0,01 MW of [DEC-70], the same grid in the new unit**. ⚠ **[DEC-32]**'s 100 kW minimum and
 increment are **reversed 2026-08-19 by [DEC-70]** — ten times finer. Nothing in the formula above
-changes, because it never assumed a whole MW; what changes is the smallest volume the engine has to
+changes, because it never assumed a whole clip of 1 000 kW; what changes is the smallest volume the engine has to
 represent exactly.
 
-| At 0,01 MW granularity | Consequence for this calculation |
+| At 10 kW granularity | Consequence for this calculation |
 | --- | --- |
-| `blockPower(i,m)` is a multiple of 0,01 MW | `blockVolume(i,m)` is a multiple of **2,5 kWh** — `0,01 MW × 250 kWh/MW = 2,5 kWh` — where **[DEC-32]** made it a multiple of 25 kWh |
-| Per-EAN allocations rarely sum to a whole MW | The non-whole-MW tail is back, at a tenth of the size **[DEC-32]** gave it. The split across metering points is the largest-remainder rule in [Energy block maths](01-energy-block-maths.md) §5.2, applied at **2 decimals of MW** |
-| A 0,37 MW allocation is legal | It was not under **[DEC-32]**. Per interval it is `0.37 × 250 = 92,5 kWh` — a half-kWh figure in every one of the day's 96 intervals |
+| `blockPower(i,m)` is a multiple of 10 kW | `blockVolume(i,m)` is a multiple of **2,5 kWh** — `10 kW × 0.25 h = 2.5 kWh` — where **[DEC-32]** made it a multiple of 25 kWh |
+| Per-EAN allocations rarely sum to a whole clip of 1 000 kW | The tail beyond a whole clip is back, at a tenth of the size **[DEC-32]** gave it. The split across metering points is the largest-remainder rule in [Energy block maths](01-energy-block-maths.md) §5.2, applied in **10 kW steps** |
+| A 370 kW allocation is legal | It was not under **[DEC-32]**. Per interval it is `370 × 0.25 = 92,5 kWh` — a half-kWh figure in every one of the day's 96 intervals |
 
 **Do not round the per-interval volume to whole kWh.** Half of all legal allocations produce a
 volume ending in 0,5 kWh, so whole-kWh rounding is wrong by 0,5 kWh in those intervals — up to
 `0,5 × 96 × 30 = 1 440 kWh` over a 30-day month if the allocation lands on a half throughout. Keep
-interval volumes in kWh with at least one decimal, or in MWh with four; the money rounding stays where
+interval volumes in kWh with at least one decimal~~, or in MWh with four~~ ⚠ **[DEC-180] (10)**; the money rounding stays where
 [Energy block maths](01-energy-block-maths.md) §4.1 puts it, at the end.
 
 ## 4. Coverage metrics
@@ -355,14 +357,16 @@ coverageRatio(P,m) = Σ_i∈P covered(i,m)  /  Σ_i∈P max( netUsage(i,m), 0 )
 | Metric | Where |
 | --- | --- |
 | Coverage ratio for the visible range | Chart header KPI — denominator is net import volume |
-| Uncovered MWh for the visible range | Chart header KPI |
+| Uncovered kWh for the visible range | Chart header KPI |
 | Cost of uncovered volume at day-ahead | Chart header KPI, marked *indicative* until the month is final |
-| Unused-cover MWh and its day-ahead credit for the visible range | Chart header KPI, same *indicative* treatment **[DEC-23]** |
-| ~~Exported MWh and its feed-in credit for the visible range~~ **Exported MWh and its day-ahead credit for the visible range** | ⚠ **Amended 2026-08-19 by [DEC-87].** ~~Chart header KPI, same *indicative* treatment **[DEC-44]**. Shown separately from the unused-cover credit, because the two carry different prices~~ Chart header KPI, same *indicative* treatment. Still shown **separately** from the unused-cover credit — not because the prices differ, they no longer do, but because the volumes describe different physical events **[F10-R41]** |
+| Unused-cover kWh and its day-ahead credit for the visible range | Chart header KPI, same *indicative* treatment **[DEC-23]** |
+| ~~Exported MWh and its feed-in credit for the visible range~~ **Exported kWh and its day-ahead credit for the visible range** | ⚠ **Amended 2026-08-19 by [DEC-87].** ~~Chart header KPI, same *indicative* treatment **[DEC-44]**. Shown separately from the unused-cover credit, because the two carry different prices~~ Chart header KPI, same *indicative* treatment. Still shown **separately** from the unused-cover credit — not because the prices differ, they no longer do, but because the volumes describe different physical events **[F10-R41]** |
 | Hedge ratio for the visible range, signed | Chart header KPI. The only KPI that shows a **short** position **[DEC-72]**; `—` when the range has no import intervals |
 | Net usage alongside the two gross series, consumption and production | Chart body — three series **[DEC-22]** |
 | Per-interval stacked area: covered / uncovered | Chart body |
 | Block step-line overlay | Chart body |
+
+⚠ **[DEC-180] (11): the volumes of this table are printed in kWh.**
 
 See the [consumption chart mockup](../60-mockups/README.md).
 
@@ -387,7 +391,7 @@ makes the two-leg presentation and the one-line position the same arithmetic; it
 case in §4.
 
 ```
-dayAheadSettlement(i,m) = dayAheadVolume(i,m) / 1000 × dayAheadPrice(i)      // kWh → MWh
+dayAheadSettlement(i,m) = round(dayAheadVolume(i,m) × dayAheadPrice(i), 5)   // kWh × €/kWh, [DEC-180]
 
 // removed 2026-08-19 by [DEC-87] — there is no feed-in rate:
 // feedInCredit(i,m)    = − exported(i,m) × feedInRate(customer, i)
@@ -399,8 +403,8 @@ shapes: `dayAheadPrice` is €/MWh and carries the `/1000`, while `feedInRate` i
 up is a factor-1000 error in a credit line, so the unit belongs in the column name.~~
 ⚠ **Amended 2026-08-19 by [DEC-87] and [DEC-73].** The two-unit hazard on this page is gone with the
 two rates that caused it: the feed-in tariff is withdrawn **[DEC-87]** and the surcharge left the
-platform for the bookkeeping program **[DEC-73]**. **Every price in this document is now €/MWh and
-every volume kWh**, so the `/1000` appears in every settlement formula without exception. The only
+platform for the bookkeeping program **[DEC-73]**. ~~**Every price in this document is now €/MWh and
+every volume kWh**, so the `/1000` appears in every settlement formula without exception.~~ ⚠ **[DEC-180] (3), (10): every price on this page is €/kWh and no formula carries a `/1000`.** The only
 €/kWh rate left anywhere on the invoice is the energiebelasting bracket rate **[DEC-74]**, which is
 computed per calendar year on net usage and never touches the position maths — see
 [Invoice calculation](03-invoice-calculation.md) §7.
@@ -418,8 +422,8 @@ credited at the raw day-ahead price of the interval concerned. **[DEC-44]'s firs
 the other:
 
 ```
-purchase(m,P) = Σ_{i ∈ P}    uncovered(i,m)  / 1000 × dayAheadPrice(i)      // a cost
-sale(m,P)     = − Σ_{i ∈ P}  saleVolume(i,m) / 1000 × dayAheadPrice(i)      // a credit
+purchase(m,P) = Σ_{i ∈ P}    uncovered(i,m)  × dayAheadPrice(i)             // a cost
+sale(m,P)     = − Σ_{i ∈ P}  saleVolume(i,m) × dayAheadPrice(i)             // a credit
 line2(m,P)    = purchase(m,P) + sale(m,P)
 
 // removed 2026-08-19 by [DEC-87]:
@@ -510,7 +514,7 @@ object: a per-unit rate on metered volume, set commercially per customer, quoted
 the same conversation. Two per-unit rates on one invoice in two different units is a defect waiting to
 be written. The same precision consequence follows — see
 [Invoice calculation](03-invoice-calculation.md) §7A — and the same boundary holds: block prices and
-day-ahead prices remain **€/MWh**.
+day-ahead prices ~~remain **€/MWh**~~ ⚠ **[DEC-180]: are €/kWh too**.
 
 > ⚠ **CLOSED 2026-08-19 by [DEC-87]** — the question below disappears with the tariff. There is no
 > resolution order that can fail, no interim warning-or-skip rule, and no fallback to decide: export
@@ -530,21 +534,55 @@ day-ahead prices remain **€/MWh**.
 > where it does, so no invoice can be issued that silently values export at zero. See
 > [Monthly invoicing](../40-processes/04-monthly-invoicing.md) §5.
 
+### 5.4 Rounding, and what is saved — [DEC-180]
+
+⚠ **Specified 2026-10-13 by [DEC-180] (5), not built.** The position is saved **per customer per quarter-hour** (`trading.hedge_position_interval`) as the output of one pure function, `CustomerDayCosts.Calculate`, over `HedgePositionCalculator`. A row holds the metered usage, the hedge energy, covered, short and long energy (kWh), and five euro figures, each rounded half away from zero to 5 decimals at the moment it is calculated:
+
+```
+blockEnergy      = sign(b) × power_kW(b) × 0.25                    // kWh, per block and quarter-hour
+hedgeCost        = round( Σ blockEnergy × blockPrice, 5 )           // one rounding for the stacked blocks
+bought           = round( short × dayAheadPrice, 5 )
+sold             = round( long  × dayAheadPrice, 5 )
+actualCost       = hedgeCost + bought − sold                        // no rounding of its own
+costWithoutHedge = round( usage × dayAheadPrice, 5 )
+```
+
+How the identities hold:
+
+- **Per quarter-hour.** `actualCost` is defined as the sum of three 5-decimal numbers, so hedge cost + bought − sold = actual cost is exact by construction. The database repeats it in a CHECK.
+- **Per period.** Every total is a sum of quarter-hour values and addition is linear, so the identity holds on any range, exactly.
+- **No hedge.** With a hedge of zero, one of short and long is zero and rounding is symmetric, so `actualCost` equals `costWithoutHedge` exactly.
+
+Three consequences of rounding each quarter-hour (they follow from [DEC-180] (3); they are not choices of this page):
+
+1. The plain cost of a selection of n connections is the **sum of the connections' rounded costs**. It differs from "summed usage × price" by at most (n − 1) × 0,000005 € per quarter-hour.
+2. A block's energy per quarter-hour is a multiple of 2,5 kWh, so energy × price often ends exactly on a half at the sixth decimal. The hedge cost summed over a block's period can differ from the trade's value by up to 0,000005 € per quarter-hour, about 0,18 € per block-year at most.
+3. The position's cost without hedge rounds the **customer's** usage once per quarter-hour, while the plain cost of the same customer is the sum of each **connection's** rounded cost. They can differ by at most (n − 1) × 0,000005 € per quarter-hour. They are never on one screen.
+
+When a figure is null, and why:
+
+| The quarter-hour | Saved row | Usage, short, long | The four euro figures |
+| --- | --- | --- | --- |
+| Not metered (no net usage, or production missing where it is expected) | One, for a customer-day that has a counted block or a metered quarter-hour | Null | Null; the hedge energy and hedge cost are still there |
+| Metered, no day-ahead price | One | Present | Null: nothing is priced, so nothing is guessed |
+| Saved from another price than the one shown | One, stale | Present | Not served: a cost is served only when the price it was made from equals the price shown beside it, until the recalculation catches up |
+| A customer-day with no metered usage and no counted block | None | Null, and 0 connections | Null; the hedge energy and hedge cost read 0 |
+
 ## 6. Worked example
 
-**Setup.** One metering point with rooftop PV. 1 MW base + 1 MW peak for August 2026 — both whole-MW
-allocations here, though **[DEC-70]** permits any multiple of 0,01 MW. Five sample intervals. All
-volumes in kWh. ~~Feed-in tariff €0.0285/kWh **[DEC-44]** — that is €28.50/MWh, quotable against the
-day-ahead column.~~ ⚠ **Reversed 2026-08-19 by [DEC-87]** — there is no feed-in tariff; the €28.50/MWh
-figure survives below only to show what the reversal is worth.
+**Setup.** One metering point with rooftop PV. 1 000 kW base + 1 000 kW peak for August 2026 — both whole-clip
+allocations here, though **[DEC-70]** permits any multiple of 10 kW. Five sample intervals. All
+volumes in kWh and all prices in €/kWh ⚠ **[DEC-180]**. ~~Feed-in tariff €0.0285/kWh **[DEC-44]** — that is €28.50/MWh, quotable against the
+day-ahead column.~~ ⚠ **Reversed 2026-08-19 by [DEC-87]** — there is no feed-in tariff; the €0.02850/kWh
+figure survives below only to show what the reversal is worth. Every euro result of this example stays the same to the cent as it was before [DEC-180].
 
 | Interval (local) | Peak? | Consumption | Production | Net usage | blockPower | blockVolume | netPosition | DA price |
 | --- | :--: | --: | --: | --: | --: | --: | --: | --: |
-| Wed 12 Aug 03:00–03:15 | no | 180 | 0 | **180** | 1.00 MW | 250 | **−70** | €41.20/MWh |
-| Wed 12 Aug 10:30–10:45 | yes | 620 | 145 | **475** | 2.00 MW | 500 | **−25** | €96.50/MWh |
-| Wed 12 Aug 13:00–13:15 | yes | 610 | 790 | **−180** | 2.00 MW | 500 | **−680** | €38.60/MWh |
-| Wed 12 Aug 19:45–20:00 | yes | 545 | 60 | **485** | 2.00 MW | 500 | **−15** | €88.10/MWh |
-| Wed 12 Aug 20:00–20:15 | no | 505 | 20 | **485** | 1.00 MW | 250 | **+235** | €83.40/MWh |
+| Wed 12 Aug 03:00–03:15 | no | 180 | 0 | **180** | 1000 kW | 250 | **−70** | €0.04120/kWh |
+| Wed 12 Aug 10:30–10:45 | yes | 620 | 145 | **475** | 2000 kW | 500 | **−25** | €0.09650/kWh |
+| Wed 12 Aug 13:00–13:15 | yes | 610 | 790 | **−180** | 2000 kW | 500 | **−680** | €0.03860/kWh |
+| Wed 12 Aug 19:45–20:00 | yes | 545 | 60 | **485** | 2000 kW | 500 | **−15** | €0.08810/kWh |
+| Wed 12 Aug 20:00–20:15 | no | 505 | 20 | **485** | 1000 kW | 250 | **+235** | €0.08340/kWh |
 
 Settlement per **[DEC-87]**. The sale leg carries unused cover **and** export, so
 `dayAheadVolume = U − B = netPosition` in **every** interval, exporting or not:
@@ -558,10 +596,10 @@ Settlement per **[DEC-87]**. The sale leg carries unused cover **and** export, s
 | 20:00–20:15 | 235 | 0 | 0 | 0 | **+235** | **+€19.60** |
 
 `dayAheadVolume = uncovered − saleVolume` in each row, which is the §4 invariant that now holds for
-every sign. Arithmetic for the settlement column, `dayAheadVolume / 1000 × DA`, rounded
-half-away-from-zero to 2 decimals: `−70 × 41.20 / 1000 = −2.884 → −2.88`;
-`−25 × 96.50 / 1000 = −2.4125 → −2.41`; `−680 × 38.60 / 1000 = −26.248 → −26.25`;
-`−15 × 88.10 / 1000 = −1.3215 → −1.32`; `+235 × 83.40 / 1000 = +19.599 → +19.60`. The five sample
+every sign. Arithmetic for the settlement column, `dayAheadVolume × DA`, which is exact to 5 decimals and shown
+rounded half-away-from-zero to 2: `−70 × 0.04120 = −2.88400 → −2.88`;
+`−25 × 0.09650 = −2.41250 → −2.41`; `−680 × 0.03860 = −26.24800 → −26.25`;
+`−15 × 0.08810 = −1.32150 → −1.32`; `+235 × 0.08340 = +19.59900 → +19.60`. The five sample
 intervals sum to **−€13,26**, all of it on line 2. ~~For the feed-in column, `exported × rate` with
 **no divisor** because the rate is €/kWh **[DEC-35]**, **[DEC-44]**: `180 × 0.0285 = 5.13`.~~ ⚠ There
 is no feed-in column and no €/kWh rate on this page any more — **[DEC-87]**, **[DEC-73]**.
@@ -571,13 +609,13 @@ Three things this table is here to show:
 - **13:00–13:15 has negative net usage, and [DEC-87] settles all of it at one price.** Production
   exceeds consumption by 180 kWh, so the site is exporting. `covered` is zero and the surplus is
   `500 + 180 = 680 kWh`, and since **[DEC-87]** it settles as **one figure** again: unused block cover
-  and physical export both at €38.60/MWh **[DEC-23]**. Check the decomposition against §4:
+  and physical export both at €0.03860/kWh **[DEC-23]**. Check the decomposition against §4:
   `unusedCover + exported = 500 + 180 = 680 = saleVolume`, and here also `= overCovered`, because
   `B ≥ 0` in this interval ✓.
 - **What the reversal is worth, on this one interval.** Under **[DEC-44]** it credited
-  `19.30 + 5.13 = €24.43`: the 180 kWh of export was paid at the €28.50/MWh feed-in tariff instead of
-  the €38.60/MWh market price of the interval. Under **[DEC-87]** it credits
-  `680 × 38.60 / 1000 = €26.25` — **€1,82 more**. The direction is not fixed. Midday export and
+  `19.30 + 5.13 = €24.43`: the 180 kWh of export was paid at the €0.02850/kWh feed-in tariff instead of
+  the €0.03860/kWh market price of the interval. Under **[DEC-87]** it credits
+  `680 × 0.03860 = €26.25` — **€1,82 more**. The direction is not fixed. Midday export and
   solar-depressed midday prices arrive together, so a feed-in tariff *below* day-ahead was the normal
   case for a site like this one, and the customer gains on the reversal more often than not; a
   negative day-ahead hour reverses that, and the customer then carries it. What **[DEC-87]** removes
@@ -596,8 +634,8 @@ net usage    Σ U             = 28 750 kWh          = 41 250 − 12 500
   of which import  Σ max(U,0)  = 30 850 kWh
   of which export  Σ max(−U,0) =  2 100 kWh          30 850 − 2 100 = 28 750  ✓
 
-block volume                 =  1 MW × 96 × 250 = 24 000 kWh  (base)
-                             +  1 MW × 48 × 250 = 12 000 kWh  (peak)
+block volume                 =  1000 kW × 96 × 0.25 = 24 000 kWh  (base)
+                             +  1000 kW × 48 × 0.25 = 12 000 kWh  (peak)
                              = 36 000 kWh
 
 covered      Σ min(max(U,0), max(B,0))  = 27 100 kWh
@@ -652,12 +690,12 @@ A quarter or calendar-year block spans several invoice months. Attribution is au
 everything is computed per interval: a month's invoice sums only the intervals inside that month.
 
 ```
-blockVolumeInMonth(b, m, M) = allocation_MW(b,m) × |{ i ∈ M : active(b,i) }| × 0.25
+blockVolumeInMonth(b, m, M) = allocation_kW(b,m) × |{ i ∈ M : active(b,i) }| × 0.25
 ```
 
-No pro-rating by day count, no partial-month special case. At **[DEC-70]**'s 0,01 MW granularity the
-smallest non-zero monthly figure is `0.01 × 1 × 0.25 = 0.0025 MWh`, so the column that holds it needs
-**four decimals of MWh** — the same precision §3.2 asks of the per-interval volume, for the same
+No pro-rating by day count, no partial-month special case. At **[DEC-70]**'s 10 kW granularity the
+smallest non-zero monthly figure is `10 × 1 × 0.25 = 2.5 kWh`, so one decimal of kWh is enough (the stored scale is 3) —
+the same precision §3.2 asks of the per-interval volume, for the same
 reason.
 
 A block also outlives the contract: **[DEC-82]** runs it to the end of its delivery period whatever
@@ -718,7 +756,7 @@ stopped producing data — §7.
 1. **Compute coverage as a query, not a loop.** With a precomputed `calendar_interval` spine, the
    whole thing is one join between interval readings, block allocations and prices. Pulling millions
    of rows into application memory to iterate them is the wrong shape.
-2. **Materialise daily aggregates.** A `daily_position` rollup per metering point per day
+2. **Materialise daily aggregates.** ⚠ **Amended 2026-10-13 by [DEC-180] (4), (5): costs and positions are saved per quarter-hour and added up on read; the daily rollup holds volumes only.** A `daily_position` rollup per metering point per day
    (gross consumption, production, net usage, import volume `Σ max(U,0)`, export volume
    `Σ max(−U,0)`, block volume, covered, uncovered, **unused cover**, **sale volume**, surplus,
    day-ahead cost, day-ahead credit, ~~**feed-in credit**~~ ⚠ **removed [DEC-87]**, data state) makes

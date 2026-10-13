@@ -38,7 +38,7 @@ export function employeeHome() {
   const urgent = [
     ['04:12', 'Offer expiring', 'Vandersteen Koeling · TRD-1051 · Peak Q1-27 · € 72.768', 'danger'],
     ['22 min', 'Accepted, not confirmed', 'Kramer Logistics · TRD-1049 · € 41.200', 'danger'],
-    ['2 days', 'Withdrawal to pay out', 'Meijer Koelhuizen · € 8.000,00 · approved by both admins', 'danger'],
+    ['2 days', 'Withdrawal to pay out', 'Meijer Koelhuizen · € 8.000,00 · requested by an admin', 'danger'],
     ['19 h', 'Payment without a match', 'Kramer Logistics · € 9.400,00 · no reference on the transfer', 'amber'],
     ['06 min', 'New request', 'Van Dijk Glastuinbouw · Base Cal-27 · 2,05 MW', 'amber'],
     ['1h 42', 'Montel feed stale', 'NL_POWER_PEAK_Y1 · last observed 12:40', 'amber'],
@@ -105,26 +105,26 @@ export function employeeTradeDesk() {
     {
       title: 'To price', sub: '3 requests', accent: C.amber, x: cx,
       items: [
-        ['TRD-1058', 'Van Dijk Glastuinbouw', 'Base · Cal-27 · 2,05 MW', '6 min', '17.958 MWh', 'amber', 'four-eyes on', 'muted'],
-        ['TRD-1057', 'Kramer Logistics', 'Peak · Q4-26 · 0,47 MW', '14 min', '372,2 MWh', 'amber', 'four-eyes off', 'muted'],
-        ['TRD-1056', 'Meijer Koelhuizen', 'Base · Sep-26 · 0,25 MW', '31 min', '180 MWh', 'danger', 'four-eyes off', 'muted'],
+        ['TRD-1058', 'Van Dijk Glastuinbouw', 'Base · Cal-27 · 2,05 MW', '6 min', '17.958 MWh', 'amber', '', 'muted'],
+        ['TRD-1057', 'Kramer Logistics', 'Peak · Q4-26 · 0,47 MW', '14 min', '372,2 MWh', 'amber', '', 'muted'],
+        ['TRD-1056', 'Meijer Koelhuizen', 'Base · Sep-26 · 0,25 MW', '31 min', '180 MWh', 'danger', '', 'muted'],
       ],
     },
     {
       title: 'Awaiting customer', sub: '5 offers counting down', accent: C.indigo, x: cx + colW + 16,
       items: [
-        ['TRD-1051', 'Vandersteen Koeling', 'Peak · Q1-27 · 1,00 MW', '04:12', '€ 72.768', 'danger', 'four-eyes · 1 of 2 admins', 'amber'],
-        ['TRD-1053', 'Hoekstra Staal', 'Base · Q4-26 · 0,75 MW', '11:48', '€ 61.220', 'amber', 'four-eyes · 1 of 2 admins', 'amber'],
-        ['TRD-1054', 'De Groot Papier', 'Peak · Nov-26 · 0,30 MW', '19:05', '€ 22.150', 'muted', 'four-eyes off', 'muted'],
-        ['TRD-1055', 'Nolte Chemie', 'Base · Cal-27 · 1,50 MW', '24:33', '€ 21.045', 'muted', 'four-eyes on', 'muted'],
-        ['TRD-1050', 'Bosman Tuinbouw', 'Peak · Dec-26 · 0,10 MW', '27:51', '€ 7.117', 'muted', 'four-eyes off', 'muted'],
+        ['TRD-1051', 'Vandersteen Koeling', 'Peak · Q1-27 · 1,00 MW', '04:12', '€ 72.768', 'danger', '', 'muted'],
+        ['TRD-1053', 'Hoekstra Staal', 'Base · Q4-26 · 0,75 MW', '11:48', '€ 61.220', 'amber', '', 'muted'],
+        ['TRD-1054', 'De Groot Papier', 'Peak · Nov-26 · 0,30 MW', '19:05', '€ 22.150', 'muted', '', 'muted'],
+        ['TRD-1055', 'Nolte Chemie', 'Base · Cal-27 · 1,50 MW', '24:33', '€ 21.045', 'muted', '', 'muted'],
+        ['TRD-1050', 'Bosman Tuinbouw', 'Peak · Dec-26 · 0,10 MW', '27:51', '€ 7.117', 'muted', '', 'muted'],
       ],
     },
     {
       title: 'To confirm', sub: '2 accepted, awaiting execution', accent: C.danger, x: cx + 2 * (colW + 16),
       items: [
-        ['TRD-1049', 'Kramer Logistics', 'Base · Q4-26 · 0,50 MW', '22 min', '€ 41.200', 'danger', 'four-eyes off', 'muted'],
-        ['TRD-1052', 'Hoekstra Staal', 'Peak · Sep-26 · 0,80 MW', '8 min', '€ 72.768', 'amber', 'approved by 2 admins', 'green'],
+        ['TRD-1049', 'Kramer Logistics', 'Base · Q4-26 · 0,50 MW', '22 min', '€ 41.200', 'danger', '', 'muted'],
+        ['TRD-1052', 'Hoekstra Staal', 'Peak · Sep-26 · 0,80 MW', '8 min', '€ 72.768', 'amber', '', 'muted'],
       ],
     },
   ];
@@ -154,15 +154,11 @@ export function employeeTradeDesk() {
       b += text(q.x + 26, y + 62, it[2], { size: 11, fill: C.muted });
       b += text(q.x + colW - 26, y + 62, it[4], { size: 12, weight: 700, anchor: 'end' });
       b += text(q.x + 26, y + 79, q.title === 'To price' ? 'open to price →' : q.title === 'To confirm' ? 'confirm or fail →' : 'view offer →', { size: 10, fill: C.accent, weight: 600 });
-      b += text(q.x + colW - 26, y + 79, it[6], {
-        size: 10, anchor: 'end', weight: it[7] === 'muted' ? 400 : 600,
-        fill: it[7] === 'amber' ? C.amber : it[7] === 'green' ? C.green : C.faint,
-      });
     });
   });
 
   b += note(cx, cy + 656, cw, 'Offers under 5 minutes are highlighted. Expiry is decided server-side — an expired offer cannot be accepted even if a customer’s screen still shows a timer.', 'muted');
-  b += note(cx, cy + 704, cw, 'Four-eyes has no threshold: when a customer company has it on, a second admin of that company must approve. Two customers may hold requests for the same period — no warning is raised.', 'muted');
+  b += note(cx, cy + 704, cw, 'Nothing waits for a second admin: an accepted offer goes straight to To confirm. Two customers may hold requests for the same period — no warning is raised.', 'muted');
 
   return svgDoc(b, { label: 'Employee portal — trade desk' });
 }
@@ -196,7 +192,6 @@ export function employeeTradeDetail() {
   b += rect(cx + leftW - 292, cy + 8, 274, 60, { fill: C.panel2, stroke: C.border, r: 7 });
   b += text(cx + leftW - 278, cy + 26, 'REQUESTED BY', { size: 9.5, fill: C.muted, weight: 700 });
   b += text(cx + leftW - 278, cy + 43, 'K. van Dijk · Energy Manager · +31 77 396 2210', { size: 10.5, weight: 600 });
-  b += text(cx + leftW - 278, cy + 59, 'Four-eyes on · a 2nd admin must approve', { size: 10, fill: C.amber, weight: 600 });
 
   b += panel(cx, cy + 306, leftW, 300, 'Customer position — Cal 2027', { subtitle: 'existing cover vs. forecast consumption', right: 'Van Dijk Glastuinbouw' });
   const gx = cx + 62; const gy = cy + 376; const gw = leftW - 96; const gh = 168;
@@ -281,7 +276,7 @@ export function employeeCustomerAdmin() {
   b += text(cx + 18, cy + 398, 'NL91 ABNA 0417 1643 00 · ABNANL2A', { size: 10.5, mono: true, fill: C.faint });
   b += badge(cx + 246, cy + 384, 'DEACTIVATED', 'muted', { w: 88, h: 18 });
   b += text(cx + leftW - 18, cy + 398, '4 Mar 2026', { size: 10.5, fill: C.faint, anchor: 'end' });
-  b += text(cx + 18, cy + 424, 'Added or deactivated, never edited — and four-eyes applies to both.', { size: 10.5, fill: C.faint });
+  b += text(cx + 18, cy + 424, 'Added or deactivated, never edited.', { size: 10.5, fill: C.faint });
 
   const rx = cx + leftW + 16;
   const rw = cw - leftW - 16;
@@ -314,13 +309,13 @@ export function employeeCustomerAdmin() {
 
   const ax = cx + halfW + 16;
   b += panel(ax, by, halfW, 320, 'Customer accounts', {
-    subtitle: 'four-eyes approvals need a second admin account', right: '4 · 3 active · 2 admins',
+    subtitle: 'admins manage people, the bank account and withdrawals', right: '4 · 3 active · 2 admins',
   });
   b += button(ax + halfW - 128, by + 14, 110, 'Add account', 'primary', { h: 26 });
   b += rect(ax + 18, by + 70, halfW - 36, 44, { fill: C.panel2, stroke: C.border2, r: 8 });
-  b += badge(ax + 32, by + 82, 'FOUR-EYES ENABLED', 'green', { w: 134, h: 20 });
-  b += text(ax + 180, by + 88, 'No threshold — every sensitive action needs a second admin', { size: 11, weight: 600 });
-  b += text(ax + 180, by + 104, 'bank account · trade · new user · withdrawal — deposits excluded', { size: 10, fill: C.muted });
+  b += badge(ax + 32, by + 82, 'ROLES', 'indigo', { w: 60, h: 20 });
+  b += text(ax + 106, by + 88, 'Administrators manage people, the bank account and withdrawals', { size: 11, weight: 600 });
+  b += text(ax + 106, by + 104, 'Trader and viewer are recorded; a viewer cannot deposit', { size: 10, fill: C.muted });
   b += table(ax + 18, by + 126, halfW - 36, [
     { label: 'NAME', w: 118 }, { label: 'ROLE IN COMPANY', w: 112 },
     { label: 'ADMIN', w: 66 }, { label: 'LAST SIGN-IN', w: 86 },
@@ -331,7 +326,7 @@ export function employeeCustomerAdmin() {
     [{ t: 'P. Aksoy', weight: 600 }, { t: 'Operations', fill: C.muted }, { t: '—', fill: C.faint }, { t: '12 Jul 09:02' }, { t: 'Active', badge: 'green' }, { t: 'edit', fill: C.accent, align: 'end' }],
     [{ t: 'R. Smit', weight: 600, fill: C.faint }, { t: 'Controller', fill: C.faint }, { t: '—', fill: C.faint }, { t: '—', fill: C.faint }, { t: 'Invited 6d', badge: 'amber' }, { t: 'resend', fill: C.accent, align: 'end' }],
   ], { rowH: 30 });
-  b += text(ax + 18, by + 294, 'Two admins is the working minimum — an approval must come from the other one.', { size: 10.5, fill: C.faint });
+  b += text(ax + 18, by + 294, 'The last admin cannot be demoted or removed.', { size: 10.5, fill: C.faint });
   b += text(ax + 18, by + 310, 'Deactivated accounts stay on record so past trades still name a person.', { size: 10.5, fill: C.faint });
 
   return svgDoc(b, { label: 'Employee portal — customer administration' });
@@ -375,13 +370,13 @@ export function employeeWalletAdmin() {
   });
   b += table(cx + 18, by + 70, halfW - 36, [
     { label: 'CUSTOMER', w: 126 }, { label: 'AGE', w: 56 }, { label: 'AMOUNT', w: 86, align: 'end' },
-    { label: 'TO IBAN', w: 111 }, { label: 'FOUR-EYES', w: 108 }, { label: '', w: 52, align: 'end' },
+    { label: 'TO IBAN', w: 111 }, { label: 'REQUESTED BY', w: 108 }, { label: '', w: 52, align: 'end' },
   ], [
-    [{ t: 'Meijer Koelhuizen', weight: 600 }, { t: '2 days', fill: C.danger, weight: 600 }, { t: eur(8000), align: 'end', weight: 700 }, { t: 'NL44 RABO …8821', mono: true, size: 10.5 }, { t: 'Approved', badge: 'green' }, { t: 'pay out', fill: C.accent, align: 'end' }],
-    [{ t: 'Nolte Chemie', weight: 600 }, { t: '1 day', fill: C.muted }, { t: eur(32000), align: 'end', weight: 700 }, { t: 'NL91 ABNA …4477', mono: true, size: 10.5 }, { t: 'Pending 2nd', badge: 'amber' }, { t: 'view', fill: C.accent, align: 'end' }],
-    [{ t: 'Hendriks Vlees', weight: 600 }, { t: '4 h', fill: C.muted }, { t: eur(7500), align: 'end', weight: 700 }, { t: 'NL12 INGB …9033', mono: true, size: 10.5 }, { t: 'Not needed', badge: 'muted' }, { t: 'pay out', fill: C.accent, align: 'end' }],
+    [{ t: 'Meijer Koelhuizen', weight: 600 }, { t: '2 days', fill: C.danger, weight: 600 }, { t: eur(8000), align: 'end', weight: 700 }, { t: 'NL44 RABO …8821', mono: true, size: 10.5 }, { t: 'J. de Vries' }, { t: 'pay out', fill: C.accent, align: 'end' }],
+    [{ t: 'Nolte Chemie', weight: 600 }, { t: '1 day', fill: C.muted }, { t: eur(32000), align: 'end', weight: 700 }, { t: 'NL91 ABNA …4477', mono: true, size: 10.5 }, { t: 'M. Vandersteen' }, { t: 'pay out', fill: C.accent, align: 'end' }],
+    [{ t: 'Hendriks Vlees', weight: 600 }, { t: '4 h', fill: C.muted }, { t: eur(7500), align: 'end', weight: 700 }, { t: 'NL12 INGB …9033', mono: true, size: 10.5 }, { t: 'P. Aksoy' }, { t: 'pay out', fill: C.accent, align: 'end' }],
   ], { rowH: 32 });
-  b += text(cx + 18, by + 212, 'The platform records the request, the approval and the debit. No invoice is raised for a withdrawal.', { size: 10.5, fill: C.faint });
+  b += text(cx + 18, by + 212, 'The platform records the request and the debit. No invoice is raised for a withdrawal.', { size: 10.5, fill: C.faint });
 
   const px = cx + halfW + 16;
   b += panel(px, by, halfW, 230, 'Payments without a match', {

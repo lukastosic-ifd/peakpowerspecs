@@ -340,7 +340,7 @@ contains one fewer step than it did and that should be visible:
 | Accepted residual risk **[DEC-102]** | Why the automated scans miss it | What partially compensates |
 | --- | --- | --- |
 | **Authorisation flaws** — one customer company reading another's data | SAST cannot see that a query is missing its tenant predicate; it is a logic defect, not a pattern | The tenancy tests in the integration suite, and the fact that customer scoping is enforced in one place ([Security](07-security.md)) rather than per endpoint |
-| **Business-logic abuse** — trading, wallet, withdrawal **[DEC-83]** and four-eyes **[DEC-71]** flows exercised out of order or concurrently | No scanner models a domain. Four-eyes in particular is new this round and is exactly the kind of state machine a tester attacks | Integration tests written against the approval states, and **[DEC-17]** recording the acting account on every action, which makes abuse visible after the fact even when it is not prevented |
+| **Business-logic abuse** — trading, wallet and withdrawal **[DEC-83]** flows ~~and four-eyes **[DEC-71]**~~ exercised out of order or concurrently | No scanner models a domain. ~~Four-eyes in particular is new this round and is exactly the kind of state machine a tester attacks~~ *(four-eyes removed 2026-10-12, [DEC-179])* | Integration tests written against the trade and withdrawal states, and **[DEC-17]** recording the acting account on every action, which makes abuse visible after the fact even when it is not prevented |
 | **Infrastructure exposure** — a misconfigured private endpoint, an over-broad role assignment | Azure Policy (§1.1.4) denies the configurations it knows about; it does not attack the estate | Policy assigned once at `mg-peakpower`, no standing owner assignments, and every production data path through managed identity |
 
 This is a decision with a date, not an oversight. An external test is the ordinary way to find the
@@ -439,7 +439,7 @@ A nested `location` does **not** inherit the parent's `proxy_pass`, so the new l
 | --- | --- |
 | Non-secret configuration | Container App environment variables from IaC |
 | Secrets | Key Vault, read via managed identity at startup and on rotation — including the **SendGrid API key [DEC-48]**, scoped to send only |
-| Reference data (calendars, tariffs, surcharges, **feed-in tariffs [DEC-44]**, **four-eyes thresholds [DEC-33]**, tickers) | **Database, editable in the employee portal** — never configuration **[NFR-54]** |
+| Reference data (calendars, tariffs, surcharges, **feed-in tariffs [DEC-44]**, ~~**four-eyes thresholds [DEC-33]**~~, tickers) | **Database, editable in the employee portal** — never configuration **[NFR-54]** |
 | Feature flags | Azure App Configuration or a database table |
 | Break-glass enablement **[DEC-53]** | **A database row, deliberately not App Configuration and not a portal action** — the switch must be reachable when Entra, and therefore the Azure control plane, is not. ⚠ **[DEC-66] turns that from a precaution into a fact**: the Azure control plane authenticates against the **same corporate tenant** as the employee portal (§1.1.5), so one outage takes both. A switch that needs the Azure portal to flip is a switch that is unavailable exactly when break-glass is needed. [Security](07-security.md) §3.2.5 |
 

@@ -67,7 +67,7 @@ schedulable work; it does not get its own number because it introduces no new do
 > tariff** — so F09 now owns **two** rate tables of identical shape rather than one, and its
 > requirement count went from 10 to 17. F10 keeps **L** despite gaining line 6: the line is new, but
 > the reference data behind it lives in F09. F05 keeps **XL**, which its 19 new requirements for
-> four-eyes approval **[DEC-33]** do nothing to challenge.
+> four-eyes approval **[DEC-33]** do nothing to challenge. *(⚠ Moot since 2026-10-12, [DEC-179]: the four-eyes requirements are struck.)*
 >
 > ⚠ **Amended 2026-08-19.** Both of F09's rate tables are gone — the surcharge with **[DEC-73]**, the
 > feed-in tariff with **[DEC-87]** — and all seventeen of those requirements are struck. **F09 moves
@@ -154,7 +154,7 @@ a redraw:
 | --- | --- | --- |
 | `F06 → F10` | **removed** | **[DEC-77]** reverses **[AS-12]**: the wallet funds trading only, and no delivery invoice is ever settled from it. Invoicing and the wallet are now two money paths that do not touch |
 | `F06 → F11` | **removed** | **[DEC-90]** reverses **[DEC-49]**: there are no balance thresholds and no low-balance alerts, so the wallet has nothing to notify about. **F11-R08…R10** are struck |
-| `F07 → F11`, `F05 → F11` | **added** | What F11 still carries: deposit-received email **[DEC-106]**, withdrawal request and payout **[DEC-83]**, and offers — narrowed by **[DEC-111]** to the requester plus, under four-eyes, both admins |
+| `F07 → F11`, `F05 → F11` | **added** | What F11 still carries: deposit-received email **[DEC-106]**, withdrawal request and payout **[DEC-83]**, and offers — narrowed by **[DEC-111]** to the requester ~~plus, under four-eyes, both admins~~ *(the requester only since 2026-10-12, [DEC-179])* |
 | `F09 → F10` | **kept, inverted in content** | F09 no longer feeds invoicing a **surcharge rate** **[DEC-73]**; it feeds it an **energiebelasting amount** **[DEC-74]**, and pushes the same amount to the bookkeeping program as a ledger entry **[DEC-76]**, **[DEC-88]** |
 
 Three nodes are new, and all three are outside the platform:
@@ -183,7 +183,7 @@ answered no customer invoice can be issued at all — not late, not unnumbered, 
 | --- | --- | --- | --- |
 | **0** | *Unblock* | — | Two dependencies on people outside the team: **Entra tenant access** **[DEC-66]** and **name the bookkeeping program** **[OQ-69]**, the latter blocking phase 3 outright. **[DEC-107]** attaches work to the second: the chart of accounts and the tax-code mapping **do not exist and must be built**, now carrying an energiebelasting ledger account **[DEC-74]** and a VAT rate per account **[DEC-76]** |
 | **1** | *See your data* | F13, F01, F02, F03 (read-only), the **customer usage API**, F12 (admin subset), F15 | Accurate interval data per EAN, scoped to one customer company on every query. No money moves. The PoC has **no sign-in** **[DEC-20]**, so what this phase proves is tenancy isolation and the ingestion pipeline. F02 is built as a **BRP port with one PVNed adapter** **[DEC-69]**, configured as a `brp` row rather than hard-wired. F01 ships the **admin flag** on a customer account **[DEC-71]** and a **bank account that can be deactivated but never edited** — the flag is phase 1 even though what reads it is phase 2, because retrofitting a role onto live accounts is worse than shipping an unused column. Production expectation is **declared by the customer at onboarding** **[DEC-112]**. MFA for customer users is **mandatory** and the platform **verifies the claim** **[DEC-92]**. The usage API carries **net usage and nothing priced** **[DEC-97]**, **[DEC-81]** |
-| **2** | *Trade* | F06, F07 (deposits **and** withdrawals), F04, F05, F03 (block overlay), **F11 (offer + approval notifications)**, F12 (trade desk) | The full request → offer → accept → confirm loop at **0,01 MW granularity [DEC-70]**, with the reservation and its debit taken **VAT-inclusive [DEC-78]**. **Four-eyes is a per-company mode with no threshold [DEC-71]**, covering five actions across three features — add a bank account, deactivate a bank account, execute a trade, add a user, withdraw funds; **deposits are explicitly out** because a customer can wire money on their own. **Short selling [DEC-72]** goes last and is gated on **[OQ-94]**. Wallet money is **test money only** until the client-money question is answered **[DEC-28]** |
+| **2** | *Trade* | F06, F07 (deposits **and** withdrawals), F04, F05, F03 (block overlay), **F11 (offer ~~+ approval~~ notifications)**, F12 (trade desk) | The full request → offer → accept → confirm loop at **0,01 MW granularity [DEC-70]**, with the reservation and its debit taken **VAT-inclusive [DEC-78]**. ~~**Four-eyes is a per-company mode with no threshold [DEC-71]**, covering five actions across three features — add a bank account, deactivate a bank account, execute a trade, add a user, withdraw funds; **deposits are explicitly out** because a customer can wire money on their own.~~ ⚠ **Removed 2026-10-12 by [DEC-179]:** there is no four-eyes in any phase. **Short selling [DEC-72]** goes last and is gated on **[OQ-94]**. Wallet money is **test money only** until the client-money question is answered **[DEC-28]** |
 | **3** | *Settle* | F08 (+ backfill), F09, F10, rest of F11, F12 (invoice run, bracket admin) | **Three invoice lines, not four**: line 4 (surcharge) leaves with **[DEC-73]**, line 6 (feed-in) leaves with **[DEC-87]**, and line 5 (**energiebelasting**) comes back with **[DEC-74]**. What is built is lines **1, 2 and 5** — block energy, the day-ahead leg now carrying **export as well as unused block cover** at the raw price **[DEC-23]**, **[DEC-87]**, and energiebelasting. The platform **pushes drafts and ledger entries** **[DEC-88]**; numbering, the PDF, the email and VAT are the bookkeeping program's **[DEC-89]**, **[DEC-76]**. Corrections are **continuous, not annual** **[DEC-99]**, on reconciliation data that **does** arrive after the 10-working-day window **[DEC-98]**, with **no materiality threshold** **[DEC-100]**. Backfill depth is no longer a cliff **[DEC-75]** |
 | **4** | *Polish* | F14, remaining Should/Could items | Public site — no price teaser **[DEC-27]**, **no CMS: content is files in the repository [DEC-93]**, branded from the existing guidelines at peakpower.nl **[DEC-94]**. Self-service onboarding, reporting |
 
@@ -202,7 +202,7 @@ is the authority on sequencing within a phase.
 > phase 2, `p3d` (the rest) in phase 3. Nothing about F11's scope changed here — the index was simply
 > disagreeing with the schedule. ⚠ **The reason it cannot slip has changed shape, not gone away.**
 > **[DEC-111]** reverses **[DEC-63]**: an offer no longer notifies every active account, only the
-> requester plus, under four-eyes **[DEC-71]**, both admins. That is *less* work and *more* risk in
+> requester plus, ~~under four-eyes **[DEC-71]**, both admins~~ ⚠ **struck 2026-10-12 by [DEC-179]:** the requester only. That is *less* work and *more* risk in
 > one change — a 30-minute offer can now die because one named person is in a meeting, and
 > **[DEC-18]** still lets any account accept. The phase-2 half of F11 is therefore not optional
 > whatever the feature-level **Should** tag says.
@@ -266,8 +266,8 @@ verification **[DEC-92]** and a usage surface **[DEC-97]** are additions to work
 correct, not corrections of it.
 
 ⚠ **Two IDs are cited but not yet written: `F05-R71` and `F05-R72`.** They are referenced from
-[F05](F05-energy-block-trading.md) §3.2 and §4 (**F05-R28** reads the four-eyes company flag through
-**F05-R71**) and from [Database design §3.6](../20-architecture/04-database-design.md), but no row
+[F05](F05-energy-block-trading.md) §3.2 and §4 (~~**F05-R28** reads the four-eyes company flag through
+**F05-R71**~~ *struck 2026-10-12, [DEC-179]*) and from [Database design §3.6](../20-architecture/04-database-design.md), but no row
 defines them, which is why 127 rows were written against 129 numbers claimed. The numbers are
 **reserved, not free** — writing the rows is F05's to finish, and nothing may reuse R71 or R72.
 
@@ -275,7 +275,7 @@ The three clusters that account for over half of the new rows:
 
 | Decision cluster | New rows | Where |
 | --- | --: | --- |
-| **[DEC-71]** four-eyes as a per-customer-company mode, with the acting-account trail **[DEC-17]** it needs to mean anything | 23 | F01-R42/R44/R47/R48/R49, F06-R34/R36/R37, F07-R30/R32/R33, F11-R26/R27, F12-R39/R40/R42/R53/R55, F13-R41/R42/R44, F15-R25, F09-R27 |
+| **[DEC-71]** four-eyes as a per-customer-company mode, with the acting-account trail **[DEC-17]** it needs to mean anything ⚠ **struck 2026-10-12 by [DEC-179]** (the rows keep their numbers) | 23 | F01-R42/R44/R47/R48/R49, F06-R34/R36/R37, F07-R30/R32/R33, F11-R26/R27, F12-R39/R40/R42/R53/R55, F13-R41/R42/R44, F15-R25, F09-R27 |
 | **[DEC-74]** energiebelasting brackets, with the ledger push **[DEC-76]** and the net-usage base **[DEC-22]** | 13 | F09-R18…R25, F10-R43/R47, F12-R44/R45/R58 |
 | **[DEC-106]** matched bank-transfer deposits, **[DEC-83]** withdrawals, **[DEC-84]** no min/max | 12 | F06-R33/R35/R38, F07-R27/R28/R31, F01-R45/R46, F11-R28/R29/R30, F12-R57 |
 
@@ -307,9 +307,10 @@ it and a pointer to what replaced it. Nothing was renumbered.
 | **[DEC-83]** withdrawals exist | F06-R29 — **1** | **F06-R35**: the requirement that *no* code path moves money out of a wallet is exactly what a withdrawal is |
 | **[DEC-84]** no min/max deposit | F07-R02 — **1** | Nothing. The €100 / €250 000 defaults are removed, not configured |
 | **[DEC-106]** matched bank transfer | F07-R19 — **1** | **F07-R27**: a platform-issued reference per deposit intent, matched against an incoming-payment feed |
-| **[DEC-111]** narrower offer notification | F11-R02 — **1** | **F11-R25**: the requester, plus both admins under four-eyes |
+| **[DEC-111]** narrower offer notification | F11-R02 — **1** | **F11-R25**: the requester ~~, plus both admins under four-eyes~~ |
 | **[DEC-91]** no same-period warning | F12-R37 — **1** | Nothing. **[DEC-50]**'s soft lock on a single request stands |
-| **[DEC-71]** four-eyes has no threshold | F12-R38 — **1** | **F12-R42**: a per-company checkbox, not a versioned amount |
+| **[DEC-71]** four-eyes has no threshold | F12-R38 — **1** | ~~**F12-R42**: a per-company checkbox, not a versioned amount~~ |
+| **[DEC-179]** four-eyes is removed | 0 new, **35 struck and 42 amended** | Struck: F01-R42/R43/R45/R48/R49/R50, F05-R57/R58/R59/R60/R61/R62/R63/R64/R65/R66/R71, F06-R34, F07-R30, F11-R19/R20/R21/R26/R27, F12-R34/R35/R40/R41/R42/R43/R55, F13-R42/R44, F15-R25/R26. Amended: F01-R06/R13/R15/R16/R19/R21/R44/R46/R47, F05-R24/R28/R31/R43/R55/R56/R67/R68/R75/R77, F06-R27/R37, F07-R31/R32/R33, F11-R07/R12/R23/R24/R25/R29/R30, F12-R01/R06/R10/R36/R39/R53/R67, F13-R23/R28/R41/R43. Nothing is renumbered |
 | **[DEC-93]** no CMS | F14-R05 — **1** | **F14-R11**: content is files in the repository, changed by release |
 
 ### Deferred

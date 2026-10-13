@@ -28,9 +28,9 @@ Two deposit routes with very different latency **and** very different ceilings, 
 >
 > ⚠ **Reversed 2026-08-19 by [DEC-83].** Money is two-way. The customer raises a **withdrawal
 > request**; PeakPower is notified; an employee pays it out **manually** by bank transfer to the
-> company bank account on the customer record **[DEC-61]**; the platform records the request, the
-> approval and the debit **[F07-R29]**..**[F07-R33]**, **[F06-R33]**..**[F06-R37]**. Under
-> **[DEC-71]** a withdrawal is a four-eyes action when the customer company has four-eyes enabled.
+> company bank account on the customer record **[DEC-61]**; the platform records the request ~~, the
+> approval~~ and the debit **[F07-R29]**..**[F07-R33]**, **[F06-R33]**..**[F06-R37]**. ~~Under
+> **[DEC-71]** a withdrawal is a four-eyes action when the customer company has four-eyes enabled.~~ *(No approval since 2026-10-12, [DEC-179].)*
 > See §4a. ~~[F06-R29]~~ is retired with **[DEC-43]**; the wallet also no longer settles invoices
 > **[DEC-77]**, so the second half of that sentence is gone too.
 
@@ -349,11 +349,7 @@ payment** — no bank API, no batch file, no scheduled SEPA run.
 ```mermaid
 flowchart TB
     A["Customer <b>admin</b> requests a withdrawal<br/>amount ≤ available balance"] --> H["<code>WITHDRAWAL_REQUESTED</code><br/>amount <b>held</b> — available balance drops<br/>F07-R29 · F06-R33"]
-    H --> B{"Four-eyes enabled<br/>on the company?<br/>DEC-71"}
-    B -->|no| D["APPROVED on submission<br/><b>PeakPower notified</b><br/>F11-R29"]
-    B -->|yes| C{"A <b>different</b> admin of the<br/>same company approves?<br/>F07-R30"}
-    C -->|declines| E["DECLINED<br/><code>WITHDRAWAL_RELEASED</code><br/>hold released · no money moves"]
-    C -->|approves| D
+    H --> D["REQUESTED<br/><b>PeakPower notified</b><br/>F11-R29"]
     D --> F["Employee transfers <b>manually</b> to the<br/>company bank account on the record<br/>DEC-61 · F07-R33"]
     F --> G["Employee records the payout:<br/>value date, bank reference, acting employee<br/>DEC-17"]
     G --> P["<code>WITHDRAWAL_PAID</code><br/>wallet debited, hold released<br/><b>no invoice</b> · DEC-106"]
@@ -362,7 +358,7 @@ flowchart TB
 
     classDef warn fill:#78350f,stroke:#f59e0b,color:#fff
     classDef good fill:#14532d,stroke:#22c55e,color:#fff
-    class E,R warn
+    class R warn
     class P good
 ```
 
@@ -380,34 +376,31 @@ Worked, continuing the [F06](../10-features/F06-wallet-and-ledger.md) §4a examp
 | --- | --- | --: | --: | --: |
 | After the trade settles | — | €27 736,00 | €0,00 | €27 736,00 |
 | Admin requests €10 000,00 | `WITHDRAWAL_REQUESTED` | €27 736,00 | €10 000,00 | €17 736,00 |
-| Second admin approves **[DEC-71]** | — (an audit record, not a movement) | €27 736,00 | €10 000,00 | €17 736,00 |
+| ~~Second admin approves **[DEC-71]**~~ | ~~— (an audit record, not a movement)~~ | ~~€27 736,00~~ | ~~€10 000,00~~ | ~~€17 736,00~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step. |
 | Employee transfers and records it | `WITHDRAWAL_PAID` | €17 736,00 | €0,00 | €17 736,00 |
 
 `27 736.00 - 10 000.00 = 17 736.00` at request time on the **available** balance, and the same
-subtraction on the **settled** balance at payout. Had the second admin declined,
+subtraction on the **settled** balance at payout. Had the admin cancelled,
 `WITHDRAWAL_RELEASED` returns the reserved €10 000,00 and the wallet is back to €27 736,00 available,
-with the decline reason on the ledger row.
+with the reason on the ledger row.
 
 Four rules, each of which is doing specific work:
 
 1. **The destination cannot be typed in** **[F07-R33]**. It is the company bank account on the
    customer record **[DEC-61]** — the same record the deposit matcher uses as its second key. A
-   customer who wants a different account adds one first, which is itself a four-eyes action
-   **[DEC-71]**, and an existing account **cannot be edited, only deactivated** **[DEC-71]**. This is
+   customer who wants a different account adds one first (one admin does that, **[DEC-165]**), and an existing account **cannot be edited, only deactivated** **[DEC-71]**. This is
    what stops a compromised account from redirecting money.
-2. **Four-eyes applies to withdrawal and not to deposit** **[DEC-71]**. Gating a deposit gates
-   nothing — one person can wire money in on their own — while a withdrawal is an outbound payment,
-   which is exactly what the control is for.
+2. ~~**Four-eyes applies to withdrawal and not to deposit** **[DEC-71]**. Gating a deposit gates nothing — one person can wire money in on their own — while a withdrawal is an outbound payment, which is exactly what the control is for.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** neither is gated by a second admin; a withdrawal is admin-only **[DEC-163]**, and the payout stays a human step **[DEC-83]**.
 3. **The payout stays outside the platform** **[DEC-83]**. What that costs is a working day and a
    human; what it buys is that no defect in this platform can, on its own, move money to a bank
    account.
 4. **No invoice and no credit note** **[DEC-106]**. Nothing is sold. The bookkeeping program sees the
    payout on its bank feed **[DEC-109]**.
 
-State names: this diagram uses the ledger-facing set — `REQUESTED`, `APPROVED`, `DECLINED`, `PAID`
+State names: this diagram uses the ledger-facing set — `REQUESTED`, ~~`APPROVED`,~~ `DECLINED`, `PAID`
 ([F06](../10-features/F06-wallet-and-ledger.md) §4a). **[F07-R32]** names a finer set
-(`AWAITING_APPROVAL`, `APPROVAL_DECLINED`, `REJECTED`, `CANCELLED`) that distinguishes *who* refused;
-they collapse onto these four for the ledger, and **every state except `PAID` releases the hold**.
+(~~`AWAITING_APPROVAL`, `APPROVAL_DECLINED`,~~ `REJECTED`, `CANCELLED`; `APPROVAL_DECLINED` survives on old rows) that distinguishes *who* refused;
+they collapse onto these three for the ledger, and **every state except `PAID` releases the hold**.
 
 ⚠ **What this reverses in §5 and in [F06](../10-features/F06-wallet-and-ledger.md) §1:** "the customer
 asks for their money back" is no longer a commercial conversation with no platform action behind it,
@@ -436,8 +429,8 @@ and the offboarding gap now has a route out.
 | **Chargeback or reversal on a credited deposit** | **Not handled by the platform [DEC-85]** — the bookkeeping program does. The matcher reads **credit lines only**, so a reversal arriving as a debit on the same feed is recorded as seen and not actioned **[F07-R34]**. If a balance must actually be reduced, finance posts an ordinary `ADJUSTMENT` with a mandatory reason **[F06-R26]** on instruction from the bookkeeping side |
 | **Deposit larger than the customer's iDEAL limit** | Their **bank** refuses it, not the platform **[F07-R28]**. The UI names bank transfer as the route for a larger amount **[DEC-86]**, which is why that route is first-class **[DEC-106]** |
 | **Deposit below some minimum** | No such case — there is no minimum and no maximum **[DEC-84]**, **[F07-R28]**. Only a non-positive amount is rejected |
-| ~~**Customer asks for the balance back**~~ | ~~Nothing to invoke — **no refund path exists [DEC-43]**, **[F06-R29]**. A commercial conversation, not a platform action~~ ⚠ **Reversed 2026-08-19 by [DEC-83]** — there is now something to invoke: a **withdrawal request** **[F07-R29]**, approved by a second admin where four-eyes is on **[DEC-71]**, paid manually and recorded **[F07-R31]** |
-| **Second admin declines a withdrawal** | `WITHDRAWAL_RELEASED`; the hold is released in full and **no money moves** **[DEC-71]**, **[F06-R34]**. The requester and the other admins are told, with the amount, because the available balance has just changed without anyone spending anything **[F11-R27]** |
+| ~~**Customer asks for the balance back**~~ | ~~Nothing to invoke — **no refund path exists [DEC-43]**, **[F06-R29]**. A commercial conversation, not a platform action~~ ⚠ **Reversed 2026-08-19 by [DEC-83]** — there is now something to invoke: a **withdrawal request** **[F07-R29]**, ~~approved by a second admin where four-eyes is on **[DEC-71]**,~~ paid manually and recorded **[F07-R31]** |
+| ~~**Second admin declines a withdrawal**~~ | ~~`WITHDRAWAL_RELEASED`; the hold is released in full and **no money moves** **[DEC-71]**, **[F06-R34]**. The requester and the other admins are told, with the amount, because the available balance has just changed without anyone spending anything **[F11-R27]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no second admin; a cancel releases the hold the same way. |
 | **PeakPower refuses a withdrawal** | Same release, with a **mandatory reason** **[F07-R32]** |
 | **Customer spends the balance before the payout** | Cannot happen — the amount is held from the moment of request **[F07-R29]**. This is the whole reason for the hold **[AS-11]** |
 | **Destination bank account deactivated between request and payout** | The payout is blocked until an active company bank account exists on the record **[F07-R33]**. The employee does not type an IBAN in to work around it |
@@ -454,9 +447,9 @@ and the offboarding gap now has a route out.
 | **Transfer proposed by IBAN, awaiting confirmation [DEC-61]** | Finance | In-app |
 | Unmatched transfer received | Finance | In-app |
 | Payment stuck > 1 h | Finance | In-app |
-| **Approval requested — a withdrawal** **[DEC-71]**, **[F11-R26]** | Customer — **the other admin accounts** | In-app + email |
-| **Withdrawal requested** — four-eyes off, or approved **[DEC-83]**, **[F11-R29]** | **PeakPower employees** | In-app + email, **immediate** |
-| **Withdrawal approved / declined** **[F11-R27]** | Customer — the acting account and the other admins, with the amount | In-app + email |
+| ~~**Approval requested — a withdrawal** **[DEC-71]**, **[F11-R26]**~~ | ~~Customer — **the other admin accounts**~~ | ~~In-app + email~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval requests. |
+| **Withdrawal requested** **[DEC-83]**, **[F11-R29]** | **PeakPower employees** | In-app + email, **immediate** |
+| ~~**Withdrawal approved / declined** **[F11-R27]**~~ | ~~Customer — the acting account and the other admins, with the amount~~ | ~~In-app + email~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval or decline. |
 | **Withdrawal paid out** **[DEC-83]** | Customer — the requester | In-app + email |
 | **Withdrawal rejected by PeakPower** **[DEC-83]** | Customer — the requester, with the reason | In-app + email |
 
@@ -470,6 +463,6 @@ everyone. The narrower audience is the same trade-off **[DEC-111]** makes for of
 deliberate: see [F11](../10-features/F11-notifications.md) §2.
 
 The **withdrawal** notifications are not courtesies. **[F11-R29]** is part of the mechanism — the
-payout is a manual bank transfer, so nothing happens at all unless a person is told — and the
+payout is a manual bank transfer, so nothing happens at all unless a person is told. ~~— and the
 four-eyes approval mail **[F11-R26]** is the only way the second admin learns there is something to
-approve.
+approve.~~

@@ -307,16 +307,16 @@ through the payment provider, which is why §1's port has no payout call.
 | Step | Where it happens |
 | --- | --- |
 | Customer raises a withdrawal request in the portal | Platform |
-| Approval by a **second admin** of the same customer company, when four-eyes is on | Platform **[DEC-71]** |
+| ~~Approval by a **second admin** of the same customer company, when four-eyes is on~~ | ~~Platform **[DEC-71]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval. |
 | PeakPower is notified | Platform **[DEC-48]** |
 | The transfer itself | An employee, in the bank. **No API call, no provider, no automation** |
-| Wallet debit, and the record of request, approval and payout | Platform **[DEC-83]** |
+| Wallet debit, and the record of request ~~, approval~~ and payout | Platform **[DEC-83]** |
 | Chargebacks and reversals of any of it | **Bookkeeping program [DEC-85]** — see §9 |
 
 **No invoice is raised for a withdrawal**, for the same reason as a deposit: it is the customer's own
-money leaving their own wallet. ⚠ Cost of the manual payout: the platform records an approved
+money leaving their own wallet. ⚠ Cost of the manual payout: the platform records a requested
 withdrawal it has no way to execute or confirm. Nothing in this integration closes the loop between
-"approved" and "paid" except a human marking it so.
+"requested" and "paid" except a human marking it so.
 
 ## 9. Chargebacks and reversals — out of the platform
 
@@ -377,7 +377,7 @@ Post-2026-08-19. Every question this document carried is now closed; **one new o
 | --- | :--: | --- |
 | **[OQ-93]** | 🟠 **OPEN — blocks the bank-transfer route** | **Which incoming-payment feed does the platform consume for wallet deposits — CAMT.053 import, a PSP webhook, or a SEPA-instant push from a modern bank?** New this round. **[DEC-106]** decided the behaviour (issue a reference, match on it, credit, email) without deciding the mechanism; the source names SEPA instant and a PSP-generated description and chooses neither. The three candidates and what each costs are in §7. Until it is answered the automatic credit cannot be built and only manual registration exists |
 | ~~[OQ-07]~~ | ✅ | ~~Is bank statement import in scope?~~ **CLOSED — a payment feed into the platform IS in scope, for wallet deposits only** **[DEC-106]**. It stops being a *Could* ([F07-R19]) and becomes the mechanism the deposit route depends on. Invoice payments are matched in the bookkeeping program instead **[DEC-88]**, **[DEC-105]**. Which feed is **[OQ-93]** |
-| ~~[OQ-30]~~ | ✅ | ~~Refunds — in scope, who approves, and via the provider or a manual transfer?~~ ~~**CLOSED — no payout path [DEC-43]**~~ ⚠ **Reversed 2026-08-19 by [DEC-83]** — **withdrawals exist and are paid out manually** by a PeakPower employee to the company bank account **[DEC-61]**, **not** through the provider, with a second admin's approval when four-eyes is on **[DEC-71]**. See §8 |
+| ~~[OQ-30]~~ | ✅ | ~~Refunds — in scope, who approves, and via the provider or a manual transfer?~~ ~~**CLOSED — no payout path [DEC-43]**~~ ⚠ **Reversed 2026-08-19 by [DEC-83]** — **withdrawals exist and are paid out manually** by a PeakPower employee to the company bank account **[DEC-61]**, **not** through the provider, ~~with a second admin's approval when four-eyes is on **[DEC-71]**~~ *(no approval since 2026-10-12, [DEC-179])*. See §8 |
 | ~~[OQ-32]~~ | ✅ | ~~Minimum and maximum top-up amounts~~ **CLOSED — there are none** **[DEC-84]**. The €100 / €250 000 defaults are removed rather than configured, because the amount "depends on the volume the customer wants to trade". The only real ceiling is the bank-side iDEAL limit, which the platform neither sets nor sees |
 | ~~[OQ-33]~~ | ✅ | ~~Chargeback and reversal handling~~ **CLOSED — the bookkeeping program handles them** **[DEC-85]**. The manual-adjustment-with-a-reason path leaves the platform. §9 records what that costs |
 | ~~[OQ-34]~~ | ✅ | ~~Is CM.com contracted, and does it cover iDEAL at the expected volumes?~~ **CLOSED as *deliberately undecided*** **[DEC-86]**. No PSP is chosen; CM.com is a candidate, not a commitment. The provider port §1 is the mitigation, and the volume half of the question is answered differently — **iDEAL is limited at the bank side**, so large deposits go by bank transfer **[DEC-106]** rather than by finding an acquirer with a higher limit |

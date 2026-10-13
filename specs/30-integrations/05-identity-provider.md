@@ -53,15 +53,15 @@ Feature spec: [F13 Identity & access](../10-features/F13-identity-and-access.md)
 >
 > **Three further decisions from the 2026-08-19 round land on this document:**
 >
-> - **[DEC-71] — customer accounts carry an `admin` flag and a company carries a `four_eyes_enabled`
->   flag.** ⚠ **Amends [DEC-16]**, which is why it appears here at all: DEC-16 meant the provider
+> - **[DEC-71] — customer accounts carry an `admin` flag and ~~a company carries a `four_eyes_enabled`
+>   flag~~.** ⚠ **Four-eyes removed 2026-10-12 by [DEC-179]:** there is no company flag and no approval; the rest of this bullet and §4.4 describe the admin flag's mirror, which itself gave way to the database-read `membershipRole` of [DEC-152] and [DEC-119]. ⚠ **Amends [DEC-16]**, which is why it appears here at all: DEC-16 meant the provider
 >   needed to carry **no role** for customers, and now exactly one has to reach the API. **§4.4**
 >   states the choice, the two routes rejected and what the choice costs. In one line: the **platform
 >   holds the flag** and an employee sets it **[F13-R41]**; the **provider carries a mirror** of it as
 >   a second entry in the existing `roles` claim — `customer.admin` beside `customer.user`
 >   **[F13-R43]**; and the mirror is **re-validated against the platform's own account record on every
 >   request** and never trusted alone. A **directory group mapping is rejected**, and
->   `four_eyes_enabled` is deliberately **not** a claim at all **[F13-R42]**.
+>   ~~`four_eyes_enabled` is deliberately **not** a claim at all **[F13-R42]**~~ *(the column no longer exists, [DEC-179])*.
 >   ⚠ **[DEC-67]'s spike grows by one claim.** It was scoped around `customer_id`, with `account_id`
 >   alongside it; it must now also prove that the provider emits **and stops emitting** the
 >   `customer.admin` entry. Same tenant, same access dependency, one more thing that stays unproven
@@ -86,7 +86,7 @@ Feature spec: [F13 Identity & access](../10-features/F13-identity-and-access.md)
 | OIDC authorisation code + PKCE | Standard for SPAs; no client secret in the browser |
 | **Two isolated realms** — customers and employees | Different populations, different trust, different branding. A customer must never obtain an employee token |
 | Custom claims (`customer_id` **and** `account_id`) | `customer_id` scopes the data and is the most security-critical field in the system **[F13-R14]**; `account_id` identifies the person for attribution **[F13-R15]**. ⚠ **Extended 2026-08-19 by [DEC-71]**: a **third** thing the provider must be configured to emit — the `customer.admin` entry in `roles` (§4.4) — which is why the mapping spike gets bigger rather than the model |
-| ~~Several accounts per company, all with the same single role~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — **two** levels, and not one more | A company has many people; none of them has more rights than another **[DEC-16]**. ⚠ Since **[DEC-71]** an account is an **admin** or it is not **[F13-R41]**. The flag grants **no extra read or write** — a non-admin still requests prices, sees the wallet and accepts offers **[DEC-18]**; it makes the account *eligible to approve or refuse* a four-eyes action **[F13-R44]**. Everything **[DEC-16]** says about *who creates accounts* — PeakPower employees — is untouched |
+| ~~Several accounts per company, all with the same single role~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — **two** levels, and not one more | A company has many people; none of them has more rights than another **[DEC-16]**. ⚠ Since **[DEC-71]** an account is an **admin** or it is not **[F13-R41]**. The flag grants **no extra read or write** — a non-admin still requests prices, sees the wallet and accepts offers **[DEC-18]**; ~~it makes the account *eligible to approve or refuse* a four-eyes action **[F13-R44]**~~ ⚠ **struck 2026-10-12 by [DEC-179]: there is no four-eyes action**; it gates the administrative writes **[DEC-152]**. Everything **[DEC-16]** says about *who creates accounts* — PeakPower employees — is untouched |
 | Username-based login, distinct from the email address | The stakeholder model is username + password **[F13-R04]**. The username is the login identifier; the password is the provider's and never the platform's **[DEC-29]** |
 | MFA, **mandatory for employees** | [NFR-33], **[F13-R05]** |
 | **MFA for customers configured in the tenant, and `amr` emitted** | **[DEC-51]** puts the customer MFA policy in the **tenant**, not in the platform. The platform's requirement is therefore not enforcement but **evidence**: `amr` must be present in customer tokens so a sign-in can be shown to have been second-factored **[F13-R06]**, **[§4.2](#42-required-claims)**. ⚠ **Amended 2026-08-19 by [DEC-92]** — **mandatory for customers, and verified.** The tenant is still where MFA is enforced **[DEC-66]**, so this stays a *configuration* requirement on the provider; what changes is that `amr` becomes an **input to a decision** and not only a record. A customer token whose `amr` carries no second-factor method is **rejected and no session is established** **[F13-R45]**. The accepted method set is configuration, because Entra's `amr` values change; absent, empty or unrecognised **fails closed** |
@@ -174,7 +174,7 @@ the same configuration — `customer_id`, `account_id` and the `customer.admin` 
 — and the third has a property the first two do not: it **changes during an account's life**. Proving
 that Entra can *emit* it is half the work; proving that clearing the flag stops it being emitted, and
 how long that takes to propagate, is the half that decides whether the re-validation in **[F13-R43]**
-is a belt-and-braces check or the only thing standing between a revoked admin and a payment approval.
+is a belt-and-braces check or the only thing standing between a revoked admin and ~~a payment approval~~ an administrative write.
 Same tenant, same access dependency **[DEC-67]**, one more thing on the list.
 
 ⚠ **[DEC-67] decides where that spike runs, and buys certainty with schedule.** It runs against the
@@ -268,7 +268,7 @@ is in the tenant, not in a deployment — §6.
 
 ⚠ **15 minutes is now load-bearing in a way it was not, because of [DEC-71].** The `customer.admin`
 entry is a *mirror* of platform state (§4.4), so a token minted before an admin flag was cleared would
-otherwise stay able to approve for the rest of its life. That is why **[F13-R43]** re-validates the
+otherwise stay able to ~~approve~~ administer for the rest of its life. That is why **[F13-R43]** re-validates the
 claim against the platform record on **every** request rather than relying on the access-token
 lifetime: 15 minutes is an acceptable window for a stale display name and an unacceptable one for who
 may release money.
@@ -284,8 +284,8 @@ of the system.
 
 | Route | Verdict | Reasoning |
 | --- | :--: | --- |
-| **Directory group mapping** — a group in the customer tenant, mapped to a role claim | ❌ **Rejected** | It puts the flag in a directory **administered outside the delivery team**, which is the same dependency **[DEC-67]** already pays for on the mapping spike. Worse, it inverts **[DEC-16]**: setting the flag would stop being a PeakPower employee action in the portal **[F13-R41]** and become a tenant-administration action, so granting approval rights would leave the audit trail **[DEC-17]** that makes four-eyes meaningful in the first place |
-| **Provider-authoritative claim** — the token is the truth, no platform record | ❌ **Rejected** | Revocation would then wait for the next token, up to the full **15 minutes** of §4.3. On the one flag that decides who may release money and approve a withdrawal **[DEC-83]**, a 15-minute window in which a demoted admin can still approve is not a trade worth making. It also leaves the platform unable to answer "who was an admin on 3 June?" from its own data |
+| **Directory group mapping** — a group in the customer tenant, mapped to a role claim | ❌ **Rejected** | It puts the flag in a directory **administered outside the delivery team**, which is the same dependency **[DEC-67]** already pays for on the mapping spike. Worse, it inverts **[DEC-16]**: setting the flag would stop being a PeakPower employee action in the portal **[F13-R41]** and become a tenant-administration action, so granting admin rights would leave the audit trail **[DEC-17]** ~~that makes four-eyes meaningful in the first place~~ |
+| **Provider-authoritative claim** — the token is the truth, no platform record | ❌ **Rejected** | Revocation would then wait for the next token, up to the full **15 minutes** of §4.3. On the one flag that decides who may release money and request a withdrawal **[DEC-83]**, a 15-minute window in which a demoted admin can still act is not a trade worth making. It also leaves the platform unable to answer "who was an admin on 3 June?" from its own data |
 | **Platform-held state, mirrored into the token, re-validated per request** | ✅ **Chosen** | The platform's `customer_account` record is the source of truth **[F13-R41]**; the provider carries `customer.admin` in `roles` so deny-by-default endpoint declaration **[F13-R18]** keeps **one** vocabulary; and **every request re-validates the claim against the record** **[F13-R43]**, exactly as it already does for `customer_id` and `account_id` **[F13-R16]** |
 
 **What each side owns.**
@@ -294,13 +294,13 @@ of the system.
 | --- | --- | --- |
 | `admin` flag | **Source of truth.** Set and cleared by a PeakPower employee **[DEC-16]**, **[F13-R41]**, audited **[DEC-17]** | A mirror, written by the provisioning adapter (§5) |
 | `customer.admin` claim | Read, then **re-validated against the record**; mismatch rejects the token **[F13-R43]** | Emits it, or does not |
-| `four_eyes_enabled` | **Company reference data, read server-side per request [F13-R42]** | ⚠ **Not a claim, on purpose.** Switching the mode takes effect on the next request instead of the next token refresh, and a company-level flag has no business being copied onto every account's token |
+| ~~`four_eyes_enabled`~~ | ~~**Company reference data, read server-side per request [F13-R42]**~~ | ~~⚠ **Not a claim, on purpose.** Switching the mode takes effect on the next request instead of the next token refresh, and a company-level flag has no business being copied onto every account's token~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — the column no longer exists ([DEC-179]). |
 
 **The mirror is a copy, and copies drift — which is precisely why it is never trusted.** The
 re-validation in **[F13-R43]** is not defence in depth for its own sake; it is what makes the drift
 harmless in the direction that matters. If the provider still says `customer.admin` after the flag was
 cleared, the platform record disagrees and the token is **rejected** (§6). If the provider does not yet
-say it after the flag was set, the account simply cannot approve until the mirror catches up. Both
+say it after the flag was set, the account simply cannot administer until the mirror catches up. Both
 directions fail closed, and neither silently grants.
 
 ⚠ **The costs, stated rather than discovered:**
@@ -313,11 +313,7 @@ directions fail closed, and neither silently grants.
   employee clearing an admin flag signs that person out. That is the correct behaviour for a claim that
   decides who may release money, and it is worth saying out loud in support documentation before the
   first ticket.
-- **A structural obligation the identity layer does not enforce alone:** a four-eyes company needs at
-  least **two** admin accounts, or its sensitive actions can be raised and never approved
-  **[F13-R44]**. The predicate this layer exposes — *B is an admin of the same company as A, and
-  B ≠ A* — is what makes self-approval impossible; having somebody to be B is a provisioning concern
-  ([F13 §6](../10-features/F13-identity-and-access.md)).
+- ~~**A structural obligation the identity layer does not enforce alone:** a four-eyes company needs at least **two** admin accounts, or its sensitive actions can be raised and never approved **[F13-R44]**. The predicate this layer exposes — *B is an admin of the same company as A, and B ≠ A* — is what makes self-approval impossible; having somebody to be B is a provisioning concern.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no obligation and no predicate; the floor is one admin ([F13 §6](../10-features/F13-identity-and-access.md)).
 
 ### 4.5 The customer usage API is a second authorisation surface — **[DEC-97]**
 
@@ -403,8 +399,8 @@ the development context provider (§7).
 | **Customer token whose `amr` carries no accepted second-factor method** | **Rejected; no session** **[DEC-92]**, **[F13-R45]**. The message says the account needs a second factor and gives a support route, because the platform cannot enrol one on the user's behalf. Logged with the reason |
 | **Customer token whose `amr` is absent, empty or holds only unrecognised values** | **Rejected — fails closed** **[F13-R45]**. An unrecognised value is far more likely a Microsoft rename than a new kind of strong authentication, and the accepted set is configuration (§4.2) so the fix is a setting, not a release |
 | **`amr` rejections spike across the whole customer population** | ⚠ **Alert, and treat as a tenant change, not a platform incident.** Conditional Access in the corporate tenancy **[DEC-66]** was relaxed or altered. There is no platform-side remedy and no deployment fixes it — §4.2. This is the mass-failure mode **[DEC-92]** buys the end of silent trust with |
-| **Token carries `customer.admin` but the platform record does not** | **Rejected and alerted** **[F13-R43]**, **[F13-R16]**. This is the case the design exists for: a token minted before the flag was cleared must not approve a payment for the rest of its 15 minutes (§4.3, §4.4) |
-| **Token lacks `customer.admin` but the platform record says admin** | Rejected on the same rule, so the mirror is repaired rather than tolerated. The account cannot approve until it is — a four-eyes action waits, which is the safe direction |
+| **Token carries `customer.admin` but the platform record does not** | **Rejected and alerted** **[F13-R43]**, **[F13-R16]**. This is the case the design exists for: a token minted before the flag was cleared must not keep administrative rights for the rest of its 15 minutes (§4.3, §4.4) |
+| **Token lacks `customer.admin` but the platform record says admin** | Rejected on the same rule, so the mirror is repaired rather than tolerated. The account cannot administer until it is, which is the safe direction |
 | **`SetAdminRoleAsync` fails at the provider** | The platform record is already committed and stands (§5). Reconciliation retries; alerted if it keeps failing, because a persistent failure means either every new admin is unusable or every removed admin is signing people out |
 | **Usage-API token presented against the portal API, or the reverse** | Rejected on audience **[F13-R46]** (§4.2, §4.5). Not a scope check that could be relaxed later — a different `aud` |
 | **Usage-API credential asks for another company's usage** | `404`, not `403` **[F13-R19]**, **[F13-R46]** — the same global query filter as the portal, not a second rule |
@@ -452,7 +448,7 @@ What that does *not* license is skipping tenancy:
 | Login and token validation | The `customer_id` / `account_id` **context pipeline**, fed by a **development context provider** in place of a token |
 | MFA, session revocation, provisioning against a real provider | The EF Core **global query filter** and **row-level security** ([Security](../20-architecture/07-security.md) §2) |
 | **Customer** credential storage, reset flows and lockout policy — **never built at all [DEC-29]** | **404-not-403** on out-of-tenant reads, exercised by tests |
-| **MFA verification [DEC-92]** — there is no sign-in, so there is no `amr` to check | **The two-level role model [DEC-71]** — `customer.admin` arrives from the **development context provider** exactly as `account_id` does **[F13-R43]**, **[F13-R30]**, and `four_eyes_enabled` is read from company reference data **[F13-R42]**. Without it the four-eyes path cannot be exercised until authentication exists, which is far too late to discover it wrong |
+| **MFA verification [DEC-92]** — there is no sign-in, so there is no `amr` to check | **The two-level role model [DEC-71]** — `customer.admin` arrives from the **development context provider** exactly as `account_id` does **[F13-R43]**, **[F13-R30]**~~, and `four_eyes_enabled` is read from company reference data **[F13-R42]**~~. Without it the admin-gated paths cannot be exercised until authentication exists, which is far too late to discover it wrong |
 | **The customer usage API [DEC-97]** — not built in the PoC, and unsized until **[OQ-95]** | Nothing extra: the usage API is designed to reuse the **same** query filter and the same `404`-not-`403` **[F13-R46]**, so the tenancy work already in this column is what it will stand on |
 
 ⚠ **[DEC-53] adds one line back to the left column that must not be lost.** "No credential storage" was
@@ -486,7 +482,7 @@ container is the only thing exercising the authenticated path in the meantime. N
   ⚠ **The spike now covers three claims, not two [DEC-71]** — `customer_id`, `account_id` and the
   `customer.admin` entry in `roles` — and the third has to be proved in **both** directions, set and
   cleared (§4.4). Add it to the spike's definition of done rather than discovering it during the
-  first four-eyes test.
+  first admin-gated test.
 
 ### 7.2 What the local container proves, and what only the real tenant can
 

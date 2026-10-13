@@ -11,7 +11,7 @@ surcharges, payment matching for invoices, chargebacks and settlement from the w
 (**[DEC-73]**, **[DEC-76]**, **[DEC-77]**, **[DEC-85]**, **[DEC-88]**, **[DEC-89]**, **[DEC-105]**) —
 and gains energiebelasting calculation **[DEC-74]**, short selling **[DEC-72]**, configurable BRPs
 **[DEC-69]**, platform-matched bank-transfer deposits **[DEC-106]**, withdrawals **[DEC-83]**, a
-customer usage API **[DEC-97]** and four-eyes as a per-customer-company mode **[DEC-71]**.
+customer usage API **[DEC-97]** ~~and four-eyes as a per-customer-company mode **[DEC-71]**~~ *(removed 2026-10-12, [DEC-179])*.
 
 Net effect on this file: **nine new requirements, NFR-61 … NFR-69**; sixteen amended in place; none
 deleted. Every superseded phrase keeps its text and its number, struck through with the decision that
@@ -50,8 +50,8 @@ run at all: a correction that arrives months later produces its own invoice when
 30-minute figure is a target for the scheduled batch, not for the total monthly settlement effort.
 
 ⚠ **NFR-05's 30-second worst case matters more than it did.** **[DEC-111]** narrows offer notification
-to the account that raised the request, plus the second admin when four-eyes is on **[DEC-71]**. With a
-30-minute offer window and a one- or two-person audience, email latency is now directly on the path
+to the account that raised the request ~~, plus the second admin when four-eyes is on **[DEC-71]**~~ *(the requester only since 2026-10-12, [DEC-179])*. With a
+30-minute offer window and a one-person audience, email latency is now directly on the path
 between an offer and a lost trade. The target does not change; its consequence does.
 
 ## 2. Scalability
@@ -216,7 +216,7 @@ interval data the calculation was made from.
 | **NFR-37** | Financial records (ledger, invoices, trades) retained **7 years** — Dutch fiscal requirement ⚠ **Amended 2026-08-19 by [DEC-95], [DEC-88], [DEC-89]** — the platform retains its **calculations, trades, wallet ledger and pushed ledger entries**; the issued invoice document, its number and its payment status are the bookkeeping program's record. Retention on the platform side is unchanged at 7 years |
 | **NFR-38** | Interval data retained 7 years, including superseded versions |
 | **NFR-39** | Raw inbound ~~messages~~ **BRP messages** retained 2 years hot, 7 years cold **[DEC-69]** |
-| **NFR-40** | ~~Audit records retained per **[OQ-48]**, minimum 7 years~~ ⚠ **Amended 2026-08-19 by [DEC-95]** — audit records are retained for **seven fiscal years**, full stop; [OQ-48] is closed and there is no longer-than-seven-years case. The audit trail covers **actions**, and this round added three kinds worth naming: four-eyes approvals and declines **[DEC-71]**, withdrawal requests, approvals and payouts **[DEC-83]**, and bank-account activations and deactivations — a bank account can never be edited, only deactivated **[DEC-71]** |
+| **NFR-40** | ~~Audit records retained per **[OQ-48]**, minimum 7 years~~ ⚠ **Amended 2026-08-19 by [DEC-95]** — audit records are retained for **seven fiscal years**, full stop; [OQ-48] is closed and there is no longer-than-seven-years case. The audit trail covers **actions**, and this round added three kinds worth naming: ~~four-eyes approvals and declines **[DEC-71]**,~~ withdrawal requests, ~~approvals~~ and payouts **[DEC-83]**, and bank-account activations and deactivations — a bank account can never be edited, only deactivated **[DEC-71]** |
 | **NFR-41** | All data stored and processed within the EU |
 | **NFR-42** | GDPR rights supportable within 30 days of request |
 
@@ -258,7 +258,7 @@ brand and records why. Accessibility is a requirement; the palette is a preferen
 | **NFR-51** | Module dependency graph enforced by an automated architecture test |
 | **NFR-52** | `dotnet run` on the Aspire AppHost brings the whole system up locally, including third-party stubs ⚠ **Amended 2026-08-19 by [DEC-69], [DEC-88]** — the stub set grows by a **BRP adapter stub** and a **bookkeeping-program stub**; without the second, no month-end path can be run end to end locally |
 | **NFR-53** | A new developer reaches a running local environment within **one day** |
-| **NFR-54** | Every reference-data change (calendars, tariffs, ~~surcharges~~, tickers) is possible without a deployment ⚠ **Amended 2026-08-19** — **surcharges leave the platform [DEC-73]** and **four-eyes thresholds are never built [DEC-71]**. What replaces them, and must be editable without a deployment: the **energiebelasting bracket table and its per-year rates [DEC-74]**, per-customer **reductions and exemptions [DEC-74]**, the **price markup percentage, default 2% [DEC-80]**, **BRP configuration — endpoint, credentials, document format [DEC-69]**, the per-company **four-eyes flag [DEC-71]**, the **chart of accounts and tax-code mapping [DEC-107]**, and **[NFR-62]**'s API limits |
+| **NFR-54** | Every reference-data change (calendars, tariffs, ~~surcharges~~, tickers) is possible without a deployment ⚠ **Amended 2026-08-19** — **surcharges leave the platform [DEC-73]** and **four-eyes thresholds are never built [DEC-71]**. What replaces them, and must be editable without a deployment: the **energiebelasting bracket table and its per-year rates [DEC-74]**, per-customer **reductions and exemptions [DEC-74]**, the **price markup percentage, default 2% [DEC-80]**, **BRP configuration — endpoint, credentials, document format [DEC-69]**, ~~the per-company **four-eyes flag [DEC-71]**~~ *(removed, [DEC-179])*, the **chart of accounts and tax-code mapping [DEC-107]**, and **[NFR-62]**'s API limits |
 | **NFR-55** | Database migrations are forward-only and expand/contract for breaking changes |
 | **NFR-56** | Build, test and deploy to a test environment completes within **15 minutes** |
 

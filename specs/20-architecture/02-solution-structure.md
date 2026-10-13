@@ -211,13 +211,13 @@ PeakPower.Domain/
 │                              # VatRate — one reference rate, read by the trade
 │                              # reservation only                             [DEC-78]
 ├── Identity/                  # Account, IsAdmin                             [DEC-71]
-├── Customers/                 # Customer (FourEyesEnabled [DEC-71]), MeteringPoint,
+├── Customers/                 # Customer (FourEyesEnabled [DEC-71] - removed 2026-10-12, DEC-179), MeteringPoint,
 │                              # MeteringPointLabel, ProductionExpectation    [DEC-112]
 ├── Metering/                  # Brp [DEC-69], IntervalDataVersion, IntervalReading, DataState
 ├── Market/                    # PeakCalendar, PriceIndication (quote + markup [DEC-80]),
 │                              # DayAheadPrice
 ├── Trading/                   # TradeRequest, Offer, Block, BlockAllocation, TradeEvent,
-│                              # FourEyesApproval                             [DEC-71]
+│                              # (FourEyesApproval [DEC-71] - removed 2026-10-12, DEC-179)
 ├── Wallet/                    # Wallet, WalletEntry, Reservation, Payment,
 │                              # DepositIntent [DEC-106], WithdrawalRequest   [DEC-83]
 └── Billing/                   # EnergyTaxBracket, EnergyTaxReduction [DEC-74],
@@ -231,12 +231,12 @@ commit that removes the file:
 
 | Module | Change | Driver |
 | --- | --- | --- |
-| `Identity/`, `Customers/` | `Account` gains an `IsAdmin` flag and `Customer` gains `FourEyesEnabled` | **[DEC-71]**. ⚠ **Qualifies [DEC-16]** (all accounts identical). Exactly two levels, and the role model exists *only* to make four-eyes expressible — anything richer is scope this round did not buy |
-| `Trading/` | ~~`FourEyesThreshold`~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** (was **[DEC-33]**). ~~`FourEyesPolicy`~~ becomes `FourEyesApproval` on the action | **[DEC-71]** closes **[OQ-85]**: there is no threshold, in euros or megawatts, so the threshold reference table is not built and no reference-data screen carries it. Four-eyes is a **per-customer-company mode**; the approving account must be a *different admin of the same company* |
+| `Identity/`, `Customers/` | `Account` gains an `IsAdmin` flag and ~~`Customer` gains `FourEyesEnabled`~~ | **[DEC-71]**. ⚠ **Qualifies [DEC-16]** (all accounts identical). ~~Exactly two levels, and the role model exists *only* to make four-eyes expressible — anything richer is scope this round did not buy~~ *(⚠ `FourEyesEnabled` and the four-eyes purpose removed 2026-10-12, [DEC-179]; the role is the `admin` membership role)* |
+| `Trading/` | ~~`FourEyesThreshold`~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** (was **[DEC-33]**). ~~`FourEyesPolicy`~~ becomes ~~`FourEyesApproval` on the action~~ *(nothing since 2026-10-12, [DEC-179])* | **[DEC-71]** closes **[OQ-85]**: there is no threshold, in euros or megawatts, so the threshold reference table is not built and no reference-data screen carries it. Four-eyes is a **per-customer-company mode**; the approving account must be a *different admin of the same company* |
 | `Trading/` | The sell path stops validating against confirmed holdings for the period | **[DEC-72]** ⚠ reverses **[DEC-34]**. A short is a promise to deliver, not a spend, so **[AS-11]**'s prepaid wallet does not bound it and **[DEC-41]**'s balance check does not either. No collateral type is modelled because none is decided — **[OQ-94]** |
 | `Metering/` | `Brp` is new: credentials, endpoint, document format, adapter key. `MeteringPoint` carries the assignment | **[DEC-69]**. It sits in `Metering/` rather than `Customers/` because it is an ingestion concept; the arch test below already forbids `Metering` → `Trading`/`Billing`/`Wallet`, and this adds no new edge |
 | `Customers/` | `ProductionExpectation` gets an owner and a moment: the customer declares it at onboarding | **[DEC-112]**. SJV and profile fractions are a sanity check, not the source. Default stays `UNKNOWN`, still treated as `EXPECTED` for completeness alerting **[F02-R32]** |
-| `Wallet/` | `DepositIntent` (platform-issued payment reference) and `WithdrawalRequest` are new. The `INVOICE_DEBIT` entry type goes | **[DEC-106]** makes bank transfer a first-class deposit route with a reference the platform matches on; **[DEC-83]** ⚠ reverses **[DEC-43]** and gives withdrawals a request → approval → manual payout trail. **[DEC-77]** ⚠ reverses **[AS-12]**: the wallet funds trading only, so nothing invoiced is ever debited from it |
+| `Wallet/` | `DepositIntent` (platform-issued payment reference) and `WithdrawalRequest` are new. The `INVOICE_DEBIT` entry type goes | **[DEC-106]** makes bank transfer a first-class deposit route with a reference the platform matches on; **[DEC-83]** ⚠ reverses **[DEC-43]** and gives withdrawals a request → ~~approval →~~ manual payout trail. **[DEC-77]** ⚠ reverses **[AS-12]**: the wallet funds trading only, so nothing invoiced is ever debited from it |
 | `Billing/` | ~~`Surcharge`~~ ⚠ **Reversed 2026-08-19 by [DEC-73]** | The platform's only margin instrument is the spread on the price it quotes **[DEC-80]**. Volume is pushed; the bookkeeping program multiplies by the topup fee. Closes **[OQ-36]** |
 | `Billing/` | ~~`FeedInTariff`~~ ⚠ **Reversed 2026-08-19 by [DEC-87]** (was **[DEC-44]**) | Export is credited raw at the day-ahead price, exactly as surplus is under **[DEC-23]**. `MISSING_FEED_IN_TARIFF` and the month-skip it caused are removed with the type. Closes **[OQ-86]** |
 | `Billing/` | `EnergyTaxBracket` + `EnergyTaxReduction` are new; `IEnergyTaxCalculator` is implemented rather than left as a stub | **[DEC-74]** ⚠ reverses **[DEC-24]**. Versioned, editable tier boundaries and €/kWh rates per year, a per-customer reduction or exemption for the minority, calculation per EAN per calendar year on net usage **[DEC-22]**, and a ledger push. Mid-year transfer splits **50% of each bracket** per period **[OQ-77]** — half-and-half, not pro-rata by days. The *vermindering* is not modelled because it is not decided: **[OQ-96]** |
@@ -503,7 +503,7 @@ peakpower-web/
 │       │   ├── prices/          # current curve only, no history, no export  [DEC-81]
 │       │   ├── trading/         # buy and sell; sell is not holdings-checked  [DEC-72]
 │       │   ├── wallet/          # iDEAL + bank transfer with the issued reference [DEC-106],
-│       │   │                    # withdrawal requests [DEC-83], four-eyes approvals [DEC-71]
+│       │   │                    # withdrawal requests [DEC-83] (four-eyes approvals [DEC-71] removed 2026-10-12, DEC-179)
 │       │   └── invoices/        # calculated data + the number the bookkeeping program
 │       │                        # returned; no PDF from the platform  [DEC-88] [DEC-89]
 │       └── shared/
@@ -520,8 +520,8 @@ peakpower-web/
 
 ⚠ Two reference-data screens the earlier rounds implied are **not** built: the surcharge tariff table
 (⚠ **Reversed 2026-08-19 by [DEC-73]**) and the four-eyes threshold table (⚠ **Reversed 2026-08-19 by
-[DEC-71]** — four-eyes is a flag on the customer company, edited on the customer screen, not a
-reference table).
+[DEC-71]** — ~~four-eyes is a flag on the customer company, edited on the customer screen, not a
+reference table~~ four-eyes is removed altogether, 2026-10-12, [DEC-179]).
 
 Conventions: standalone components throughout, signals for state, lazy-loaded feature routes,
 strictly typed reactive forms, and generated API clients — now consumed as a published package
@@ -593,7 +593,7 @@ discovered in production.
 | **Architecture** | Module graph, domain purity, no `DateTime.Now` outside the calendar service, **and the ingestion pipeline naming no BRP adapter [DEC-69]** | NetArchTest |
 | **API contract** | OpenAPI snapshot to catch breaking changes — **and the trigger for the client publish [DEC-55]**, §5.1 | Verify |
 | **Cross-repo client** | ~~Applications compile against the *latest published* client, nightly~~ ⚠ **Corrected 2026-09-03: there is nothing published and no nightly, because there is no CI and no registry [DEC-116].** What exists instead is a **staleness check** — regenerate the client from the committed `artifacts/openapi/customer.json`, fail if the diff is non-empty — and the thing that makes it real is that it runs inside the web workspace's own `npm test`, not as a script somebody remembers. It bites: renaming an enum member in the platform's frozen contract without regenerating turns `test:workspace` red **while all 491 customer-portal tests stay green**, because they type against the stale schema and mock HTTP | npm + tsc |
-| **E2E** | ~~Login with MFA **[DEC-92]**~~ (⚠ there is no MFA — **[DEC-119]**), login, request a trade, accept an offer, **approve it as a second admin account of the same company with four-eyes on [DEC-71]**, view the ledger, raise a withdrawal request **[DEC-83]**. Lives in `peakpower-web` **[DEC-55]**, runs against a deployed environment | Playwright |
+| **E2E** | ~~Login with MFA **[DEC-92]**~~ (⚠ there is no MFA — **[DEC-119]**), login, request a trade, accept an offer, ~~**approve it as a second admin account of the same company with four-eyes on [DEC-71]**,~~ view the ledger, raise a withdrawal request **[DEC-83]**. Lives in `peakpower-web` **[DEC-55]**, runs against a deployed environment | Playwright |
 | **Frontend unit** | Components, pipes, signal stores | Vitest |
 
 > ⚠ **Pin Shouldly 4.3.0. FluentAssertions may not be used, at any version** (added 2026-09-03,
@@ -634,18 +634,8 @@ These are the ones where a bug is expensive and silent:
    the non-whole-MW tail back.
 7. Peak interval counts match the reference table for every month of three years.
 8. A day with 92 or 100 intervals is stored, aggregated and charted correctly.
-9. **The accepting account cannot approve its own acceptance** ~~**[DEC-33]**~~ ⚠ **Amended
-   2026-08-19 by [DEC-71]**, **[F05-R59]**. The test now has three cases, because the rule is a
-   per-company mode rather than a value threshold: with four-eyes **off** the trade executes on one
-   account; with it **on**, the accepting account's own approval is refused, and approval by a
-   **non-admin** account of the same company is refused. In every refusal the trade stays in
-   `AWAITING_APPROVAL` and **no reservation is settled** — because the failure mode is not an error
-   message, it is a large trade that quietly went through on one person's say-so. Requested by
-   [F05](../10-features/F05-energy-block-trading.md) §3.2.
-10. **A trade left in `AWAITING_APPROVAL` at `expires_at` expires and releases its reservation in
-    full** **[F05-R62]**. The same shape as test 3, on the state that did not exist when test 3 was
-    written — and the one that leaks money silently if the expiry job's filter or the partial index
-    misses it ([Database design §3.4.1](04-database-design.md)).
+9. ~~**The accepting account cannot approve its own acceptance** [DEC-33] [DEC-71], [F05-R59]. The test has three cases: with four-eyes off the trade executes on one account; with it on, the accepting account's own approval is refused, and approval by a non-admin account of the same company is refused.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no approval to test. The replacement is plain: **accept lands in `ACCEPTED` for any active member, reserves the deposit once and writes the desk notice** ([F05-R28]).
+10. ~~**A trade left in `AWAITING_APPROVAL` at `expires_at` expires and releases its reservation in full** [F05-R62].~~ ⚠ **Struck 2026-10-12 by [DEC-179].** Test 3 (an `OFFERED` trade expires with nothing to release) is the whole of it.
 11. ~~**The surcharge is charged per kWh with no `/1000`** **[DEC-35]**. A rate agreed before the unit
     change invoices to the same money after it: €4.50/MWh and €0.0045/kWh produce the identical
     amount on the identical volume. An engine that keeps the divisor bills a thousandth of the

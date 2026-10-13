@@ -7,7 +7,7 @@ Two REST APIs — one per portal **[DEC-02]** — plus the ingestion endpoints o
 numbering **[DEC-88]**, PDF and email **[DEC-89]**, VAT **[DEC-76]**, surcharges **[DEC-73]**, invoice
 settlement from the wallet **[DEC-77]** — and gain energiebelasting **[DEC-74]**, withdrawals
 **[DEC-83]**, matched bank-transfer deposits **[DEC-106]**, configurable BRPs **[DEC-69]** and
-four-eyes as a per-company mode **[DEC-71]**. Every removed endpoint is struck through rather than
+~~four-eyes as a per-company mode **[DEC-71]**~~ *(removed 2026-10-12, [DEC-179]: every four-eyes route, field, state and problem type below is struck or gone)*. Every removed endpoint is struck through rather than
 deleted, with the decision that removed it.
 
 ---
@@ -61,7 +61,7 @@ than assumed from the tenant that issued it.
 | --- | --- | --- |
 | `customer_id` | the **company** | Scopes every read and write **[F13-R14]**. Never a path parameter on the customer API |
 | ~~`account_id`~~ `sub` | the **person** | Stamped on every write as the acting account **[DEC-17]**. Never scopes. ⚠ **Renamed 2026-09-03**: the claim is the standard `sub`, not `account_id`; the meaning is unchanged |
-| ~~`roles`~~ ~~`is_admin`~~ **(no role claim)** | ~~`customer.user`, plus `customer.admin` for an admin~~ ~~`"true"` / `"false"`~~ **nothing** | ⚠ **Removed 2026-09-10 by [DEC-152]: the token carries no role of any kind.** The database is the sole authority. On every request the middleware reads `customer.customer_membership` for the account and the claimed business and puts the resulting `membershipRole` on `ICustomerContext` — and a **claimed business with no active membership row is refused before `app.customer_id` is honoured**, so the customer-id claim is now a *claim* proven per request rather than a fact carried in the token. ⚠ **`ICustomerContext.IsAdmin` is removed, not kept alongside the role.** Two sources of truth for one fact is how a demoted admin keeps admin rights for the rest of a fifteen-minute token. ⚠ **The property gained** is that demotion and removal take effect on the **next request** rather than at expiry — which is what **[DEC-117]**'s `stamp` comparison bought for the flag, now got structurally instead. Original text: *"Decides who may raise and who may approve a four-eyes action **[DEC-71]**, §2.10. Nothing else branches on it — an admin reads and writes exactly what a non-admin does **[F13-R41]**. ⚠ Corrected 2026-09-03: there is no `roles` claim and no `customer.*` role vocabulary. The flag is one boolean claim, and `ICustomerContext` reads that."* |
+| ~~`roles`~~ ~~`is_admin`~~ **(no role claim)** | ~~`customer.user`, plus `customer.admin` for an admin~~ ~~`"true"` / `"false"`~~ **nothing** | ⚠ **Removed 2026-09-10 by [DEC-152]: the token carries no role of any kind.** The database is the sole authority. On every request the middleware reads `customer.customer_membership` for the account and the claimed business and puts the resulting `membershipRole` on `ICustomerContext` — and a **claimed business with no active membership row is refused before `app.customer_id` is honoured**, so the customer-id claim is now a *claim* proven per request rather than a fact carried in the token. ⚠ **`ICustomerContext.IsAdmin` is removed, not kept alongside the role.** Two sources of truth for one fact is how a demoted admin keeps admin rights for the rest of a fifteen-minute token. ⚠ **The property gained** is that demotion and removal take effect on the **next request** rather than at expiry — which is what **[DEC-117]**'s `stamp` comparison bought for the flag, now got structurally instead. Original text: *"Decides who may raise and who may approve a four-eyes action **[DEC-71]**, §2.10 (⚠ struck 2026-10-12, [DEC-179]). Nothing else branches on it — an admin reads and writes exactly what a non-admin does **[F13-R41]**. ⚠ Corrected 2026-09-03: there is no `roles` claim and no `customer.*` role vocabulary. The flag is one boolean claim, and `ICustomerContext` reads that."* |
 | `amr` | the authentication methods used | ~~Rejects the call unless one of them is a second factor~~ ⚠ **Corrected 2026-09-03 by [DEC-119]: evidence only.** The claim is issued as `["pwd"]` — a password, not a second factor — and **nothing anywhere rejects on it**. The verification **[DEC-92]**, **[F13-R45]** describes is recorded, not built; see [Security §3.1.0](07-security.md) |
 | `stamp` | `customer_account.security_stamp` | ⚠ **Added 2026-09-03 by [DEC-117].** Compared to the account's stored stamp on **every** request. It costs nothing measurable — the request already opens a transaction to `SET LOCAL app.customer_id` — and it is what makes **[F01-R16]**'s *immediate* revocation literally true against a stateless 15-minute token |
 
@@ -105,15 +105,15 @@ never knowing.
 vocabulary instead of gaining a parallel boolean one, and like `customer_id` and `account_id` it is
 **re-validated against the platform's own account record on every request** **[F13-R43]** — a claim
 that decides who may release money must not be trusted on the token alone, because a token minted
-before the flag was cleared would otherwise still approve. `four_eyes_enabled` is deliberately **not**
+before the flag was cleared would otherwise still approve. ~~`four_eyes_enabled` is deliberately **not**
 a claim: it is company reference data, read server-side, so turning the mode on takes effect on the
-next request rather than on the next token.
+next request rather than on the next token.~~
 
 ⚠ **The whole paragraph above is withdrawn 2026-09-10 by [DEC-152], and is kept because it is the
 argument that has to be re-made if a role ever returns to a token.** There is no `is_admin` claim to
 re-validate, no re-validation to achieve by a different mechanism, and no admin vocabulary on this
-API. `four_eyes_enabled` is still deliberately not a claim, for the reason given — it is company
-reference data read server-side — and that half of the paragraph survives unchanged.
+API. ~~`four_eyes_enabled` is still deliberately not a claim, for the reason given — it is company
+reference data read server-side — and that half of the paragraph survives unchanged.~~ *(Moot since 2026-10-12, [DEC-179]: there is no such column.)*
 
 ⚠ **Interaction with [DEC-67].** The claim-mapping spike now has **three** claims to map instead of
 two. The marginal cost inside the spike is small — one more app-role assignment on the same app
@@ -422,16 +422,16 @@ Two reads for **any signed-in customer, of any role**. They return **market data
 | `GET` | `/trades/products` | ⚠ **New 2026-09-30 [DEC-167] (16)** — the product list of the Prices table and its request panel (⚠ formerly the wizard's two tables, [DEC-178]): the products per shape (12 each, 24 in all) with the RAW price, hours and the value of 1 MW |
 | `POST` | `/trades` | Submit a request |
 | `POST` | `/trades/{id}/cancel` | Cancel while `REQUESTED` |
-| `POST` | `/trades/{id}/accept` | Accept the offer. **May return state `AWAITING_APPROVAL`** — see below |
+| `POST` | `/trades/{id}/accept` | Accept the offer. Any active member of the company **[F05-R43]**. Returns state `ACCEPTED` ~~or `AWAITING_APPROVAL`~~ *(⚠ one destination since 2026-10-12, [DEC-179])* |
 | `POST` | `/trades/{id}/reject` | Reject the offer |
-| `POST` | `/trades/{id}/approve` | ~~**[DEC-33]**~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — approve a colleague's acceptance. The verb, path and semantics are unchanged; the **caller must be an `customer.admin` of the company and must not be the accepting account** **[F05-R59]**, **[F13-R44]**. Refused for the accepting account |
-| `POST` | `/trades/{id}/pay-balance` | ⚠ **New 2026-09-30 [DEC-167] (17)** — pay the balance of a confirmed BUY from the available balance while the payment window is open. Any member; not a four-eyes action. See §2.4.3 |
-| `POST` | `/trades/{id}/refuse-approval` | ~~**[DEC-33]**~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — decline it, optionally with a reason. Terminal. Same admin requirement **[F05-R63]** |
+| ~~`POST`~~ | ~~`/trades/{id}/approve`~~ | ~~**[DEC-33]** ⚠ **Amended 2026-08-19 by [DEC-71]** — approve a colleague's acceptance. The verb, path and semantics are unchanged; the **caller must be an `customer.admin` of the company and must not be the accepting account** **[F05-R59]**, **[F13-R44]**. Refused for the accepting account~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — the route is deleted ([DEC-179]). |
+| `POST` | `/trades/{id}/pay-balance` | ⚠ **New 2026-09-30 [DEC-167] (17)** — pay the balance of a confirmed BUY from the available balance while the payment window is open. Any member. See §2.4.3 |
+| ~~`POST`~~ | ~~`/trades/{id}/refuse-approval`~~ | ~~**[DEC-33]** ⚠ **Amended 2026-08-19 by [DEC-71]** — decline it, optionally with a reason. Terminal. Same admin requirement **[F05-R63]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — the route is deleted ([DEC-179]). |
 | `GET` | `/blocks` | Confirmed positions. ⚠ Under **[DEC-72]** a position may be **short**: a confirmed `SELL` with no matching purchase makes the net figure negative, and the client must render a negative as a position rather than as an error **[F05-R69]** |
 
-Approval is two endpoints rather than one with a `decision` field, matching the house style — every
+~~Approval is two endpoints rather than one with a `decision` field, matching the house style — every
 other transition on this API is its own verb (`/cancel`, `/accept`, `/reject`), and the two outcomes
-have different eligibility rules, which a single endpoint would hide in a branch.
+have different eligibility rules, which a single endpoint would hide in a branch.~~ *(Struck 2026-10-12, [DEC-179]: no approval endpoints.)*
 
 #### 2.4.1 Request validation — [DEC-70], [DEC-72]
 
@@ -487,11 +487,7 @@ that is a product gate rather than a contract change.
     "name": "J. de Vries",
     "jobTitle": "Energy Manager"
   },
-  "fourEyes": {
-    "enabled": true,
-    "activeAdminCount": 2,
-    "canBeApproved": true
-  },
+  // "fourEyes": { "enabled", "activeAdminCount", "canBeApproved" } - removed 2026-10-12, DEC-179
   "createdAt": "2026-07-30T14:25:02+02:00"
 }
 ```
@@ -511,24 +507,13 @@ never re-derives one from the other:
 | `estimatedValueExVat` | € 73 843,20 | `768 × 96.1500` |
 | `estimatedValue` (reserved) | € 89 350,27 | `round(73843.20 × 1.21, 2)` at the **[DEC-64]** reference rate of 21% |
 
-**`fourEyes` is a mode, not a threshold [DEC-71].** ⚠ `thresholdApplies`, `threshold` and
-`estimateAboveThreshold` are **removed** — there is no threshold in euros or in megawatts, so nothing
-resolves a value and **[DEC-33]**'s reference table is not built **[F13-R42]**. What is left is
-`enabled` (the company's flag), `activeAdminCount` and `canBeApproved`. ⚠ `activeAccountCount` becomes
-`activeAdminCount`: a second pair of eyes must be a **different admin account** of the same company
-**[F13-R44]**, and a company with three accounts and one admin cannot clear the control.
+~~**`fourEyes` is a mode, not a threshold [DEC-71].** `thresholdApplies`, `threshold` and `estimateAboveThreshold` are removed; what is left is `enabled`, `activeAdminCount` and `canBeApproved`.~~ ⚠ **The whole `fourEyes` block is removed 2026-10-12 by [DEC-179]**, from the quote, the submit response and the trade detail.
 
 `requestedBy` is taken from the token, never from the request body. A client cannot act on behalf of
 a colleague.
 
 `POST /trades/quote` exists so the request panel can show live figures without creating anything. It takes
-the same body and returns the volume, estimate and wallet impact — **and the same `fourEyes` block**,
-so the request panel can warn before submission **[F05-R56]** rather than at acceptance. ⚠ **Amended
-2026-08-19 by [DEC-71]**: the warning is no longer *"this one is above your threshold"* but *"your
-company runs four-eyes, so every trade needs a second admin"* — it is the same warning on every trade
-of that company, which is what makes it cheap to render and impossible to get wrong.
-`canBeApproved` is `false` when the company has fewer than **two active admin accounts**, the case
-where the trade cannot clear the control at all **[F12-R36]**. The estimate is advisory: the binding
+the same body and returns the volume, estimate and wallet impact. ~~— **and the same `fourEyes` block**, so the request panel can warn before submission **[F05-R56]** rather than at acceptance. `canBeApproved` is `false` when the company has fewer than **two active admin accounts**.~~ *(The `fourEyes` block and the warning are removed, [DEC-179].)* The estimate is advisory: the binding
 figure is computed at acceptance from the **offer** price **[F05-R52]**, not from this number, and it
 is the gross figure that is checked against the balance **[DEC-41]**, **[F05-R70]**. ⚠ **(17) 2026-09-30 [DEC-167]:** for a BUY it is the **deposit**, not the gross, that is checked and held (§2.4.3); the gross is still stored and shown as `totalInclVat`.
 
@@ -582,81 +567,19 @@ rewrite the record **[F05-R47]**.
 `secondsRemaining` is server-computed at response time. The client counts down from it and
 re-fetches on expiry — it never computes expiry from its own clock **[DEC-13]**.
 
-#### Acceptance at a four-eyes company ~~above the four-eyes threshold~~ **[DEC-33]** ⚠ **Amended 2026-08-19 by [DEC-71]**
+#### Acceptance ~~at a four-eyes company~~ — one destination since 2026-10-12 **[DEC-179]**
 
-`POST /trades/{id}/accept` **no longer always yields `ACCEPTED`**. A client that branches on the
-response must handle both destinations; this is the one place four-eyes changes an existing
-contract rather than adding to it. ⚠ **What [DEC-71] changed here is the *trigger*, not the shape**:
-the second destination is reached when **the customer company has four-eyes enabled**, on every trade
-of that company regardless of value, instead of when the value cleared a threshold **[F13-R42]**.
-The states, the clock and the two verbs are untouched.
+`POST /trades/{id}/accept` always yields `ACCEPTED`, for any active member of the company **[F05-R43]**. ~~It no longer always yielded `ACCEPTED`: a client had to handle `AWAITING_APPROVAL` too, with an `approval` object (`requiredBecause.fourEyesEnabled`, `acceptedBy`, `eligibleApproverCount`, `canCurrentAccountApprove`, `expiresAt`, `secondsRemaining`), and the routes `POST /trades/{id}/approve` and `POST /trades/{id}/refuse-approval` decided it.~~ **All of that is removed:** the response is the trade in state `ACCEPTED`, with `reservedAmount` (the **deposit** for a BUY **[DEC-167]** (17), VAT-inclusive basis **[DEC-78]**) and no `approval` object; `GET /trades/{id}` carries no `approval` object; the timeline never gains a new `APPROVED` or `APPROVAL_REFUSED` event, and the two types stay in the vocabulary only because old trades carry them (a client must tolerate and label them read-only). The acceptance event is typed `ACCEPTED` as ever.
 
-```jsonc
-// POST /api/v1/trades/{id}/accept    → 200 OK
-{
-  "id": "9f3c…",
-  "reference": "TRD-1051",
-  "state": "AWAITING_APPROVAL",
-  "reservedAmount": { "amount": "88049.28", "currency": "EUR" },
-  "vatRate": "0.21",
-  "approval": {
-    "requiredBecause": { "fourEyesEnabled": true },
-    "acceptedBy": { "accountId": "acc-0044", "name": "M. Vandersteen", "jobTitle": "Finance Director" },
-    "eligibleApproverCount": 1,
-    "canCurrentAccountApprove": false,
-    "expiresAt": "2026-07-30T15:01:00+02:00",
-    "secondsRemaining": 887
-  }
-}
-```
-
-⚠ **Three fields left `requiredBecause` [DEC-71].** ~~`tradeValue`~~, ~~`threshold`~~ and
-~~`thresholdVersion`~~ are removed: there is no threshold to compare against and no reference-data
-version to pin, so **[F05-R54]**'s pinning obligation has nothing left to pin on this path. What is
-recorded on the trade instead is the **company's four-eyes flag as it stood at acceptance**, which is
-what `requiredBecause.fourEyesEnabled` reports back. `eligibleApproverCount` counts **active admin
-accounts other than the acceptor** **[F13-R44]** — one, in a two-admin company, which is the ordinary
-case **[F12-R41]**.
-
-Three things this shape is asserting.
-
-- `reservedAmount` is present, because the money was reserved by **this** call, and it is the
-  **VAT-inclusive** figure **[DEC-78]**, **[F05-R70]**. An `AWAITING_APPROVAL` trade always holds a
-  reservation **[F05-R55]**, so approval never has to re-check the balance and cannot fail on funds.
-- `expiresAt` is the **offer's** `expires_at`, unchanged. There is no separate approval window
-  **[F05-R61]**; the same value that guarded the acceptance now guards the approval, and the same
-  countdown component renders it.
-- `canCurrentAccountApprove` is `false` for the account that just accepted, and the UI hides the
-  button accordingly — but the server refuses the call regardless. Four eyes is enforced in the
-  domain, not in the client **[F05-R59]**, **[F13-R44]**. It is also `false` for a **non-admin**
-  account of the same company, which is new: under **[DEC-33]** any active account could approve;
-  under **[DEC-71]** only an admin can **[F01-R47]**.
-
-```jsonc
-// POST /api/v1/trades/{id}/approve            (no body)
-// POST /api/v1/trades/{id}/refuse-approval    { "reason": "Volume is above what we agreed internally" }
-```
-
-`/approve` returns the trade with `state: "ACCEPTED"` and `approvedBy` populated;
-`/refuse-approval` returns `state: "APPROVAL_REFUSED"` with the reservation released. The reason is
-optional on refusal, symmetric with `/reject` **[F05-R63]**. Both are `Idempotency-Key` POSTs like
-every other transition, and both take the same wallet-then-trade lock order as `/accept`. ⚠ **Superseded 2026-09-29 by [DEC-167] (7):** the order is roster → company row → trade → wallet; refuse-approval takes roster → trade → wallet, and approve takes no wallet lock.
-
-The `GET /trades/{id}` response carries the same `approval` object while the trade is
-`AWAITING_APPROVAL`, and the timeline gains `APPROVED` / `APPROVAL_REFUSED` event types. Note that
-the acceptance event is still typed `ACCEPTED` even when the resulting state is `AWAITING_APPROVAL`:
-the event names what the person did, the state names what the trade is waiting for.
-
-New error `type` URIs, all `409`:
+Error `type` URIs. ~~`…/errors/self-approval-not-permitted`, `…/errors/approval-window-elapsed`, `…/errors/approval-required`, `…/errors/admin-role-required` and `…/errors/four-eyes-not-satisfiable`~~ ⚠ **are removed 2026-10-12 by [DEC-179]** (no endpoint can raise them), as is the long-struck `…/errors/four-eyes-threshold-not-configured`. The ones that remain for a trade are listed in §2.4.2.
 
 | `type` | When |
 | --- | --- |
-| `…/errors/self-approval-not-permitted` | The acting account is the accepting account **[F05-R59]** |
-| `…/errors/approval-window-elapsed` | `now ≥ expires_at` on an approve attempt **[F05-R62]** |
-| ~~`…/errors/four-eyes-threshold-not-configured`~~ | ~~No threshold row is in force for the customer **[F05-R53]**~~ ⚠ **Removed 2026-08-19 by [DEC-71]** — there is no threshold row to be missing, so acceptance can no longer fail on reference data. The failure it guarded against is replaced by **`four-eyes-not-satisfiable`** below |
-| `…/errors/approval-required` | A confirm attempt against a trade still `AWAITING_APPROVAL` **[F05-R66]** |
-| `…/errors/admin-role-required` | ⚠ **New 2026-08-19 [DEC-71]** — an approve or decline attempt by an account without `customer.admin`, re-validated against the account record rather than read off the token **[F13-R43]** |
-| `…/errors/four-eyes-not-satisfiable` | ⚠ **New 2026-08-19 [DEC-71]** — the company has four-eyes on and **fewer than two active admin accounts**, so nobody can be the second pair of eyes. Raised at **acceptance**, before money is reserved, rather than letting the trade sit in `AWAITING_APPROVAL` until it expires. It should be unreachable — **[F12-R41]** refuses to enable the mode below two admins and **[F01-R50]** refuses to deactivate below it — which is exactly why it is checked: an unreachable state that is not checked is an unreachable state that happens. ⚠ **Amended 2026-09-23 by [DEC-157]:** deactivating an admin below the floor is **no longer refused** — it is **warned and reasoned [F12-R43]**, because the account may be a leaver — so this state is now **reachable by design**. The acceptance check is therefore load-bearing rather than a guard against the merely-improbable; the demotion path, by contrast, *is* refused ([DEC-157], above) |
+| ~~`…/errors/self-approval-not-permitted`~~ | ~~The acting account is the accepting account~~ ⚠ removed |
+| ~~`…/errors/approval-window-elapsed`~~ | ~~`now ≥ expires_at` on an approve attempt~~ ⚠ removed (it folded into `offer-expired` already) |
+| ~~`…/errors/approval-required`~~ | ~~A confirm attempt against a trade still `AWAITING_APPROVAL`~~ ⚠ removed |
+| ~~`…/errors/admin-role-required`~~ | ~~an approve, decline or accept attempt by an account without `customer.admin`~~ ⚠ removed |
+| ~~`…/errors/four-eyes-not-satisfiable`~~ | ~~the company has four-eyes on and fewer than two active admin accounts~~ ⚠ removed |
 | `…/errors/invalid-volume` | ⚠ **New 2026-08-19 [DEC-70]** — a `powerMw` below 0,01 or not a multiple of 0,01 — §2.4.1 |
 
 #### 2.4.2 Slice 1 as designed — [DEC-167]
@@ -667,7 +590,7 @@ New error `type` URIs, all `409`:
 | --- | --- | --- |
 | `GET /trades?category=&state=&page=&pageSize=` | → `TradeListResponse` (`state` repeatable; `pageSize` 1–100). ⚠ **2026-09-30 [DEC-167] (18):** `category` is `open`, `balance-due` (CONFIRMED BUY, balance unpaid, ordered by due date, overdue first) or `all`; the response adds `counts: { open, balanceDue, all }` for the token's company whatever the filter; each item's nullable `settlement` summary carries `balanceAmount`, `balanceDueDate`, `balanceState`; an omitted `category` means no category filter (every state), and `category` and `state` are both applied (AND) | 400 |
 
-⚠ **As built 2026-10-01, [DEC-169] (5) — `category` also takes `confirmed` and `closed`, and `counts` is `{ open, balanceDue, all, confirmed, closed }`.** `confirmed` is state `CONFIRMED`; `closed` is `EXPIRED`, `DECLINED`, `WITHDRAWN`, `REJECTED`, `APPROVAL_REFUSED`, `CANCELLED` and `FAILED`. `open` (REQUESTED, OFFERED, ACCEPTED, AWAITING_APPROVAL) and `balance-due` are unchanged, and no state is in two of open, confirmed and closed. The trade detail honours `?action=confirm|decline` in the portal only; no API field changes.
+⚠ **As built 2026-10-01, [DEC-169] (5) — `category` also takes `confirmed` and `closed`, and `counts` is `{ open, balanceDue, all, confirmed, closed }`.** `confirmed` is state `CONFIRMED`; `closed` is `EXPIRED`, `DECLINED`, `WITHDRAWN`, `REJECTED`, `APPROVAL_REFUSED` *(old rows only)*, `CANCELLED` and `FAILED`. `open` (REQUESTED, OFFERED, ACCEPTED; ~~AWAITING_APPROVAL~~ struck 2026-10-12) and `balance-due` are unchanged, and no state is in two of open, confirmed and closed. The trade detail honours `?action=confirm|decline` in the portal only; no API field changes.
 
 ⚠ **As built 2026-10-01, [DEC-170] (16) — `TradeCountsDto` gains `offered`.** `offered` is the number of the company's `OFFERED` trades (a subset of `open`); the customer portal's Trades navigation badge shows it and hides it at 0. No state moves between categories.
 
@@ -675,26 +598,26 @@ New error `type` URIs, all `409`:
 | `POST /trades` | `SubmitTradeRequest` → `SubmitTradeResponse` | 400, 409 `customer-not-active` / `insufficient-available-balance` |
 | `GET /trades/{tradeId}` | → `TradeDetailDto` | 404 |
 | `POST …/cancel` | none → `TradeDetailDto` | 404, 409 |
-| `POST …/accept` | none → `TradeDetailDto` (state `ACCEPTED` or `AWAITING_APPROVAL`) | 404, 409 |
+| `POST …/accept` | none → `TradeDetailDto` (state `ACCEPTED`) | 404, 409 |
 | `POST …/reject` | `{ "reason" }` → `TradeDetailDto` | 400, 404, 409 |
-| `POST …/approve` | none → `TradeDetailDto` | 404, 409 |
-| `POST …/refuse-approval` | `{ "reason" }` (optional, ≤ 500) → `TradeDetailDto` | 400, 404, 409 |
+| ~~`POST …/approve`~~ | ~~none → `TradeDetailDto`~~ | ~~404, 409~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — deleted ([DEC-179]). |
+| ~~`POST …/refuse-approval`~~ | ~~`{ "reason" }` (optional, ≤ 500) → `TradeDetailDto`~~ | ~~400, 404, 409~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — deleted ([DEC-179]). |
 
-**Request.** `direction, shape, periodType, period, powerMw, comment` (the quote omits `comment`) — ⚠ **amended 2026-09-30 ([DEC-167] (16)): one `powerMw` for the whole account, no `lines`.** `direction` null or `BUY` is accepted; **`SELL` is a 400 on `direction`** — *"Only BUY trades can be requested for now."* The server resolves `period` to one of the 24 active products by `(shape, periodType)`; none is a 400 on `period`. `powerMw` is at least 0,01, in steps of 0,01 and **under 1 000 000 MW** (`invalid-volume`). ~~Duplicates are a 400 on `lines`, and an unknown or foreign connection returns the same message as an ineligible one.~~ Nobody names a connection any more, so nothing foreign can be probed; the roster is the company's own connections **valid for the whole delivery period**, snapshotted at submit, and **none is `409 metering-point-not-eligible`** — *"None of your connections can take a block for the whole of {period}."* Accept, approve and confirm re-check only that **at least one** such connection remains.
+**Request.** `direction, shape, periodType, period, powerMw, comment` (the quote omits `comment`) — ⚠ **amended 2026-09-30 ([DEC-167] (16)): one `powerMw` for the whole account, no `lines`.** `direction` null or `BUY` is accepted; **`SELL` is a 400 on `direction`** — *"Only BUY trades can be requested for now."* The server resolves `period` to one of the 24 active products by `(shape, periodType)`; none is a 400 on `period`. `powerMw` is at least 0,01, in steps of 0,01 and **under 1 000 000 MW** (`invalid-volume`). ~~Duplicates are a 400 on `lines`, and an unknown or foreign connection returns the same message as an ineligible one.~~ Nobody names a connection any more, so nothing foreign can be probed; the roster is the company's own connections **valid for the whole delivery period**, snapshotted at submit, and **none is `409 metering-point-not-eligible`** — *"None of your connections can take a block for the whole of {period}."* Accept ~~, approve~~ and confirm re-check only that **at least one** such connection remains.
 
 **Money on the wire** is a **bare decimal**, and every gross amount has its `vatRate` beside it, so no client does money arithmetic: `TradeOfferDto` carries `priceEurMwh`, `totalValueExVat` (rounded to 2 dp), `vatRate`, `vatAmount` (= ⚠ (17) the gross minus the rounded ex-VAT value, so the three confirmation lines always add up), ⚠ **(17) `totalInclVat` (renamed from `amountToReserve`, [DEC-167]; the gross, no longer the amount held)**, `offeredAt`, `expiresAt` and **`secondsRemaining`** — the client counts down from that, never from its reading of `expiresAt`. Once accepted the amount is the **stored** gross and `vatRate` the **stored** rate.
 
-**The estimate is RAW.** `TradeQuoteResponse.estimate` carries `productCode`, `priceEurMwh` — the **raw** indication, **no markup** — `observedAt`, `status` (`FRESH` or `STALE`), `estimatedValueExVat`, `vatRate`, `estimatedValue` (the gross) and `isSampleData`. It is **absent** when the indication is `UNAVAILABLE` or at or below zero; `walletCheck.sufficient` is then `null`. `TradeQuoteResponse` also carries the resolved dates, `peakDays`, `totalPowerMw` and `totalMwh`, ⚠ **(2026-09-30, [DEC-167] (16)) `connections[{ meteringPointId, ean, name, validTo? }]` (the covered roster), `excludedConnections[{ ean, name, reason }]` (electricity connections not valid for the whole period, reason e.g. "Ends 31 Dec 2026") and `currentCoverMw`** (the sum of `power_mw` of the company's confirmed BUY blocks of the same shape whose delivery period contains the requested one — `block.start <= period.start` and `block.end >= period.end` — and 0 when none; a quote with no covered connection is still a 200, the submit is the 409), the wallet check and `fourEyes { enabled, activeAdminCount, canBeApproved }` (`canBeApproved` = at least two active admins). **Only the quote and submit responses ever carry a raw estimate.**
+**The estimate is RAW.** `TradeQuoteResponse.estimate` carries `productCode`, `priceEurMwh` — the **raw** indication, **no markup** — `observedAt`, `status` (`FRESH` or `STALE`), `estimatedValueExVat`, `vatRate`, `estimatedValue` (the gross) and `isSampleData`. It is **absent** when the indication is `UNAVAILABLE` or at or below zero; `walletCheck.sufficient` is then `null`. `TradeQuoteResponse` also carries the resolved dates, `peakDays`, `totalPowerMw` and `totalMwh`, ⚠ **(2026-09-30, [DEC-167] (16)) `connections[{ meteringPointId, ean, name, validTo? }]` (the covered roster), `excludedConnections[{ ean, name, reason }]` (electricity connections not valid for the whole period, reason e.g. "Ends 31 Dec 2026") and `currentCoverMw`** (the sum of `power_mw` of the company's confirmed BUY blocks of the same shape whose delivery period contains the requested one — `block.start <= period.start` and `block.end >= period.end` — and 0 when none; a quote with no covered connection is still a 200, the submit is the 409), the wallet check ~~and `fourEyes { enabled, activeAdminCount, canBeApproved }` (`canBeApproved` = at least two active admins)~~. **Only the quote and submit responses ever carry a raw estimate.**
 
 **Products read — `GET /trades/products` (2026-09-30, [DEC-167] (16)).** Any member, `.RequireAuthorization()` and tenant-agnostic reference data with the same gating as the Prices read (the body is identical for every company). `TradeProductsResponse { items }`, each item `{ shape, periodType, period (the Code: `2026-11`, `2027-Q1`, `2027`), label ("Sep 2026", "Q4 2026", "Cal 2027"), deliveryStart, deliveryEnd, price (the RAW €/MWh, no markup, null without an indication), observedAt, status (`FRESH`/`STALE`/`UNAVAILABLE`), hours, mwhAt1Mw, valueAt1Mw }`. `hours` and `mwhAt1Mw` come from the volume calculator at 1 MW; `valueAt1Mw = mwhAt1Mw × price` ex VAT rounded to 2 dp, null without a price. **There are 12 products per shape (6 months, 4 quarters and 2 calendar years), 24 in all; a period that has already started is left out**, by the same test a request uses. It is registered in the route-table and OpenAPI harnesses.
 
 **Trade DTOs.** ⚠ **2026-09-30:** `TradeDetailDto` and `TradeSummaryDto` carry `totalPowerMw` and (detail) `connections[{ ean, name }]` — the snapshot — and **no `lines`**; `TradeOfferDto` has no per-EAN breakdown. `EmployeeTradeDetailDto` shows `totalPowerMw`, `connections[{ ean, name }]` and `anyConnectionEligible`, with no per-line power.
 
-**Reads project.** Every customer read is a projection — the customer role cannot `SELECT` the captured indication, `actual_market_price` or `offered_by_employee_id` (§3.4.4) — newest first. Participant names and job titles come from the **`trade_event` actor snapshots** (`SUBMITTED` → requester, `ACCEPTED` → acceptor, `APPROVED`/`APPROVAL_REFUSED` → decider), never a join on `customer_account`, whose customer policy hides removed members. Staff actors show as *PeakPower Trading*, the system as *PeakPower*. `availableActions` (`CANCEL`, `ACCEPT`, `REJECT`, `APPROVE`, `REFUSE_APPROVAL`, ⚠ **(17) `PAY_BALANCE`** — §2.4.3) is computed server-side: at a four-eyes company `ACCEPT` is offered only to an active admin, and only when there are at least two.
+**Reads project.** Every customer read is a projection — the customer role cannot `SELECT` the captured indication, `actual_market_price` or `offered_by_employee_id` (§3.4.4) — newest first. Participant names and job titles come from the **`trade_event` actor snapshots** (`SUBMITTED` → requester, `ACCEPTED` → acceptor; ~~`APPROVED`/`APPROVAL_REFUSED` → decider~~ only on old trades), never a join on `customer_account`, whose customer policy hides removed members. Staff actors show as *PeakPower Trading*, the system as *PeakPower*. `availableActions` (`CANCEL`, `ACCEPT`, `REJECT`, ~~`APPROVE`, `REFUSE_APPROVAL`,~~ ⚠ **(17) `PAY_BALANCE`** — §2.4.3) is computed server-side: `ACCEPT` is offered to every active member while the offer is open.
 
-**Transactions.** The `CurrentTransaction is null ? Begin : null` transaction is opened **before** `OwnerPrivilegedWrite`; every guard runs **before** any mutation; any refusal discovered after a flush **throws** (rollback, 500), because the customer middleware commits on a returned 409. **Accept** takes: (1) the admin roster, (2) the company row `FOR SHARE` (owner-privileged, the token's company) — refuse if not `ACTIVE`; the four-eyes flag is read here, and at a four-eyes company the caller must be in the roster (`admin-role-required`) and there must be at least two admins (`four-eyes-not-satisfiable`); (3) the trade `FOR UPDATE` — 404 if absent; (4) the wallet `FOR UPDATE`; then `now` is read **once**, the state and `expires_at` guards run, the roster is re-checked (`metering-point-not-eligible` when **no** electricity connection is valid for the whole period any more — ⚠ 2026-09-30, [DEC-167] (16); it named the EANs before) and the balance is checked ⚠ **(17) against the deposit on the stored price (not the gross)** — *"Your available balance is € A, but accepting reserves € D — the {pct} deposit on the price plus 21 % VAT. Top up your Balance and accept again before the offer expires."* (was *"…accepting reserves € G — the price plus 21 % VAT…"*) — and only then does the trade accept, pin `four_eyes_applied`, `vat_rate` and the gross, and reserve. **Approve** takes roster → company (`FOR SHARE`) → trade, re-checks the caller is an active admin **and is not the acceptor** (`409 self-approval-not-permitted`, refused before any write, [DEC-167] (3), [F05-R59]), the period and the connections, and moves no money. **Refuse-approval** takes roster → trade → wallet, checks the caller is an active admin **and is not the acceptor** (`409 self-approval-not-permitted`, refused before the flush so `ck_trade_refuser_not_acceptor` is never the guard that fires; [F05-R63]), and releases the reservation with the **refuser** as the ledger actor. **Cancel and reject** lock the trade only. The order is [DEC-167] (7).
+**Transactions.** The `CurrentTransaction is null ? Begin : null` transaction is opened **before** `OwnerPrivilegedWrite`; every guard runs **before** any mutation; any refusal discovered after a flush **throws** (rollback, 500), because the customer middleware commits on a returned 409. **Accept** takes: ~~(1) the admin roster,~~ (2) the company row `FOR SHARE` (owner-privileged, the token's company) — refuse if not `ACTIVE`~~; the four-eyes flag is read here, and at a four-eyes company the caller must be in the roster (`admin-role-required`) and there must be at least two admins (`four-eyes-not-satisfiable`)~~; (3) the trade `FOR UPDATE` — 404 if absent; (4) the wallet `FOR UPDATE`; then `now` is read **once**, the state and `expires_at` guards run, the roster is re-checked (`metering-point-not-eligible` when **no** electricity connection is valid for the whole period any more — ⚠ 2026-09-30, [DEC-167] (16); it named the EANs before) and the balance is checked ⚠ **(17) against the deposit on the stored price (not the gross)** — *"Your available balance is € A, but accepting reserves € D — the {pct} deposit on the price plus 21 % VAT. Top up your Balance and accept again before the offer expires."* (was *"…accepting reserves € G — the price plus 21 % VAT…"*) — and only then does the trade accept, pin `vat_rate` and the gross, and reserve. ⚠ **2026-10-12, [DEC-179]:** the roster step, the four-eyes flag and `four_eyes_applied` are gone, and so are the next two sentences. ~~**Approve** takes roster → company (`FOR SHARE`) → trade, re-checks the caller is an active admin **and is not the acceptor** (`409 self-approval-not-permitted`, refused before any write, [DEC-167] (3), [F05-R59]), the period and the connections, and moves no money. **Refuse-approval** takes roster → trade → wallet, checks the caller is an active admin **and is not the acceptor** (`409 self-approval-not-permitted`, refused before the flush so `ck_trade_refuser_not_acceptor` is never the guard that fires; [F05-R63]), and releases the reservation with the **refuser** as the ledger actor.~~ **Cancel and reject** lock the trade only. The order is [DEC-167] (7).
 
-**Problem details** (shown verbatim by both portals; the exact strings are pinned in tests): `four-eyes-not-satisfiable` — *"Your company uses four-eyes approval but has fewer than two active administrators, so an acceptance could never be approved. Appoint a second administrator first."*; `admin-role-required` — *"Your company uses four-eyes approval, so only an administrator can accept this offer."* (accept) and *"Only an active administrator of your company can approve or refuse an acceptance."* (approve, refuse); `self-approval-not-permitted` — *"You accepted this offer, so a different administrator must approve or refuse it."*; `customer-not-active` — *"Your company's account is not active, so it cannot request or accept trades. Contact PeakPower."*; `delivery-period-started` — *"The delivery period {period} has already started, so this can no longer go ahead."*; `offer-expired` — *"This offer expired at {time}. Any reservation is released automatically."*; `trade-state-conflict` — *"This trade is now “{label}”, so this action is no longer possible. The page will refresh."*; `insufficient-available-balance` — *"Your available balance is € A. At acceptance this request reserves about € E — the {pct} deposit, incl. 21 % VAT. Top up your Balance first, or request a smaller volume."* (submit; ⚠ (17) was *"…reserves about € E incl. 21 % VAT…"*). `approval-window-elapsed` is **not used**: one clock covers acceptance and approval, so it folds into `offer-expired` **[DEC-167]** (11). `Idempotency-Key` and rate limits are **deferred**.
+**Problem details** (shown verbatim by both portals; the exact strings are pinned in tests): ~~`four-eyes-not-satisfiable` — *"Your company uses four-eyes approval but has fewer than two active administrators, so an acceptance could never be approved. Appoint a second administrator first."*; `admin-role-required` — *"Your company uses four-eyes approval, so only an administrator can accept this offer."* (accept) and *"Only an active administrator of your company can approve or refuse an acceptance."* (approve, refuse); `self-approval-not-permitted` — *"You accepted this offer, so a different administrator must approve or refuse it."*;~~ *(removed 2026-10-12, [DEC-179])* `customer-not-active` — *"Your company's account is not active, so it cannot request or accept trades. Contact PeakPower."*; `delivery-period-started` — *"The delivery period {period} has already started, so this can no longer go ahead."*; `offer-expired` — *"This offer expired at {time}."* (⚠ **Amended 2026-10-12 by [DEC-179]:** the sentence ~~"Any reservation is released automatically."~~ is dropped; an offer never holds a reservation); `trade-state-conflict` — *"This trade is now “{label}”, so this action is no longer possible. The page will refresh."*; `insufficient-available-balance` — *"Your available balance is € A. At acceptance this request reserves about € E — the {pct} deposit, incl. 21 % VAT. Top up your Balance first, or request a smaller volume."* (submit; ⚠ (17) was *"…reserves about € E incl. 21 % VAT…"*). ~~`approval-window-elapsed` is **not used**: one clock covers acceptance and approval, so it folds into `offer-expired` **[DEC-167]** (11).~~ `Idempotency-Key` and rate limits are **deferred**.
 
 #### 2.4.3 Deposit and balance — [DEC-167] (17), added 2026-09-30
 
@@ -724,7 +647,7 @@ A bought block is paid as a **deposit at accept** and a **balance by the day bef
 | `GET` | `/wallet/withdrawals?state=` | ⚠ **New** — the company's requests and their states **[F07-R32]**. ⚠ **Amended 2026-09-29 by [DEC-166]:** each request now carries **`bankReference`** — the reference the back office recorded when it paid the request, null until then and when none was given — **appended as the last field, an additive change**. The customer never sees which staff member paid: there is no `paidByName` on this contract |
 | `POST` | `/wallet/withdrawals/{id}/cancel` | ⚠ **New** — the customer withdraws their own request before payout; releases the hold **[F07-R32]** |
 | `GET` | `/bank-account` | ⚠ **New 2026-09-28 [DEC-165]** — the company's registered bank account and whether **this caller** may change it. **Any member**, tenant-scoped. Answers `{ account, canChange, changeBlockedReason }` — the shape and the exact sentences are below **[F01-R44]** |
-| `POST` | `/bank-account` | ⚠ **New 2026-09-28 [DEC-165]** — add **or replace** the company's bank account; a replace deactivates the current `ACTIVE` account and activates the new one in one transaction **[F01-R46]**. **Admin only** (`CompanyAdmin`); refused at a company with four-eyes on. `200` with the new account; `400`, `403` and `409` below |
+| `POST` | `/bank-account` | ⚠ **New 2026-09-28 [DEC-165]** — add **or replace** the company's bank account; a replace deactivates the current `ACTIVE` account and activates the new one in one transaction **[F01-R46]**. **Admin only** (`CompanyAdmin`); ~~refused at a company with four-eyes on~~. `200` with the new account; `400`, `403` and `409` below |
 
 ⚠ **There is no wallet-threshold endpoint, and none is coming [DEC-90].** ~~`/wallet/thresholds`~~ and
 the low-balance alert it would have configured are **reversed [DEC-49]**. The balance is returned by
@@ -781,12 +704,11 @@ its own hosted page instead.
 // 201 Created  — [DEC-83]
 {
   "id": "wdr-0034",
-  "state": "AWAITING_APPROVAL",
+  "state": "REQUESTED",
   "amount": { "amount": "25000.00", "currency": "EUR" },
   "held": true,
   "destination": { "iban": "NL00 BANK 0123 4567 89", "status": "ACTIVE" },
   "requestedBy": { "accountId": "acc-0044", "name": "M. Vandersteen", "jobTitle": "Finance Director" },
-  "approval": { "required": true, "eligibleApproverCount": 1, "canCurrentAccountApprove": false },
   "createdAt": "2026-08-19T09:10:00+02:00"
 }
 ```
@@ -796,12 +718,10 @@ Four things this asserts, each of them a decision rather than a design preferenc
 - **`held: true` from the moment of the request** **[F07-R29]**. Without the hold the same euros can
   be traded and withdrawn, and **[AS-11]** fails. It uses the wallet's existing reservation mechanism,
   so it shows in `GET /wallet` beside trade reservations, labelled **[F06-R17]**.
-- **`state` starts at `AWAITING_APPROVAL` only when the company runs four-eyes** **[DEC-71]**,
-  **[F07-R30]**; otherwise `REQUESTED`. **Deposits are explicitly out of scope for four-eyes** — a
-  customer can wire money or use iDEAL alone, so gating a deposit gates nothing.
+- **`state` starts at `REQUESTED`**, ~~and at `AWAITING_APPROVAL` only when the company runs four-eyes **[DEC-71]**, **[F07-R30]**~~ *(⚠ always `REQUESTED` since 2026-10-12, [DEC-179]; the `approval` object is removed from the response)*. ~~**Deposits are explicitly out of scope for four-eyes**~~ — nothing gates a deposit but the role rule **[DEC-163]**.
 - **`destination` is read-only and is the bank account on the customer record** **[DEC-61]**,
-  **[F06-R37]**. It is never a request field. A `PENDING_APPROVAL` bank account is not a payout
-  destination **[F01-R45]**, and the request is refused with `…/errors/no-active-bank-account`. ⚠ **Amended 2026-09-28 by [DEC-165].** No bank account is ever written `PENDING_APPROVAL`, so that case does not arise; the case that does is **none on file**, refused with a `409` whose detail reads *"No bank account on file for this company. A company admin can add one on the Balance page."* ⚠ **Amended 2026-10-08 by [DEC-176] (9): the card is on the Company page.** The platform's 409 detail text still names Balance: a known stale wire string, unchanged because DEC-176 makes no platform change; the web does not show it (it matches the problem prefix only). A one-line platform text change is a follow-up. — the generic `conflict` problem type, not a dedicated `…/errors/no-active-bank-account` URI. The destination is the company's `ACTIVE` account (`GET /bank-account`), read under a share lock on the company's row so a concurrent replace cannot slip between the read and the insert; a replace **re-points** the company's open requests (`REQUESTED`, `AWAITING_APPROVAL`) at the new account while they wait. On the built wire `destination` is the IBAN string.
+  **[F06-R37]**. It is never a request field. ~~A `PENDING_APPROVAL` bank account is not a payout
+  destination **[F01-R45]**, and the request is refused with `…/errors/no-active-bank-account`.~~ ⚠ **Amended 2026-09-28 by [DEC-165].** No bank account is ever written `PENDING_APPROVAL`, so that case does not arise; the case that does is **none on file**, refused with a `409` whose detail reads *"No bank account on file for this company. A company admin can add one on the Balance page."* ⚠ **Amended 2026-10-08 by [DEC-176] (9): the card is on the Company page.** The platform's 409 detail text still names Balance: a known stale wire string, unchanged because DEC-176 makes no platform change; the web does not show it (it matches the problem prefix only). A one-line platform text change is a follow-up. — the generic `conflict` problem type, not a dedicated `…/errors/no-active-bank-account` URI. The destination is the company's `ACTIVE` account (`GET /bank-account`), read under a share lock on the company's row so a concurrent replace cannot slip between the read and the insert; a replace **re-points** the company's open requests (`REQUESTED`; ~~`AWAITING_APPROVAL`~~ no longer exists) at the new account while they wait. On the built wire `destination` is the IBAN string.
 - **There is no payout endpoint on this API.** PeakPower pays out **manually** and records what the
   bank did **[DEC-83]**, **[F12-R54]** — §3.2. The platform never initiates a transfer, so no customer
   call can cause money to leave; `POST /wallet/withdrawals` creates an obligation, not a payment.
@@ -830,11 +750,10 @@ verification step: the account is `ACTIVE` the moment `POST` answers `200`.
 // 200 OK — the new account, in the shape of "account" above
 ```
 
-- **`account` is `null`** when the company has no `ACTIVE` account on file. **`canChange` is true only for an admin
-  at a company with four-eyes off**; when it is false, **`changeBlockedReason`** is the server's own sentence and is
-  what the portal shows — *"Only a company admin can change the bank account."* for a non-admin (which wins when both
+- **`account` is `null`** when the company has no `ACTIVE` account on file. **`canChange` is true only for an admin** ~~at a company with four-eyes off~~; when it is false, **`changeBlockedReason`** is the server's own sentence and is
+  what the portal shows — *"Only a company admin can change the bank account."* for a non-admin ~~(which wins when both
   apply), *"Bank account changes need a second admin's approval, which isn't available yet."* for a four-eyes
-  company, and `null` otherwise.
+  company,~~ and `null` otherwise. ⚠ **Amended 2026-10-12, [DEC-179]:** the four-eyes sentence and the four-eyes company are gone.
 - **Request.** `iban` is accepted in either case and with or without spaces, and returned normalised (upper case, no
   spaces). `bic` is optional and, when given, 8 or 11 characters; it is returned normalised, or `null`. `holderName`
   is trimmed and must be 1 to 200 characters. The route takes **no `Idempotency-Key`**: repeating an identical call
@@ -844,12 +763,12 @@ verification step: the account is `ACTIVE` the moment `POST` answers `200`.
   two letters, two digits, then letters or digits."*, *"IBAN failed the ISO 7064 mod-97 check."*; *"BIC must be 8 or
   11 characters: a bank code, a country code, a location code and an optional branch code."*; *"Account holder name
   must not be blank."*, *"Account holder name must be at most 200 characters."* Every field is validated **before**
-  a transaction opens or a lock is taken, so a bad BIC is a `400` even at a four-eyes company.
+  a transaction opens or a lock is taken, so a bad BIC is a `400`.
 - **`403`** for a member who is not an admin. No row is written.
 - **`409`**, the generic `conflict` problem type (`https://peakpower.dev/problems/conflict`) with a `detail` — there is
   no per-condition `type` URI here, so the `detail` is the discriminator — and the whole change refused, nothing
-  written: *"Bank account changes need a second admin's approval, which isn't available yet."* (four-eyes is on,
-  **re-read under the company's row lock** so a toggle racing the request cannot pass); *"This bank account is
+  written: ~~*"Bank account changes need a second admin's approval, which isn't available yet."* (four-eyes is on,
+  **re-read under the company's row lock** so a toggle racing the request cannot pass);~~ *"This bank account is
   already registered."* (the same IBAN as the `ACTIVE` account, or a concurrent add of it); *"Another bank account
   change happened at the same time. Reload and try again."* (a concurrent change won with a **different** IBAN).
 - **A replace is one transaction** — the company's row locked `FOR UPDATE`, the old account deactivated by the acting
@@ -903,9 +822,9 @@ threshold **[DEC-100]**, **[F10-R50]**.
 | --- | --- | --- |
 | `GET` | `/company` | Read-only company profile: legal name, KvK, VAT, registered bank account, addresses, contact |
 | `GET` | `/company/accounts` | Colleagues who can also act — name, job title, email, status **[OQ-80]**, and each account's ~~**admin** flag~~ **`membershipRole`** **[F01-R21]**. ⚠ **Corrected 2026-09-10 by [DEC-152]: there is no admin flag.** Open to **every** member, unchanged — `CompanyEndpoints.cs:77` @ debadda0 (`MapGet("/accounts")`), `.RequireAuthorization()` with **no policy** at `:104`. `admin` gates no read here; the read it gates is `/company/memberships` below |
-| `GET` | `/company/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — the company's bank accounts with status (`PENDING_APPROVAL` \| `ACTIVE` \| `DEACTIVATED`) **[F01-R44]**. Read-only here: a bank account is added and deactivated by a PeakPower employee **[DEC-16]** and, under four-eyes, approved by a second admin §2.10. ⚠ **Not built, and superseded 2026-09-28 by [DEC-165].** The built read is `GET /bank-account` (§2.5) and answers the `ACTIVE` account only — there is no list of deactivated ones — with `canChange` and `changeBlockedReason` beside it; a company **admin**, not an employee, adds and replaces it, and no approval is involved: a four-eyes company is refused |
-| `GET`/`PATCH`/`DELETE` | `/company/memberships`, `/company/memberships/{accountId}` | ⚠ **New 2026-09-10 [DEC-152]** — the member list, a role change and a removal, **all three `CompanyAdmin`** (`MembershipEndpoints.cs:75`/`:85`/`:102` @ debadda0, the `.RequireAuthorization` lines; routes at `:61`/`:83`/`:100`). ⚠ **Not "`GET` open to every member"**: every member instead keeps `GET /company/accounts` above, which already carries the colleague's `membershipRole`; this list additionally names who has been **invited** and is admin-only for that reason. `GET` returns the whole `CompanyMembershipsResponse`; `PATCH` replaces one row but answers with the **whole list**, not the one row, so a screen never merges a partial response; `DELETE` answers `204` with no body. Both are `404` for a membership not this business's or already removed — byte-identical to an unknown `accountId` **[F13-R19]** — and `409` for the **admin floor**: demoting or removing the company's last admin, or a four-eyes company's second one; `DELETE` alone also refuses removing **your own** membership under the same status and body. ⚠ The `DELETE` **verb is a soft delete**: the SQL is an `UPDATE` setting `removed_at`, because PostgreSQL never evaluates `WITH CHECK` for a `DELETE` and there is no `DELETE` grant to guard |
-| `GET`/`POST` | `/company/four-eyes` and its five actions | ⚠ **New 2026-09-29 [DEC-166]** — the company's four-eyes mode, set by its own admins. `GET` is open to every member; the five `POST`s — `enable`, `disable-request`, `disable-request/approve`, `…/decline`, `…/cancel` — are **`CompanyAdmin`**. Each `POST` answers `200` with the same state the `GET` builds. Shapes and the exact `409` sentences are in the block below the entitlements table **[F01-R42]**, **[F01-R43]**, **[F01-R48]** |
+| `GET` | `/company/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — the company's bank accounts with status (~~`PENDING_APPROVAL` \|~~ `ACTIVE` \| `DEACTIVATED`) **[F01-R44]**. Read-only here: a bank account is added and deactivated by a PeakPower employee **[DEC-16]** ~~and, under four-eyes, approved by a second admin §2.10~~. ⚠ **Not built, and superseded 2026-09-28 by [DEC-165].** The built read is `GET /bank-account` (§2.5) and answers the `ACTIVE` account only — there is no list of deactivated ones — with `canChange` and `changeBlockedReason` beside it; a company **admin**, not an employee, adds and replaces it, and no approval is involved ~~: a four-eyes company is refused~~ |
+| `GET`/`PATCH`/`DELETE` | `/company/memberships`, `/company/memberships/{accountId}` | ⚠ **New 2026-09-10 [DEC-152]** — the member list, a role change and a removal, **all three `CompanyAdmin`** (`MembershipEndpoints.cs:75`/`:85`/`:102` @ debadda0, the `.RequireAuthorization` lines; routes at `:61`/`:83`/`:100`). ⚠ **Not "`GET` open to every member"**: every member instead keeps `GET /company/accounts` above, which already carries the colleague's `membershipRole`; this list additionally names who has been **invited** and is admin-only for that reason. `GET` returns the whole `CompanyMembershipsResponse`; `PATCH` replaces one row but answers with the **whole list**, not the one row, so a screen never merges a partial response; `DELETE` answers `204` with no body. Both are `404` for a membership not this business's or already removed — byte-identical to an unknown `accountId` **[F13-R19]** — and `409` for the **admin floor**: demoting or removing the company's last admin~~, or a four-eyes company's second one~~; `DELETE` alone also refuses removing **your own** membership under the same status and body. ⚠ The `DELETE` **verb is a soft delete**: the SQL is an `UPDATE` setting `removed_at`, because PostgreSQL never evaluates `WITH CHECK` for a `DELETE` and there is no `DELETE` grant to guard |
+| ~~`GET`/`POST`~~ | ~~`/company/four-eyes` and its five actions~~ | ~~⚠ **New 2026-09-29 [DEC-166]** — the company's four-eyes mode, set by its own admins. `GET` is open to every member; the five `POST`s — `enable`, `disable-request`, `disable-request/approve`, `…/decline`, `…/cancel` — are **`CompanyAdmin`**. Each `POST` answers `200` with the same state the `GET` builds. Shapes and the exact `409` sentences are in the block below the entitlements table **[F01-R42]**, **[F01-R43]**, **[F01-R48]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — all six routes are removed ([DEC-179]). |
 | `POST` | `/company/invitations`, `/company/invitations/accept` | ⚠ **New 2026-09-10 [DEC-152]** — issue (**`CompanyAdmin`**, `InvitationEndpoints.cs:49`/`:51` @ debadda0) and redeem (**anonymous**, `:67`/`:69`, on the owner connection: the invitation token is the authorisation, not tenancy). Issue answers **`202` always**, indistinguishable for a known and an unknown address in status, body and timing; its only other response is a **validation `400`** on the request itself, which never touches the address's standing. Accept answers the created `CompanyInvitationAcceptedResponse`, a **validation `400`** for the profile fields an address with no login must supply, or a single **`409`** — an unknown, a spent and an expired invitation token are one indistinguishable body |
 
 ~~All three are read-only. Company details, accounts and bank accounts are maintained by PeakPower
@@ -924,86 +843,15 @@ never amended. It is listed here now, so the section's inventory is complete:
 | --- | --- | --- |
 | `GET`/`POST` | `/company/entitlements` | ⚠ **Missing since 2026-09-08 [DEC-150]** — the shelf a company switches on. `GET` is open to every member (the rail is computed from the held set, so a 403 would take away navigation rather than a privilege); `POST` is **`CompanyAdmin`** and audited in both directions |
 
-⚠ **[DEC-71] still does not change that** — the approval a second admin gives §2.10 is a different
+~~⚠ **[DEC-71] still does not change that** — the approval a second admin gives §2.10 is a different
 mechanism from an administration screen, and *"add a user"* has now left that approval list
-altogether. What is unchanged: company **details** are still maintained by PeakPower employees, and a
+altogether.~~ *(Moot: §2.10 is struck, [DEC-179].)* What is unchanged: company **details** are still maintained by PeakPower employees, and a
 bank account **cannot be edited once added** — correcting an IBAN is *deactivate the old, add the
 new*, two audited events with two named actors **[F01-R44]**, **[F01-R46]**. ⚠ **Amended 2026-09-28 by [DEC-165]:** *who* and *how* changed, not *whether it can be edited* — a company **admin** replaces the account from the Balance page, `POST /bank-account` §2.5, as **one** operation recorded against one acting account; it is still never edited. ⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.**
 
-⚠ **The company's four-eyes mode — new 2026-09-29 by [DEC-166].** Six routes at `/api/v1/company/four-eyes`,
-tenant-scoped like the other company routes and tagged *Company*. The read is open to every member of the token's
-company; each write is behind the `CompanyAdmin` policy, proven from the database on every request and never read
-from a claim **[DEC-152]**. **Four-eyes is set by the company's own admins**: turning it on is immediate, turning it
-off is a request a **different** admin approves, and the back office has no route that changes it **[F01-R42]**. No
-route takes an `Idempotency-Key`.
+~~⚠ **The company's four-eyes mode — new 2026-09-29 by [DEC-166].** Six routes at `/api/v1/company/four-eyes`: `GET` (state, any member), and `POST` `enable`, `disable-request`, `disable-request/approve`, `disable-request/decline` and `disable-request/cancel` (`CompanyAdmin`).~~
 
-| Method | Path | Body | Effect |
-| --- | --- | --- | --- |
-| `GET` | `/company/four-eyes` | — | The state below. Any member |
-| `POST` | `/company/four-eyes/enable` | — | Turn four-eyes on, at once. Needs two or more active admins **[F01-R43]** |
-| `POST` | `/company/four-eyes/disable-request` | — | Ask for four-eyes to be turned **off**. It stays on while the request is pending |
-| `POST` | `/company/four-eyes/disable-request/approve` | — | A **different** admin approves. Four-eyes is off afterwards and the request is cleared **[F01-R48]** |
-| `POST` | `/company/four-eyes/disable-request/decline` | optional `{ reason }` | A **different** admin declines. Four-eyes stays on and the request is cleared |
-| `POST` | `/company/four-eyes/disable-request/cancel` | — | The requester withdraws it |
-
-```jsonc
-// GET /api/v1/company/four-eyes — and the 200 body of every POST above (the page applies this one state)
-{
-  "enabled": true,
-  "activeAdminCount": 3,
-  "pendingDisable": {
-    "requestedByName": "M. Vandersteen",
-    "requestedAt": "2026-09-29T09:41:00+02:00",
-    "canApprove": true,
-    "canDecline": true,
-    "canCancel": false
-  },
-  "canEnable": false,
-  "canRequestDisable": false,
-  "blockedReason": null
-}
-
-// POST /api/v1/company/four-eyes/disable-request/decline — the whole body is optional
-{ "reason": "We are mid-audit; ask again in October." }
-```
-
-- **`pendingDisable` is null** when nobody has asked. `requestedByName` is "First Last" and reads *"A former admin"*
-  when the requester's account is no longer visible. **The flags are computed for the caller**: `canEnable` — the
-  caller is an admin, four-eyes is off and `activeAdminCount` is at least 2; `canRequestDisable` — an admin, four-eyes
-  on, nothing pending; `canApprove` — an admin **other than the requester**, and the requester is still an active
-  admin; `canDecline` — an admin other than the requester; `canCancel` — the requester. `activeAdminCount` counts
-  active accounts with an active `admin` membership in the token's company.
-- **`blockedReason`** is *"Only a company admin can change four-eyes."* for a non-admin (which wins when both apply),
-  *"Four-eyes needs at least two active admins. Your company has {n}."* for an admin while four-eyes is off with fewer
-  than two, and `null` otherwise. The portal shows it verbatim.
-- **`403`** for a member who is not an admin, on any `POST`. Nothing is written.
-- **`400`**, a validation problem keyed **`reason`**, when a decline's reason is longer than 500 characters after
-  trimming — *"Reason must be at most 500 characters."* A blank reason means none. It is checked before anything is
-  locked.
-- **`409`**, the generic `conflict` problem type with a `detail` that is the discriminator, the whole change refused
-  and nothing written:
-
-| Route | `detail` |
-| --- | --- |
-| `enable` | *"Four-eyes is already on."* — or, with fewer than two active admins, *"Four-eyes needs at least two active admins. Your company has {n}."* |
-| `disable-request` | *"Four-eyes is off."* — or *"A request to turn off four-eyes is already waiting for approval."* |
-| `approve` | *"There is no request to turn off four-eyes."* — self-approval, *"You requested this change. A different admin must approve it."* — or, when the requester has since been removed, demoted or deactivated, *"The admin who asked for this is no longer an active admin, so the request cannot be approved. Decline it, and ask again if four-eyes should still be turned off."* |
-| `decline` | *"There is no request to turn off four-eyes."* — or self-decline, *"You requested this change. Cancel it instead, or ask a different admin to decline it."* |
-| `cancel` | *"There is no request to turn off four-eyes."* — or, from anyone but the requester, *"Only the admin who requested this change can cancel it."* |
-| any `POST` | *"Only a company admin can change four-eyes."* — a caller demoted between the policy check and the lock |
-
-- **Every mutation locks and re-reads.** The admin roster is locked first (`CustomerMembershipCore.LockAdminAccountIdsAsync`),
-  then the company's row `FOR UPDATE`, owner-privileged with the **token's** company named explicitly; the mode, the
-  pending request and the roster are read after both locks. **All guards run before any mutation**, so no `409`
-  follows a flush — the customer middleware commits on a returned `409`. The one global lock order, roster, company
-  row, bank-account row, withdrawal row, wallet row, is recorded in **[DEC-166]**.
-- **Each success writes one audit row** from the customer host — `FOUR_EYES_ENABLED`, `FOUR_EYES_DISABLE_REQUESTED`,
-  `FOUR_EYES_DISABLE_APPROVED`, `FOUR_EYES_DISABLE_DECLINED` (the reason on the after side) or
-  `FOUR_EYES_DISABLE_CANCELLED`, actor `account:{id}`, entity `Customer`. A decline's reason is kept only there; no
-  response returns it to the requester.
-- **Unchanged while a request is pending:** withdrawal approval and decline **[F07-R30]**, the bank-account block
-  **[DEC-165]** (`GET /bank-account` still answers `changeBlockedReason` for a four-eyes company) and the admin floor
-  **[DEC-157]**.
+⚠ **Removed 2026-10-12 by [DEC-179]: all six routes are deleted** (customer API operations 10 fewer with the approval routes of §2.4 and §2.5), together with their schemas (`FourEyesStateResponse`, `FourEyesDisableRequestDto`, `DeclineFourEyesDisableRequest`), their `409` sentences (*"Four-eyes is already on."*, *"Four-eyes needs at least two active admins…"*, *"A request to turn off four-eyes is already waiting for approval."*, the self-approval and self-decline sentences, and the rest), and the five audit actions they wrote (`FOUR_EYES_ENABLED` and the four `FOUR_EYES_DISABLE_*`; no longer written, the rows that exist stay). The Company page has no four-eyes card; a client that calls a removed route gets a `404`. The route inventory of this section is: `/company`, `/company/accounts`, `/company/memberships`, `/company/invitations`, `/company/entitlements`.
 
 ### 2.8 Notifications & profile
 
@@ -1033,10 +881,10 @@ route takes an `Idempotency-Key`.
 
 | Event | Payload | Who receives it |
 | --- | --- | --- |
-| `offerReceived` | trade id, reference, expiry | ⚠ **Amended 2026-08-19 by [DEC-111]**, reversing **[DEC-63]**: the **account that raised the request**, plus **both admins** when the company runs four-eyes **[DEC-71]** — not every active account |
+| `offerReceived` | trade id, reference, expiry | ⚠ **Amended 2026-08-19 by [DEC-111]**, reversing **[DEC-63]**: the **account that raised the request** ~~, plus **both admins** when the company runs four-eyes **[DEC-71]**~~ — not every active account |
 | `offerExpiring` | trade id, seconds remaining | Same set as `offerReceived` |
-| `approvalRequired` | trade id, reference, **VAT-inclusive reserved amount [DEC-78]**, accepting account, expiry | ~~every active account except the acceptor **[DEC-33]**~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — the **active admin accounts of the company except the acceptor**, because only an admin can answer it **[F13-R44]** |
-| `approvalRequested` | approval id, action type, subject, raised-by, raised-at | ⚠ **New 2026-08-19 [DEC-71]** — the non-trade four-eyes actions §2.10: bank account added or deactivated, user added, withdrawal requested. Same recipient rule |
+| ~~`approvalRequired`~~ | ~~trade id, reference, **VAT-inclusive reserved amount [DEC-78]**, accepting account, expiry~~ | ~~every active account except the acceptor **[DEC-33]** ⚠ **Amended 2026-08-19 by [DEC-71]** — the **active admin accounts of the company except the acceptor**, because only an admin can answer it **[F13-R44]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no trade awaits approval. |
+| ~~`approvalRequested`~~ | ~~approval id, action type, subject, raised-by, raised-at~~ | ~~⚠ **New 2026-08-19 [DEC-71]** — the non-trade four-eyes actions §2.10: bank account added or deactivated, user added, withdrawal requested. Same recipient rule~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval is requested. |
 | `tradeStateChanged` | trade id, new state, reason | The company |
 | `walletBalanceChanged` | new balances | The company |
 | `depositReceived` | amount, value date, new balance | ⚠ **New 2026-08-19 [DEC-106]** — the initiating account plus the company's notification addresses; the **email** carrying the same news **[F07-R27]** is the reason a customer need not watch the balance after wiring |
@@ -1048,90 +896,9 @@ active account to accept, so the notification is deliberately narrower than the 
 platform tells fewer people than it allows to act, and accepts that a missed offer is the price
 **[F05-R65]**, **[DEC-111]**.
 
-### 2.10 Approvals — four-eyes **[DEC-71]**
+### 2.10 ~~Approvals — four-eyes [DEC-71]~~
 
-⚠ **New section 2026-08-19.** ⚠ **Amended 2026-09-10 by [DEC-152]: four actions, not five.**
-**[DEC-71]** puts ~~five~~ **four** actions behind a second admin's approval when the customer company
-has four-eyes enabled. Only one of them — *execute a trade*, meaning accept an offer — already had
-verbs on this API §2.4. The other ~~four~~ **three** had none, because they were not customer actions
-at all: PeakPower employees add bank accounts **[DEC-16]**. ⚠ *Adding a user* was the fourth of those,
-and it has left in both directions at once — it is now a **customer** action (§2.7) **and** it is no
-longer an approvable one. The approval is
-therefore a **customer-side gate on an employee-side action**, and it needs a surface of its own.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/approvals?state=PENDING` | The queue: everything waiting on this company's admins |
-| `GET` | `/approvals/{id}` | One item with its subject and the raising actor |
-| `POST` | `/approvals/{id}/approve` | Approve. **Admin only, and never the raising account** **[F13-R44]** |
-| `POST` | `/approvals/{id}/decline` | Decline, optionally with a reason. Terminal |
-
-```jsonc
-// GET /api/v1/approvals?state=PENDING
-{
-  "total": 2,
-  "items": [
-    {
-      "id": "apr-0117",
-      "action": "BANK_ACCOUNT_ADD",
-      "subject": { "type": "BANK_ACCOUNT", "id": "ba-0009", "summary": "NL00 BANK 0123 4567 89" },
-      "raisedBy": { "type": "EMPLOYEE", "name": "PeakPower Onboarding" },
-      "raisedAt": "2026-08-19T08:41:00+02:00",
-      "canCurrentAccountApprove": true
-    },
-    {
-      "id": "apr-0118",
-      "action": "WITHDRAWAL",
-      "subject": { "type": "WITHDRAWAL", "id": "wdr-0034", "amount": { "amount": "25000.00", "currency": "EUR" } },
-      "raisedBy": { "type": "CUSTOMER", "accountId": "acc-0044", "name": "M. Vandersteen", "jobTitle": "Finance Director" },
-      "raisedAt": "2026-08-19T09:10:00+02:00",
-      "canCurrentAccountApprove": false,
-      "expiresAt": null
-    }
-  ]
-}
-```
-
-`action` is one of **`TRADE_ACCEPT`**, **`BANK_ACCOUNT_ADD`**, **`BANK_ACCOUNT_DEACTIVATE`**,
-**`WITHDRAWAL`** — ⚠ **four and no others, since 2026-09-10 [DEC-152]**. ~~**`USER_ADD`**~~ left the
-list: membership changes bypass four-eyes entirely **[F01-R49]**, so no membership write ever raises
-an approval and no `approval_request` row ever carries that action. **`DEPOSIT` is deliberately not in
-the enumeration** **[DEC-71]**: a customer can wire money or use iDEAL on their own, so gating a
-deposit gates nothing that is not already ungated.
-
-⚠ **Build status 2026-09-28 [DEC-165]: `BANK_ACCOUNT_ADD` and `BANK_ACCOUNT_DEACTIVATE` are never raised.** The approval flow of **[F01-R45]** is not built — no `PENDING_APPROVAL` record, no approver — and the two arms stay in the closed list for it. Their premise, that *PeakPower employees add bank accounts*, no longer holds either: a company **admin** adds or replaces the account, and at a company with four-eyes on `POST /bank-account` §2.5 is refused with a `409` instead of raising an approval.
-
-⚠ **The closed list is the whole value of this field, which is why removing an arm is recorded here
-and not only on [DEC-152].** *"The five and no others"* was a contract a client could switch on
-exhaustively; *"four and no others"* is the same contract with one arm fewer, and a client that still
-handles `USER_ADD` is handling a value the API can no longer emit. ⚠ **The domain enum moves with
-it** — `FourEyesAction` in `PeakPower.Domain` drops its `AddUser` arm, and the two tests that pin the
-arm list move with that. ⚠ **Note the two spellings, which have always disagreed and still do**: this
-section says `USER_ADD` while the database's `approval_request` `CHECK` and the domain enum say
-`ADD_USER`. Both lose the arm; neither vocabulary is corrected to the other here, because that is a
-separate defect and conflating them would hide it.
-
-Three shape decisions, each with a reason.
-
-- **One queue to read, action-native verbs to act — with one exception.** `TRADE_ACCEPT` items appear
-  in this queue for visibility, and are decided on `POST /trades/{id}/approve` §2.4, because the trade
-  has a clock, a reservation and a state machine that the generic endpoint would have to reimplement
-  **[F05-R61]**, **[F05-R62]**. The other ~~four~~ **three** actions are decided here. Both paths write the **same
-  approval record**, so the audit trail is one trail and not two **[DEC-17]**.
-- **`expiresAt` is `null` for everything except a trade.** The trade's approval window is the offer's
-  own `expires_at` and there is no second clock **[F05-R61]**. A pending bank account ~~or user
-  addition~~ has no deadline — it waits, and the record shows how long it has waited. ⚠ **`or user
-  addition` struck 2026-09-10 by [DEC-152]**: membership changes bypass four-eyes entirely, so there
-  is no pending user addition left to wait on. ⚠ A withdrawal held pending
-  keeps the customer's own money reserved **[F07-R29]**, which is a cost the *customer* bears for
-  their own mode; the platform does not time it out and quietly release it.
-- **Nothing here is an employee action.** There is no approve, decline or override endpoint on the
-  Employee API §3 — the back office **observes** the trail and offers no action on it **[F12-R42]**.
-  An override would be one pair of eyes wearing PeakPower's badge, which is the control it is meant to
-  be.
-
-Error `type` URIs, all `409`: `…/errors/self-approval-not-permitted`, `…/errors/admin-role-required`,
-`…/errors/approval-already-decided`.
+⚠ **Struck 2026-10-12 by [DEC-179] — and it was never built.** This section specified a customer-side approvals surface: `GET /approvals?state=PENDING`, `GET /approvals/{id}`, `POST /approvals/{id}/approve` and `POST /approvals/{id}/decline`, the closed `action` list (`TRADE_ACCEPT`, `BANK_ACCOUNT_ADD`, `BANK_ACCOUNT_DEACTIVATE`, `WITHDRAWAL`, and the long-gone `USER_ADD`), the rule that `expiresAt` is null except for a trade, and the error types `self-approval-not-permitted`, `admin-role-required` and `approval-already-decided`. None of these routes exists in the platform, and none will. The section keeps its number so that references to §2.10 resolve; the repository history before the commit of [DEC-179] has the text. What it pointed at is also gone: `POST /trades/{id}/approve` and `/refuse-approval` (§2.4) and the withdrawal approve and decline routes (§2.5).
 
 ### 2.11 Customer usage API — **[DEC-97]**
 
@@ -1233,7 +1000,7 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 | --- | --- | --- |
 | `GET` | `/trade-desk/queues` | The **four** queues with counts **[F12-R06]** |
 | `GET` | `/trades?state=&customerId=&…` | Search |
-| `GET` | `/trades/{id}` | Full detail: position, wallet, indication, internal notes, four-eyes status |
+| `GET` | `/trades/{id}` | Full detail: position, wallet, indication, internal notes ~~, four-eyes status~~ |
 | `POST` | `/trades/{id}/offer` | Publish price + window |
 | `POST` | `/trades/{id}/decline` | Decline (reason required) |
 | `POST` | `/trades/{id}/withdraw-offer` | Withdraw (reason required) |
@@ -1242,7 +1009,7 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 | `POST` | `/trades/{id}/internal-notes` | Add an internal note |
 | `GET` | `/trade-desk/balances?state=&limit=` | ⚠ **New 2026-09-30 [DEC-167] (17)** — every company's `CONFIRMED` trades with an unpaid balance, **overdue first**, then by due date, then by reference. See §3.1.2 |
 
-⚠ **As built 2026-10-01, [DEC-170] (16) — the employee trades list has categories and counts.** `GET /trades` (back office) accepts `category` = `all` (or empty), `to-price` (`REQUESTED`), `offer-out` (`OFFERED`), `awaiting-approval`, `to-confirm` (`ACCEPTED`), `confirmed` (`CONFIRMED`) or `closed` (`REJECTED`, `EXPIRED`, `FAILED`, `DECLINED`, `WITHDRAWN`, `CANCELLED`, `APPROVAL_REFUSED`), 400 on anything else; the repeatable `state` filter still works. The response gains `counts` = `{ all, toPrice, offerOut, awaitingApproval, toConfirm, confirmed, closed }` ignoring `category` and `state` and following the `customerId` filter when one is given (the whole book otherwise). The six specific categories are disjoint and each count equals the length of its own filter's results. The trade detail honours `?action=offer|confirm` in the portal only; no API field changes.
+⚠ **As built 2026-10-01, [DEC-170] (16) — the employee trades list has categories and counts.** `GET /trades` (back office) accepts `category` = `all` (or empty), `to-price` (`REQUESTED`), `offer-out` (`OFFERED`), ~~`awaiting-approval`,~~ `to-confirm` (`ACCEPTED`), `confirmed` (`CONFIRMED`) or `closed` (`REJECTED`, `EXPIRED`, `FAILED`, `DECLINED`, `WITHDRAWN`, `CANCELLED`, `APPROVAL_REFUSED` *(old rows)*), 400 on anything else; the repeatable `state` filter still works. The response gains `counts` = `{ all, toPrice, offerOut, toConfirm, confirmed, closed }` ignoring `category` and `state` and following the `customerId` filter when one is given (the whole book otherwise); ~~`awaitingApproval`~~ was a seventh member until 2026-10-12 ([DEC-179]). The five specific categories are disjoint and each count equals the length of its own filter's results. The trade detail honours `?action=offer|confirm` in the portal only; no API field changes.
 
 ```jsonc
 // POST /api/v1/trades/{id}/offer
@@ -1253,34 +1020,7 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 }
 ```
 
-The trade detail carries a `fourEyes` block so the trader can size the window before publishing
-**[F12-R35]**, and so the desk can flag a customer that cannot clear the control **[F12-R36]**:
-
-```jsonc
-// GET /api/v1/trades/{id}   — employee view, excerpt   ⚠ reshaped 2026-08-19 by [DEC-71]
-{
-  "fourEyes": {
-    "enabled": true,
-    "activeAdminCount": 1,
-    "canBeApproved": false,
-    "warning": "This customer runs four-eyes and has one active admin account. Every trade of theirs needs a second admin, and none is available."
-  }
-}
-```
-
-⚠ **Removed here as well: ~~`threshold`~~, ~~`thresholdVersion`~~, ~~`thresholdScope`~~ and
-~~`estimateAboveThreshold`~~ [DEC-71].** The trader's question changes from *"is this one above their
-number?"* to *"does this customer run four-eyes?"* — which is true for **every** trade of that company
-or none of them **[F12-R35]**. That makes the reaction-window decision simpler and the desk's flag
-sharper: ~~fewer than two active accounts~~ **fewer than two active *admin* accounts** is the
-unclearable case **[F12-R36]**, and it is rarer than it was, because **[F12-R41]** refuses to enable
-the mode below two admins.
-
-There is **no employee endpoint that approves on the customer's behalf**, deliberately, and
-**[DEC-71]** does not add one: the back office observes the four-eyes trail and offers no action on it
-**[F12-R42]**. An override would be one pair of eyes wearing PeakPower's badge, which is the control it
-is meant to be. `POST /trades/{id}/confirm` refuses with `409 approval-required` while a trade is
-`AWAITING_APPROVAL` **[F05-R66]**.
+~~The trade detail carries a `fourEyes` block so the trader can size the window before publishing **[F12-R35]**, and so the desk can flag a customer that cannot clear the control **[F12-R36]**: `enabled`, `activeAdminCount`, `canBeApproved` and a `warning`. `threshold`, `thresholdVersion`, `thresholdScope` and `estimateAboveThreshold` were removed by [DEC-71].~~ ⚠ **Removed 2026-10-12 by [DEC-179]: the `fourEyes` block is gone from the employee trade detail**, and so is the desk flag. ~~There is no employee endpoint that approves on the customer's behalf, deliberately; `POST /trades/{id}/confirm` refuses with `409 approval-required` while a trade is `AWAITING_APPROVAL`.~~ There is still no employee endpoint that accepts, requests or approves on the customer's behalf; and `confirm` and `fail` have no approval state to refuse on.
 
 #### 3.1.2 Balances view and settlement — [DEC-167] (17), added 2026-09-30
 
@@ -1290,22 +1030,22 @@ The desk trade detail gains `settlement` (same shape as the customer's: `deposit
 
 #### 3.1.1 Slice 1 as designed — [DEC-167]
 
-⚠ **Added 2026-09-29.** Every route is `.BackOffice(...)` — **any signed-in operator**, no per-trade ownership **[DEC-155]**; bodies are validated by FluentValidation. **There is no `internal-notes` route in slice 1** (**[F05-R23]** is deferred) and **no approve, override or four-eyes route of any kind** — the Awaiting approval queue is watch-only **[DEC-166]**.
+⚠ **Added 2026-09-29.** Every route is `.BackOffice(...)` — **any signed-in operator**, no per-trade ownership **[DEC-155]**; bodies are validated by FluentValidation. **There is no `internal-notes` route in slice 1** (**[F05-R23]** is deferred) and **no approve, override or four-eyes route of any kind** ~~— the Awaiting approval queue is watch-only **[DEC-166]**~~ *(the queue is removed, [DEC-179])*.
 
 | Method and path | Body → 200 | Other |
 | --- | --- | --- |
-| `GET /trade-desk/queues?limit=` | → the four queues (`limit` 1–200, default 50) with **true totals** and `valueAtRiskExVat` | 400 |
+| `GET /trade-desk/queues?limit=` | → the three queues (⚠ ~~the four queues~~ until 2026-10-12, [DEC-179]) (`limit` 1–200, default 50) with **true totals** and `valueAtRiskExVat` | 400 |
 | `GET /trades?state=&customerId=&page=&pageSize=` | → paged desk list | 400 |
 | `GET /trades/{tradeId}` | → `EmployeeTradeDetailDto` | 404 |
 | `POST …/offer` | `{ priceEurMwh, reactionWindowMinutes }` → detail | 400, 404, 409 |
 | `POST …/decline`, `…/withdraw-offer`, `…/fail` | `{ reason }` (required, ≤ 500) → detail | 400, 404, 409 |
 | `POST …/confirm` | `{ externalReference?, actualMarketPrice? }` → detail | 400, 404, 409 |
 
-**Queues.** *To price* = `REQUESTED` oldest first; *Awaiting customer* = `OFFERED` by `expires_at`; *Awaiting approval* = `AWAITING_APPROVAL` by `expires_at`, each card carrying the acceptor's name and job title and the number of **other** active admins who can approve **[F12-R34]**; *To confirm* = `ACCEPTED` ordered and aged by `readySince` = `approval_decided_at`, else `accepted_at`. `valueAtRiskExVat` sums the ex-VAT value of offered, awaiting and accepted trades.
+**Queues.** *To price* = `REQUESTED` oldest first; *Awaiting customer* = `OFFERED` by `expires_at`; ~~*Awaiting approval* = `AWAITING_APPROVAL` by `expires_at`, each card carrying the acceptor's name and job title and the number of **other** active admins who can approve **[F12-R34]**;~~ *To confirm* = `ACCEPTED` ordered and aged by `readySince` = ~~`approval_decided_at`, else~~ `accepted_at` *(a trade the migration promoted from a waiting approval shows its original acceptance time, so it can look older than the deploy; the desk is told on the first day, [DEC-179] (10))* *(⚠ **three queues** since 2026-10-12, [DEC-179]: `TradeDeskQueuesResponse.awaitingApproval` is removed)*. `valueAtRiskExVat` sums the ex-VAT value of offered and accepted trades.
 
-**Detail.** Beside the trade, the customer (`fourEyesEnabled`, `activeAdminCount`), the requester's contact, ~~the lines with an *eligible now* flag~~ ⚠ **(2026-09-30, [DEC-167] (16)) `connections[{ ean, name }]` (no power, no per-line flag) and one `anyConnectionEligible`**, the wallet snapshot, and the **market reference**: the **captured** raw indication (raw price, observed-at, source) and the **current** one — the newest observation for the trade's `delivery_start` across **every** product of the trade's shape and period type and **all sources**, labelled with its source ([DEC-167] (13)). There is **no markup and no customer price** anywhere on the desk.
+**Detail.** Beside the trade, the customer (~~`fourEyesEnabled`, `activeAdminCount`~~ removed 2026-10-12, [DEC-179]), the requester's contact, ~~the lines with an *eligible now* flag~~ ⚠ **(2026-09-30, [DEC-167] (16)) `connections[{ ean, name }]` (no power, no per-line flag) and one `anyConnectionEligible`**, the wallet snapshot, and the **market reference**: the **captured** raw indication (raw price, observed-at, source) and the **current** one — the newest observation for the trade's `delivery_start` across **every** product of the trade's shape and period type and **all sources**, labelled with its source ([DEC-167] (13)). There is **no markup and no customer price** anywhere on the desk.
 
-**Actions.** *Offer* — the price is **typed**, the field starts empty (no prefill), above 0, at most 4 dp, and a value or gross reaching 1e12 is a 400 on `priceEurMwh`; the window is 5–1440 minutes (the portal defaults to 30); the company must be `ACTIVE` and the period not started. Offer mail goes to the requester and, at a four-eyes company, to every active admin, **after** the commit. **Every employee trade write — offer, decline, withdraw-offer, confirm and fail — opens an explicit transaction (`BeginTransactionAsync`) and commits it explicitly**, because the employee host's middleware opens none and a `FOR UPDATE` outside a transaction is released when its statement ends: without it a desk withdraw racing a customer accept would check stale state and surface as a 500 on `ux_trade_event_trade_sequence` instead of a 409 `trade-state-conflict`. *Offer* locks the company's `customer.customer` row `FOR SHARE`, then the trade; *decline and withdraw-offer* lock the trade alone; *confirm and fail* lock the company row `FOR SHARE`, then the trade, then the wallet (**company → trade → wallet**, never the wallet before the trade) **[DEC-167]** (7); confirm re-checks that **at least one** electricity connection of the company is still valid for the whole period (`metering-point-not-eligible` when none is — *fail the trade instead*; ⚠ 2026-09-30, [DEC-167] (16)), creates the account-level block (~~and allocations~~ none) and debits the stored gross in one save; while `AWAITING_APPROVAL` either is 409 `approval-required`; **no customer-`ACTIVE` check** applies, because the money is already committed. The actor's display name is a projection of `employee.employee` — never a materialised entity, because the employee role holds only a column grant there.
+**Actions.** *Offer* — the price is **typed**, the field starts empty (no prefill), above 0, at most 4 dp, and a value or gross reaching 1e12 is a 400 on `priceEurMwh`; the window is 5–1440 minutes (the portal defaults to 30); the company must be `ACTIVE` and the period not started. Offer mail goes to the requester ~~and, at a four-eyes company, to every active admin~~, **after** the commit. **Every employee trade write — offer, decline, withdraw-offer, confirm and fail — opens an explicit transaction (`BeginTransactionAsync`) and commits it explicitly**, because the employee host's middleware opens none and a `FOR UPDATE` outside a transaction is released when its statement ends: without it a desk withdraw racing a customer accept would check stale state and surface as a 500 on `ux_trade_event_trade_sequence` instead of a 409 `trade-state-conflict`. *Offer* locks the company's `customer.customer` row `FOR SHARE`, then the trade; *decline and withdraw-offer* lock the trade alone; *confirm and fail* lock the company row `FOR SHARE`, then the trade, then the wallet (**company → trade → wallet**, never the wallet before the trade) **[DEC-167]** (7); confirm re-checks that **at least one** electricity connection of the company is still valid for the whole period (`metering-point-not-eligible` when none is — *fail the trade instead*; ⚠ 2026-09-30, [DEC-167] (16)), creates the account-level block (~~and allocations~~ none) and debits the stored gross in one save; ~~while `AWAITING_APPROVAL` either is 409 `approval-required`;~~ **no customer-`ACTIVE` check** applies, because the money is already committed. The actor's display name is a projection of `employee.employee` — never a materialised entity, because the employee role holds only a column grant there.
 
 
 ### 3.2 Customers, wallets, withdrawals, payments, invoicing, data, reference data
@@ -1327,18 +1067,18 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET` | `/customers/{id}/accounts` | List the company's accounts |
 | `POST` | `/customers/{id}/accounts` | Create an account and its membership together. ⚠ **Corrected 2026-09-10 by [DEC-152]: also names a role.** The request carries **`membershipRole`**; the handler writes the account and the `customer_membership` row in one transaction (`AccountEndpoints.cs:30`/`:125` @ debadda0). ~~and send the invitation~~ — ⚠ **struck: no route sends one, see the resend row below** |
 | `PATCH` | ~~`/accounts/{accountId}`~~ **`/customers/{id}/accounts/{accountId}`** | Edit name, job title, phone, email and **`membershipRole`**. Username is immutable. ⚠ **Corrected 2026-09-10 by [DEC-152]: the route nests under the company** (`AccountEndpoints.cs:40`), and the role edit is **this** route, not a separate one — see the struck row below. There is **no admin-floor check on this path**: `CustomerMembership.ChangeRole` is a bare setter (`CustomerMembership.cs:86`) and `UpdateAsync` calls it unconditionally, unlike the customer-side `PATCH /company/memberships` above, which does check the floor. ⚠ **Amended 2026-09-23 by [DEC-157]: this route now checks the floor and refuses a demotion below it.** `UpdateAsync` guards the `admin`→non-admin case through the shared `CustomerMembershipCore.WouldBreachAdminFloorAsync` and answers **`409`**, race-safe by opening its own transaction on this transaction-less host so the `SELECT … FOR UPDATE` spans the save (the [DEC-154] lock-ownership fix). It is the back-office twin of the customer `PATCH /company/memberships` refusal and of the [DEC-154] remove-from-company floor; the "no admin-floor check" statement above is closed |
-| `POST` | ~~`/accounts/{accountId}/deactivate`~~ **`/customers/{id}/accounts/{accountId}/deactivate`** | Deactivate and revoke sessions. ⚠ **Corrected 2026-09-10 by [DEC-152]: the route nests under the company** (`AccountEndpoints.cs:49`). ⚠ **Amended 2026-09-23 by [DEC-157]: warn + confirm + reason, never refused.** The request takes an optional body `{ acknowledged, reason }`. Deactivating an account that would leave a **four-eyes company with fewer than two active admins [F12-R43]**, or remove a **company's last active account [F12-R17]** — evaluated across **every** company the account is an active member of, because deactivation is person-wide — answers **`409` problem type `deactivation-requires-confirmation`** unless `acknowledged` carries a non-blank `reason` (a blank reason on an acknowledged call is `400`). It is **warned, not refused** — the account may be a leaver — and the forced path is **audited with the reason [F12 §5]**. A deactivation that breaches nothing stays silent `200`. Distinct from the plain `409` conflict an already-deactivated account still answers |
+| `POST` | ~~`/accounts/{accountId}/deactivate`~~ **`/customers/{id}/accounts/{accountId}/deactivate`** | Deactivate and revoke sessions. ⚠ **Corrected 2026-09-10 by [DEC-152]: the route nests under the company** (`AccountEndpoints.cs:49`). ⚠ **Amended 2026-09-23 by [DEC-157]: warn + confirm + reason, never refused.** The request takes an optional body `{ acknowledged, reason }`. Deactivating an account that would ~~leave a **four-eyes company with fewer than two active admins [F12-R43]**, or~~ remove a **company's last active account [F12-R17]** — evaluated across **every** company the account is an active member of, because deactivation is person-wide — answers **`409` problem type `deactivation-requires-confirmation`** unless `acknowledged` carries a non-blank `reason` (a blank reason on an acknowledged call is `400`). It is **warned, not refused** — the account may be a leaver — and the forced path is **audited with the reason [F12 §5]**. A deactivation that breaches nothing stays silent `200`. ⚠ **Amended 2026-10-12 by [DEC-179]:** the *no active admin* trigger [F12-R43] is struck (it only ever applied to a four-eyes company and is not built); the floor of one admin is enforced on demotion and removal. Distinct from the plain `409` conflict an already-deactivated account still answers |
 | ~~`POST`~~ | ~~`/accounts/{accountId}/resend-invitation`~~ | ~~Reissue; invalidates the previous link. Under four-eyes no invitation is sent until the second admin approves the addition [F01-R49]~~ ⚠ **Removed 2026-09-10 by [DEC-152] — not shipped.** No route on this host sends, reissues or invalidates an invitation; the back office's own `CreateAsync` sends no email at all. The open item this leaves is already registered on **[DEC-152]**: whether the back office keeps its own account-creation path or becomes the same invitation flow with an employee actor |
 | ~~`PATCH`~~ | ~~`/accounts/{accountId}/admin`~~ | ~~set or clear the account's admin flag [F01-R47], [F12-R39]. Refused when it would leave a four-eyes company with fewer than two active admins [F01-R50]~~ ⚠ **Removed 2026-09-10 by [DEC-152]: there is no admin flag, and no route this narrow.** `membershipRole` is set on the general edit route above instead. ⚠ **Amended 2026-09-23 by [DEC-157]:** that general edit route **now enforces the admin-floor refusal on a demotion** — so this row's original `[F01-R50]` refusal is restored there rather than lost (see its own note) |
-| ~~`POST`~~ | ~~`/customers/{id}/four-eyes/enable` \| `/disable`~~ | ~~⚠ **New 2026-08-19 [DEC-71]** — turn the mode on or off for a company **[F12-R40]**. Enabling with **fewer than two active admin accounts is refused** **[F12-R41]**. Audited before/after **[DEC-17]**; it takes effect for actions started after it, and does not release a trade already `AWAITING_APPROVAL`~~ ⚠ **Removed 2026-09-29 by [DEC-166].** It was built as one route, `POST /api/v1/customers/{customerId}/four-eyes` taking `{ enabled }` and answering `{ fourEyesEnabled }` — not the enable/disable pair drawn here — and it wrote no audit row. It is **deleted** with its contracts (the employee route count goes from 40 to 39): the mode is set by the company's own admins through `/api/v1/company/four-eyes` §2.7, and the back office only **reads** it — the employee customer detail keeps `FourEyesEnabled` and gains `FourEyesDisablePending` |
-| `GET`/`POST` | `/customers/{id}/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — add a bank account. **No `PATCH`**: a bank account cannot be edited, only added or deactivated **[F01-R44]**. Under four-eyes it lands `PENDING_APPROVAL` §2.10 **[F01-R45]** |
-| `POST` | `/bank-accounts/{id}/deactivate` | ⚠ **New 2026-08-19 [DEC-71]** — the other half of the pair; also a four-eyes action. A company holds **at most one `ACTIVE`** account, so replacing one activates the new and deactivates the old together **[F01-R46]** |
+| ~~`POST`~~ | ~~`/customers/{id}/four-eyes/enable` \| `/disable`~~ | ~~⚠ **New 2026-08-19 [DEC-71]** — turn the mode on or off for a company **[F12-R40]**. Enabling with **fewer than two active admin accounts is refused** **[F12-R41]**. Audited before/after **[DEC-17]**; it takes effect for actions started after it, and does not release a trade already `AWAITING_APPROVAL`~~ ⚠ **Removed 2026-09-29 by [DEC-166].** It was built as one route, `POST /api/v1/customers/{customerId}/four-eyes` taking `{ enabled }` and answering `{ fourEyesEnabled }` — not the enable/disable pair drawn here — and it wrote no audit row. It is **deleted** with its contracts (the employee route count goes from 40 to 39): the mode is set by the company's own admins through `/api/v1/company/four-eyes` §2.7, and the back office only **reads** it — the employee customer detail keeps `FourEyesEnabled` and gains `FourEyesDisablePending`. ⚠ **2026-10-12, [DEC-179]: both fields are removed with the mode** |
+| `GET`/`POST` | `/customers/{id}/bank-accounts` | ⚠ **New 2026-08-19 [DEC-71]** — add a bank account. **No `PATCH`**: a bank account cannot be edited, only added or deactivated **[F01-R44]**. ~~Under four-eyes it lands `PENDING_APPROVAL` §2.10 **[F01-R45]**~~ *(⚠ never built, and not wanted: [DEC-179])* |
+| `POST` | `/bank-accounts/{id}/deactivate` | ⚠ **New 2026-08-19 [DEC-71]** — the other half of the pair~~; also a four-eyes action~~. A company holds **at most one `ACTIVE`** account, so replacing one activates the new and deactivates the old together **[F01-R46]** |
 | `PATCH` | `/metering-points/{id}` | Master data, end-dating, **BRP assignment [DEC-69]**, **[F12-R50]**, and the **production expectation the customer declares at onboarding [DEC-112]**, **[F01-R41]** |
 | `GET` | ~~`/wallets?belowThreshold=`~~ `/wallets` | Wallet overview. ⚠ **`belowThreshold` removed 2026-08-19 by [DEC-90]** — there is no threshold to be below. The list can still be **sorted** by lowest available balance; there is no colouring, no warning state and no alert behind it **[F06-R28]**, **[F06-R39]** |
 | `GET` | `/wallets/{id}/ledger` | Ledger with actor detail |
 | `POST` | `/wallets/{id}/deposits` | Register a bank transfer. ⚠ **Amended 2026-08-19 by [DEC-106]** — this is now the **exception path**, not the normal one: unmatched transfers, payments arriving outside the feed, and everything until **[OQ-93]** is answered **[F07-R17]** |
 | ~~`POST`~~ | ~~`/wallets/{id}/adjustments`~~ | ~~Manual adjustment (reason required)~~ ⚠ **Removed 2026-08-19 by [DEC-85]** — chargebacks and reversals are the bookkeeping program's, and the manual-adjustment-with-a-reason path goes with them **[F06-R26]**, **[F06-R27]** retired. ⚠ **Known gap, recorded rather than papered over:** a charged-back iDEAL deposit leaves the wallet overstated and the platform has no entry type left to correct it |
-| `GET` | `/withdrawals?state=` | ⚠ **New 2026-08-19 [DEC-83]** — the payout worklist: customer, amount, requester, age, destination bank account, four-eyes state **[F12-R53]**. ⚠ **Built 2026-09-29 by [DEC-166] as `GET /api/v1/wallet/withdrawals?status=&customerId=&page=&pageSize=`** — the withdrawals desk, across every company; shapes and rules below the table |
+| `GET` | `/withdrawals?state=` | ⚠ **New 2026-08-19 [DEC-83]** — the payout worklist: customer, amount, requester, age, destination bank account~~, four-eyes state~~ **[F12-R53]**. ⚠ **Built 2026-09-29 by [DEC-166] as `GET /api/v1/wallet/withdrawals?status=&customerId=&page=&pageSize=`** — the withdrawals desk, across every company; shapes and rules below the table |
 | `POST` | `/withdrawals/{id}/pay` | ⚠ **New [DEC-83]** — **record a transfer already made**: value date, amount actually transferred, bank reference. Posts `WITHDRAWAL_PAID` and releases the hold in one transaction **[F12-R54]**, **[F06-R36]**. It is **not** an instruction to the bank; the platform initiates no payment. ⚠ **Amended 2026-09-28 by [DEC-165]** — built as `POST /api/v1/customers/{customerId}/wallet/withdrawals/{id}/payout`: the pay-to is **re-resolved** from the company's `ACTIVE` bank account **after** the request's lock is taken and its status checked, never read from the request row, and the resolved IBAN is **persisted as the request's `destination`** and returned. With none `ACTIVE` it is a `409`, *"No bank account on file for this company. Cannot pay out."* The operator's manual transfer is outside the platform and is not checked against it, so it must go to the IBAN the payout resolved and showed. ⚠ **Amended 2026-09-29 by [DEC-166]:** the route takes an **optional** body `{ bankReference }` and records the acting staff member — see the block below the table. The value date and the amount actually transferred that this row lists are **not** recorded |
 | `POST` | `/withdrawals/{id}/reject` | ⚠ **New [DEC-83]** — reason **mandatory**; releases the hold **[F07-R32]**. ⚠ **Not built 2026-09-29 — [DEC-166].** The user ruled that marking a withdrawal paid is the only staff action; there is no reject route and nothing writes `REJECTED` |
 | `GET` | `/payments/unmatched` | ⚠ **New 2026-08-19 [DEC-106]** — received payments the platform could not attribute: value date, amount, payer name, payer IBAN, raw description, why matching failed **[F12-R56]** |
@@ -1357,7 +1097,7 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `POST` | `/reference/energy-tax-brackets/validate` | ⚠ **New [DEC-74]** — contiguity, no gap, no overlap, ascending bounds, year fully covered, **plus the blast radius**: how many customers and EANs the version affects and from when **[F12-R47]**. A wrong boundary silently mis-taxes every EAN for a year |
 | `GET`/`PUT` | `/customers/{id}/energy-tax-reduction` | ⚠ **New [DEC-74]** — the minority case: no reduction (the default, ~90% of customers), a **percentage reduction applied per bracket**, or a full exemption, with `valid_from`, `valid_to`, a mandatory reason and the ruling or certificate that justifies it **[F12-R46]**. Per customer, not per EAN |
 | ~~`GET`/`PUT`~~ | ~~`/reference/surcharges`~~ | ~~Surcharges~~ ⚠ **Removed 2026-08-19 by [DEC-73]**, reversing **[DEC-35]**. Topups leave the platform entirely: it pushes the **invoiced volume per EAN** and the bookkeeping program multiplies by the topup fee **[F10-R51]**. A rate stored here would be a second source of truth for PeakPower's margin |
-| ~~`GET`/`PUT`~~ | ~~`/reference/four-eyes-thresholds`~~ | ~~Four-eyes thresholds **[DEC-33]**, scoped `GLOBAL_DEFAULT` or per customer, with `valid_from`/`valid_to`. ⚠ **Ships with no rows — the value is not decided.** Until one is in force, acceptance returns `409 four-eyes-threshold-not-configured` **[F05-R53]**~~ ⚠ **Removed 2026-08-19 by [DEC-71]** — there is **no threshold**, in euros or in megawatts, so the table is **not built** rather than shipped empty **[F13-R42]**. Four-eyes is a **per-company flag**, set through `/customers/{id}/four-eyes/enable` above ⚠ **Amended 2026-09-29 by [DEC-166]:** that route is removed; the flag is set by the company's own admins through `/api/v1/company/four-eyes` §2.7 |
+| ~~`GET`/`PUT`~~ | ~~`/reference/four-eyes-thresholds`~~ | ~~Four-eyes thresholds **[DEC-33]**, scoped `GLOBAL_DEFAULT` or per customer, with `valid_from`/`valid_to`. ⚠ **Ships with no rows — the value is not decided.** Until one is in force, acceptance returns `409 four-eyes-threshold-not-configured` **[F05-R53]**~~ ⚠ **Removed 2026-08-19 by [DEC-71]** — there is **no threshold**, in euros or in megawatts, so the table is **not built** rather than shipped empty **[F13-R42]**. ~~Four-eyes is a **per-company flag**, set through `/customers/{id}/four-eyes/enable` above~~ ⚠ **Amended 2026-09-29 by [DEC-166]:** that route is removed ~~; the flag is set by the company's own admins through `/api/v1/company/four-eyes` §2.7~~ ⚠ **and, 2026-10-12, so is the flag and the company route ([DEC-179])** |
 | `GET`/`PUT` | `/reference/price-products` | Montel mapping. ⚠ Under **[DEC-96]** the poll goes through the **existing PeakPower Montel service**, not the Montel API directly **[F04-R01]** |
 | `GET`/`PUT` | `/reference/price-markup` | ⚠ **New 2026-08-19 [DEC-80]** — the **markup percentage** applied to every customer-facing indication: one platform-wide value, **default 2%**, effective-dated, changed **without a release**, audited before/after **[F12-R48]**, **[F04-R18]**. ⚠ It is now the platform's **only** margin instrument — **[DEC-73]** took the surcharge out — so a wrong value here is wrong on every quote |
 | `GET`/`POST` | `/reference/brps` · `PATCH` `/reference/brps/{id}` | ⚠ **New 2026-08-19 [DEC-69]** — a **BRP** is reference data: name, endpoint, credentials, document format / adapter, and the direction and trigger of the exchange **[F12-R49]**. **Credentials are write-only** — replaced, never read back — and rotation is audited like any other reference-data change **[F12-R24]**. PVNed is the first row, not the only one **[F02-R44]** |
@@ -1373,7 +1113,7 @@ no approve and no reject **[DEC-83]**. Both routes carry the back-office policy,
 
 | Parameter | Rule |
 | --- | --- |
-| `status` | `to-pay` (the default; `REQUESTED`), `awaiting-approval` (`AWAITING_APPROVAL`), `paid` (`PAID`), `closed` (`CANCELLED`, `APPROVAL_DECLINED` or `REJECTED`) or `all`. Any other value is a `400`, a validation problem keyed **`status`**: *"Status must be one of: to-pay, awaiting-approval, paid, closed, all."* |
+| `status` | `to-pay` (the default; `REQUESTED`), ~~`awaiting-approval` (`AWAITING_APPROVAL`),~~ `paid` (`PAID`), `closed` (`CANCELLED`, `APPROVAL_DECLINED` *(old rows)* or `REJECTED`) or `all`. Any other value is a `400`, a validation problem keyed **`status`**: *"Status must be one of: to-pay, paid, closed, all."* ⚠ **Amended 2026-10-12, [DEC-179]:** `awaiting-approval` is removed (it is now a `400`) |
 | `customerId` | Optional. Filters to one company |
 | `page`, `pageSize` | `page` is 1-based; `pageSize` defaults to 50 with a maximum of 200. An out-of-range value is **clamped, not refused**: a page below 1 is 1, a size below 1 is 50, a size above 200 is 200 |
 
@@ -1389,7 +1129,6 @@ no approve and no reject **[DEC-83]**. Both routes carry the back-office policy,
       "status": "REQUESTED",
       "requestedByName": "M. Vandersteen",
       "requestedAt": "2026-09-29T09:10:00+02:00",
-      "approvedByName": null,
       "destination": "NL00BANK0123456789",
       "payToIban": "NL00BANK0123456789",
       "payToHolderName": "Zonnedak Beheer B.V.",
@@ -1399,23 +1138,23 @@ no approve and no reject **[DEC-83]**. Both routes carry the back-office policy,
     }
   ],
   "total": 12,
-  "counts": { "toPay": 12, "awaitingApproval": 3, "paid": 40, "closed": 9, "all": 64 }
+  "counts": { "toPay": 12, "paid": 40, "closed": 9, "all": 64 }
 }
 ```
 
-- **Ordering.** `to-pay` and `awaiting-approval` are **oldest first**, first come first served; the rest are newest
+- **Ordering.** `to-pay` is **oldest first**, first come first served; the rest are newest
   first; the id breaks ties, so a page boundary is stable between two loads.
-- **`total` is the filtered count; `counts` are not.** ⚠ **As built 2026-10-01, [DEC-170] (16): `counts` gains `paid`, `closed` and `all`, each equal to the length of the desk's own filter of that name.** `counts.toPay` and `counts.awaitingApproval` are totals across
+- **`total` is the filtered count; `counts` are not.** ⚠ **As built 2026-10-01, [DEC-170] (16): `counts` gains `paid`, `closed` and `all`, each equal to the length of the desk's own filter of that name.** `counts.toPay` ~~and `counts.awaitingApproval` are~~ is a total across
   **every company**, independent of `status` and `customerId`.
-- **`status`** on an item is the existing withdrawal wire value (`REQUESTED`, `AWAITING_APPROVAL`, `APPROVAL_DECLINED`,
+- **`status`** on an item is the existing withdrawal wire value (`REQUESTED`, ~~`AWAITING_APPROVAL`,~~ `APPROVAL_DECLINED` *(old rows)*,
   `REJECTED`, `PAID`, `CANCELLED`). `companyName` is the trade name, falling back to the legal name.
 - **`payToIban` and `payToHolderName` are the company's current `ACTIVE` bank account, read at query time** — both null
   when it has none — so a replace shows on the next load. **`destination` is the row's own column**: the request-time
   snapshot, re-pointed by a replace while the request is open **[DEC-165]**, and the account actually paid once `PAID`.
   The list is read-only and takes no lock: **where money goes is the payout's own re-resolution under the withdrawal
   lock, never this list.**
-- **Names** come from the account records the back office already reads: `requestedByName`, and `approvedByName` when
-  a second admin approved under four-eyes; a person it cannot resolve reads *"Unknown"*. `paidByName` is the staff
+- **Names** come from the account records the back office already reads: `requestedByName`~~, and `approvedByName` when
+  a second admin approved under four-eyes~~; a person it cannot resolve reads *"Unknown"*. `paidByName` is the staff
   member's display name **as a snapshot** and is null until `PAID`; `resolvedAt` is when the request left the open set.
   **Staff names never reach the customer contract** §2.5.
 
@@ -1523,6 +1262,8 @@ Exceeding returns `429` with `Retry-After`.
 
 ## 7. OpenAPI
 
+⚠ **2026-10-12, [DEC-179]: the four-eyes removal is one deliberate breaking change** to the customer API's document: ten operations go (`GET /company/four-eyes` and its five `POST`s; `POST /trades/{id}/approve` and `/refuse-approval`; `POST /wallet/withdrawals/{id}/approval` and `/decline`), with their request and response schemas and the fields `TradeDetailDto.approval` and `.fourEyes`, `TradeQuoteResponse.fourEyes` and `WithdrawalRequestDto.approvedByAccountId`; the employee document loses `CustomerDetailDto.fourEyesEnabled` and `.fourEyesDisablePending`; `TradeCustomerDto.fourEyesEnabled` and `.activeAdminCount`; `TradeDeskCardDto.fourEyes`, `.eligibleApproverCount`, `.acceptedByName` and `.acceptedByJobTitle`; `EmployeeTradeAcceptanceDto.fourEyesApplied`, `.eligibleApproverCount`, `.approvedByName`, `.approvalDecidedAt` and `.refusedByName` (the refuser's name still reaches the desk as `resolution.resolvedBy` and in the timeline, so no screen reads the dedicated field); the trade desk's `awaitingApproval` queue, counts and `category` value; the withdrawal desk's `awaitingApproval` count, `approvedByName` and `status` value; and `WithdrawalRequestDto.approvedByAccountId`. It ships together with the web change that stops reading all of them, in one landing; the snapshot tests are regenerated and reviewed in the same change.
+
 Both APIs publish OpenAPI 3.1 documents, and the Angular clients are generated from them. A snapshot
 test flags breaking changes against the previous release. ⚠ **The usage API §2.11 is in the customer
 API's document, not a third one [DEC-97]** — it is a surface on that host, so it shares the document,
@@ -1531,8 +1272,8 @@ customers' own systems, which is exactly why its breaking changes are the ones t
 expand/contract below applies to it most strictly of all.
 
 ⚠ **Three renames in this round are breaking and go through expand/contract deliberately**:
-`totalValue` → `totalValueExVat` beside a larger `amountToReserve` **[DEC-78]** §2.4 (⚠ (17): then `amountToReserve` → `totalInclVat` **[DEC-167]** §2.4.3), the `fourEyes`
-block losing its threshold fields **[DEC-71]** §2.4, and `changeVsPreviousClose` leaving the price
+`totalValue` → `totalValueExVat` beside a larger `amountToReserve` **[DEC-78]** §2.4 (⚠ (17): then `amountToReserve` → `totalInclVat` **[DEC-167]** §2.4.3), ~~the `fourEyes`
+block losing its threshold fields **[DEC-71]** §2.4~~ *(the block itself is removed, 2026-10-12, [DEC-179])*, and `changeVsPreviousClose` leaving the price
 board **[DEC-81]** §2.3. Each was reshaped rather than reinterpreted, because leaving a familiar field
 name attached to a different number is the failure mode that costs money.
 

@@ -4,13 +4,13 @@ End-to-end, from a customer noticing an exposure to a confirmed position on the 
 
 Feature spec: [F05](../10-features/F05-energy-block-trading.md).
 
-> **What the 2026-08-19 round changed in this process.** Four-eyes is no longer a value threshold but
+> **What the 2026-08-19 round changed in this process.** ~~Four-eyes is no longer a value threshold but
 > a **per-customer-company mode** **[DEC-71]**, so the branch at acceptance asks *which company is
-> this*, not *how big is this*. The reservation and the wallet debit are **VAT-inclusive**
+> this*, not *how big is this*.~~ *(⚠ 2026-10-12, [DEC-179]: there is no four-eyes and no branch.)* The reservation and the wallet debit are **VAT-inclusive**
 > **[DEC-78]** while the price stays quoted ex-VAT **[DEC-26]**. Volumes step in **0,01 MW**
 > **[DEC-70]**. The sell path no longer checks holdings **[DEC-72]**. The wallet funds **trading
 > only** — nothing in this lifecycle touches an invoice **[DEC-77]**. And an offer is notified to the
-> **account that raised the request** plus, under four-eyes, the **approving admin** **[DEC-111]**,
+> **account that raised the request** ~~plus, under four-eyes, the **approving admin**~~ **[DEC-111]**,
 > not to every active account. Two more things move at the edges of the process: the indication the
 > customer starts from is a **quote plus a configurable markup**, default 2%, and is **never firm
 > unless PeakPower says so** **[DEC-80]**; and a confirmed block **runs to the end of its delivery
@@ -31,9 +31,7 @@ flowchart TB
         A5["Tops up wallet"]
         A6["Submits request"]
         A7{"Respond to<br/>offer<br/><i>any account</i>"}
-        A8["Accepts →<br/><b>gross</b> funds reserved"]
-        A9{"Company has<br/>four-eyes on?"}
-        A10{"A different <b>admin</b><br/>of the same company<br/>approves?"}
+        A8["Accepts →<br/><b>deposit</b> reserved"]
     end
 
     subgraph pp["PeakPower"]
@@ -56,7 +54,6 @@ flowchart TB
         C3["Expires the offer"]
         C4["Creates the block<br/>and its allocations"]
         C5["Block appears on<br/>the chart"]
-        C6["Same timer keeps running —<br/>reservation released<br/>if it elapses"]
     end
 
     A1 --> A2 --> A3 --> A4
@@ -68,12 +65,7 @@ flowchart TB
     C2 --> A7
     C2 -->|"window elapses"| C3
     A7 -->|reject| END1(["Rejected"])
-    A7 -->|accept| A8 --> A9
-    A9 -->|no| B6
-    A9 -->|yes| C6 --> A10
-    A10 -->|approves| B6
-    A10 -->|declines| END4(["Declined by the second admin —<br/>reservation released"])
-    C6 -->|"window elapses"| END5(["Expired —<br/>reservation released"])
+    A7 -->|accept| A8 --> B6
     B6 --> B7 --> B8
     B8 -->|no| B10 --> END2(["Failed"])
     B8 -->|yes| B9 --> C4 --> C5 --> END3(["Confirmed"])
@@ -81,18 +73,10 @@ flowchart TB
     classDef good fill:#14532d,stroke:#22c55e,color:#fff
     classDef bad fill:#7f1d1d,stroke:#dc2626,color:#fff
     class END3 good
-    class END1,END2,END4,END5 bad
+    class END1,END2 bad
 ```
 
-~~The four-eyes branch **[DEC-33]** hangs off acceptance, not off the offer: the money is already
-reserved when it is entered, and the offer's own timer is still the only clock.~~ ⚠ **Amended
-2026-08-19 by [DEC-71]**, which replaces **[DEC-33]**. The branch still hangs off acceptance and the
-clock is still the offer's own — what changed is the question `A9` asks. It **reads a boolean on the
-customer company** instead of comparing an amount to a threshold. There is no threshold, in euros or
-in megawatts (**[OQ-85]** closed), so a 0,01 MW trade **[DEC-70]** is gated exactly as hard as a
-5 MW one, and `A10` can only be answered by a **different admin account of the same company**.
-Note that `C6` feeds both the approval decision and the expiry exit — that is the whole of the rule
-that acceptance and approval must both fall inside the reaction window.
+~~The four-eyes branch **[DEC-33]** hangs off acceptance, not off the offer: the money is already reserved when it is entered, and the offer's own timer is still the only clock. [DEC-71] replaced the threshold with a boolean on the company.~~ ⚠ **Removed 2026-10-12 by [DEC-179]:** there is no branch. The boxes `A9`, `A10` and `C6` and the exits *declined by the second admin* and *expired after acceptance* are gone from the diagram; acceptance goes straight to *to confirm*, the reservation is held until confirm or fail, and the offer's own timer is the only clock, ending in *Expired* before acceptance.
 
 Three boxes on the customer side do more than their labels admit.
 
@@ -121,12 +105,7 @@ stateDiagram-v2
     OFFERED --> REJECTED: customer rejects
     OFFERED --> EXPIRED: window elapses
     OFFERED --> WITHDRAWN: trader withdraws (reason)
-    OFFERED --> ACCEPTED: customer accepts → reserve gross<br/>four-eyes OFF at the company
-    OFFERED --> AWAITING_APPROVAL: admin accepts → reserve gross<br/>four-eyes ON at the company
-
-    AWAITING_APPROVAL --> ACCEPTED: a different admin approves
-    AWAITING_APPROVAL --> APPROVAL_REFUSED: a different admin declines → release
-    AWAITING_APPROVAL --> EXPIRED: same window elapses → release
+    OFFERED --> ACCEPTED: any active member accepts → reserve the deposit
 
     ACCEPTED --> CONFIRMED: trader confirms → settle
     ACCEPTED --> FAILED: trader fails (reason) → release
@@ -138,34 +117,11 @@ stateDiagram-v2
     EXPIRED --> [*]
     WITHDRAWN --> [*]
     FAILED --> [*]
-    APPROVAL_REFUSED --> [*]
 ```
 
-Fourteen transitions over thirteen states since **[DEC-33]**. ⚠ **Amended 2026-08-19 by [DEC-71]** —
-the counts do not move, because [DEC-71] replaces the *trigger*, not the shape: the same fourteen
-tuples over the same thirteen states, with `AWAITING_APPROVAL` entered on a per-company flag instead
-of a value comparison. What disappears is everything behind the old label — the threshold table, its
-most-specific-scope resolution order, the version pinned on the trade, the admin screen to maintain
-it, and the deployment in which a platform holding no threshold row cannot accept a trade at all. The
-authoritative, exhaustively testable tuple set lives in
-[Domain model §4.2](../20-architecture/03-domain-model.md); this diagram is a rendering of it and must
-not drift from it.
+~~Fourteen transitions over thirteen states since **[DEC-33]**; [DEC-71] kept the same fourteen tuples with `AWAITING_APPROVAL` entered on a per-company flag.~~ ⚠ **Amended 2026-10-12 by [DEC-179]:** **ten transitions over eleven states.** `AWAITING_APPROVAL` and `APPROVAL_REFUSED` leave the machine (they remain only as legacy values on rows that already carry them, and the diagram does not draw them). The authoritative, exhaustively testable tuple set lives in [Domain model §4.2](../20-architecture/03-domain-model.md); this diagram is a rendering of it and must not drift from it.
 
-Three guards sit on the way into and out of `AWAITING_APPROVAL`, and all three are checked against
-ids taken from the token, never from the request body **[DEC-17]**:
-
-| Guard | Checked on | If it fails |
-| --- | --- | --- |
-| The accepting account is an **active admin** of the owning company **[DEC-71]** | `accept`, when the company has four-eyes on | Rejected. A non-admin must not be able to commit the company and leave only the counter-signature governed |
-| The approving account is an **active admin of the same company** and is **not** `accepted_by` **[DEC-71]** | `approve` **and** `decline` | Rejected with a specific error. This is the entire content of four eyes: two account ids on two rows |
-| `now < expires_at` **[DEC-13]** | `accept`, `approve` and `decline` | The expiry job wins the race and the reservation is released — §5.3 |
-
-The middle row is where **[DEC-71]** costs something the old rule did not: **declining is no longer
-open to anyone**. [DEC-33]'s design let any account, the acceptor included, release the reservation
-early; [DEC-71] gives the decision — *approve or decline* — to a different admin in both directions,
-so an acceptor who realises their mistake cannot undo it themselves. They must reach the other admin
-or wait for `expires_at`. No money is trapped (expiry releases in full), but on a 1440-minute window
-**[F05-R17]** that wait is a day.
+~~Three guards sat on the way into and out of `AWAITING_APPROVAL`: the accepting account is an active admin of the owning company (at a four-eyes company); the approving account is an active admin of the same company and is not `accepted_by`; and `now < expires_at`.~~ ⚠ **Two of the three are struck:** any active member may accept **[F05-R43]**, and nobody approves. What is left is `now < expires_at` **[DEC-13]**, checked on `accept` under the trade lock, with ids taken from the token, never from the request body **[DEC-17]**. The cost named here by [DEC-71] — *declining is no longer open to anyone, the acceptor's escape hatch is gone* — goes with the approval: there is nothing to decline, and a mistaken acceptance is as final as it was before [DEC-33].
 
 ## 3. Timing
 
@@ -190,23 +146,11 @@ gantt
 | Interval | Target | Alert |
 | --- | --- | --- |
 | Request → offer | median **< 30 min** | Request unpriced after 60 min ⚠ **Deferred 2026-09-29 by [DEC-167]** — the *request unpriced after 60 min* alert goes with **[F05-R39]** (slice 4); the desk mail (to every active back-office account with the desk-mail setting on, [DEC-168]) and the red *To confirm* age stand in. |
-| Offer → customer response | within the window, default 30 min | Notification at T−5 min, to the **requesting account** and, under four-eyes, the **approving admins** **[DEC-111]** |
-| Acceptance → approval **[DEC-33]**, **[DEC-71]** | **inside the same window** — no separate clock | The **other admin accounts** are notified immediately, and again at T−5 min **[DEC-111]** |
+| Offer → customer response | within the window, default 30 min | Notification at T−5 min, to the **requesting account** ~~and, under four-eyes, the **approving admins**~~ **[DEC-111]** |
+| ~~Acceptance → approval **[DEC-33]**, **[DEC-71]**~~ | ~~**inside the same window** — no separate clock~~ | ~~The **other admin accounts** are notified immediately, and again at T−5 min **[DEC-111]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval. |
 | Acceptance → confirmation | median **< 30 min** | Escalation after 4 h **[F05-R39]** |
 
-~~The middle row is the one that changes how the gantt above should be read for a large trade.~~
-⚠ **Amended 2026-08-19 by [DEC-71]** — read it for **every** trade of a customer with four-eyes on,
-at any value, because there is no size below which the second signature is skipped. The 30-minute
-reaction window has to accommodate **two** people, not one, so a trader pricing a request for such a
-customer should quote a longer window **[F05-R58]**, not the default. The window is configurable to
-1440 minutes **[F05-R17]**, so nothing new is needed for this; what is needed is that the trader is
-*told*, which is why **[F12-R35]** exists.
-
-**[DEC-111]** makes that timing harder rather than easier. Under **[DEC-63]** the offer landed in
-every active account's inbox, so any of them could rescue a window that was running out. Now only two
-people are told — the requester and the approving admin — and the reaction window has to fit both of
-their diaries. The mitigation is the portal rather than the mailbox: **[DEC-18]** still lets any
-account accept, and the offer is visible in-app to the whole company. Nobody else is *prompted*.
+~~The middle row is the one that changes how the gantt above should be read for a large trade. The 30-minute reaction window has to accommodate two people, so a trader pricing a request for a four-eyes customer should quote a longer window [F05-R58].~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** one person answers the offer, and the default window needs to fit one diary. **[DEC-111]** still narrows the offer notification to the requester: under [DEC-63] the offer landed in every active account's inbox, so any of them could rescue a window that was running out, and now only the requester is told. The mitigation is the portal rather than the mailbox: **[DEC-18]** still lets any account accept, and the offer is visible in-app to the whole company. Nobody else is *prompted*.
 
 ## 4. Money at each step
 
@@ -214,43 +158,33 @@ account accept, and the offer is visible in-app to the whole company. Nobody els
 flowchart LR
     S1["REQUESTED<br/><i>nothing held</i>"]
     S2["OFFERED<br/><i>nothing held</i>"]
-    S6["AWAITING_APPROVAL<br/><b>reserved, gross</b><br/>available ↓"]
     S3["ACCEPTED<br/><b>reserved, gross</b><br/>available ↓"]
     S4["CONFIRMED<br/><b>settled, gross</b><br/>settled ↓"]
     S5["FAILED<br/><b>released</b><br/>available restored"]
-    S7["APPROVAL_REFUSED<br/><b>released</b><br/>available restored"]
-    S8["EXPIRED after acceptance<br/><b>released</b><br/>available restored"]
 
     S1 --> S2
     S2 --> S3
-    S2 --> S6
-    S6 --> S3
-    S6 --> S7
-    S6 --> S8
     S3 --> S4
     S3 --> S5
 
-    style S6 fill:#78350f,stroke:#f59e0b,color:#fff
     style S3 fill:#78350f,stroke:#f59e0b,color:#fff
     style S4 fill:#14532d,stroke:#22c55e,color:#fff
     style S5 fill:#7f1d1d,stroke:#dc2626,color:#fff
-    style S7 fill:#7f1d1d,stroke:#dc2626,color:#fff
-    style S8 fill:#7f1d1d,stroke:#dc2626,color:#fff
 ```
 
 ⚠ **Amended 2026-09-30 by [DEC-167] (17): a bought block is paid in two legs.** `TRADE_RESERVED`, `TRADE_SETTLED` and `TRADE_RESERVATION_RELEASED` below move the **deposit** (the company's percentage of the VAT-inclusive gross, frozen at accept). After `CONFIRMED` the **balance** — the rest of the gross — is owed until the day before delivery starts and is paid as `TRADE_BALANCE_PAID`, by the customer's *Pay balance* (`POST /trades/{id}/pay-balance`) or by the hourly automatic collection when the wallet covers it. Paying is not a state change (a `BALANCE_PAID` event, `CONFIRMED` to `CONFIRMED`); an unpaid balance after delivery starts is **overdue** — a derived flag, the trade stays `CONFIRMED` and nothing is cancelled.
 
 Ledger entries produced: `TRADE_RESERVED` on acceptance, then either `TRADE_SETTLED`
-(or `TRADE_PROCEEDS` for a sell) on confirmation, or `TRADE_RESERVATION_RELEASED` on failure,
-on approval refusal, or on expiry after acceptance **[DEC-33]**, **[DEC-71]**.
+(or `TRADE_PROCEEDS` for a sell) on confirmation, or `TRADE_RESERVATION_RELEASED` on failure.
+~~on approval refusal, or on expiry after acceptance **[DEC-33]**, **[DEC-71]**~~ *(⚠ struck 2026-10-12, [DEC-179]: neither exists)*.
 
 **Nothing in this lifecycle touches an invoice** **[DEC-77]**. The wallet funds **trading only**;
 delivery — day-ahead, export and energiebelasting — is calculated monthly, pushed to the bookkeeping
 program as a **draft invoice** **[DEC-88]** and paid to the bank. ⚠ **[AS-12] is reversed**, so the
 `INVOICE_DEBIT` entry type is gone from the wallet and the four types named above are the only ones
 this process can produce. The consequence for the diagram is exact: between `S3` and `S4` the
-available balance can be moved by **another trade** and by nothing else, which is what keeps the
-"no second balance check on approval" rule safe now that the reservation is the larger, gross figure.
+available balance can be moved by **another trade** and by nothing else, which is what ~~keeps the
+"no second balance check on approval" rule safe~~ *(no approval since 2026-10-12, [DEC-179])* now that the reservation is the larger, gross figure.
 
 ⚠ The diagram's held amounts describe a **BUY**. A `SELL` holds nothing — `TRADE_PROCEEDS` carries no
 reserved delta at all ([F06 §3](../10-features/F06-wallet-and-ledger.md)), it simply credits the
@@ -291,21 +225,12 @@ trade — € 139.128,00 — and then cannot cover its own reservation, short by
 optional.
 
 ⚠ The same arithmetic at the new minimum **[DEC-70]**: `0.01 × 744 = 7,44 MWh`, `7.44 × 68.00 =
-€ 505,92` ex VAT, and `505.92 × 1.21 = € 612,1632` → **€ 612,16** reserved. At a customer with
+€ 505,92` ex VAT, and `505.92 × 1.21 = € 612,1632` → **€ 612,16** reserved. ~~At a customer with
 four-eyes on, that trade needs the same second admin as the € 168.344,88 one **[DEC-71]**. There is
 no small-trade exemption to fall back on, and at 0,01 MW steps the number of trades — and therefore
-of approvals — is the thing that grows.
+of approvals — is the thing that grows.~~ *(Struck 2026-10-12, [DEC-179].)*
 
-**The reservation is created once, at acceptance, whichever state that lands in.** Approval moves no
-money at all — which is exactly why an approval can never fail for want of funds, and why the
-available balance cannot be spent underneath a pending approval. Note the consequence for `EXPIRED`:
-before **[DEC-33]** an expiry could never touch the wallet, because nothing was held before
-acceptance. It can now.
-
-⚠ **[DEC-71]** widens that last sentence rather than changing it. An expiry that releases money used
-to be reachable only above a threshold; it is now reachable on **every** trade of a four-eyes
-customer and on **none** of anyone else's. And the amount released is the gross one **[DEC-78]**, so
-what comes back to the available balance is 21% more than the trade was ever worth ex-VAT.
+**The reservation is created once, at acceptance.** ~~Approval moves no money at all — which is exactly why an approval can never fail for want of funds, and why the available balance cannot be spent underneath a pending approval.~~ ⚠ **Struck 2026-10-12 by [DEC-179]** (no approval). Note the consequence for `EXPIRED`: before **[DEC-33]** an expiry could never touch the wallet, because nothing was held before acceptance; ~~it could then, on a four-eyes customer's trades (the amount released was the gross one **[DEC-78]**)~~ since 2026-10-12 it again cannot: an accepted trade is `ACCEPTED`, and only a fail releases the reservation.
 
 ## 5. The dangerous moments
 
@@ -319,7 +244,7 @@ sequenceDiagram
     participant DB as Database
     participant JOB as Expiry job
 
-    Note over C,JOB: expires_at = 15:01:00 — C is any account of the company [DEC-18],<br/>and an admin account where four-eyes is on [DEC-71]
+    Note over C,JOB: expires_at = 15:01:00 — C is any account of the company [DEC-18]
 
     par Customer accepts at 15:00:59.8
         C->>API: POST /trades/{id}/accept
@@ -347,66 +272,11 @@ Wallet and trade change together, in one transaction, with a fixed lock order �
 trade** ([Database design](../20-architecture/04-database-design.md) §5). A partially applied
 confirmation is not a state the system can reach.
 
-⚠ **Lock order superseded 2026-09-29 by [DEC-167].** "Wallet first, then trade" is **replaced** by the one global order **admin roster → `customer.customer` → `trading.trade` → wallet**, never the wallet before the trade; every trade path (accept, approve, refuse, confirm, fail and the expiry sweep) takes a **subsequence** of it, and DEC-167 (7) records the path-by-path check against the withdrawal, four-eyes and reconciliation paths. Confirmation therefore locks the trade, then the wallet.
+⚠ **Lock order superseded 2026-09-29 by [DEC-167].** "Wallet first, then trade" is **replaced** by the one global order **admin roster → `customer.customer` → `trading.trade` → wallet**, never the wallet before the trade; every trade path (accept, ~~approve, refuse,~~ confirm, fail and the expiry sweep) takes a **subsequence** of it, and DEC-167 (7) records the path-by-path check against the withdrawal and reconciliation paths. ⚠ **2026-10-12, [DEC-179]:** the roster step leaves the trade paths. Confirmation therefore locks the trade, then the wallet.
 
-### 5.3 Approval at the expiry boundary — the sharpest edge in [DEC-71]
+### 5.3 ~~Approval at the expiry boundary — the sharpest edge in [DEC-71]~~
 
-The rule is that there is **no second clock**. The offer's reaction window governs the customer's
-whole response, so a trade sitting in `AWAITING_APPROVAL` is racing the same `expires_at` the
-acceptance was guarded against, and losing that race releases real money — the **gross** amount
-**[DEC-78]**. ⚠ Under ~~**[DEC-33]**~~ **[DEC-71]** this edge is no longer reserved for the largest
-trades: every trade of a four-eyes customer runs it, so the failure mode is uniform across that
-customer's book rather than rare and large.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor D as Approving admin<br/>(a different admin of the same company)
-    participant API as Customer API
-    participant DB as Database
-    participant JOB as Expiry job
-
-    Note over D,JOB: expires_at = 15:01:00 — accepted at 14:58, reservation held since then
-
-    par Approver clicks Approve at 15:00:59.7
-        D->>API: POST /trades/{id}/approve
-        API->>DB: BEGIN
-        API->>DB: SELECT wallet FOR UPDATE
-        API->>DB: SELECT trade FOR UPDATE
-        API->>API: guard now (15:00:59.8) < expires_at ✓
-        API->>API: guard actor is an active admin of the company ✓
-        API->>API: guard actor != accepted_by ✓
-        API->>DB: state = ACCEPTED · reservation untouched
-        API->>DB: COMMIT
-        API-->>D: 200 approved
-    and Expiry job fires at 15:01:00
-        JOB->>DB: BEGIN
-        JOB->>DB: SELECT trade FOR UPDATE (waits for the lock)
-        JOB->>JOB: state is ACCEPTED, not AWAITING_APPROVAL → no-op
-        JOB->>DB: COMMIT
-    end
-```
-
-⚠ **2026-09-29 [DEC-167]** — "same lock order" below means **admin roster → `customer.customer` → `trading.trade` → wallet**, never the wallet before the trade; `now` is read **once, immediately after the trade lock returns**, and `now < expires_at` is evaluated after the locks; the four-eyes flag is read and pinned under the company-row lock at accept **[F05-R71]**; notifications are best-effort mail after the commit and the pages poll.
-
-Identical in shape to §5.1, deliberately: same lock order, same guard, same job. **[DEC-33]** adds a
-state to the machine but no new concurrency mechanism, which is the main reason for placing the
-approval after acceptance rather than before it. **[DEC-71]** adds no mechanism either — it adds one
-boolean read and one flag check to the guard list, both on rows already loaded under the same lock,
-so nothing here becomes able to fail for a new reason.
-
-Had the job won the race, it would have moved the trade to `EXPIRED` **and released the reservation
-in the same transaction**, and the approve attempt would then have failed its own state guard. Either
-way exactly one outcome is recorded, and in neither case is money left held against a trade that no
-longer exists.
-
-Two more things follow from having one clock, and both are properties rather than problems. A
-customer cannot bind PeakPower past the quoted window by accepting at the last second and approving
-later. And PeakPower is never left holding a firm price with no deadline while a customer looks for a
-second signatory — ~~which, since the rule only applies to the largest trades, is precisely where that
-exposure would hurt most.~~ ⚠ **Amended 2026-08-19 by [DEC-71]**: the rule applies to *every* trade
-of a four-eyes customer, so the exposure the single clock prevents is smaller per trade and far more
-frequent. The argument for one clock is unchanged; only the shape of what it protects against is.
+⚠ **Struck 2026-10-12 by [DEC-179].** This section was the sequence of an approve racing the expiry job, under one clock and one lock order, and the argument that a customer can neither bind PeakPower past the quoted window by approving late nor leave it holding a firm price while looking for a second signatory. With no approval there is no such race: the only boundary is §5.1, acceptance against expiry, and it is already a queue under the trade row lock. The heading keeps its number.
 
 ### 5.4 A sell with nothing behind it
 
@@ -458,22 +328,13 @@ cheap.
 | Declined | Trader will not price it | — | Declined + reason |
 | Rejected | Customer says no | — | Rejected |
 | Expired | Window elapsed **before acceptance** | — | Expired |
-| Expired | Window elapsed **while awaiting approval** **[DEC-33]**, **[DEC-71]** | **Released in full**, gross **[DEC-78]** | Expired — not approved in time |
+| ~~Expired~~ | ~~Window elapsed **while awaiting approval** **[DEC-33]**, **[DEC-71]**~~ | ~~**Released in full**, gross **[DEC-78]**~~ | ~~Expired — not approved in time~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no trade awaits approval. |
 | Withdrawn | Trader pulls the offer | — | Withdrawn + reason |
-| Approval refused | ~~A second account will not approve the acceptance **[DEC-33]**~~ ⚠ **[DEC-71]**: **a different admin of the same company declines** it | **Released in full**, gross **[DEC-78]** | Not approved, by whom, optional reason |
+| ~~Approval refused~~ | ~~A second account will not approve the acceptance **[DEC-33]** ⚠ **[DEC-71]**: **a different admin of the same company declines** it~~ | ~~**Released in full**, gross **[DEC-78]**~~ | ~~Not approved, by whom, optional reason~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no refusal; old trades keep a read-only *Not approved* label. |
 | Failed | Execution failed after acceptance | **Released in full**, gross | Failed + reason |
 
 Every PeakPower-initiated negative outcome carries a mandatory reason that the customer reads
-**[F05-R38]**. Approval refusal is customer-initiated, so its reason is optional — symmetric with
-rejecting an offer **[F05-R30]** — but the *name and job title* of the refusing account are always
-shown, because that is the record the control exists to produce.
-
-⚠ **Amended 2026-08-19 by [DEC-71]** on **who** may produce that record. Declining is the negative
-half of the same counter-signature as approving, so it is open to **a different active admin of the
-same company** and to nobody else — not to any account, and not to the acceptor. The row's money and
-customer-facing text are unchanged; only the eligible actor narrows. ⚠ The cost is named in §2: the
-acceptor's fast escape hatch is gone, and the only remaining self-service exit from a mistaken
-acceptance is the clock.
+**[F05-R38]**. ~~Approval refusal is customer-initiated, so its reason is optional, and the name and job title of the refusing account are always shown. [DEC-71] narrowed who may refuse to a different active admin.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no approval refusal, and so no acceptor's escape hatch to discuss; the only customer-initiated negative outcomes are *rejected* and *cancelled* **[F05-R30]**.
 
 ## 7. Notifications
 
@@ -484,23 +345,23 @@ kept underneath the table.
 | Moment | To | Channel |
 | --- | --- | --- |
 | Request submitted | Traders ⚠ **As built 2026-10-01 [DEC-168]:** *new trade request* is emailed to every active back-office account with the desk-mail setting on (admin or not), by the Worker up to ~15 s after the commit | In-app (real-time) + email |
-| Offer published | ~~Every active account of the company~~ **The account that raised the request**, plus — when the company has four-eyes on — **the admin accounts that would have to approve it** **[DEC-111]**, **[DEC-71]** | In-app (real-time) + email — **immediate** |
+| Offer published | ~~Every active account of the company~~ **The account that raised the request** ~~, plus — when the company has four-eyes on — **the admin accounts that would have to approve it**~~ **[DEC-111]** *(⚠ the requester only since 2026-10-12, [DEC-179])* | In-app (real-time) + email — **immediate** |
 | 5 minutes remaining | The same set **[DEC-111]** | In-app + email |
 | Offer expired | The same set **[DEC-111]**, traders | In-app + email |
-| ~~**Approval needed** **[DEC-33]**~~ **Approval requested** **[DEC-71]** | ~~Every active account except the acceptor~~ **The other admin accounts of the company** — every active admin except the one who accepted | In-app (real-time) + email — **immediate**, with the volume, the **gross** amount already held **[DEC-78]**, the acceptor's name and job title, and the time left |
-| 5 minutes remaining, awaiting approval | The other admin accounts, traders | In-app + email |
-| Approved | Traders, the **acceptor** and the other admins ⚠ **As built 2026-10-01 [DEC-168]:** when the approval makes the trade ready to confirm, the *ready to confirm* email goes to the same desk recipients | In-app (real-time) |
-| Approval declined | The **acceptor** and the other admins, traders | In-app + email |
-| Accepted | Traders ⚠ **As built 2026-10-01 [DEC-168]:** with four-eyes off, *accepted — ready to confirm* is emailed to every active back-office account with the desk-mail setting on | In-app (real-time) |
-| Confirmed | The requester, plus the admins where four-eyes applied **[DEC-111]**. ⚠ **As built 2026-09-30 [DEC-167] (18):** the requester and the acceptor, from the employee host, **email only**; an approver who is neither gets no mail | In-app + email (⚠ email only as built) |
+| ~~**Approval needed** **[DEC-33]** **Approval requested** **[DEC-71]**~~ | ~~Every active account except the acceptor **The other admin accounts of the company** — every active admin except the one who accepted~~ | ~~In-app (real-time) + email — **immediate**, with the volume, the **gross** amount already held **[DEC-78]**, the acceptor's name and job title, and the time left~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval notification. |
+| ~~5 minutes remaining, awaiting approval~~ | ~~The other admin accounts, traders~~ | ~~In-app + email~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval notification. |
+| ~~Approved~~ | ~~Traders, the **acceptor** and the other admins ⚠ **As built 2026-10-01 [DEC-168]:** when the approval makes the trade ready to confirm, the *ready to confirm* email goes to the same desk recipients~~ | ~~In-app (real-time)~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval notification. |
+| ~~Approval declined~~ | ~~The **acceptor** and the other admins, traders~~ | ~~In-app + email~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval notification. |
+| Accepted | Traders ⚠ **As built 2026-10-01 [DEC-168]:** *accepted — ready to confirm* is emailed to every active back-office account with the desk-mail setting on | In-app (real-time) |
+| Confirmed | The requester ~~, plus the admins where four-eyes applied~~ **[DEC-111]**. ⚠ **As built 2026-09-30 [DEC-167] (18):** the requester and the acceptor, from the employee host, **email only** | In-app + email (⚠ email only as built) |
 | ⚠ **Balance paid** **[DEC-167] (18)** | The requester, the acceptor and, on the customer host, the payer | Email only |
-| Failed | The requester, plus the admins where four-eyes applied **[DEC-111]** | In-app + email — **immediate** |
+| Failed | The requester ~~, plus the admins where four-eyes applied~~ **[DEC-111]** | In-app + email — **immediate** |
 | Unconfirmed > 4 h | Traders | In-app escalation |
 
 ~~Offers go to everyone who could answer them, not only to the person who asked — see
 [F11 §2](../10-features/F11-notifications.md) and **[DEC-63]**.~~
-⚠ **Reversed 2026-08-19 by [DEC-111].** An offer goes to the **account that raised the request** and,
-under four-eyes, to the **approving admin**. Nobody else at the company is told, in-app or by email.
+⚠ **Reversed 2026-08-19 by [DEC-111].** An offer goes to the **account that raised the request** ~~and,
+under four-eyes, to the **approving admin**~~. Nobody else at the company is told, in-app or by email.
 See [F11 §2](../10-features/F11-notifications.md).
 
 ⚠ **The cost, recorded because [DEC-63]'s rationale named exactly this:** a 30-minute offer can now
@@ -510,11 +371,7 @@ and those two sets are no longer the same. That gap is an accepted risk rather t
 mitigation is the portal, not the mailbox: the offer is visible in-app to the whole company, and the
 T−5 reminder still fires. The alternative, telling everyone, was rejected by the customer as noise.
 
-Approval requests go to the other admins and **not** to the acceptor **[DEC-33]**, **[DEC-71]**. That
-is the one row in the table with a deliberate exclusion, and the exclusion is the control: sending it
-to the acceptor as well would invite them to click a button the server will refuse. The *outcome*
-rows — approved, declined — do go back to the acceptor, because they are the person whose commitment
-it was, and an expiry or a decline moves their money.
+~~Approval requests go to the other admins and not to the acceptor [DEC-33], [DEC-71]; the outcome rows go back to the acceptor.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there are no approval requests.
 
 Two rows carry an inference rather than a decision, and are flagged as such: **confirmed** and
 **failed**. [DEC-111] speaks about *offer* notifications. A trade outcome belongs to the same request
@@ -535,47 +392,13 @@ costed in §4.1:
 | 4 | `CONFIRMED` | Employee — M. Bakker | 14:52:07 | External reference, block id, settled amount € 168.344,88 |
 
 Events 1 and 3 are **two different people at the same company** — the normal split between spotting
-an exposure and approving the spend **[DEC-18]**. Each event stores the account id plus a snapshot of
+an exposure and accepting the spend **[DEC-18]**. Each event stores the account id plus a snapshot of
 the name and job title as at that moment, so the record still reads correctly years later even if
 someone is promoted or leaves **[DEC-17]**.
 
-### 8.1 ~~A trade above the four-eyes threshold~~ A trade at a customer with four-eyes on
+### 8.1 ~~A trade at a customer with four-eyes on~~
 
-~~The same trade, above the threshold **[DEC-33]**.~~ ⚠ **Amended 2026-08-19 by [DEC-71]** — the same
-trade at a company whose **four-eyes flag is on**, at any value. One event more, and one more name:
-
-| # | Event | Actor | At | Recorded |
-| --: | --- | --- | --- | --- |
-| 1 | `SUBMITTED` | Customer account — **J. de Vries** *(Energy Manager)* | 14:25:03 | Volumes per EAN, comment, captured indication with markup **[DEC-80]** ⚠ **2026-09-29 [DEC-167]** — raw price, time and source; no markup captured. |
-| 2 | `OFFERED` | Employee — M. Bakker | 14:31:20 | Price € 68,00/MWh ex VAT, 30-minute window, `expires_at` 15:01:00 |
-| 3 | `ACCEPTED` | Customer account — **M. Vandersteen** *(Finance Director, admin)* | 14:44:12 | Gross amount reserved € 168.344,88, reservation id, ~~**threshold version and the amount compared**~~ **the company's four-eyes flag read as ON** **[DEC-71]**, resulting state `AWAITING_APPROVAL` |
-| 4 | `APPROVED` | Customer account — **S. Aydin** *(Managing Director, admin)* | 14:52:41 | Decision `APPROVED`, initiator M. Vandersteen, **8 min 19 s** remaining of the window, resulting state `ACCEPTED` |
-| 5 | `CONFIRMED` | Employee — M. Bakker | 15:04:30 | External reference, block id, settled amount € 168.344,88 |
-
-The four-eyes decision is one row with five load-bearing fields, and they are what an auditor reads:
-
-| Field | Value in this trade | Why it is stored |
-| --- | --- | --- |
-| Initiator (`accepted_by_account_id`) | M. Vandersteen *(Finance Director)*, admin | Half of the pair. Snapshotted with name and job title **[DEC-17]** |
-| Approver (`approved_by_account_id`) | S. Aydin *(Managing Director)*, admin | The other half. Must differ from the initiator and be an active admin of the same company **[DEC-71]** |
-| Decision | `APPROVED` — the alternative is `APPROVAL_REFUSED` | Both are recorded; a decline is a decision, not an absence of one |
-| Initiated at | 14:44:12 | With `expires_at` it gives the time the second admin actually had: 16 min 48 s |
-| Decided at | 14:52:41 | With `expires_at` it gives the margin: 8 min 19 s. An expiry instead of a decision leaves this null and the trade in `EXPIRED` |
-
-There is deliberately **no threshold field** on the row any more **[DEC-71]** — the state itself
-records that the mode was on, and the flag read is stored with the acceptance so a later change to
-the company's mode cannot restate a past trade.
-
-Note that event 3 is still called `ACCEPTED` even though the resulting state is `AWAITING_APPROVAL`.
-The acceptance genuinely happened and the money genuinely moved; the event names what the person did,
-the state names what the trade is waiting for. Event 4 is `APPROVED` or `APPROVAL_REFUSED`.
-
-The audit answer to "could one person have done this alone?" is now a comparison of two account ids
-on two rows, which is the entire content of four eyes in a platform with no intra-company roles
-**[DEC-16]**. ⚠ **Qualified 2026-08-19 by [DEC-71]**: the comparison is unchanged, but both ids must
-belong to **admin** accounts. That is the smallest role model that can express the rule — exactly two
-levels, existing for no other purpose — and it is what an auditor has to check alongside the
-inequality.
+⚠ **Struck 2026-10-12 by [DEC-179].** This worked example was the same trade at a company with the flag on: an `ACCEPTED` event that resulted in `AWAITING_APPROVAL`, an `APPROVED` event by a different admin, the five load-bearing fields an auditor read (initiator, approver, decision, initiated at, decided at), and the audit answer to *could one person have done this alone?* — a comparison of two account ids on two rows. There is no such trade any more. **What the timeline of a trade shows now:** `SUBMITTED`, `OFFERED`, `ACCEPTED` (state `ACCEPTED`, the deposit reserved), `CONFIRMED` — four events, each with the acting person's name and job title **[DEC-17]**. **What an old trade still shows:** its `APPROVED` or `APPROVAL_REFUSED` event, read-only. **What a trade that migration 39 moved shows:** an `ACCEPTED` event by the system actor, with the reason *four-eyes removed, DEC-179*, after the human `ACCEPTED` event that parked it.
 
 Rendered as one timeline for both audiences, from the same rows **[F15](../10-features/F15-audit-and-observability.md)**.
 
@@ -588,9 +411,9 @@ Post-2026-08-19 state for the questions this process turns on. The register of r
 | --- | --- | --- |
 | **[OQ-94]** | What collateral or exposure limit applies to a short position? | 🟠 **Open** — opened 2026-08-19 by **[DEC-72]**. The wallet is prepaid **[AS-11]** and a short is a promise to deliver rather than a spend, so neither §4's reservation nor **[DEC-41]**'s balance check bounds it. **Blocks the sell path opening to customers** — §5.4 |
 | **[OQ-92]** | Are the hedge and the day-ahead delivery one invoice document or two? | 🟠 **Open**. Outside this lifecycle since **[DEC-77]** — no invoice is touched here — but it decides what the confirmed block eventually appears on, and under **[DEC-88]** how many drafts are pushed per customer per month |
-| ~~[OQ-09]~~ | ~~Is four-eyes approval required above a value threshold?~~ | ✅ **Closed — [DEC-71]**, replacing **[DEC-33]**. There is no threshold. Four-eyes is a **per-customer-company mode**; a different **admin** of the same company approves or declines |
-| ~~[OQ-85]~~ | ~~What is the four-eyes threshold amount, and is it one figure or per customer?~~ | ✅ **Closed — [DEC-71]**. No figure exists in euros or in megawatts, so the threshold reference table is **not built** and acceptance can no longer fail for want of a row in force |
-| ~~[OQ-81]~~ | ~~When an offer arrives, is every account notified or only the requester?~~ | ✅ **Closed — [DEC-111]**, reversing **[DEC-63]**: the requesting account, plus the approving admins under four-eyes. §7 records the cost |
+| ~~[OQ-09]~~ | ~~Is four-eyes approval required above a value threshold?~~ | ✅ **Closed — [DEC-71]**, replacing **[DEC-33]**. There is no threshold. Four-eyes is a **per-customer-company mode**; a different **admin** of the same company approves or declines ⚠ **Four-eyes itself was removed 2026-10-12 by [DEC-179].** |
+| ~~[OQ-85]~~ | ~~What is the four-eyes threshold amount, and is it one figure or per customer?~~ | ✅ **Closed — [DEC-71]**. No figure exists in euros or in megawatts, so the threshold reference table is **not built** and acceptance can no longer fail for want of a row in force ⚠ **Four-eyes itself was removed 2026-10-12 by [DEC-179].** |
+| ~~[OQ-81]~~ | ~~When an offer arrives, is every account notified or only the requester?~~ | ✅ **Closed — [DEC-111]**, reversing **[DEC-63]**: the requesting account ~~, plus the approving admins under four-eyes~~. §7 records the cost |
 | ~~[OQ-10]~~ | ~~May a customer sell a block they do not hold?~~ | ✅ **Closed — [DEC-72]**, reversing **[DEC-34]**: yes. The sell path performs no holdings check — and hands on **[OQ-94]** |
 | ~~[OQ-08]~~ | ~~Minimum and increment for a requested volume?~~ | ✅ **Closed — [DEC-70]**, reversing **[DEC-32]**: **0,01 MW** minimum, 0,01 MW increment. Every volume in this document is a multiple of it |
 | ~~[OQ-83]~~ | ~~Does the wallet debit settle the ex-VAT subtotal or the inclusive total?~~ | ✅ **Closed — [DEC-78]**: **inclusive**, for the reservation and the debit that settles it, grossed up at the **[DEC-64]** rate. **[AS-10]** is amended with it. §4.1 |

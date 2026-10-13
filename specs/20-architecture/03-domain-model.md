@@ -14,12 +14,10 @@ erDiagram
     CUSTOMER ||--o{ BANK_ACCOUNT : "holds (add and deactivate only)"
     CUSTOMER ||--o{ TRADE : places
     CUSTOMER ||--o{ INVOICE_DRAFT : "billed by draft"
-    CUSTOMER ||--o{ FOUR_EYES_REQUEST : "governed by, when enabled"
 
     CUSTOMER_ACCOUNT ||--o{ TRADE : "requested by"
     CUSTOMER_ACCOUNT ||--o{ TRADE_EVENT : "acted on"
     CUSTOMER_ACCOUNT ||--o{ WALLET_ENTRY : "caused by"
-    CUSTOMER_ACCOUNT ||--o{ FOUR_EYES_REQUEST : "raised by / approved by"
 
     BRP ||--o{ METERING_POINT : "balance-responsible for"
     BRP ||--o{ INTERVAL_DATA_VERSION : "delivered by"
@@ -53,19 +51,19 @@ erDiagram
 | Change | Driver |
 | --- | --- |
 | `SURCHARGE` removed — the platform pushes volume, the bookkeeping program multiplies by the topup fee | **[DEC-73]** reverses **[DEC-35]** |
-| `FOUR_EYES_THRESHOLD` removed — four-eyes is a per-company on/off mode, not a value comparison | **[DEC-71]** replaces **[DEC-33]** |
+| `FOUR_EYES_THRESHOLD` removed — four-eyes is a per-company on/off mode, not a value comparison ⚠ **and, 2026-10-12, the mode is removed too** | **[DEC-71]** replaces **[DEC-33]**; **[DEC-179]** |
 | `INVOICE` → `INVOICE_DRAFT`, and `CREDIT_NOTE` removed — the platform calculates and pushes a draft; the bookkeeping program numbers it, renders it, sends it and credits it | **[DEC-88]**, **[DEC-89]**, **[DEC-99]** |
 | `PAYMENT` no longer funds the wallet directly; it is matched **to a `DEPOSIT_INTENT`** on a platform-issued reference | **[DEC-106]** amends **[DEC-58]** |
 | `BANK_ACCOUNT` promoted from a property of `CUSTOMER` to a collection, because it is now immutable once added | **[DEC-61]**, **[DEC-71]** |
 | `BRP` added as reference data with metering points and delivered documents hanging off it | **[DEC-69]** |
 | `DEPOSIT_INTENT` and `WITHDRAWAL_REQUEST` added to the wallet | **[DEC-106]**, **[DEC-83]** |
-| `FOUR_EYES_REQUEST` added for the four non-trade actions that four-eyes governs | **[DEC-71]** |
+| ~~`FOUR_EYES_REQUEST` added for the four non-trade actions that four-eyes governs~~ ⚠ **never built, struck 2026-10-12** | **[DEC-71]**, **[DEC-179]** |
 
 ### 1.1 Aggregate roots and boundaries
 
 | Aggregate root | Contains | Transaction boundary rationale |
 | --- | --- | --- |
-| **Customer** (company) | metering points, labels, ~~**accounts**~~, **bank accounts** | Master data changes together. The four-eyes mode and the admin roles that make it satisfiable must be checked against each other under one lock **[DEC-71]**. ⚠ **Amended 2026-09-10 by [DEC-152]: accounts leave this aggregate.** An account is now its own root (below), because it outlives any one company and belongs to several at once — the reason it lived here, *"an account only ever exists in the context of one company"*, is the thing that was reversed. The **admin floor** is still checked under one lock, but the lock is over the business's membership rows rather than over `Customer` |
+| **Customer** (company) | metering points, labels, ~~**accounts**~~, **bank accounts** | Master data changes together. ~~The four-eyes mode and the admin roles that make it satisfiable must be checked against each other under one lock **[DEC-71]**.~~ *(Struck 2026-10-12, [DEC-179].)* ⚠ **Amended 2026-09-10 by [DEC-152]: accounts leave this aggregate.** An account is now its own root (below), because it outlives any one company and belongs to several at once — the reason it lived here, *"an account only ever exists in the context of one company"*, is the thing that was reversed. The **admin floor** is still checked under one lock, but the lock is over the business's membership rows rather than over `Customer` |
 | **CustomerAccount** (person) | **memberships** | ⚠ **New root, 2026-09-10 [DEC-152].** A login, with one `CustomerMembership` per business. It is a root and not an entity because the switcher must read **across** businesses, which nothing inside a single `Customer` can do — and because a membership's own invariants (the role, the soft delete, the floor) are checked against a business, not against the person |
 | **Wallet** | entries, reservations, **deposit intents**, **withdrawal requests** | Balance invariants require a single lock. A deposit match and a withdrawal payout both move the balance, so they commit inside the wallet **[DEC-106]**, **[DEC-83]** |
 | **Trade** | lines, offer, events | State machine and audit must be atomic |
@@ -74,8 +72,8 @@ erDiagram
 | **InvoiceDraft** | sections, lines | Totals must be consistent with lines. ⚠ **Amended 2026-08-19 by [DEC-88]/[DEC-89]** — it is a *draft*: the platform never mints a number, never renders a PDF and never sends an email. The number the bookkeeping program returns is stored for display and reconciliation only |
 | **PeakCalendar** | excluded dates | Referenced by version, never mutated in place |
 | **Brp** | credentials, endpoint, document format | Reference data **[DEC-69]**. A metering point is assigned to one. Referenced by id, never mutated in a way that restates a past document |
-| **FourEyesRequest** | decisions | The approval record for the four non-trade actions **[DEC-71]**. Small and short-lived; the acting and approving account ids are its whole point **[DEC-17]** |
-| ~~**FourEyesThreshold**~~ | ~~—~~ | ~~Reference data **[DEC-33]**. Referenced by version, never mutated in place, so a threshold change cannot restate a past trade~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** — there is no threshold in euros or in megawatts, so there is no reference data to version. Replaced by `Customer.FourEyesEnabled`, a single boolean. **[OQ-85] closed** |
+| ~~**FourEyesRequest**~~ | ~~decisions~~ | ~~The approval record for the four non-trade actions **[DEC-71]**. Small and short-lived; the acting and approving account ids are its whole point **[DEC-17]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — never built; struck with the approval model. |
+| ~~**FourEyesThreshold**~~ | ~~—~~ | ~~Reference data **[DEC-33]**. Referenced by version, never mutated in place, so a threshold change cannot restate a past trade~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** — there is no threshold in euros or in megawatts, so there is no reference data to version. ~~Replaced by `Customer.FourEyesEnabled`, a single boolean~~ — which is itself removed 2026-10-12 by [DEC-179]. **[OQ-85] closed** |
 
 **Trade and Wallet are separate aggregates that commit together.** Accepting an offer changes both.
 This is the one place where the "one aggregate per transaction" guideline is deliberately broken,
@@ -134,13 +132,16 @@ public readonly record struct Actor
         new() { Type = ActorType.System, Id = $"SYSTEM:{job}", DisplayName = job };
 }
 
-/// Four-eyes is a mode, not a comparison  [DEC-71]. The only input is the
-/// customer company's own flag, so the "policy" is one boolean and there is
-/// nothing to resolve, version or pin a threshold from.
-public readonly record struct FourEyesMode(bool Enabled)
-{
-    public bool RequiresApproval => Enabled;      // no amount, no shape, no period
-}
+// ⚠ Removed 2026-10-12 by [DEC-179]. There is no four-eyes mode and no FourEyesMode value type;
+// Accept has one destination. Kept readable as the record of [DEC-71]:
+//
+// /// Four-eyes is a mode, not a comparison  [DEC-71]. The only input is the
+// /// customer company's own flag, so the "policy" is one boolean and there is
+// /// nothing to resolve, version or pin a threshold from.
+// public readonly record struct FourEyesMode(bool Enabled)
+// {
+//     public bool RequiresApproval => Enabled;      // no amount, no shape, no period
+// }
 
 /// The reference a customer must quote on a bank transfer so the platform can
 /// match the incoming payment to their wallet  [DEC-106]. Unique per deposit
@@ -231,7 +232,7 @@ Kept readable because trades accepted before 2026-08-19 were pinned against them
 
 | Removed | Replaced by | Driver |
 | --- | --- | --- |
-| `FourEyesPolicy`, `FourEyesThresholdVersionId` | `FourEyesMode`, backed by `Customer.FourEyesEnabled` | **[DEC-71]** |
+| `FourEyesPolicy`, `FourEyesThresholdVersionId` | ~~`FourEyesMode`, backed by `Customer.FourEyesEnabled`~~ — nothing, since 2026-10-12 | **[DEC-71]**, **[DEC-179]** |
 | `SurchargeRate`, `SurchargeScope` | — nothing. The platform pushes volume; the bookkeeping program multiplies it by the topup fee | **[DEC-73]** |
 | `FeedInTariff` | — nothing. Export is credited at the day-ahead price for the interval, raw | **[DEC-87]** |
 | `VatRate` as a computed value | The constant 21% **[DEC-64]**, used for one thing only: grossing up a trade reservation **[DEC-78]** | **[DEC-76]** |
@@ -265,10 +266,10 @@ public sealed class Customer : AggregateRoot
     public CustomerStatus Status { get; private set; }
     public Locale Locale { get; private set; }
 
-    // ── four-eyes mode  [DEC-71] ────────────────────────────────────
-    public bool FourEyesEnabled { get; private set; }
-    public Result EnableFourEyes(Actor by);      // guard: ≥ 2 active admin accounts  (C8)
-    public Result DisableFourEyes(Actor by);     // itself a sensitive action; see §3.2
+    // ── four-eyes mode  [DEC-71] — removed 2026-10-12 by [DEC-179] ──
+    // public bool FourEyesEnabled { get; private set; }
+    // public Result EnableFourEyes(Actor by);      // guard: ≥ 2 active admin accounts  (C8)
+    // public Result DisableFourEyes(Actor by);     // itself a sensitive action; see §3.2
 
     // public BankAccount Bank { get; private set; }   // Iban + Bic + holder name
     //   ⚠ Amended 2026-08-19 by [DEC-61]/[DEC-71]. A bank account is immutable once added:
@@ -300,24 +301,25 @@ public sealed class Customer : AggregateRoot
                                               string email, string? phone, bool isAdmin, Actor by);
     public Result DeactivateAccount(CustomerAccountId id, Actor by, string? reason);
     public Result GrantAdmin(CustomerAccountId id, Actor by);
-    public Result RevokeAdmin(CustomerAccountId id, Actor by);   // guard: not the second-to-last (C9)
+    public Result RevokeAdmin(CustomerAccountId id, Actor by);   // guard: not the last admin (C20); was: not the second-to-last (C9)
 
-    /// The whole of the approver rule  [DEC-71]: a different admin of the same company.
-    /// ⚠ Amended 2026-09-10 by [DEC-152]. `ActiveAdmins` no longer exists on `Customer` (§3);
-    /// "a different admin of the same company" is now a `CustomerMembership` with
-    /// `Role == Admin`, `IsActive` and `CustomerId == this.Id` — scoped to THIS company, for
-    /// the same reason C20's floor count carries an explicit `customer_id` predicate: a
-    /// member's admin role in a different business must never qualify here.
-    /// Original:
-    ///     && ActiveAdmins.Any(a => a.Id == approver)
-    ///     && ActiveAdmins.Any(a => a.Id == requester);
-    public bool CanApproveFor(CustomerAccountId requester, CustomerAccountId approver) =>
-        FourEyesEnabled
-        && requester != approver
-        && IsActiveAdminHere(approver)
-        && IsActiveAdminHere(requester);
-        // IsActiveAdminHere(id) := Memberships of `id` at CustomerId == this.Id with
-        //     Role == MembershipRole.Admin && IsActive
+    // ⚠ Removed 2026-10-12 by [DEC-179]: there is no approver, so `CanApproveFor` is deleted. Kept as the record:
+    // The whole of the approver rule  [DEC-71]: a different admin of the same company.
+    // ⚠ Amended 2026-09-10 by [DEC-152]. `ActiveAdmins` no longer exists on `Customer` (§3);
+    // "a different admin of the same company" is now a `CustomerMembership` with
+    // `Role == Admin`, `IsActive` and `CustomerId == this.Id` — scoped to THIS company, for
+    // the same reason C20's floor count carries an explicit `customer_id` predicate: a
+    // member's admin role in a different business must never qualify here.
+    // Original:
+    //     && ActiveAdmins.Any(a => a.Id == approver)
+    //     && ActiveAdmins.Any(a => a.Id == requester);
+    // public bool CanApproveFor(CustomerAccountId requester, CustomerAccountId approver) =>
+    // FourEyesEnabled
+    // && requester != approver
+    // && IsActiveAdminHere(approver)
+    // && IsActiveAdminHere(requester);
+    // // IsActiveAdminHere(id) := Memberships of `id` at CustomerId == this.Id with
+    // //     Role == MembershipRole.Admin && IsActive
 }
 
 public sealed class CustomerAccount : Entity
@@ -334,7 +336,7 @@ public sealed class CustomerAccount : Entity
     public string? JobTitle { get; private set; }  // "role in the company" — descriptive only
     public string Email { get; private set; }
     public string? Phone { get; private set; }
-    public AccountStatus Status { get; private set; }   // PendingApproval | Invited | Active | Deactivated
+    public AccountStatus Status { get; private set; }   // PendingApproval | Invited | Active | Deactivated   (PendingApproval is a login lifecycle state; it is not four-eyes)
     // ⚠ Retired 2026-09-03 by [DEC-119]: the platform owns identity outright, so there is no
     //   external subject to hold. Always null; nothing reads or writes it. Dropped after slice 1.
     public ExternalSubjectId? SubjectId { get; private set; }  // was: set when the invitation is accepted
@@ -448,74 +450,25 @@ public enum ProductionExpectation { Unknown = 0, Expected = 1, Never = 2 }
 | C6 | The IBAN is structurally valid and passes mod-97 | `Iban.Create` is the only constructor |
 | ~~C7~~ | ~~An account belongs to exactly one customer and cannot be moved~~ ⚠ **Reversed 2026-09-10 by [DEC-152].** An account belongs to **any number** of customers, one `CustomerMembership` each, and it is **still never moved** — a membership is added or soft-removed, never re-pointed. The invariant that replaces it: **a membership's `(AccountId, CustomerId)` pair is immutable; only `Role` and `RemovedAt` change** | Composite primary key; no setter for either id; `ChangeRole`, `Remove` and `Restore` are the only mutators |
 | **C19** | ⚠ **New 2026-09-10 [DEC-152].** A membership is **never deleted**. Removal sets `RemovedAt`; every predicate that means *"active"* carries `RemovedAt IS NULL` | **No `DELETE` grant to any application role** — a policy cannot guard a `DELETE`, so the privilege is withheld rather than argued about, and a test asserts the **absent privilege** |
-| **C20** | ⚠ **New 2026-09-10 [DEC-152].** A business never falls below its **admin floor** — **two** active admins for a four-eyes business **[F01-R43]**, one otherwise. Removal and demotion are both refused at the boundary | Check-then-act serialised by `SELECT … FOR UPDATE` over **that business's** membership rows, inside the request's own transaction. ⚠ The count carries an explicit `AND customer_id = @active`: the membership policy's permissive `OR` would otherwise let an admin's role in a *different* business inflate the count |
-| C8 | Four-eyes cannot be **enabled** while the company has fewer than **two active admin accounts**, because the rule would then be unsatisfiable and every sensitive action would deadlock **[DEC-71]** | Guard in `EnableFourEyes`, evaluated under the aggregate lock |
+| **C20** | ⚠ **New 2026-09-10 [DEC-152].** A business never falls below its **admin floor** — ~~**two** active admins for a four-eyes business **[F01-R43]**, one otherwise~~ ⚠ **one** active admin for every business since 2026-10-12 **[DEC-179]**. Removal and demotion are both refused at the boundary | Check-then-act serialised by `SELECT … FOR UPDATE` over **that business's** membership rows, inside the request's own transaction. ⚠ The count carries an explicit `AND customer_id = @active`: the membership policy's permissive `OR` would otherwise let an admin's role in a *different* business inflate the count |
+| ~~C8~~ | ~~Four-eyes cannot be **enabled** while the company has fewer than **two active admin accounts**, because the rule would then be unsatisfiable and every sensitive action would deadlock **[DEC-71]**~~ | ~~Guard in `EnableFourEyes`, evaluated under the aggregate lock~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no mode to enable. |
 | C9 | ~~While four-eyes is on, the second-to-last active admin cannot be deactivated and their admin flag cannot be revoked — the company may not fall below two~~ ⚠ **Superseded 2026-09-10 by [DEC-152]'s C20.** There is no account-level admin flag left to revoke; the floor is now enforced on `CustomerMembership.Remove`/`ChangeRole`, scoped to this business, not on `DeactivateAccount`/`RevokeAdmin` | ~~Guard in `DeactivateAccount` and `RevokeAdmin`; the same count as C8, checked on the way down~~ See C20 |
-| C10 | An approver is an **active admin of the same company** and is **not** the account that raised the action **[DEC-71]** | `Customer.CanApproveFor`, called with ids taken from the token, never from the request body **[DEC-17]** |
+| ~~C10~~ | ~~An approver is an **active admin of the same company** and is **not** the account that raised the action **[DEC-71]**~~ | ~~`Customer.CanApproveFor`, called with ids taken from the token, never from the request body **[DEC-17]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no approver. |
 | C11 | A bank account is **immutable once added**. It may be added and deactivated; it may never be edited **[DEC-61]**, **[DEC-71]** | No setters; there is no `EditBankAccount` method to call |
 | C12 | A deactivated bank account is never reactivated and never removed, so a past withdrawal payout stays resolvable to the account it went to | `DeactivatedAt` is write-once; no delete path |
 | C13 | `ProductionExpectation` is set by a declaration with an actor and a timestamp, never inferred from SJV or from observed production **[DEC-112]** | Only the declaration method writes it; the SJV comparison is a report, not a writer |
 
-### 3.2 Four-eyes, and what it governs
+### 3.2 ~~Four-eyes, and what it governs~~
 
-**[DEC-71]** replaces **[DEC-33]**. Four-eyes is a **per-customer-company mode with no threshold**:
-either the company has it on and every action in the table below needs a second admin, or it has it
-off and none of them do. **[OQ-85] is closed** — there is no amount, in euros or in megawatts, at
-which the rule starts.
+⚠ **Struck 2026-10-12 by [DEC-179].** This section held the `FourEyesRequest` aggregate and the invariants C14 to C18 for the four non-trade actions, the table of where each approval lives, and the recorded gap that `DisableFourEyes` was an ordinary admin action. None of it was ever built beyond the trade and the withdrawal, and none of it is wanted: there is no four-eyes. The invariants **C14**, **C15**, **C16**, **C17** and **C18** are struck with it and keep their numbers; **C8**, **C9** and **C10** above are struck too. The repository history before the commit of [DEC-179] has the text. **Deposits were always outside it**, and still are: nothing gates a deposit but the role rule of [DEC-163].
 
-| Action | Where the approval lives | Why there |
+| # | Invariant | Status |
 | --- | --- | --- |
-| Execute a trade | **In the `Trade` aggregate**, as the `AwaitingApproval` state (§4) | Money is reserved at acceptance and must stay reserved across the approval. A separate record would leave the reservation orphaned from the thing it secures — see §10 |
-| Add a bank account | `FourEyesRequest` | Nothing is reserved and nothing expires; the request is the whole state |
-| Deactivate a bank account | `FourEyesRequest` | Same |
-| ~~Add a user~~ | ⚠ **Removed 2026-09-10 by [DEC-152]** | Membership changes bypass four-eyes entirely **[F01-R49]**, so there is no request to raise. **Four actions remain**, and `FourEyesAction` drops its `AddUser` arm with this row |
-| Withdraw funds | `FourEyesRequest`, linked to the `WithdrawalRequest` (§5.3) | The wallet debit happens on payout, not on request, so there is no reservation to carry **[DEC-83]** |
-
-**Deposits are explicitly out of scope** and this is deliberate, not an omission: a customer can
-transfer money to PeakPower or use iDEAL on their own initiative, so gating a deposit gates nothing
-**[DEC-71]**.
-
-```csharp
-public sealed class FourEyesRequest : AggregateRoot
-{
-    public FourEyesRequestId Id { get; }
-    public CustomerId CustomerId { get; }
-    // ⚠ Corrected 2026-09-03 to the arms the database defines. `Trade` was missing, and
-    //   `Withdraw` is spelled `Withdrawal` — the database spelling is normative in both cases,
-    //   and WITHDRAWAL is what the CHECK constraint in customer.approval_request accepts.
-    // ⚠ Amended 2026-09-10 by [DEC-152]: FOUR arms, not five. `AddUser` is removed because
-    //   membership changes bypass four-eyes [F01-R49]. The domain enum moved with this comment.
-    public FourEyesAction Action { get; }        // AddBankAccount | DeactivateBankAccount
-                                                 // | Trade | Withdrawal
-    public string SubjectRef { get; }            // the id of the thing being acted on
-    public string PayloadJson { get; }           // the proposed change, frozen at request time
-    public CustomerAccountId RequestedByAccountId { get; }
-    public DateTimeOffset RequestedAt { get; }
-    public FourEyesState State { get; private set; }   // Pending | Approved | Declined
-    public CustomerAccountId? DecidedByAccountId { get; private set; }
-    public DateTimeOffset? DecidedAt { get; private set; }
-    public string? DeclineReason { get; private set; }
-
-    public Result Approve(Actor by, Customer customer);   // guard: customer.CanApproveFor(...)
-    public Result Decline(Actor by, Customer customer, string reason);   // reason mandatory
-}
-```
-
-| # | Invariant | Enforced |
-| --- | --- | --- |
-| C14 | A request is raised only when the company's `FourEyesEnabled` is **true at that moment**; turning the mode off later does not retroactively execute or void pending requests | Guard at creation; pending requests are decided or cancelled explicitly |
-| C15 | `Approve` and `Decline` both go through `Customer.CanApproveFor`, so C10 holds for all four actions with one implementation | One call site per transition |
-| C16 | The payload is frozen at request time and the approval applies **that** payload, not whatever the form holds at approval time | `PayloadJson` is `init`-only |
-| C17 | A request is decided at most once | State guard, terminal `Approved` and `Declined` |
-| C18 | `Decline` requires a non-empty reason | Guard in the method, matching `T5` |
-
-⚠ **One gap, recorded rather than closed silently.** `DisableFourEyes` is not in **[DEC-71]**'s list
-of ~~five~~ **four** actions ⚠ **the fifth, "Add a user", left the table 2026-09-10 by [DEC-152]** —
-and as the model stands one admin can therefore switch the mode off and then act
-alone. Whether disabling the mode should itself need a second admin is not decided — it is carried
-with the **[DEC-71]** source tension (OQ-09's comment and OQ-85's answer list different action sets,
-and the ledger asks for both to be confirmed at the next session). The model does not assume an
-answer; `DisableFourEyes` is an ordinary admin action today.
+| ~~C14~~ | ~~A request is raised only when the company's `FourEyesEnabled` is true~~ | ⚠ Struck 2026-10-12, [DEC-179] |
+| ~~C15~~ | ~~`Approve` and `Decline` both go through `Customer.CanApproveFor`~~ | ⚠ Struck 2026-10-12, [DEC-179] |
+| ~~C16~~ | ~~The payload is frozen at request time~~ | ⚠ Struck 2026-10-12, [DEC-179] |
+| ~~C17~~ | ~~A request is decided at most once~~ | ⚠ Struck 2026-10-12, [DEC-179] |
+| ~~C18~~ | ~~`Decline` requires a non-empty reason~~ | ⚠ Struck 2026-10-12, [DEC-179] |
 
 ## 4. The Trade aggregate
 
@@ -533,10 +486,11 @@ public sealed class Trade : AggregateRoot
     public TradeState State { get; private set; }
     public CustomerAccountId RequestedByAccountId { get; }  // denormalised for listing  [F05-R42]
 
-    // ── four-eyes  [DEC-71], replacing [DEC-33] ─────────────────────
+    // ── acceptance ──────────────────────────────────────────────────
     public CustomerAccountId? AcceptedByAccountId { get; private set; }   // set by Accept
-    public CustomerAccountId? ApprovedByAccountId { get; private set; }   // set by Approve
-    public bool FourEyesApplied { get; private set; }   // the company's mode, pinned at acceptance
+    // ⚠ Removed 2026-10-12 by [DEC-179] (four-eyes):
+    // public CustomerAccountId? ApprovedByAccountId { get; private set; }   // set by Approve
+    // public bool FourEyesApplied { get; private set; }   // the company's mode, pinned at acceptance
     // public FourEyesThresholdVersionId? ThresholdVersion { get; private set; }  // pinned at acceptance
     // public Money? ThresholdApplied { get; private set; }        // the amount compared against
     //   ⚠ Reversed 2026-08-19 by [DEC-71]. There is no threshold, so there is nothing to
@@ -559,16 +513,15 @@ public sealed class Trade : AggregateRoot
     public Result MakeOffer(Actor by, PricePerMwh price, TimeSpan window, IClock clock);
     public Result Decline(Actor by, string reason);
     public Result WithdrawOffer(Actor by, string reason);
-    public Result Accept(Actor by, IClock clock, FourEyesMode mode);
+    public Result Accept(Actor by, IClock clock);
                                                            // guard: now < ExpiresAt
-                                                           // → Accepted, or AwaitingApproval  [DEC-71]
+                                                           // → Accepted  [DEC-179]; was (…, FourEyesMode mode),
+                                                           //   → Accepted, or AwaitingApproval  [DEC-71]
     public Result Reject(Actor by, string? reason);
-    public Result Expire(IClock clock);                    // from Offered *or* AwaitingApproval
-    public Result Approve(Actor by, IClock clock, Customer customer);
-                                                           // guard: now < ExpiresAt
-                                                           //  and  customer.CanApproveFor(
-                                                           //          AcceptedByAccountId, by.Id)
-    public Result RefuseApproval(Actor by, string? reason); // terminal — ApprovalRefused
+    public Result Expire(IClock clock);                    // from Offered
+    // ⚠ Removed 2026-10-12 by [DEC-179]: Approve and RefuseApproval, and Expire from AwaitingApproval.
+    // public Result Approve(Actor by, IClock clock, Customer customer);
+    // public Result RefuseApproval(Actor by, string? reason); // terminal — ApprovalRefused
     public Result Confirm(Actor by, string? externalRef, PricePerMwh? actualMarketPrice);
     public Result Fail(Actor by, string reason);           // reason mandatory
 }
@@ -588,15 +541,15 @@ public sealed class Trade : AggregateRoot
 | T7 | Every transition appends exactly one `TradeEvent` | Single private `Transition()` helper |
 | T8 | Terminal states admit no further transitions | State machine table |
 | T9 | `CalendarVersion` is set at creation and never changes | `init`-only |
-| T10 | `Approve` is rejected when the acting account equals `AcceptedByAccountId`. ⚠ **Amended 2026-08-19 by [DEC-71]**: it is now also rejected when the acting account is **not an active admin** of the owning company. Four eyes is still two account *ids* — the admin flag narrows *which* ids qualify, it does not turn the check into a permission lookup **[DEC-16]**, **[DEC-71]** | Guard in `Approve` delegating to `Customer.CanApproveFor`; the acting account comes from the token, never the body |
-| T11 | A trade in `AwaitingApproval` holds an **active reservation for the full trade value**, created by `Accept` and never re-created by `Approve` | Reservation is taken in the accept transaction, exactly as for `Accepted` |
-| T12 | Leaving `AwaitingApproval` other than by `Approve` releases that reservation in the **same** transaction | `Expire` and `RefuseApproval` both call `ReleaseReservation` |
-| T13 | `Approve` is only valid while `now < Offer.ExpiresAt`. **One clock governs the whole customer response** — there is no separate approval window **[DEC-13]**, **[DEC-71]** | Same guard and same job as `Accept` |
+| ~~T10~~ | ~~`Approve` is rejected when the acting account equals `AcceptedByAccountId`. ⚠ **Amended 2026-08-19 by [DEC-71]**: it is now also rejected when the acting account is **not an active admin** of the owning company. Four eyes is still two account *ids* — the admin flag narrows *which* ids qualify, it does not turn the check into a permission lookup **[DEC-16]**, **[DEC-71]**~~ | ~~Guard in `Approve` delegating to `Customer.CanApproveFor`; the acting account comes from the token, never the body~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step; accept lands in `Accepted` and holds the reservation from there. |
+| ~~T11~~ | ~~A trade in `AwaitingApproval` holds an **active reservation for the full trade value**, created by `Accept` and never re-created by `Approve`~~ | ~~Reservation is taken in the accept transaction, exactly as for `Accepted`~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step; accept lands in `Accepted` and holds the reservation from there. |
+| ~~T12~~ | ~~Leaving `AwaitingApproval` other than by `Approve` releases that reservation in the **same** transaction~~ | ~~`Expire` and `RefuseApproval` both call `ReleaseReservation`~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step; accept lands in `Accepted` and holds the reservation from there. |
+| ~~T13~~ | ~~`Approve` is only valid while `now < Offer.ExpiresAt`. **One clock governs the whole customer response** — there is no separate approval window **[DEC-13]**, **[DEC-71]**~~ | ~~Same guard and same job as `Accept`~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step; accept lands in `Accepted` and holds the reservation from there. |
 | ~~T14~~ | ~~`ThresholdVersion` and `ThresholdApplied` are set by `Accept` and never change~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** — there is no threshold to pin. Replaced by **T18** | ~~Pinned like `CalendarVersion`, for the same reason~~ |
 | T15 | A `Sell` is **not** validated against confirmed holdings for the period. ⚠ **[DEC-34] reversed by [DEC-72]** — short selling is permitted, the motivating case being a customer with solar production selling expected surplus | No holdings check exists in the sell path. See the exposure note below |
 | T16 | The amount reserved on `Accept`, and later debited on `Confirm`, is **VAT-inclusive**: `volume × price × (1 + 21%)` **[DEC-78]**, **[DEC-64]**. Prices stay quoted and stored **ex-VAT** **[DEC-26]**, **[DEC-76]** | One helper, `Offer.TotalValueGross`, used by both `Reserve` and the debit. Nothing else grosses up ⚠ **2026-09-29 [DEC-167] (2):** the gross is computed **once**, at accept, and stored as `trade.wallet_amount_gross`; Confirm debits that stored number and no path recomputes it (`TradeMoney` reads it off the locked trade). |
 | T17 | The reservation covers **100%** of that gross value — there is no buffer and no partial cover **[DEC-41]** | `Reserve` refuses when `AvailableBalance` is short (W3) |
-| T18 | `FourEyesApplied` is set by `Accept` from the company's mode at that instant and never changes. Turning the mode off while a trade sits in `AwaitingApproval` does **not** release it | Pinned like `CalendarVersion`, for the same reason: the branch must be reconstructable years later |
+| ~~T18~~ | ~~`FourEyesApplied` is set by `Accept` from the company's mode at that instant and never changes. Turning the mode off while a trade sits in `AwaitingApproval` does **not** release it~~ | ~~Pinned like `CalendarVersion`, for the same reason: the branch must be reconstructable years later~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step; accept lands in `Accepted` and holds the reservation from there. |
 
 **What T15 costs, stated plainly.** The wallet is prepaid **[AS-11]** and the balance check
 **[DEC-41]** bounds a *buy*, because a buy is a spend. A **short is a promise to deliver**, not a
@@ -608,10 +561,7 @@ the product must not until OQ-94 is answered.
 
 ### 4.2 State transition table
 
-Encoded as data so it is testable exhaustively, not as a `switch` statement. **[DEC-33]** took the
-set from ten tuples to **fourteen** and from eleven states to thirteen; **[DEC-71]** keeps every one
-of those tuples and changes only *why* the branch is taken. The full set is restated rather than
-appended to, because the exhaustive test asserts the whole of it:
+Encoded as data so it is testable exhaustively, not as a `switch` statement. ~~**[DEC-33]** took the set from ten tuples to **fourteen** and from eleven states to thirteen; **[DEC-71]** keeps every one of those tuples and changes only *why* the branch is taken.~~ ⚠ **Amended 2026-10-12 by [DEC-179]:** the four approval tuples go and the machine is back to **ten tuples over eleven states** (the thirteen minus `AwaitingApproval` and `ApprovalRefused`, which stay in the enum only as legacy values for rows that already carry them and are reachable from no tuple). The full set is restated, because the exhaustive test asserts the whole of it:
 
 ```csharp
 private static readonly FrozenSet<(TradeState From, TradeAction Action, TradeState To)> Allowed =
@@ -620,47 +570,23 @@ private static readonly FrozenSet<(TradeState From, TradeAction Action, TradeSta
     (Requested,        Cancel,         Cancelled),
     (Requested,        MakeOffer,      Offered),
     (Requested,        Decline,        Declined),
-    (Offered,          Accept,         Accepted),          // four-eyes off  [DEC-71]
-    (Offered,          Accept,         AwaitingApproval),  // four-eyes on   [DEC-71]
+    (Offered,          Accept,         Accepted),          // any active member  [DEC-179]
     (Offered,          Reject,         Rejected),
     (Offered,          Expire,         Expired),
     (Offered,          Withdraw,       Withdrawn),
-    (AwaitingApproval, Approve,        Accepted),          // [DEC-71]
-    (AwaitingApproval, RefuseApproval, ApprovalRefused),   // [DEC-71]  terminal
-    (AwaitingApproval, Expire,         Expired),           // [DEC-71]  reservation released
     (Accepted,         Confirm,        Confirmed),
     (Accepted,         Fail,           Failed),
+    // ⚠ Removed 2026-10-12 by [DEC-179]:
+    // (Offered,          Accept,         AwaitingApproval),  // four-eyes on   [DEC-71]
+    // (AwaitingApproval, Approve,        Accepted),          // [DEC-71]
+    // (AwaitingApproval, RefuseApproval, ApprovalRefused),   // [DEC-71]  terminal
+    // (AwaitingApproval, Expire,         Expired),           // [DEC-71]  reservation released
 ];
 ```
 
-13 states × 12 actions × 13 states = 2 028 combinations, of which exactly these 14 are permitted.
-The test enumerates the whole cross-product and asserts membership, so a new state or action cannot
-be added without the test being updated deliberately.
+The test enumerates the whole cross-product of the live states and actions and asserts membership, so a new state or action cannot be added without the test being updated deliberately. The destination of `Accept` is no longer computed: `(Offered, Accept)` has exactly one tuple.
 
-**Two tuples share `(Offered, Accept)`.** The set is a *containment* check, not a function, so this
-does not make it ambiguous: the domain method computes its destination first and then asks whether
-that destination is reachable. The destination is decided by one pure guard, evaluated inside the
-accept transaction against the offer's total value:
-
-```csharp
-// ⚠ Reversed 2026-08-19 by [DEC-71]. Was:
-//   var destination = policy.RequiresApproval(offer.TotalValue)
-//       ? TradeState.AwaitingApproval : TradeState.Accepted;
-var destination = mode.RequiresApproval           // == customer.FourEyesEnabled
-    ? TradeState.AwaitingApproval
-    : TradeState.Accepted;
-```
-
-The guard no longer reads the offer at all. ⚠ **Amended 2026-08-19 by [DEC-71]**: the branch is
-decided by the company's mode, not by the value of the trade, so `offer.TotalValue` is not an input
-to it. What is pinned on the trade is `FourEyesApplied` — the mode as it stood at that instant — so
-the branch stays deterministic and reconstructable years later for the same reason `CalendarVersion`
-is pinned.
-
-**What this simplification buys and costs.** It removes an entire versioned reference table, its
-resolution order and the "null threshold means never" special case that **[DEC-33]** needed. It costs
-proportionality: a company with four-eyes on needs a second admin for a €50 trade and for a €500 000
-one alike. That is what the source asked for and **[OQ-85]** is closed on it.
+~~**Two tuples share `(Offered, Accept)`.** The destination was decided by one pure guard against the company's mode (`mode.RequiresApproval ? AwaitingApproval : Accepted`), and what was pinned on the trade was `FourEyesApplied`. A company with four-eyes on needed a second admin for a €50 trade and for a €500 000 one alike.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no guard and nothing is pinned.
 
 ## 5. The Wallet aggregate
 
@@ -702,8 +628,8 @@ public sealed class Wallet : AggregateRoot
 
     // ── withdrawals  [DEC-83] ────────────────────────────────────────
     public Result<WithdrawalRequest> RequestWithdrawal(Money amount, BankAccountId to, Actor by);
-    public Result                    ApproveWithdrawal(WithdrawalRequestId id, Actor by, Customer c);
-    public Result                    DeclineWithdrawal(WithdrawalRequestId id, Actor by, string reason);
+    // ⚠ Removed 2026-10-12 by [DEC-179]: ApproveWithdrawal(WithdrawalRequestId id, Actor by, Customer c)
+    public Result                    DeclineWithdrawal(WithdrawalRequestId id, Actor by, string reason);   // PeakPower refuses, or the customer cancels
     public Result<WalletEntry>       RecordWithdrawalPaid(WithdrawalRequestId id,
                                                           BankTransactionRef bankRef, Actor by);
 }
@@ -728,7 +654,7 @@ public sealed class Wallet : AggregateRoot
 | W13 | A deposit intent is matched **at most once**. A second payment quoting the same reference is quarantined for an employee, never auto-credited twice | State guard on the intent, plus a unique constraint on `BankTransactionRef` |
 | W14 | A deposit credit equals the amount **actually received**, not the amount the intent expected. There is no minimum and no maximum **[DEC-84]** | `MatchDeposit` takes the received amount; the expected amount is a hint for matching, never a validation |
 | W15 | A withdrawal is paid to an **active bank account of the same customer** **[DEC-61]**, and the payout debit is recorded only when an employee confirms the transfer left the bank | `RecordWithdrawalPaid` requires a `BankTransactionRef`; the money leaves before the ledger says so, never after |
-| W16 | While four-eyes is on, a withdrawal cannot reach `Approved` without a **different admin** deciding it **[DEC-71]**, **[DEC-83]** | `ApproveWithdrawal` delegates to `Customer.CanApproveFor` (C10) |
+| ~~W16~~ | ~~While four-eyes is on, a withdrawal cannot reach `Approved` without a **different admin** deciding it **[DEC-71]**, **[DEC-83]**~~ | ~~`ApproveWithdrawal` delegates to `Customer.CanApproveFor` (C10)~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — a withdrawal is `Requested` the moment it is made. |
 | W17 | No wallet balance threshold exists and no low-balance alert is raised ⚠ **[DEC-49] reversed by [DEC-90]** | There is no threshold field to compare against |
 
 ### 5.2 Entry shape
@@ -804,9 +730,9 @@ public sealed class WithdrawalRequest : Entity
     public CustomerAccountId RequestedByAccountId { get; }
     public DateTimeOffset RequestedAt { get; }
     public WithdrawalState State { get; private set; }
-        // Requested → AwaitingApproval? → Approved → Paid
-        //                              ↘ Declined
-    public FourEyesRequestId? ApprovalRef { get; private set; }   // set when four-eyes is on
+        // Requested → Paid
+        //           ↘ Declined / Cancelled   (was: Requested → AwaitingApproval? → Approved → Paid; removed by [DEC-179])
+    // public FourEyesRequestId? ApprovalRef { get; private set; }   // removed 2026-10-12, [DEC-179]
     public CustomerAccountId? DecidedByAccountId { get; private set; }
     public BankTransactionRef? PaidWith { get; private set; }
     public DateTimeOffset? PaidAt { get; private set; }
@@ -900,9 +826,9 @@ In-process, published after a successful commit, handled asynchronously.
 | Event | Handled by |
 | --- | --- |
 | `TradeOffered` | Notifications, SignalR push |
-| `TradeAwaitingApproval` | Notifications to **every active account except the acceptor**, SignalR push to the desk **[DEC-33]** |
-| `TradeApproved` | SignalR push to the trade desk — the trade has entered "to confirm" |
-| `TradeApprovalRefused` | Notifications, SignalR push |
+| ~~`TradeAwaitingApproval`~~ | ~~Notifications to **every active account except the acceptor**, SignalR push to the desk **[DEC-33]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no trade awaits approval. |
+| ~~`TradeApproved`~~ | ~~SignalR push to the trade desk — the trade has entered "to confirm"~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval; `TradeAccepted` is the push. |
+| ~~`TradeApprovalRefused`~~ | ~~Notifications, SignalR push~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no refusal. |
 | `TradeAccepted` | SignalR push to the trade desk |
 | `TradeConfirmed` | Block creation, notifications, chart cache invalidation |
 | `TradeFailed` | Notifications |
@@ -921,23 +847,7 @@ position with a volume. Most trades never become blocks. Merging them would mean
 negotiation states on an entity whose main job is to answer "how much power do I have at 14:15 on 12
 August".
 
-**Why the approval state sits *after* acceptance, not before.** **[DEC-33]** requires a second pair
-of eyes above a value threshold; it does not say where. The obvious alternative — a first account
-"endorses" the offer and a second then accepts it — was rejected for three reasons. First, **the
-money**: nothing is reserved until acceptance, so an endorsement pending for twenty minutes has no
-claim on the balance, and an invoice debit or a second trade could empty it underneath. The control
-would then fail at the last step for reasons that have nothing to do with governance. Second, **the
-clock**: it would make answering an offer a two-step act, so **[DEC-13]**'s single guard would have
-to be evaluated twice with two different meanings. Third, **what acceptance means**: today accepting
-is the one atomic instant at which the customer commits and the money moves. Splitting it would
-create a state in which the company has effectively said yes and nothing is held.
-
-Placing the state after acceptance keeps all three properties. `Accept` still reserves, still in one
-transaction, still under one clock; `AwaitingApproval` is simply an accepted trade that PeakPower may
-not act on yet. And because `Approve` lands in `Accepted`, **`Accepted` keeps its meaning — fully
-committed by the customer — and the trader's side of the machine is unchanged**: an unapproved trade
-never reaches the "to confirm" queue, so there is no path by which PeakPower executes against an
-un-approved commitment.
+**Why the approval state sits *after* acceptance, not before.** ~~**[DEC-33]** requires a second pair of eyes above a value threshold; it does not say where. The obvious alternative — a first account "endorses" the offer and a second then accepts it — was rejected for three reasons: the money, the clock and what acceptance means.~~ ⚠ **Struck 2026-10-12 by [DEC-179]:** there is no approval state. The three properties the argument protected — `Accept` reserves in one transaction, under one clock, and `Accepted` means *fully committed by the customer* — hold trivially, because acceptance is the only step.
 
 **Why `TradeEvent` rather than an audit table.** The brief requires the history to be a visible
 product surface for both audiences. Making it the model's source of state — and projecting the

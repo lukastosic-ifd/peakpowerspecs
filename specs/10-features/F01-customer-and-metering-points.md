@@ -223,10 +223,10 @@ agree on. Confirm at the next session.
 
 | ID | Requirement | MoSCoW |
 | --- | --- | :--: |
-| F01-R35 | The customer's metering point list shows per row: friendly name, EAN, commodity, status, last data date, this-month consumption, active block cover. | Must |
+| F01-R35 | The customer's metering point list shows per row: friendly name, EAN, commodity, status, last data date, this-month consumption, active block cover. ⚠ **[DEC-180] (11): the consumption is printed in kWh.** | Must |
 | F01-R36 | The list supports free-text search across name, description and EAN, and filters on commodity, status and data freshness. | Must |
 | F01-R37 | The list can be sorted by any displayed column and exported to CSV. | Should |
-| F01-R38 | The detail page shows master data, the friendly-name editor, a data-quality panel (see [F02](F02-metering-data-ingestion.md)), the consumption chart ([F03](F03-consumption-visualisation.md)) and the block positions attached to this metering point. | Must |
+| F01-R38 | The detail page shows master data, the friendly-name editor, a data-quality panel (see [F02](F02-metering-data-ingestion.md)), the consumption chart ([F03](F03-consumption-visualisation.md)) and the block positions attached to this metering point. ⚠ **Amended 2026-10-13 by [DEC-180] (4), (8): the page's cost chart [DEC-149] reads the saved cost of this connection [F03-R28] and reads a day again while a cost is missing [F03-R30].** | Must |
 
 ### Production expectation
 

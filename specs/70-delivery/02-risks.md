@@ -1276,7 +1276,7 @@ in the top section so that the reason each one is small is on the record and can
 
 Sorted by score. IDs are stable and are never reused; the retired entry stays at the foot of the
 table rather than being deleted. **34 live entries after 2026-08-19** (R-01…R-35 less the retired
-R-03), of which **17 score 12 or above**.
+R-03), of which **17 score 12 or above**. ⚠ **2026-10-13, [DEC-180]: two more entries, R-36 and R-37, both below 12.**
 
 | ID | Risk | L | I | Score | Mitigation summary | Owner |
 | --- | --- | :-: | :-: | :-: | --- | --- |

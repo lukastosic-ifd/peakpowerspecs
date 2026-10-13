@@ -31,7 +31,7 @@ export function customerDashboard() {
   const kw = (cw - 3 * 16) / 4;
   b += kpi(cx, cy, kw, 'AVAILABLE BALANCE', eur(75576.72), 'settled € 86.951 · reserved € 11.374', { accent: C.text });
   b += kpi(cx + (kw + 16), cy, kw, 'COVERAGE — AUGUST', '78,4 %', 'of measured consumption', { accent: C.accent });
-  b += kpi(cx + 2 * (kw + 16), cy, kw, 'UNCOVERED VOLUME', '214,4 MWh', '≈ € 18.953 at day-ahead', { accent: C.sUncov });
+  b += kpi(cx + 2 * (kw + 16), cy, kw, 'UNCOVERED VOLUME', '214.400,0 kWh', '≈ € 18.953 at day-ahead', { accent: C.sUncov });
   b += kpi(cx + 3 * (kw + 16), cy, kw, 'OPEN TRADES', '2', '1 awaiting your response', { accent: C.amber });
 
   // urgent offer banner
@@ -39,7 +39,7 @@ export function customerDashboard() {
   b += rect(cx, by, cw, 60, { fill: C.amberBg, stroke: '#fcd34d', r: 10 });
   b += circle(cx + 30, by + 30, 11, { fill: C.amber });
   b += text(cx + 30, by + 34, '!', { size: 15, fill: '#fff', weight: 700, anchor: 'middle' });
-  b += text(cx + 52, by + 26, 'Offer received — Base Nov-2026 · 0,2 MW · € 102,4000/MWh · € 14.745,60 ex VAT', { size: 13.5, weight: 700, fill: '#78350f' });
+  b += text(cx + 52, by + 26, 'Offer received — Base Nov-2026 · 200 kW · € 0,10240/kWh · € 14.745,60 ex VAT', { size: 13.5, weight: 700, fill: '#78350f' });
   b += text(cx + 52, by + 45, 'Respond before 15:01 — the price is firm until then. Accepting reserves € 17.842,18, incl. VAT.', { size: 11.5, fill: '#92400e' });
   b += text(cx + cw - 200, by + 38, '24:47', { size: 24, weight: 700, fill: C.amber, anchor: 'end', mono: true });
   b += button(cx + cw - 176, by + 13, 158, 'View offer', 'amber');
@@ -67,7 +67,7 @@ export function customerDashboard() {
   b += panel(cx, ry, chartW, 320, 'Consumption — Wednesday 12 August 2026', { subtitle: 'Rotterdam DC · provisional data', right: 'Day ▾' });
   const gx = cx + 60; const gy = ry + 84; const gw = chartW - 90; const gh = 178;
   const cons = loadShape(11, 380, 640);
-  const blk = blockShape(1.0, 1.0).map((mw) => mw * 250);
+  const blk = blockShape(1000, 1000).map((kw) => kw * 0.25); // kW -> kWh per quarter-hour
   const maxV = 780;
   b += axis(gx, gy, gw, gh, HOURS, { yLabels: ['780', '585', '390', '195', '0'] });
   b += coverageBands(cons, blk, gx, gy, gw, gh, maxV);
@@ -120,12 +120,12 @@ export function eanList() {
   b += badge(cx + 600, cy + 9, 'Data OK', 'muted', { w: 76 });
 
   const rows = [
-    [{ t: 'Rotterdam DC', weight: 600, sub: '8716871000000000 11' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '12 Aug 2026', sub: 'provisional' }, { t: '385,4 MWh', align: 'end' }, { bar: 0.94, fill: C.accent }, { t: '94 %', align: 'end' }],
-    [{ t: 'Venlo cold store', weight: 600, sub: '8716871000000000 27' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '12 Aug 2026', sub: 'provisional' }, { t: '291,7 MWh', align: 'end' }, { bar: 0.71, fill: C.accent }, { t: '71 %', align: 'end' }],
-    [{ t: 'Tilburg plant', weight: 600, sub: '8716871000000000 43' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '12 Aug 2026', sub: 'provisional' }, { t: '612,0 MWh', align: 'end' }, { bar: 0.83, fill: C.accent }, { t: '83 %', align: 'end' }],
-    [{ t: 'Almere office', weight: 600, sub: '8716871000000000 59' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '10 Aug 2026', sub: 'no data 2 days' }, { t: '18,2 MWh', align: 'end' }, { bar: 0.0, fill: C.faint }, { t: '0 %', align: 'end' }],
-    [{ t: '— no name set —', fill: C.faint, sub: '8716871000000000 61' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '12 Aug 2026' }, { t: '44,9 MWh', align: 'end' }, { bar: 0.35, fill: C.accent }, { t: '35 %', align: 'end' }],
-    [{ t: 'Breda warehouse', weight: 600, sub: '8716871000000000 78' }, { t: 'Electricity' }, { t: 'Ending 31 Dec', badge: 'amber' }, { t: '12 Aug 2026' }, { t: '102,3 MWh', align: 'end' }, { bar: 0.6, fill: C.accent }, { t: '60 %', align: 'end' }],
+    [{ t: 'Rotterdam DC', weight: 600, sub: '8716871000000000 11' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '12 Aug 2026', sub: 'provisional' }, { t: '385.400,0 kWh', align: 'end' }, { bar: 0.94, fill: C.accent }, { t: '94 %', align: 'end' }],
+    [{ t: 'Venlo cold store', weight: 600, sub: '8716871000000000 27' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '12 Aug 2026', sub: 'provisional' }, { t: '291.700,0 kWh', align: 'end' }, { bar: 0.71, fill: C.accent }, { t: '71 %', align: 'end' }],
+    [{ t: 'Tilburg plant', weight: 600, sub: '8716871000000000 43' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '12 Aug 2026', sub: 'provisional' }, { t: '612.000,0 kWh', align: 'end' }, { bar: 0.83, fill: C.accent }, { t: '83 %', align: 'end' }],
+    [{ t: 'Almere office', weight: 600, sub: '8716871000000000 59' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '10 Aug 2026', sub: 'no data 2 days' }, { t: '18.200,0 kWh', align: 'end' }, { bar: 0.0, fill: C.faint }, { t: '0 %', align: 'end' }],
+    [{ t: '— no name set —', fill: C.faint, sub: '8716871000000000 61' }, { t: 'Electricity' }, { t: 'Active', badge: 'green' }, { t: '12 Aug 2026' }, { t: '44.900,0 kWh', align: 'end' }, { bar: 0.35, fill: C.accent }, { t: '35 %', align: 'end' }],
+    [{ t: 'Breda warehouse', weight: 600, sub: '8716871000000000 78' }, { t: 'Electricity' }, { t: 'Ending 31 Dec', badge: 'amber' }, { t: '12 Aug 2026' }, { t: '102.300,0 kWh', align: 'end' }, { bar: 0.6, fill: C.accent }, { t: '60 %', align: 'end' }],
     [{ t: 'Tilburg plant — gas', weight: 600, sub: '8716871000000000 92' }, { t: 'Gas', fill: C.muted }, { t: 'Not tradeable', badge: 'muted' }, { t: '—', fill: C.faint }, { t: '—', align: 'end', fill: C.faint }, { bar: 0, fill: C.faint }, { t: '—', align: 'end', fill: C.faint }],
   ];
   const cols = [
@@ -199,9 +199,9 @@ export function eanDetail() {
     { label: 'ALLOCATED', w: 100, align: 'end' }, { label: 'PRICE', w: 108, align: 'end' },
     { label: 'VOLUME (AUG)', w: 128, align: 'end' }, { label: 'STATUS', w: 106 },
   ], [
-    [{ t: 'TRD-1042', mono: true, fill: C.indigo }, { t: 'Base' }, { t: 'Aug 2026' }, { t: '0,300 MW', align: 'end' }, { t: '€ 72,4000', align: 'end' }, { t: '223,20 MWh', align: 'end' }, { t: 'Confirmed', badge: 'green' }],
-    [{ t: 'TRD-1051', mono: true, fill: C.indigo }, { t: 'Peak' }, { t: 'Q3 2026' }, { t: '0,200 MW', align: 'end' }, { t: '€ 96,1500', align: 'end' }, { t: '50,40 MWh', align: 'end' }, { t: 'Confirmed', badge: 'green' }],
-    [{ t: 'TRD-1067', mono: true, fill: C.indigo }, { t: 'Base (sell)' }, { t: 'Aug 2026' }, { t: '−0,040 MW', align: 'end', fill: C.danger }, { t: '€ 78,2000', align: 'end' }, { t: '−29,76 MWh', align: 'end', fill: C.danger }, { t: 'Confirmed', badge: 'green' }],
+    [{ t: 'TRD-1042', mono: true, fill: C.indigo }, { t: 'Base' }, { t: 'Aug 2026' }, { t: '300 kW', align: 'end' }, { t: '€ 0,07240', align: 'end' }, { t: '223.200,0 kWh', align: 'end' }, { t: 'Confirmed', badge: 'green' }],
+    [{ t: 'TRD-1051', mono: true, fill: C.indigo }, { t: 'Peak' }, { t: 'Q3 2026' }, { t: '200 kW', align: 'end' }, { t: '€ 0,09615', align: 'end' }, { t: '50.400,0 kWh', align: 'end' }, { t: 'Confirmed', badge: 'green' }],
+    [{ t: 'TRD-1067', mono: true, fill: C.indigo }, { t: 'Base (sell)' }, { t: 'Aug 2026' }, { t: '−40 kW', align: 'end', fill: C.danger }, { t: '€ 0,07820', align: 'end' }, { t: '−29.760,0 kWh', align: 'end', fill: C.danger }, { t: 'Confirmed', badge: 'green' }],
   ], { rowH: 38 });
 
   return svgDoc(b, { label: 'Customer portal — connection detail' });
@@ -235,24 +235,24 @@ export function chartDayView() {
 
   // series — KPIs below are derived from these, so the numbers always match the picture
   const cons = loadShape(11, 380, 640);
-  const blk = blockShape(1.0, 1.0).map((mw) => mw * 250);
+  const blk = blockShape(1000, 1000).map((kw) => kw * 0.25); // kW -> kWh per quarter-hour
   const maxV = 780;
-  const totCons = sum(cons) / 1000;
-  const totBlock = sum(blk) / 1000;
-  const covered = sum(cons.map((c, i) => Math.min(c, blk[i]))) / 1000;
-  const uncovered = sum(cons.map((c, i) => Math.max(c - blk[i], 0))) / 1000;
-  const surplus = sum(blk.map((v, i) => Math.max(v - cons[i], 0))) / 1000;
-  const spot = uncovered * 88.4 - surplus * 47.1;
+  const totCons = sum(cons);
+  const totBlock = sum(blk);
+  const covered = sum(cons.map((c, i) => Math.min(c, blk[i])));
+  const uncovered = sum(cons.map((c, i) => Math.max(c - blk[i], 0)));
+  const surplus = sum(blk.map((v, i) => Math.max(v - cons[i], 0)));
+  const spot = uncovered * 0.0884 - surplus * 0.0471;
 
   // KPIs
   const ky = cy + 62;
   const kw = (cw - 5 * 12) / 6;
   const kpis = [
-    ['CONSUMPTION', `${nl(totCons)} MWh`, '96 intervals', C.sConsume],
-    ['PRODUCTION', '0,00 MWh', 'no generation here', C.sProduce],
-    ['BLOCK COVER', `${nl(totBlock)} MWh`, '1,0 base + 1,0 peak', C.sBlock],
-    ['COVERED', `${nl((covered / totCons) * 100, 1)} %`, `${nl(covered)} MWh`, C.green],
-    ['UNCOVERED', `${nl(uncovered)} MWh`, `surplus ${nl(surplus)} MWh`, C.sUncov],
+    ['CONSUMPTION', `${nl(totCons, 1)} kWh`, '96 intervals', C.sConsume],
+    ['PRODUCTION', '0,0 kWh', 'no generation here', C.sProduce],
+    ['BLOCK COVER', `${nl(totBlock, 1)} kWh`, '1.000 kW base + 1.000 kW peak', C.sBlock],
+    ['COVERED', `${nl((covered / totCons) * 100, 1)} %`, `${nl(covered, 1)} kWh`, C.green],
+    ['UNCOVERED', `${nl(uncovered, 1)} kWh`, `surplus ${nl(surplus, 1)} kWh`, C.sUncov],
     ['SPOT RESULT', `+ ${eur(spot, 0)}`, 'indicative, provisional', C.sUncov],
   ];
   kpis.forEach((k, i) => {
@@ -288,8 +288,8 @@ export function chartDayView() {
     ['Consumption', `${cons[42]} kWh`],
     ['Block cover', `${blk[42]} kWh`],
     ['Net position', `${net >= 0 ? '+' : '−'}${Math.abs(net)} kWh`],
-    ['Day-ahead', '€ 96,50/MWh'],
-    ['Spot cost', `${net >= 0 ? '+ ' : '− '}${eur(Math.abs(net) / 1000 * 96.5)}`],
+    ['Day-ahead', '€ 0,09650/kWh'],
+    ['Spot cost', `${net >= 0 ? '+ ' : '− '}${eur(Math.abs(net) * 0.0965)}`],
   ];
   tips.forEach((t, i) => {
     b += text(tipX + 26, gy + 72 + i * 17, t[0], { size: 10.5, fill: '#94a3b8' });
@@ -332,13 +332,13 @@ export function chartMonthView() {
   const ph = 420;
   b += panel(cx, py, cw, ph, 'Daily consumption and block cover — August 2026', { subtitle: 'click a day for 15-minute detail' });
   const gx = cx + 68; const gy = py + 84; const gw = cw - 110; const gh = ph - 150;
-  const maxV = 16;
+  const maxV = 16000; // kWh
 
   const daily = [];
   for (let d = 1; d <= 31; d++) {
     const dow = (d + 4) % 7; // 1 Aug 2026 = Saturday
     const weekend = dow === 0 || dow === 1;
-    let v = weekend ? 6.4 + (d % 3) * 0.35 : 11.2 + ((d * 7) % 5) * 0.42;
+    let v = weekend ? 6400 + (d % 3) * 350 : 11200 + ((d * 7) % 5) * 420;
     if (d === 10 || d === 11) v = 0; // missing
     daily.push(v);
   }
@@ -346,11 +346,11 @@ export function chartMonthView() {
     const d = i + 1;
     const dow = (d + 4) % 7;
     const weekend = dow === 0 || dow === 1;
-    return 24 * 1.0 + (weekend ? 0 : 12 * 1.0); // MWh: base 24 + peak 12
+    return 1000 * 24 + (weekend ? 0 : 1000 * 12); // kWh: kW x hours, base 24 000 + peak 12 000
   });
 
-  b += axis(gx, gy, gw, gh, ['1', '5', '10', '15', '20', '25', '31'], { yLabels: ['16', '12', '8', '4', '0'] });
-  b += text(gx - 52, gy - 8, 'MWh', { size: 10, fill: C.faint });
+  b += axis(gx, gy, gw, gh, ['1', '5', '10', '15', '20', '25', '31'], { yLabels: ['16.000', '12.000', '8.000', '4.000', '0'] });
+  b += text(gx - 52, gy - 8, 'kWh', { size: 10, fill: C.faint });
 
   const bw = gw / 31;
   daily.forEach((v, i) => {
@@ -367,7 +367,7 @@ export function chartMonthView() {
     }
     b += text(x + bw / 2, gy + gh + 16, String(d), { size: 8, fill: C.faint, anchor: 'middle' });
   });
-  // block cover line — scale MWh/day onto the same axis
+  // block cover line — scale kWh/day onto the same axis
   b += stepline(blockDaily.map((v) => v / 3), gx, gy, gw, gh, maxV, { stroke: C.sBlock, sw: 2.2, dash: '5 3' });
 
   b += legend(gx, py + ph - 22, [
@@ -379,9 +379,9 @@ export function chartMonthView() {
 
   const sy = py + ph + 16;
   const kw = (cw - 3 * 12) / 4;
-  b += kpi(cx, sy, kw, 'MEASURED (29 of 31 DAYS)', '285,4 MWh', '2 days awaiting data', { accent: C.sConsume });
-  b += kpi(cx + kw + 12, sy, kw, 'BLOCK VOLUME', '996,0 MWh', '744 base + 252 peak', { accent: C.sBlock });
-  b += kpi(cx + 2 * (kw + 12), sy, kw, 'SURPLUS', '710,6 MWh', 'sold back at day-ahead', { accent: C.sSurplus });
+  b += kpi(cx, sy, kw, 'MEASURED (29 of 31 DAYS)', '285.400,0 kWh', '2 days awaiting data', { accent: C.sConsume });
+  b += kpi(cx + kw + 12, sy, kw, 'BLOCK VOLUME', '996.000,0 kWh', '744.000 base + 252.000 peak', { accent: C.sBlock });
+  b += kpi(cx + 2 * (kw + 12), sy, kw, 'SURPLUS', '710.600,0 kWh', 'sold back at day-ahead', { accent: C.sSurplus });
   b += kpi(cx + 3 * (kw + 12), sy, kw, 'vs. JULY 2026', '+ 4,1 %', 'same-weekday basis', { accent: C.text });
 
   return svgDoc(b, { label: 'Customer portal — month chart' });
@@ -418,19 +418,19 @@ export function priceIndications() {
   // apostrophe, not U+2019 — this literal must match it character for character.
   b += text(cx + cw, ySelector + 24, 'Sample indications — generated for demonstration only. They do not reflect PeakPower\'s pricing.', { size: 10, fill: C.faint, anchor: 'end' });
 
-  // forward-curve chart — x = delivery periods of one granularity, y = today’s RAW €/MWh [DEC-160]; raw since 2026-09-29 [DEC-167] — the customer sees the quote as received, no markup
-  b += panel(cx, yChart, cw, CHART_H, 'Base & Peak — forward curve · Month', { subtitle: 'Delivery period on the x-axis · today’s price per MWh', right: 'Indication — not an offer' });
+  // forward-curve chart — x = delivery periods of one granularity, y = today’s RAW €/kWh [DEC-160], [DEC-180]; raw since 2026-09-29 [DEC-167] — the customer sees the quote as received, no markup
+  b += panel(cx, yChart, cw, CHART_H, 'Base & Peak — forward curve · Month', { subtitle: 'Delivery period on the x-axis · today’s price per kWh', right: 'Indication — not an offer' });
   const gx = cx + 60; const gy = yChart + 80; const gw = cw - 100; const gh = 140;
   const periods = ['Sep 26', 'Oct 26', 'Nov 26', 'Dec 26', 'Jan 27', 'Feb 27'];
-  const baseVals = [76.91, 78.53, null, 81.76, 81.27, 79.61];
+  const baseVals = [0.07691, 0.07853, null, 0.08176, 0.08127, 0.07961];
   const baseStatus = ['FRESH', 'FRESH', 'UNAVAILABLE', 'FRESH', 'FRESH', 'FRESH'];
-  const peakVals = [94.26, 95.88, 97.45, 99.22, 98.63, 96.96];
+  const peakVals = [0.09426, 0.09588, 0.09745, 0.09922, 0.09863, 0.09696];
   const peakStatus = ['FRESH', 'FRESH', 'FRESH', 'FRESH', 'FRESH', 'STALE'];
-  const yMin = 74; const yMax = 104;
+  const yMin = 0.074; const yMax = 0.104;
   const sx = (i) => gx + i * (gw / (periods.length - 1));
   const sy = (v) => gy + gh - ((v - yMin) / (yMax - yMin)) * gh;
 
-  b += axis(gx, gy, gw, gh, periods, { gridLines: 2, yLabels: ['€104', '€89', '€74'] });
+  b += axis(gx, gy, gw, gh, periods, { gridLines: 2, yLabels: ['€0,104', '€0,089', '€0,074'] });
 
   const lineFor = (vals) => {
     let d = ''; let open = false;
@@ -472,7 +472,7 @@ export function priceIndications() {
   b += path(`M ${ttX - 8} ${ttY - 16} L ${ttX + 8} ${ttY - 16} L ${ttX} ${ttY - 4} Z`, { fill: '#0f172a' });
   b += rect(ttX - 72, ttY - 80, 144, 66, { fill: '#0f172a', stroke: 'none', r: 8 });
   b += text(ttX, ttY - 62, 'Base — Oct 2026', { size: 10.5, fill: '#cbd5e1', weight: 600, anchor: 'middle' });
-  b += text(ttX, ttY - 44, '€ 78,53 /MWh', { size: 14, fill: '#ffffff', weight: 700, anchor: 'middle' });
+  b += text(ttX, ttY - 44, '€ 0,07853 /kWh', { size: 14, fill: '#ffffff', weight: 700, anchor: 'middle' });
   b += text(ttX, ttY - 28, 'Indication — not an offer', { size: 9, fill: '#94a3b8', anchor: 'middle' });
 
   // list — same products, per-cell status. Base and Peak are separate products, each with its own
@@ -482,10 +482,10 @@ export function priceIndications() {
   b += panel(cx, yList, cw, LIST_H, 'This period’s prices', { subtitle: 'Month · Base and Peak, per delivery period', right: 'Indication — not an offer' });
   const cols = [
     { label: 'PERIOD', w: 190 },
-    { label: 'BASE € / MWH', w: 140, align: 'end' },
+    { label: 'BASE € / KWH', w: 140, align: 'end' },
     { label: 'STATUS', w: 110 },
     { label: 'OBSERVED', w: 95, align: 'end' },
-    { label: 'PEAK € / MWH', w: 140, align: 'end' },
+    { label: 'PEAK € / KWH', w: 140, align: 'end' },
     { label: 'STATUS', w: 110 },
     { label: 'OBSERVED', w: 95, align: 'end' },
   ];
@@ -499,10 +499,10 @@ export function priceIndications() {
   const peakObserved = ['14:20', '14:14', '14:10', '14:07', '14:03', '12:40'];
   const rows = periods.map((p, i) => [
     p,
-    baseVals[i] != null ? eur(baseVals[i]) : { t: '—', fill: C.faint },
+    baseVals[i] != null ? eur(baseVals[i], 5) : { t: '—', fill: C.faint },
     { t: textFor(baseStatus[i]), badge: badgeFor(baseStatus[i]) },
     { t: baseObserved[i] || '—', fill: C.faint },
-    peakVals[i] != null ? eur(peakVals[i]) : { t: '—', fill: C.faint },
+    peakVals[i] != null ? eur(peakVals[i], 5) : { t: '—', fill: C.faint },
     { t: textFor(peakStatus[i]), badge: badgeFor(peakStatus[i]) },
     { t: peakObserved[i] || '—', fill: C.faint },
   ]);
@@ -587,16 +587,16 @@ export function tradeWizard() {
 
 /* ────────────────────────────────────────────────────── offer countdown */
 export function tradeOfferCountdown() {
-  const s = shell({ portal: 'customer', title: 'Offer · TRD-1051', crumb: 'Trading › Peak Q1 2027 · 1,0 MW', nav: NAV, active: 4, user: USER });
+  const s = shell({ portal: 'customer', title: 'Offer · TRD-1051', crumb: 'Trading › Peak Q1 2027 · 1.000 kW', nav: NAV, active: 4, user: USER });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
   // countdown hero
   b += rect(cx, cy, cw, 150, { fill: '#0f2b33', stroke: null, r: 12 });
   b += text(cx + 36, cy + 40, 'FIRM OFFER — RESPOND BEFORE 15:01', { size: 11.5, fill: '#5eead4', weight: 700 });
-  b += text(cx + 36, cy + 90, '€ 94,7500', { size: 44, fill: '#ffffff', weight: 700 });
-  b += text(cx + 250, cy + 90, '/ MWh', { size: 16, fill: '#94a3b8' });
-  b += text(cx + 36, cy + 118, '768,00 MWh  ·  € 72.768,00 ex VAT  ·  € 88.049,28 reserved incl. VAT', { size: 13, fill: '#cbd5e1' });
+  b += text(cx + 36, cy + 90, '€ 0,09475', { size: 44, fill: '#ffffff', weight: 700 });
+  b += text(cx + 250, cy + 90, '/ kWh', { size: 16, fill: '#94a3b8' });
+  b += text(cx + 36, cy + 118, '768.000,0 kWh  ·  € 72.768,00 ex VAT  ·  € 88.049,28 reserved incl. VAT', { size: 13, fill: '#cbd5e1' });
 
   const ring = cx + cw - 130;
   b += circle(ring, cy + 75, 52, { fill: 'none', stroke: '#1e3a44', sw: 8 });
@@ -610,15 +610,15 @@ export function tradeOfferCountdown() {
     { label: 'CONNECTION', w: 254 }, { label: 'ALLOCATED', w: 120, align: 'end' },
     { label: 'VOLUME', w: 140, align: 'end' }, { label: 'VALUE', w: 150, align: 'end' },
   ], [
-    [{ t: 'Rotterdam DC', weight: 600 }, { t: '0,190 MW', align: 'end' }, { t: '145,92 MWh', align: 'end' }, { t: '€ 13.825,92', align: 'end' }],
-    [{ t: 'Venlo cold store', weight: 600 }, { t: '0,310 MW', align: 'end' }, { t: '238,08 MWh', align: 'end' }, { t: '€ 22.558,08', align: 'end' }],
-    [{ t: 'Tilburg plant', weight: 600 }, { t: '0,400 MW', align: 'end' }, { t: '307,20 MWh', align: 'end' }, { t: '€ 29.107,20', align: 'end' }],
-    [{ t: 'Almere office', weight: 600 }, { t: '0,100 MW', align: 'end' }, { t: '76,80 MWh', align: 'end' }, { t: '€ 7.276,80', align: 'end' }],
+    [{ t: 'Rotterdam DC', weight: 600 }, { t: '190 kW', align: 'end' }, { t: '145.920,0 kWh', align: 'end' }, { t: '€ 13.825,92', align: 'end' }],
+    [{ t: 'Venlo cold store', weight: 600 }, { t: '310 kW', align: 'end' }, { t: '238.080,0 kWh', align: 'end' }, { t: '€ 22.558,08', align: 'end' }],
+    [{ t: 'Tilburg plant', weight: 600 }, { t: '400 kW', align: 'end' }, { t: '307.200,0 kWh', align: 'end' }, { t: '€ 29.107,20', align: 'end' }],
+    [{ t: 'Almere office', weight: 600 }, { t: '100 kW', align: 'end' }, { t: '76.800,0 kWh', align: 'end' }, { t: '€ 7.276,80', align: 'end' }],
   ], { rowH: 38 });
   b += line(cx + 18, cy + 400, cx + leftW - 18, cy + 400, { stroke: C.border2 });
   b += text(cx + 18, cy + 424, 'Total — ex VAT', { size: 13, weight: 700 });
   b += text(cx + leftW - 18, cy + 424, '€ 72.768,00', { size: 17, weight: 700, anchor: 'end' });
-  b += text(cx + 18, cy + 448, 'Peak Q1 2027 · Mon–Fri 08:00–20:00 · 64 peak days · steps of 0,01 MW · calendar NL-POWER-PEAK v2027.1', { size: 10.5, fill: C.faint });
+  b += text(cx + 18, cy + 448, 'Peak Q1 2027 · Mon–Fri 08:00–20:00 · 64 peak days · steps of 10 kW · calendar NL-POWER-PEAK v2027.1', { size: 10.5, fill: C.faint });
 
   const rx = cx + leftW + 16;
   const rw = cw - leftW - 16;
@@ -642,7 +642,7 @@ export function tradeOfferCountdown() {
 
 /* ────────────────────────────────────────────────────────── trade history */
 export function tradeHistory() {
-  const s = shell({ portal: 'customer', title: 'Trade TRD-1051', crumb: 'Peak Q1 2027 · 1,0 MW · Confirmed', nav: NAV, active: 4, user: USER, actions: [{ label: 'Export history', variant: 'secondary', w: 128 }] });
+  const s = shell({ portal: 'customer', title: 'Trade TRD-1051', crumb: 'Peak Q1 2027 · 1.000 kW · Confirmed', nav: NAV, active: 4, user: USER, actions: [{ label: 'Export history', variant: 'secondary', w: 128 }] });
   let b = s.svg;
   const { cx, cy, cw } = s;
 
@@ -650,8 +650,8 @@ export function tradeHistory() {
   b += panel(cx, cy, leftW, 620, 'History', { subtitle: 'The same timeline PeakPower sees' });
 
   const events = [
-    ['30 Jul 2026, 14:25:02', 'Request submitted', 'J. de Vries · Energy Manager (you)', 'Peak Q1-2027 · 1,000 MW across 4 connections. Comment: “Hedging Q1 baseload growth.” Indication at submission: € 96,1500/MWh.', 'accent'],
-    ['30 Jul 2026, 14:31:00', 'Offer published', 'PeakPower Trading', 'Price € 94,7500/MWh · total € 72.768,00 ex VAT · reaction window 30 minutes, expiring 15:01:00. The requester was notified.', 'indigo'],
+    ['30 Jul 2026, 14:25:02', 'Request submitted', 'J. de Vries · Energy Manager (you)', 'Peak Q1-2027 · 1.000 kW across 4 connections. Comment: “Hedging Q1 baseload growth.” Indication at submission: € 0,09615/kWh.', 'accent'],
+    ['30 Jul 2026, 14:31:00', 'Offer published', 'PeakPower Trading', 'Price € 0,09475/kWh · total € 72.768,00 ex VAT · reaction window 30 minutes, expiring 15:01:00. The requester was notified.', 'indigo'],
     ['30 Jul 2026, 14:44:18', 'Offer accepted', 'M. Vandersteen · Finance Director', '€ 88.049,28 reserved on the company wallet — the ex-VAT price plus 21% VAT. Reservation RES-0912. Accepted by a different colleague than the requester.', 'amber'],
     ['30 Jul 2026, 14:52:41', 'Trade confirmed', 'PeakPower Trading', 'Executed on the market, reference ICE-88213-A. Reservation settled — wallet debited € 88.049,28. Block BLK-0431 created with 4 allocations.', 'green'],
   ];
@@ -678,7 +678,7 @@ export function tradeHistory() {
     ['Reference', 'TRD-1051'], ['Requested by', 'J. de Vries'], ['Accepted by', 'M. Vandersteen'],
     ['State', 'Confirmed'], ['Direction', 'Buy'], ['Shape', 'Peak'],
     ['Delivery period', 'Q1 2027'], ['Peak calendar', 'NL-POWER-PEAK v2027.1'],
-    ['Total power', '1,000 MW'], ['Total volume', '768,00 MWh'], ['Agreed price', '€ 94,7500 / MWh'],
+    ['Total power', '1.000 kW'], ['Total volume', '768.000,0 kWh'], ['Agreed price', '€ 0,09475 / kWh'],
   ];
   facts.forEach((f, i) => { b += statLine(rx + 18, cy + 62 + i * 26, rw - 36, f[0], f[1], { mono: i === 0 }); });
   b += line(rx + 18, cy + 300 - 44, rx + rw - 18, cy + 300 - 44, { stroke: C.border });
@@ -780,12 +780,12 @@ export function walletLedger() {
   // Chronological, then displayed newest-first. Balances are computed, so they reconcile.
   const hist = [
     ['28-07 08:30', 'Deposit (bank)', 'green', 'Bank transfer PP-DEP-4821', 'PeakPower', 'PP-DEP-4821', 76500, 0],
-    ['30-07 14:44', 'Funds reserved', 'amber', 'Peak Q1-27 · 1,0 MW · incl. VAT', 'M. Vandersteen', 'TRD-1051', 0, 88049.28],
+    ['30-07 14:44', 'Funds reserved', 'amber', 'Peak Q1-27 · 1.000 kW · incl. VAT', 'M. Vandersteen', 'TRD-1051', 0, 88049.28],
     ['30-07 14:52', 'Trade confirmed', 'green', 'Peak Q1-27 · reservation settled', 'M. Bakker ⬥', 'TRD-1051', -88049.28, -88049.28],
     ['06-08 09:20', 'Withdrawal paid', 'muted', 'Paid out to NL18 INGB 0007 2519 44', 'PeakPower', 'WDR-0014', -5000, 0],
     ['10-08 07:41', 'Deposit (bank)', 'green', 'Bank transfer PP-DEP-5107', 'PeakPower', 'PP-DEP-5107', 60000, 0],
     ['12-08 09:14', 'Deposit (iDEAL)', 'green', 'iDEAL deposit (test checkout)', 'Automatic', 'sim-0199a3f2', 25000, 0],
-    ['13-08 10:15', 'Funds reserved', 'amber', 'Base Oct-26 · 0,12 MW · incl. VAT', 'P. Aksoy', 'TRD-1072', 0, 11374],
+    ['13-08 10:15', 'Funds reserved', 'amber', 'Base Oct-26 · 120 kW · incl. VAT', 'P. Aksoy', 'TRD-1072', 0, 11374],
   ];
   let settled = 20000; let reserved = 0;
   const built = hist.map(([d, type, variant, desc, by, ref, dSet, dRes]) => {

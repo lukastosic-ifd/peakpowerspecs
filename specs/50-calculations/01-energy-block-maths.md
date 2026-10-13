@@ -343,7 +343,7 @@ a draft invoice **[DEC-88]** and paid to the bank — see
 
 | Stage | Precision |
 | --- | --- |
-| `power_kW` | **Signed**, and always a whole multiple of 10 **[DEC-70]**, **[DEC-180]**, stored `numeric(12,3)`. ~~6 decimals — enough for a 0.001 MW allocation split across many EANs.~~ ⚠ **Amended 2026-08-19 by [DEC-70]**: a finer value is **invalid input**, not a rounding case. There is no sub-increment allocation to split |
+| `power_kW` | **Signed**, and always a whole multiple of 10 **[DEC-70]**, **[DEC-180]**, stored `numeric(12,3)`. ~~6 decimals — enough for a 0.001 MW allocation split across many EANs.~~ ⚠ **Amended 2026-08-19 by [DEC-70]**: stored at 6 decimals as headroom, but a third non-zero decimal is **invalid input**, not a rounding case. ⚠ **[DEC-180] (10):** the column is `numeric(12,3)` and any value that is not a multiple of 10 kW is invalid input. There is no sub-increment allocation to split |
 | `totalKWh` | Exact, at most one decimal, stored `numeric(18,3)`; computed, never rounded intermediately. Carries the sign of `power_kW` §3.6 |
 | `price` | At most 5 decimals (€/kWh), above 0 and below 10, stored `numeric(12,5)`, ex-VAT **[DEC-26]** |
 | `tradeValue` | Exact, at most 6 decimals, stored `numeric(20,8)`; **shown rounded half-away-from-zero to 2 decimals** and the target of the per-EAN split §5.2. ⚠ **Amended 2026-08-19 by [DEC-78]** — it is no longer itself a wallet movement |
@@ -527,6 +527,8 @@ precisely the exposure **[OQ-94]** has to size.
    **one** rounding of the stored trade value times 1.21, never `1.21 ×` a rounded subtotal
    **[DEC-78]**, **[DEC-180]**. Generate negative volumes and third-decimal inputs deliberately — both are new
    failure modes this round created.
+   Added 2026-10-13 [DEC-180] (10): volume is kW × hours (`BlockVolumeCalculator.HoursOf`), and one
+   quarter-hour is 0.25 h (`HoursPerInterval`).
 5. **One money number reaches the wallet.** `tradeValue` is for quoting and for the per-EAN split;
    `walletAmount` is the only figure the wallet ever sees, on both the reserve and the debit side
    **[F05-R70]**. Keep them distinct in the type system, not by convention — they differ by 21% and

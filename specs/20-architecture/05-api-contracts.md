@@ -486,7 +486,7 @@ once.~~
 | The domain's own check at submit | invalid-volume | `powerKw` | The power must be at least 10 kW, a multiple of 10 kW and below 1000000000 kW. |
 | A period with no energy | invalid-volume | `powerKw` | The delivery period has no energy. |
 
- ⚠ **2026-09-29 [DEC-167] (9):** `invalid-volume` is a **400** validation shape, not a 409; every other trading problem type is a 409. `0.005`, `0.0`, and a negative value are all rejected as `invalid-volume` (⚠ **2026-09-30 [DEC-167] (16): there are no lines, so there is no line index** — as built the `ValidationProblem` `errors` is keyed by `powerMw`). The check is server-side and repeated at acceptance, because the request panel is not the only
+⚠ **2026-09-29 [DEC-167] (9):** `invalid-volume` is a **400** validation shape, not a 409; every other trading problem type is a 409. `0.005`, `0.0`, and a negative value are all rejected as `invalid-volume` (⚠ **2026-09-30 [DEC-167] (16): there are no lines, so there is no line index** — as built the `ValidationProblem` `errors` is keyed by `powerMw`). The check is server-side and repeated at acceptance, because the request panel is not the only
 client this API will ever have.
 
 ⚠ **What ten-times-finer granularity costs downstream.** ⚠ **Superseded 2026-09-30 by [DEC-167] (16): there are no allocations** — the paragraph below is the pre-2026-09-30 per-EAN model, and the one account-level `powerMw` is the only volume. Per-EAN allocation rounds to 0,01 MW instead
@@ -1167,7 +1167,8 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET` | `/data-health/quarantine` | Unattached series, including `WRONG_BRP` **[F02-R42]** |
 | `GET` | `/data-health/day-ahead` | ⚠ **New 2026-10-13 [DEC-180] (7), (13)** — the day-ahead feed's status for the Data & feeds screen: latest day stored, days missing, tomorrow, the overdue days, the newest run, the last success, the last failure and the last price change. Any signed-in employee; always 200 |
 | `GET` | `/data-health/saved-costs` | ⚠ **New 2026-10-13 [DEC-180] (7), (13)** — the recalculation of the saved costs and positions: what is waiting, what is failing, whether the seven triggers are in place, the last nightly check. Any signed-in employee; always 200 |
-| `GET` | `/data-health/summary` | ⚠ **As built, never listed in this table:** the ingestion screen's five stat cards (documents and processing lag today, and the failure, quarantine and silence backlogs) || `GET`/`PUT` | `/reference/peak-calendars` | Calendars |
+| `GET` | `/data-health/summary` | ⚠ **As built, never listed in this table:** the ingestion screen's five stat cards (documents and processing lag today, and the failure, quarantine and silence backlogs) |
+| `GET`/`PUT` | `/reference/peak-calendars` | Calendars |
 | ~~`GET`/`PUT`~~ | ~~`/reference/tax-tariffs`~~ **`GET`/`POST` `/reference/energy-tax-brackets`** | ~~Energiebelasting. ⚠ Endpoint retained, tariffs unpopulated — **[DEC-24]**~~ ⚠ **Reversed 2026-08-19 by [DEC-74]** — energiebelasting is **back in scope and populated**. Per **calendar year**, an ordered set of tiers with lower and upper bound in kWh and a rate in €/kWh; the top tier is unbounded **[F12-R44]**. **Versioned, never edited in place**: `POST` creates a new version with a `valid_from`; a version a completed calculation has read can only be superseded **[F12-R45]**. `PUT` is gone with the in-place edit |
 | `POST` | `/reference/energy-tax-brackets/validate` | ⚠ **New [DEC-74]** — contiguity, no gap, no overlap, ascending bounds, year fully covered, **plus the blast radius**: how many customers and EANs the version affects and from when **[F12-R47]**. A wrong boundary silently mis-taxes every EAN for a year |
 | `GET`/`PUT` | `/customers/{id}/energy-tax-reduction` | ⚠ **New [DEC-74]** — the minority case: no reduction (the default, ~90% of customers), a **percentage reduction applied per bracket**, or a full exemption, with `valid_from`, `valid_to`, a mandatory reason and the ruling or certificate that justifies it **[F12-R46]**. Per customer, not per EAN |
@@ -1213,6 +1214,7 @@ Value sets: `state` `NEVER_RAN`, `NOT_CONFIGURED`, `ACTIVE`; `source` `ENTSOE`, 
 | `lastCheckFinishedAt`, `lastCheckUnitsDifferent` | The nightly check (03:30 Amsterdam): when it last finished and how many customer-days it found different |
 
 No error text is served by the second read. Neither read changes any stored state.
+
 ⚠ **The withdrawals desk and the payout body — new 2026-09-29 by [DEC-166].** Staff track withdrawals across every
 company, pay them by manual bank transfer outside the platform, and **mark them as paid** — the only staff action, with
 no approve and no reject **[DEC-83]**. Both routes carry the back-office policy, as the other wallet routes do.

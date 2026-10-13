@@ -169,7 +169,7 @@ represent exactly.
 **Do not round the per-interval volume to whole kWh.** Half of all legal allocations produce a
 volume ending in 0,5 kWh, so whole-kWh rounding is wrong by 0,5 kWh in those intervals — up to
 `0,5 × 96 × 30 = 1 440 kWh` over a 30-day month if the allocation lands on a half throughout. Keep
-interval volumes in kWh with at least one decimal~~, or in MWh with four~~ ⚠ **[DEC-180] (10)**; the money rounding stays where
+interval volumes in kWh with at least one decimal ~~, or in MWh with four~~ ⚠ **[DEC-180] (10)**; the money rounding stays where
 [Energy block maths](01-energy-block-maths.md) §4.1 puts it, at the end.
 
 ## 4. Coverage metrics
@@ -408,6 +408,8 @@ every volume kWh**, so the `/1000` appears in every settlement formula without e
 €/kWh rate left anywhere on the invoice is the energiebelasting bracket rate **[DEC-74]**, which is
 computed per calendar year on net usage and never touches the position maths — see
 [Invoice calculation](03-invoice-calculation.md) §7.
+
+⚠ **[DEC-180] (10):** `purchase` and `sale` sum the unrounded products, while `dayAheadSettlement` above is rounded to 5 decimals per quarter-hour (§5.4 sums rounded quarter-hours). How the invoice rounds these two legs is not decided here (the invoice pages carry the note on that).
 
 ⚠ Two signs are not guaranteed: a **negative day-ahead price** is a real market outcome, and it turns
 the purchase leg into a credit and the sale leg into a cost. That is correct behaviour, not a defect,

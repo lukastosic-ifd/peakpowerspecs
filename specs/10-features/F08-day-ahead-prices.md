@@ -123,7 +123,8 @@ just for the current month **[F08-R16]**.
 10. **History is data, not decoration** **[DEC-75]**, **[DEC-99]**. Backfill exists because a
     correction can land months after a month closed and force those intervals to be re-priced. Without
     the history a late correction cannot be settled at all; with it, re-settlement is arithmetic.
-11. **Backfill uses the same path as the daily fetch** **[F08-R15]**. Same storage, same versioning,
+11. **Backfill uses the same path as the daily fetch** **[F08-R15]**. Same storage, same versioning
+    (⚠ **[DEC-180] (7): the versioning of rule 4 is struck, so "same versioning" no longer names a rule**),
     same completeness check. A second code path for old days would be a second place for the
     completeness rule to drift.
 

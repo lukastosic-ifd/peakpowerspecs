@@ -49,9 +49,9 @@ export function customerDashboard() {
   const py = by + 76;
   b += panel(cx, py, cw, 132, 'Prices', { subtitle: 'Indication — not an offer', right: 'updated 14:22' });
   const tiles = [
-    ['Base — Sep 26', '€ 78,45'], ['Peak — Sep 26', '€ 96,15'],
-    ['Base — Q4 26', '€ 84,20'], ['Peak — Q4 26', '€ 103,70'],
-    ['Base — Cal 27', '€ 79,90'], ['Peak — Cal 27', '€ 98,25'],
+    ['Base — Sep 26', `€ ${nl(0.07845, 5)}`], ['Peak — Sep 26', `€ ${nl(0.09615, 5)}`],
+    ['Base — Q4 26', `€ ${nl(0.0842, 5)}`], ['Peak — Q4 26', `€ ${nl(0.10370, 5)}`],
+    ['Base — Cal 27', `€ ${nl(0.0799, 5)}`], ['Peak — Cal 27', `€ ${nl(0.09825, 5)}`],
   ];
   const tw = (cw - 36 - 5 * 12) / 6;
   tiles.forEach((t, i) => {

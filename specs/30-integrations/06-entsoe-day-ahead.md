@@ -53,6 +53,7 @@ day-ahead price document; `contract_MarketAgreement.type=A01` is added where the
 | `DayAheadIngestion:MissingAlertAfter` | — | 15:00 Amsterdam ⚠ [DEC-180] (7) |
 | `DayAheadIngestion:RunRetentionDays` | — | 90 ⚠ [DEC-180] (7) |
 | `DayAheadIngestion:Provider` | — | empty ⚠ [DEC-180] (7): `Simulated` only on a local run-mode stack |
+
 All of them are documented in `deploy/env.example`. **Getting a token:** register at
 transparency.entsoe.eu (*Login → Register*); email transparency@entsoe.eu with the subject *Restful
 API access* and the registered address; once access is granted, *My Account Settings → Web API

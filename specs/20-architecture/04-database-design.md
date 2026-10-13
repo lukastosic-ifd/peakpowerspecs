@@ -2459,7 +2459,7 @@ The landing as a whole has six tests, L1 to L6: all four migrations apply in one
 
 **4. The backfill.** One `BACKFILL` request, queued by migration 43 when there is anything to cost. The Migrator runs the engine as its last step, after the schema migrations and the seeders, for at most `SavedCosts:MigratorBackfillSeconds` (default 120, a hard limit: the batch in flight rolls back; 0 skips the step). It never fails the Migrator: it catches, logs and returns. The Worker finishes what is left, nearest day first. **To be confirmed at build:** the final value and every duration (task L1).
 
-**5. If the Migrator fails.** In every case the Migrator exits 1, Compose starts no host, and the platform stays down until a person acts. Where the database stands depends on a fact that is **to be confirmed at build** (test L4, task L1): whether one Migrator run applies all pending migrations in one transaction (assumption S2).
+**5. If the Migrator fails.** In every case the Migrator exits 1, Compose starts no host, and the platform stays down until a person acts (if no old host is still running: row 1 of the table below). Where the database stands depends on a fact that is **to be confirmed at build** (test L4, task L1): whether one Migrator run applies all pending migrations in one transaction (assumption S2).
 
 | It fails in | If the run is one transaction | If each migration commits by itself |
 | --- | --- | --- |

@@ -23,7 +23,7 @@ missing price **[F08-R07]**
 > 5 decimals. (3) A changed price is stamped `updated_at`; no version is kept. (4) Every tick saves its outcome as one row of
 > `market.day_ahead_feed_run`, kept 90 days, and the back office shows the feed's status. (5) The alert
 > `DAY_AHEAD_PRICES_MISSING` is raised for today, and for tomorrow from 15:00 Amsterdam, and closes by itself when the day is
-> stored. (6) A price change leads to the recalculation of the saved costs and positions of that day. Everything below that
+> stored, when the day leaves the stored window, or once the day is past (the gap then shows as a missing day on the status read). (6) A price change leads to the recalculation of the saved costs and positions of that day. Everything below that
 > says "a stored day is never asked for again" is superseded by this paragraph.
 
 ## 1. The request

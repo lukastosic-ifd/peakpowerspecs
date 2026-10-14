@@ -24,9 +24,9 @@ and an entirely avoidable one.
 | Schema | Contents |
 | --- | --- |
 | `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, ~~**approval requests [DEC-71]**~~ *(never built; struck 2026-10-12, [DEC-179])*, metering points, **refresh tokens [DEC-117]**, **password-reset tokens [DEC-113]**, **onboarding applications [DEC-113]** |
-| `metering` | **BRPs [DEC-69]**, **the shared EAN pool [DEC-113]**, inbound messages, interval data versions, readings, imbalance, data state |
-| `market` | peak calendars, calendar intervals, price indications, **the indication markup [DEC-80]**, day-ahead prices |
-| `trading` | trades, ~~lines~~ connections, offers, events, blocks, ~~allocations~~, ~~**four-eyes thresholds [DEC-33]**~~ ⚠ **Built as designed by [DEC-167]** — ⚠ four tables (amended 2026-09-30, [DEC-167] (16)) and one sequence, §3.4.4; migration 30 (⚠ five from migration 32, `trade_desk_notice`, owner-only, [DEC-168]). |
+| `metering` | **BRPs [DEC-69]**, **the shared EAN pool [DEC-113]**, inbound messages, interval data versions, readings, imbalance, data state, **saved usage costs, the recalculation queue and its check runs [DEC-180]** |
+| `market` | peak calendars, calendar intervals, price indications, **the indication markup [DEC-80]**, day-ahead prices, **day-ahead feed runs [DEC-180]** |
+| `trading` | trades, ~~lines~~ connections, offers, events, blocks, ~~allocations~~, ~~**four-eyes thresholds [DEC-33]**~~ ⚠ **Built as designed by [DEC-167]** — ⚠ four tables (amended 2026-09-30, [DEC-167] (16)) and one sequence, §3.4.4; migration 30 (⚠ five from migration 32, `trade_desk_notice`, owner-only, [DEC-168]), **saved hedge positions [DEC-180]**. |
 | `wallet` | wallets, entries, reservations, payments, **deposit intents, incoming payments [DEC-106]**, **withdrawal requests [DEC-83]** |
 | `billing` | ~~surcharges~~, ~~**feed-in tariffs [DEC-44]**~~, **energiebelasting brackets, reductions and results [DEC-74]**, invoice runs, **invoice drafts [DEC-88]**, sections, lines, credit notes |
 | `audit` | generic audit records, internal notes |
@@ -63,6 +63,10 @@ pair explicitly, so that a future key in the same direction to a non-reference t
 | `metering.interval_data_version` | ≤ ~73 000 per 100 points | 100 × 365 × 2, more with corrections, fewer wherever production is absent **[DEC-65]** |
 | `market.calendar_interval` | 35 040 | 365 × 96 |
 | `market.day_ahead_price` | 35 040 | Per market area |
+| `metering.interval_cost` | ≤ 3 504 000 per 100 connections a year | 100 × 365 × 96. Derived data, rebuilt from its inputs **[DEC-180] (4)** |
+| `trading.hedge_position_interval` | ≤ 35 040 per customer a year | 365 × 96 per customer, whatever the number of connections **[DEC-180] (5)** |
+| `market.day_ahead_feed_run` | 48 a day, kept 90 days | One row per 30-minute tick, idle ticks included **[DEC-180] (7)** |
+| `metering.cost_recalc_request` | A queue that drains | A request is deleted by the batch that claims it. ⚠ **Measured 2026-10-14 (task L1), on a laptop, not on the VM:** the load-test set (100 connections, 365 days, 4 905 600 readings) drained in 18,9 s, leaving `metering.interval_cost` at 577 MB for 3 503 600 rows and `trading.hedge_position_interval` at 7,9 MB for 35 040 rows. The VM's own rate and sizes are not known (§7.12) |
 | `wallet.wallet_entry` | Thousands | Trades, ~~invoices~~ **[DEC-77]**, deposits **[DEC-106]** and withdrawals **[DEC-83]**. Fewer types than before, not more: nothing invoiced reaches the ledger |
 | `trading.trade_desk_notice` | Tens of thousands | ⚠ **New 2026-10-01 ([DEC-168])** — one row per desk mail: one *new request* per trade plus one *ready to confirm* per accepted-and-ready trade, so about two per trade; each is stamped sent within ~15 s |
 | `trading.trade_event` | Tens of thousands | ~8 events per trade; ~~\~9 where a trade passes through `AWAITING_APPROVAL`~~ ~8 *(⚠ no trade passes through `AWAITING_APPROVAL` since 2026-10-12, [DEC-179])* |
@@ -472,7 +476,7 @@ CREATE TABLE customer.metering_point (
     brp_assigned_at timestamptz NOT NULL DEFAULT now(),
     validity       daterange NOT NULL,
     grid_operator  text,
-    capacity_kw    numeric(12,3),
+    capacity_kw    numeric(12,3),   -- ⚠ stale: built as numeric(18,6) (corrected 2026-10-13, [DEC-180])
     address        jsonb,
     name           text,
     description    text,
@@ -711,7 +715,7 @@ CREATE TABLE customer.onboarding_application (
     registered_address   jsonb,
     industry             varchar(60),
     flow_direction       text,                      -- steps 5-6: CONSUMPTION | PRODUCTION | BOTH
-    volume_band          text,
+    volume_band          text,   -- UP_TO250_MWH … ABOVE2500_MWH: identifiers, kept; their labels are in kWh [DEC-180] (11)
     iban                 varchar(34),               -- steps 6-7
     bank_account_holder  varchar(200),
     bank_verified_at     timestamptz,
@@ -927,6 +931,50 @@ CREATE TABLE market.day_ahead_price (
 -- (2026-01-01) at the start of each tick. The job writes with INSERT … ON CONFLICT (delivery_date, pos) DO UPDATE,
 -- which completes a half-written day [DEC-172] (4).
 -- The table is read-only to the customer and employee roles (SELECT only), market reference data, no RLS.
+-- ⚠ As built 2026-10-13 by [DEC-180] (7): migration 40 (20261013164002_DayAheadFeed) adds updated_at timestamp with time zone NULL (null until a stored
+-- price is replaced by a different one; no default, no index, no backfill). source may read SIMULATED on a local run-mode
+-- stack. A second table, market.day_ahead_feed_run, holds one row per tick: below.
+CREATE TABLE market.day_ahead_feed_run (
+    id                    uuid                     NOT NULL,  -- set by the application (Guid.CreateVersion7)
+    started_at            timestamp with time zone NOT NULL,  -- the tick's start; the stamp of every price it changed
+    finished_at           timestamp with time zone NOT NULL,
+    outcome               text                     NOT NULL,  -- IDLE | COMPLETED | FAILED | NOT_CONFIGURED
+    source                character varying(32)    NULL,      -- ENTSOE | SIMULATED; null when no source
+    window_from           date                     NOT NULL,  -- DayAheadIngestion:BackfillFrom at this tick
+    tick_interval_seconds integer                  NOT NULL,  -- DayAheadIngestion:Interval at this tick
+    requests              integer                  NOT NULL,
+    not_published         integer                  NOT NULL,  -- requests answered "no matching data"
+    days_stored           integer                  NOT NULL,  -- delivery days that got at least one new row
+    rows_stored           integer                  NOT NULL,
+    days_changed          integer                  NOT NULL,  -- delivery days with at least one rewritten price
+    rows_changed          integer                  NOT NULL,
+    rows_pruned           integer                  NOT NULL,
+    recheck               text                     NOT NULL,  -- NOT_RUN | DONE | FAILED | SKIPPED
+    recheck_from          date                     NULL,
+    recheck_to            date                     NULL,
+    max_source_decimals   smallint                 NULL,      -- most significant decimals in a source amount this tick
+    failure_code          text                     NULL,      -- UNAVAILABLE | REFUSED | UNREADABLE | ERROR
+    failure_detail        character varying(500)   NULL,
+    CONSTRAINT pk_day_ahead_feed_run PRIMARY KEY (id)
+);
+CREATE INDEX ix_day_ahead_feed_run_started_at ON market.day_ahead_feed_run (started_at DESC);
+REVOKE ALL ON market.day_ahead_feed_run FROM app_customer_role;  -- the employee role keeps SELECT; only the owner writes; no RLS (no tenant column)
+```
+
+The six `CHECK`s of `market.day_ahead_feed_run` (as built):
+
+| Constraint | Rule |
+| --- | --- |
+| `ck_day_ahead_feed_run_outcome` | `outcome IN ('IDLE','COMPLETED','FAILED','NOT_CONFIGURED')` |
+| `ck_day_ahead_feed_run_recheck` | `recheck IN ('NOT_RUN','DONE','FAILED','SKIPPED')` |
+| `ck_day_ahead_feed_run_failure_code` | `failure_code IS NULL OR failure_code IN ('UNAVAILABLE','REFUSED','UNREADABLE','ERROR')` |
+| `ck_day_ahead_feed_run_failed_has_code` | `(outcome = 'FAILED') = (failure_code IS NOT NULL)` |
+| `ck_day_ahead_feed_run_times` | `finished_at >= started_at AND tick_interval_seconds > 0` |
+| `ck_day_ahead_feed_run_counts` | each of the seven count columns `>= 0` |
+
+Migration 40 also widens the alert-kind `CHECK` on `metering.operational_alert` to seven kinds (`DAY_AHEAD_PRICES_MISSING` is the seventh). No `CHECK` is added to `market.day_ahead_price.source`, and no index on `updated_at`.
+
+```sql
 
 -- The customer never sees a raw Montel quote  [DEC-80], [F04-R17]. Every customer-facing indication
 -- is quote × (1 + markup_rate), and the rate is REFERENCE DATA with a default of 2% (0.0200), changed
@@ -985,6 +1033,7 @@ CREATE TABLE market.price_indication_product (
 
 -- Append-only  [DEC-161]. raw_price is never marked up on the way in — [F04-R01], §5.2 of the Montel
 -- integration doc.
+-- ⚠ Unchanged by [DEC-180] (2): what the source sent. Readers get price_eur_per_kwh from the view and the function.
 CREATE TABLE market.price_indication_observation (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     product_id     uuid NOT NULL REFERENCES market.price_indication_product(id),
@@ -1085,6 +1134,7 @@ CREATE TABLE trading.trade (
     -- ⚠ Amended 2026-08-19 by [DEC-70], reversing [DEC-32]: minimum and increment are both
     --   0.01 MW, ten times finer than the 0.1 MW that was here. `mod` on numeric is exact, so
     --   this is a real constraint and not a float comparison  [F05-R04].
+    --   ⚠ [DEC-180] (10): see §3.4.5 for the columns in kW, kWh and €/kWh
     total_power_mw      numeric(12,6) NOT NULL
         CHECK (total_power_mw >= 0.01 AND mod(total_power_mw, 0.01) = 0),
     total_mwh           numeric(16,6) NOT NULL,
@@ -1147,6 +1197,7 @@ CREATE TABLE trading.block_allocation (
     block_id          uuid NOT NULL REFERENCES trading.block(id),
     metering_point_id uuid NOT NULL REFERENCES customer.metering_point(id),
     -- ⚠ Amended 2026-08-19 by [DEC-70]: allocations are whole multiples of 0.01 MW, was 0.1 MW
+    -- ⚠ [DEC-180] (10): see §3.4.5 for the columns in kW, kWh and €/kWh
     power_mw          numeric(12,6) NOT NULL
         CHECK (power_mw >= 0.01 AND mod(power_mw, 0.01) = 0),
     PRIMARY KEY (block_id, metering_point_id)
@@ -1176,6 +1227,8 @@ Under **[DEC-70]** both sides of that sum are multiples of 0,01 MW, so the sum i
 
 #### 3.4.3 Volume granularity and short selling — [DEC-70], [DEC-72]
 
+⚠ **Amended 2026-10-13 by [DEC-180] (10): the grid is 10 kW and the minimum 10 kW (the 0,01 MW of [DEC-70], in kW); the columns, the `CHECK`s and the types are in §3.4.5.**
+
 | Decision | Schema effect |
 | --- | --- |
 | **[DEC-70]** — minimum and increment **0,01 MW**, ⚠ reversing **[DEC-32]**'s 0,1 MW | Two `CHECK` constraints change: `trade.total_power_mw` and `block_allocation.power_mw`. The **types do not** — `numeric(12,6)` already carried six decimals, so this is a constraint swap, not a column rewrite. Ten times finer means the non-whole-MW allocation tail is back: 0,07 MW is now an ordinary allocation, and every fixture and validation message carrying 0,1 changes with it **[F05-R04]** |
@@ -1193,23 +1246,23 @@ schema.
 
 #### 3.4.4 Trading slice 1 — the `trading` schema as designed — [DEC-167]
 
-⚠ **Amended 2026-09-30 as built ([DEC-167] (16)) — the volume is for the whole account.** Migration 30 was amended **in place** (it had never been released; the local database is restored and re-migrated): `trading.trade_line (trade_id, metering_point_id, power_mw, mwh)` became `trading.trade_connection (trade_id, metering_point_id, ean, connection_name)` with **no power** and the same primary key, grants and row-level security; **`trading.block_allocation` is dropped**; `trading.trade` keeps its one `total_power_mw` and `trading.block` its `power_mw`. The schema is therefore **four tables, two triggers and eight policies** (⚠ five tables from migration 32 on 2026-10-01 [DEC-168]: `trading.trade_desk_notice`, owner-only, no policy, so still eight policies); wherever the table below or the paragraphs after it say five, three or ten, or name a line or an allocation, this note wins.
+⚠ **Amended 2026-09-30 as built ([DEC-167] (16)) — the volume is for the whole account.** Migration 30 was amended **in place** (it had never been released; the local database is restored and re-migrated): `trading.trade_line (trade_id, metering_point_id, power_mw, mwh)` became `trading.trade_connection (trade_id, metering_point_id, ean, connection_name)` with **no power** and the same primary key, grants and row-level security; **`trading.block_allocation` is dropped**; `trading.trade` keeps its one `total_power_mw` and `trading.block` its `power_mw`. The schema is therefore **four tables, two triggers and eight policies** (⚠ five tables from migration 32 on 2026-10-01 [DEC-168]: `trading.trade_desk_notice`, owner-only, no policy, so still eight policies); wherever the table below or the paragraphs after it say five, three or ten, or name a line or an allocation, this note wins. ⚠ **Amended 2026-10-13 by [DEC-180] (10): see §3.4.5.**
 
 ⚠ **Added 2026-09-29.** Migration **30** (`Trading`) — the next free number when it lands; 29 is **[DEC-166]**'s. EF owns the column list (snake_case by convention) and declares every `CHECK`, so the snapshot agrees; raw SQL adds the grants, the row-level security, the triggers and the ledger index filters. It has a real `Down()`: drop the policies, triggers and functions, revoke, drop the tables, the sequence, the schema and the two ledger indexes. Roll forward in production, as every migration here.
 
 | Table | Contents and the constraints that matter |
 | --- | --- |
 | `trading.trade_reference_seq` | `bigint`, starts at **1001**. `trading.trade.reference` defaults to `'TRD-' \|\| nextval(...)` — **TRD-1001**, unique |
-| `trading.trade` | `id`, `reference`, `customer_id` (RESTRICT), `direction`, `shape`, `period_type`, `period_code`, `delivery_start`/`delivery_end` (exclusive), `delivery_starts_at` (Amsterdam local midnight, captured at submit), `calendar_version` (the constant text `NL-POWER-PEAK-EXCHANGE`), `state`, `total_power_mw numeric(12,6)`, `total_mwh numeric(18,6)`, `comment`, `requested_by_account_id`; the **captured indication** `indication_product_id`, `indication_raw_price numeric(12,4)`, `indication_observed_at`, `indication_source`; the **offer** `price_eur_mwh numeric(12,4)`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat numeric(20,8)`; the **acceptance** `vat_rate numeric(6,4)`, `wallet_amount_gross numeric(18,6)` (**the one stored number**), `accepted_by_account_id`, `accepted_at` (~~`four_eyes_applied`, `approved_by_account_id`, `approval_decided_at`, `approval_refused_by_account_id`~~ dropped by migration 39, [DEC-179]); the **resolution** `resolution_reason`, `external_reference varchar(64)`, `actual_market_price numeric(12,4)`, `resolved_at`; `last_event_sequence`, `created_at`. **No `row_version`** — pessimistic lock-then-check |
+| `trading.trade` | `id`, `reference`, `customer_id` (RESTRICT), `direction`, `shape`, `period_type`, `period_code`, `delivery_start`/`delivery_end` (exclusive), `delivery_starts_at` (Amsterdam local midnight, captured at submit), `calendar_version` (the constant text `NL-POWER-PEAK-EXCHANGE`), `state`, `total_power_mw numeric(12,6)`, `total_mwh numeric(18,6)`, `comment`, `requested_by_account_id`; the **captured indication** `indication_product_id`, `indication_raw_price numeric(12,4)`, `indication_observed_at`, `indication_source`; the **offer** `price_eur_mwh numeric(12,4)`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat numeric(20,8)`; the **acceptance** `vat_rate numeric(6,4)`, `wallet_amount_gross numeric(18,6)` (**the one stored number**), `accepted_by_account_id`, `accepted_at` (~~`four_eyes_applied`, `approved_by_account_id`, `approval_decided_at`, `approval_refused_by_account_id`~~ dropped by migration 39, [DEC-179]); the **resolution** `resolution_reason`, `external_reference varchar(64)`, `actual_market_price numeric(12,4)`, `resolved_at`; `last_event_sequence`, `created_at`. **No `row_version`** — pessimistic lock-then-check ⚠ **Amended 2026-10-13 by [DEC-180] (10): see §3.4.5.** |
 | ~~`trading.trade_line`~~ `trading.trade_connection` | ⚠ **Replaced 2026-09-30 by [DEC-167] (16) — migration 30 amended in place (never released).** `(trade_id, metering_point_id)` primary key, `ean character varying(18) NOT NULL`, `connection_name character varying(80)` **nullable** (both snapshots at submit; the portal shows *— no name set —* for a null name), **no power**: the volume is for the whole account and this is its unweighted roster of covered connections. Tenant policy through an `EXISTS` on the parent trade; customer `SELECT`, employee `SELECT`, no write privilege |
 | `trading.trade_event` | Append-only, one row per transition: `id` (a v7 uuid), `trade_id`, `sequence` (unique per trade), `event_type`, `from_state` (admits `DRAFT`, the `SUBMITTED` event's), `to_state`, `actor_type` (`CUSTOMER`/`EMPLOYEE`/`SYSTEM`), `actor_id`, `actor_name`, `actor_job_title`, `reason`, `comment`, `occurred_at`. Trigger `trg_trade_event_append_only` raises `restrict_violation` on `UPDATE` or `DELETE` |
-| `trading.block` (~~`block_allocation`~~ **dropped 2026-09-30, [DEC-167] (16)**) | The confirmed position, **account-level**: it keeps `power_mw`, price, period and company and has no per-connection split; **immutable** by trigger (`trg_block_immutable`; ~~`trg_block_allocation_immutable`~~ went with the table); `block.source_trade_id` is unique, so a trade confirms into at most one block |
+| `trading.block` (~~`block_allocation`~~ **dropped 2026-09-30, [DEC-167] (16)**) | The confirmed position, **account-level**: it keeps `power_mw`, price, period and company and has no per-connection split; **immutable** by trigger (`trg_block_immutable`; ~~`trg_block_allocation_immutable`~~ went with the table); `block.source_trade_id` is unique, so a trade confirms into at most one block ⚠ **Amended 2026-10-13 by [DEC-180] (10): see §3.4.5.** |
 
-**`CHECK`s on `trading.trade`.** `state` is one of the **12 persisted states** (no `DRAFT`) ⚠ **11 since migration 39 (§7.11): `AWAITING_APPROVAL` leaves `ck_trade_state`**; `direction`, `shape` and `period_type` are closed sets; `delivery_end > delivery_start`; `total_power_mw >= 0.01 AND mod(total_power_mw, 0.01) = 0`, and the same grid on every line, block and allocation **[DEC-70]**; `total_mwh > 0`; `price_eur_mwh > 0`; `reaction_window_minutes BETWEEN 5 AND 1440`; `wallet_amount_gross > 0` **and** equal to `round(wallet_amount_gross, 2)`, so a stored gross is always whole cents; ~~the approver and the refuser each differ from the acceptor; **never both approved and refused**; `AWAITING_APPROVAL` implies `four_eyes_applied`; `APPROVAL_REFUSED` implies a refuser and a decision time;~~ *(all dropped by migration 39, [DEC-179])* a trade past `REQUESTED`/`CANCELLED`/`DECLINED` carries a complete offer; an accepted, confirmed, failed or refused trade carries its reservation fields. ~~and **`ck_trade_four_eyes_approved`** — a `four_eyes_applied` trade in `ACCEPTED`, `CONFIRMED` or `FAILED` must carry `approved_by_account_id` **and** `approval_decided_at`. The employee role can write neither column, so **no employee-role `UPDATE` can skip four-eyes** at the database.~~ A `BEFORE UPDATE` transition trigger (state pairs, frozen price and money columns) is **deferred** — it would refuse the raw-`UPDATE` arranges the stored-number tests rely on **[DEC-167]** (c).
+**`CHECK`s on `trading.trade`.** `state` is one of the **12 persisted states** (no `DRAFT`) ⚠ **11 since migration 39 (§7.11): `AWAITING_APPROVAL` leaves `ck_trade_state`**; `direction`, `shape` and `period_type` are closed sets; `delivery_end > delivery_start`; `total_power_mw >= 0.01 AND mod(total_power_mw, 0.01) = 0`, and the same grid on every line, block and allocation **[DEC-70]**; `total_mwh > 0`; `price_eur_mwh > 0`; `reaction_window_minutes BETWEEN 5 AND 1440`; `wallet_amount_gross > 0` **and** equal to `round(wallet_amount_gross, 2)`, so a stored gross is always whole cents; ~~the approver and the refuser each differ from the acceptor; **never both approved and refused**; `AWAITING_APPROVAL` implies `four_eyes_applied`; `APPROVAL_REFUSED` implies a refuser and a decision time;~~ *(all dropped by migration 39, [DEC-179])* a trade past `REQUESTED`/`CANCELLED`/`DECLINED` carries a complete offer; an accepted, confirmed, failed or refused trade carries its reservation fields. ~~and **`ck_trade_four_eyes_approved`** — a `four_eyes_applied` trade in `ACCEPTED`, `CONFIRMED` or `FAILED` must carry `approved_by_account_id` **and** `approval_decided_at`. The employee role can write neither column, so **no employee-role `UPDATE` can skip four-eyes** at the database.~~ A `BEFORE UPDATE` transition trigger (state pairs, frozen price and money columns) is **deferred** — it would refuse the raw-`UPDATE` arranges the stored-number tests rely on **[DEC-167]** (c). ⚠ **Amended 2026-10-13 by [DEC-180] (10): see §3.4.5.**
 
 **Indexes.** Unique `reference`; `(customer_id, created_at DESC)`; partial `ix_trade_open (state, created_at)` over `REQUESTED`, `OFFERED`, `ACCEPTED`; partial `ix_trade_expiring (expires_at)` over `OFFERED` — §3.4.1 (~~`AWAITING_APPROVAL`~~ removed from both by migration 39). **On `wallet.ledger_entry`, two partial unique indexes keyed per wallet:** `ux_ledger_entry_trade_reserved (wallet_id, caused_by_id)` where `caused_by_type = 'Trade'` and `entry_type = 'TRADE_RESERVED'`, and `ux_ledger_entry_trade_exit` over the same pair for `TRADE_SETTLED` and `TRADE_RESERVATION_RELEASED` — one reservation and one exit per trade. They are keyed on the wallet too, because the customer role holds `INSERT` on `ledger_entry` and another tenant's insert must never block this trade.
 
-**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly. **`app_customer_role` gets a column-scoped `SELECT` on `trading.trade` that excludes `indication_product_id`, `indication_raw_price`, `indication_observed_at`, `indication_source`, `actual_market_price` and `offered_by_employee_id`** (the house pattern of `GRANT SELECT (…)`, as on `onboarding_application` and on migration 25's revoke under **[DEC-161]** D7), plus `SELECT` on the other three tables and **no** write privilege anywhere — customer writes are owner-privileged. Consequence: any customer-role query that materialises a `Trade`, or selects `*`, fails with `42501`, so customer read models **project**. `app_employee_role` gets `SELECT` on all four, `INSERT` on the event and block tables, and a column `UPDATE` on `trading.trade` limited to `state`, `price_eur_mwh`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat`, `resolution_reason`, `external_reference`, `actual_market_price`, `resolved_at`, `last_event_sequence` — which is also what makes `FOR UPDATE` legal for the role. **No role has `DELETE`.** ~~The approval columns are written by the owner only.~~ *(The approval columns are dropped, [DEC-179].)*
+**Grants.** The schema has no default privileges, so the migration `REVOKE`s first and grants exactly. **`app_customer_role` gets a column-scoped `SELECT` on `trading.trade` that excludes `indication_product_id`, `indication_raw_price`, `indication_observed_at`, `indication_source`, `actual_market_price` and `offered_by_employee_id`** (the house pattern of `GRANT SELECT (…)`, as on `onboarding_application` and on migration 25's revoke under **[DEC-161]** D7), plus `SELECT` on the other three tables and **no** write privilege anywhere — customer writes are owner-privileged. Consequence: any customer-role query that materialises a `Trade`, or selects `*`, fails with `42501`, so customer read models **project**. `app_employee_role` gets `SELECT` on all four, `INSERT` on the event and block tables, and a column `UPDATE` on `trading.trade` limited to `state`, `price_eur_mwh`, `reaction_window_minutes`, `offered_at`, `expires_at`, `offered_by_employee_id`, `trade_value_ex_vat`, `resolution_reason`, `external_reference`, `actual_market_price`, `resolved_at`, `last_event_sequence` — which is also what makes `FOR UPDATE` legal for the role. **No role has `DELETE`.** ~~The approval columns are written by the owner only.~~ *(The approval columns are dropped, [DEC-179].)* ⚠ **Amended 2026-10-13 by [DEC-180] (10): see §3.4.5.**
 
 **Row-level security** — enabled, never forced, **eight** policies (⚠ was ten before 2026-09-30): `trading_trade_tenant_isolation` and `trading_block_tenant_isolation` on `customer_id = current_setting('app.customer_id')`; the connection and event tables reach it through an `EXISTS` on their parent; and a `*_back_office` policy per table for `app_employee_role`, `USING (true)`. Accepted residue: **employee actor names on `trade_event` stay `SELECT`-able by the customer role through raw SQL**; no customer API response carries them **[DEC-167]** (b).
 
@@ -1248,12 +1301,62 @@ The Worker's `TradeDeskNotificationJob` takes unsent rows (at most `BatchSize` =
 
 | Object | What it is |
 | --- | --- |
-| `market.price_indication_close_before(p_source text, p_day date, p_product_ids uuid[], p_delivery_starts date[])` (function) | **What the endpoint reads.** `SECURITY DEFINER`, `STABLE`, `search_path = market, pg_temp`. For each (product, delivery start) pair it returns the newest observation before `p_day`'s Amsterdam midnight (`observed_at DESC, received_at DESC`, `LIMIT 1`), seeking the observation index once per pair. It takes a DATE, never an instant, so it can only return the last row of an earlier Amsterdam day, one close a day per product, never the tick history. `EXECUTE` is revoked from `PUBLIC` and granted to `app_customer_role`. An earlier draft filtered a daily-close view by "newest before the cutoff"; that ran a correlated subquery per row and took 46 s on a year of 10-minute ticks, hence the function. |
+| `market.price_indication_close_before(p_source text, p_day date, p_product_ids uuid[], p_delivery_starts date[])` (function) | **What the endpoint reads.** `SECURITY DEFINER`, `STABLE`, `search_path = market, pg_temp`. For each (product, delivery start) pair it returns the newest observation before `p_day`'s Amsterdam midnight (`observed_at DESC, received_at DESC`, `LIMIT 1`), seeking the observation index once per pair. It takes a DATE, never an instant, so it can only return the last row of an earlier Amsterdam day, one close a day per product, never the tick history. `EXECUTE` is revoked from `PUBLIC` and granted to `app_customer_role`. An earlier draft filtered a daily-close view by "newest before the cutoff"; that ran a correlated subquery per row and took 46 s on a year of 10-minute ticks, hence the function. ⚠ **[DEC-180] (10), migration 41: its result column is price_eur_per_kwh numeric(12,5) = round(raw_price × 0,001, 5); the view market.price_indication_latest gains the same column as its last one and keeps raw_price, currency and unit.** |
 | Reversal | `Down()` drops the function. An earlier draft also created a `market.price_indication_daily_close` view; nothing read it, so it was removed before landing. |
 
-**The Sell price for a negative indication.** `sellPrice` = `buyPrice` − |`buyPrice`| × `ForwardPrices:SellSpreadPercent` ÷ 100, rounded half away from zero to 2 decimals (`IndicationPricing.SellPrice`). The spread comes off the magnitude, so Sell is always at or below Buy: −50.00 at 2 percent gives −51.00, not −49.00. `buyPrice` is the raw indication, unrounded.
+**The Sell price for a negative indication.** `sellPrice` = `buyPrice` − |`buyPrice`| × `ForwardPrices:SellSpreadPercent` ÷ 100, rounded half away from zero to ~~2 decimals~~ 5 decimals, from the served Buy (`IndicationPricing.SellPrice`) ⚠ **[DEC-180] (10).** The spread comes off the magnitude, so Sell is always at or below Buy: −50.00 at 2 percent gives −51.00, not −49.00. ~~`buyPrice` is the raw indication, unrounded.~~ ⚠ **[DEC-180] (10): `buyPrice` is round(raw × 0,001, 5), euro per kWh.**
 
 **Locks.** One global order — §5 and [DEC-167] (7): admin roster, company row, trade, wallet. Trade locks are taken by `id` only; the company row is locked **owner-privileged** with the token's company named explicitly (§3.1.4).
+
+#### 3.4.5 Trading in kW, kWh and €/kWh — [DEC-180], added 2026-10-13
+
+⚠ **As built 2026-10-13 by [DEC-180].** Migration 42 (`20261013191536_TradingKwhUnits`) rewrites the two trading tables that hold a unit: power in kW, energy in kWh, every price in euro per kWh with five decimals. **Every stored euro amount stays exactly as it is.** The names below are the built names.
+
+**1. The columns.**
+
+| Table | Old column | Old type | New column | New type | Conversion |
+| --- | --- | --- | --- | --- | --- |
+| `trading.trade` | `total_power_mw` | `numeric(12,6) NOT NULL` | `total_power_kw` | `numeric(12,3) NOT NULL` | × 1000, exact |
+| `trading.trade` | `total_mwh` | `numeric(18,6) NOT NULL` | `total_kwh` | `numeric(18,3) NOT NULL` | × 1000, exact |
+| `trading.trade` | `price_eur_mwh` | `numeric(12,4) NULL` | `price_eur_per_kwh` | `numeric(12,5) NULL` | `round(× 0.001, 5)`, half away from zero |
+| `trading.trade` | `indication_raw_price` | `numeric(12,4) NULL`, signed | `indication_price_eur_per_kwh` | `numeric(12,5) NULL`, signed | `round(× 0.001, 5)` |
+| `trading.trade` | `actual_market_price` | `numeric(12,4) NULL`, signed | `actual_market_price_eur_per_kwh` | `numeric(12,5) NULL`, signed | `round(× 0.001, 5)` |
+| `trading.block` | `power_mw` | `numeric(12,6) NOT NULL` | `power_kw` | `numeric(12,3) NOT NULL` | × 1000, exact |
+| `trading.block` | `total_mwh` | `numeric(18,6) NOT NULL` | `total_kwh` | `numeric(18,3) NOT NULL` | × 1000, exact |
+| `trading.block` | `price_eur_mwh` | `numeric(12,4) NOT NULL` | `price_eur_per_kwh` | `numeric(12,5) NOT NULL` | `round(× 0.001, 5)` |
+| `market.price_indication_observation` | `raw_price`, `unit` | `numeric(12,4)`, `varchar(8)` | **stay** | **stay** | as received [DEC-180] (2) |
+
+The types are the old ones with the decimal point moved three places, so every stored value converts without overflow whatever the `CHECK` allowed: power `numeric(12,3)`, energy `numeric(18,3)`, price `numeric(12,5)` (the type `market.day_ahead_price` already has).
+
+**2. The `CHECK`s.**
+
+| Table | Old name | New name | New definition |
+| --- | --- | --- | --- |
+| trade | `ck_trade_total_power_grid` | same | `total_power_kw >= 10 AND mod(total_power_kw, 10) = 0` |
+| trade | `ck_trade_total_mwh_positive` | `ck_trade_total_kwh_positive` | `total_kwh > 0` |
+| trade | `ck_trade_price_positive` | `ck_trade_price_not_negative` | `price_eur_per_kwh IS NULL OR price_eur_per_kwh >= 0` |
+| trade | `ck_trade_offer_complete` | same | the same rule, naming `price_eur_per_kwh` |
+| block | `ck_block_power_grid` | same | `power_kw >= 10 AND mod(power_kw, 10) = 0` |
+| block | `ck_block_total_mwh_positive` | `ck_block_total_kwh_positive` | `total_kwh > 0` |
+| block | `ck_block_price_positive` | `ck_block_price_not_negative` | `price_eur_per_kwh >= 0` |
+
+The price `CHECK`s became "not negative" because a converted price below 0,005 €/MWh reads `0.00000`; a `> 0` rule would stop the deploy on a row the old validator allowed. A new price is still refused at zero in the domain, in the desk validator and in the offer check. A trade with a zero gross is still refused by `ck_trade_gross_cents`.
+
+**3. Unchanged.** `trade_value_ex_vat numeric(20,8)`, `vat_rate`, `wallet_amount_gross`, `deposit_amount`, `balance_amount`, `deposit_pct`; every `wallet.*` column; the triggers `trg_block_immutable` and `trg_trade_event_append_only` (they name no column and are never disabled); the eight row-level security policies (none names a converted column); the text of `trading.trade_desk_notice` and of the `trade_event` rows.
+
+**4. Grants under the new names.** `app_customer_role` has a column `SELECT` on `trading.trade` that excludes `indication_product_id`, `indication_price_eur_per_kwh`, `indication_observed_at`, `indication_source`, `actual_market_price_eur_per_kwh` and `offered_by_employee_id`. `app_employee_role` has a column `UPDATE` on `trading.trade` limited to `actual_market_price_eur_per_kwh, expires_at, external_reference, last_event_sequence, offered_at, offered_by_employee_id, price_eur_per_kwh, reaction_window_minutes, resolution_reason, resolved_at, state, trade_value_ex_vat`. A column rename keeps its grant; the migration re-issues both as a no-op.
+
+**5. Three audit actions**, written in the migration's own transaction before any value changes, in the shape of migration 39, actor `system:migration`:
+
+| Action | One row for | Company | `before` | `after` |
+| --- | --- | --- | --- | --- |
+| `TRADE_PRICE_ROUNDED` | each trade whose firm price loses digits | the trade's | `{"priceEurPerMwh": 95.1234, "tradeValueExVat": 25340.87376000}` | `{"priceEurPerKwh": 0.09512, "tradeValueExVat": 25340.87376000, "reason": "…"}` |
+| `BLOCK_PRICE_ROUNDED` | each block whose price loses digits | the block's | `{"priceEurPerMwh": 95.1234, "sourceTradeId": "…"}` | `{"priceEurPerKwh": 0.09512, "sourceTradeId": "…", "reason": "…"}` |
+| `TRADE_REFERENCE_PRICE_ROUNDED` | each trade whose captured indication or actual market price loses digits | none, so no customer can read it | `{"indicationPriceEurPerMwh": 87.4567, "actualMarketPriceEurPerMwh": 93.1275}` | the same keys as `…PerKwh`, and `"reason"` |
+
+"Lost digits" means the conversion cannot be undone: `round(p × 0.001, 5) × 1000 <> p`. A price that converts exactly gets no row, and a missing price gets none. No `trade_event` is written. These three keys are the one place, with the audit payloads, where a per-MWh figure is written after the change.
+
+**6. The invariant.** `trade_value_ex_vat = total_kwh × price_eur_per_kwh` for every trade priced after the migration. It does not hold for a converted trade whose price lost digits, and that set is exactly the trades with a `TRADE_PRICE_ROUNDED` row: the stored value is the truth and the price is its rounded label. The amount including VAT is always `round(stored value × (1 + VAT), 2)`, so an offer made before the change is accepted for the amounts it showed.
 
 ### 3.5 Wallet
 
@@ -1661,8 +1764,8 @@ rate the platform still owns.
 | Who applies it | ~~The platform~~ | ~~The platform~~ | The platform calculates; the **bookkeeping program** carries the ledger entry **[F09-R24]** |
 | Nothing configured | ~~Zero, line omitted~~ | ~~Undecided~~ | **Hard stop** `MISSING_TAX_TARIFF` **[F09-R21]** |
 
-**Market prices stay `numeric(12,4)` in €/MWh** (`trading.trade.price_eur_mwh`,
-`market.day_ahead_price.price`). The boundary is market price versus customer rate **[F09]** §4 rule
+~~**Market prices stay `numeric(12,4)` in €/MWh** (`trading.trade.price_eur_mwh`,
+`market.day_ahead_price.price`).~~ ⚠ **Corrected 2026-10-13 by [DEC-180] (3): every price the platform stores is numeric(12,5) in €/kWh (trading.trade.price_eur_per_kwh, trading.block.price_eur_per_kwh, market.day_ahead_price.price_eur_per_kwh). The one €/MWh column left is the observation's raw_price, kept as received.** The boundary is market price versus customer rate **[F09]** §4 rule
 6, and it is why the tax rate column carries its unit in its name and the market columns carry
 theirs.
 
@@ -1818,6 +1921,156 @@ CREATE TABLE legal.document_file (                            -- one row per lan
 
 **Consent.** `customer.onboarding_application.terms_version_id` (§3.1) is a nullable foreign key to `legal.document_version`. This is a **cross-schema edge from `customer` to `legal`**, admitted on the same reasoning as `customer.metering_point.brp_id` → `metering.brp` (§1): `legal` is reference data whose only outbound key is `document_version.uploaded_by_employee_id` → `employee.employee`, so the edge adds no cycle between aggregates. The column is indexed. Because a version that has been **accepted against** is effective, the withdrawal rule (never delete an effective version) also keeps this key from dangling; the foreign key is `ON DELETE RESTRICT`, so a stray delete fails loudly. ⚠ **Amended 2026-10-09 by [DEC-177] (5):** `customer.onboarding_application.terms_language varchar(2) NULL`, `CHECK (terms_language IN ('en', 'nl'))` (`ck_onboarding_application_terms_language`), holds the language **actually served** beside `terms_version_id`; it is null where `terms_version_id` is null and for every row that existed before migration 38 (no backfill: the single-file era, and the two copies of that version are identical bytes).
 
+### 3.8 Saved costs and positions — [DEC-180], added 2026-10-13
+
+⚠ **As built 2026-10-13 by [DEC-180].** Migration 43 (`20261013215101_SavedCosts`) creates four tables, seven functions and seven triggers. The names are the built names. Two tables hold saved figures and carry the house policy pair; two are plumbing. None is partitioned, none has a foreign key, and only the owner writes.
+
+**1. The tables.**
+
+```sql
+CREATE TABLE metering.interval_cost (
+    metering_point_id  uuid          NOT NULL,
+    delivery_date      date          NOT NULL,
+    pos                smallint      NOT NULL,
+    customer_id        uuid          NOT NULL,
+    usage_kwh          numeric(14,3) NOT NULL,   -- input: the connection's net usage, signed
+    price_eur_per_kwh  numeric(12,5) NOT NULL,   -- input: the day-ahead price, signed
+    cost_eur           numeric(23,5) NOT NULL,
+    calculated_at      timestamptz   NOT NULL,
+    CONSTRAINT pk_interval_cost PRIMARY KEY (metering_point_id, delivery_date, pos),
+    CONSTRAINT ck_interval_cost_pos CHECK (pos BETWEEN 1 AND 100),
+    CONSTRAINT ck_interval_cost_is_usage_times_price
+        CHECK (cost_eur = round(usage_kwh * price_eur_per_kwh, 5))
+);
+
+CREATE TABLE trading.hedge_position_interval (
+    customer_id             uuid          NOT NULL,
+    delivery_date           date          NOT NULL,
+    pos                     smallint      NOT NULL,
+    connections_reported    integer       NOT NULL,
+    net_usage_kwh           numeric(18,3),
+    hedge_kwh               numeric(18,3) NOT NULL,
+    covered_kwh             numeric(18,3),
+    short_kwh               numeric(18,3),
+    long_kwh                numeric(18,3),
+    price_eur_per_kwh       numeric(12,5),
+    hedge_cost_eur          numeric(30,5) NOT NULL,
+    buy_leg_eur             numeric(30,5),
+    sell_leg_eur            numeric(30,5),
+    actual_cost_eur         numeric(30,5),
+    cost_without_hedge_eur  numeric(30,5),
+    calculated_at           timestamptz   NOT NULL,
+    CONSTRAINT pk_hedge_position_interval PRIMARY KEY (customer_id, delivery_date, pos),
+    CONSTRAINT ck_hedge_position_interval_pos CHECK (pos BETWEEN 1 AND 100),
+    CONSTRAINT ck_hedge_position_interval_reported CHECK (
+        connections_reported >= 0 AND (net_usage_kwh IS NULL OR connections_reported > 0)),
+    CONSTRAINT ck_hedge_position_interval_metered CHECK (
+        (net_usage_kwh IS NULL) = (covered_kwh IS NULL)
+        AND (net_usage_kwh IS NULL) = (short_kwh IS NULL)
+        AND (net_usage_kwh IS NULL) = (long_kwh IS NULL)),
+    CONSTRAINT ck_hedge_position_interval_priced_when_metered CHECK (
+        price_eur_per_kwh IS NULL OR net_usage_kwh IS NOT NULL),
+    CONSTRAINT ck_hedge_position_interval_costed CHECK (
+        (price_eur_per_kwh IS NULL) = (buy_leg_eur IS NULL)
+        AND (price_eur_per_kwh IS NULL) = (sell_leg_eur IS NULL)
+        AND (price_eur_per_kwh IS NULL) = (actual_cost_eur IS NULL)
+        AND (price_eur_per_kwh IS NULL) = (cost_without_hedge_eur IS NULL)),
+    CONSTRAINT ck_hedge_position_interval_volumes CHECK (
+        net_usage_kwh IS NULL OR (
+            covered_kwh = LEAST(GREATEST(net_usage_kwh, 0), GREATEST(hedge_kwh, 0))
+            AND short_kwh = GREATEST(net_usage_kwh - hedge_kwh, 0)
+            AND long_kwh  = GREATEST(hedge_kwh - net_usage_kwh, 0))),
+    CONSTRAINT ck_hedge_position_interval_legs CHECK (
+        price_eur_per_kwh IS NULL OR (
+            buy_leg_eur  = round(short_kwh * price_eur_per_kwh, 5)
+            AND sell_leg_eur = round(long_kwh * price_eur_per_kwh, 5)
+            AND cost_without_hedge_eur = round(net_usage_kwh * price_eur_per_kwh, 5))),
+    CONSTRAINT ck_hedge_position_interval_adds_up CHECK (
+        actual_cost_eur IS NULL OR actual_cost_eur = hedge_cost_eur + buy_leg_eur - sell_leg_eur)
+) WITH (fillfactor = 85);
+
+CREATE INDEX ix_hedge_position_interval_day
+    ON trading.hedge_position_interval (delivery_date, customer_id) WHERE pos = 1;
+
+CREATE TABLE metering.cost_recalc_request (
+    id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    customer_id     uuid,          -- NULL = every customer
+    date_from       date,          -- NULL = from the beginning
+    date_to         date,          -- NULL = without end; inclusive
+    reason          text NOT NULL,
+    source_id       uuid,          -- the row that caused it: a connection, a block, a trade
+    check_run_id    bigint,        -- set on VERIFY requests
+    requested_at    timestamptz NOT NULL DEFAULT now(),
+    attempts        integer NOT NULL DEFAULT 0,
+    last_error      text,
+    next_attempt_at timestamptz,
+    is_unit         boolean GENERATED ALWAYS AS (
+                        customer_id IS NOT NULL AND date_from IS NOT NULL
+                        AND date_to IS NOT NULL AND date_from = date_to) STORED,
+    CONSTRAINT ck_cost_recalc_request_reason CHECK (
+        reason IN ('BACKFILL','PRICE','READING','BLOCK','CONNECTION','MANUAL','VERIFY'))
+);
+CREATE INDEX ix_cost_recalc_request_unit     ON metering.cost_recalc_request (date_from, id) WHERE is_unit;
+CREATE INDEX ix_cost_recalc_request_unit_key ON metering.cost_recalc_request (customer_id, date_from) WHERE is_unit;
+CREATE INDEX ix_cost_recalc_request_wide     ON metering.cost_recalc_request (id) WHERE NOT is_unit;
+
+CREATE TABLE metering.cost_check_run (
+    id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    started_at       timestamptz NOT NULL,
+    finished_at      timestamptz,
+    recent_from      date NOT NULL,
+    recent_to        date NOT NULL,
+    rotation_month   date,                        -- first day of the older month checked; NULL = none
+    units_checked    integer NOT NULL DEFAULT 0,  -- saved = recalculated
+    units_pending    integer NOT NULL DEFAULT 0,  -- an input change was still waiting; not a difference
+    units_different  integer NOT NULL DEFAULT 0,
+    rows_repaired    bigint  NOT NULL DEFAULT 0,
+    sample           jsonb   NOT NULL DEFAULT '[]'  -- at most 50 differences
+);
+```
+
+`metering.interval_cost` records what each cost was calculated from (`usage_kwh`, `price_eur_per_kwh`) and when (`calculated_at`); the `CHECK` makes "saved = usage × price" true of every row. `trading.hedge_position_interval` is dense: a customer-day that has metered usage or a counted block has a row for every quarter-hour (92, 96 or 100), and any other day has none. A block counts while its trade is `CONFIRMED`, and only then.
+
+**2. No row, or a row with a null cost.** The saved cost table can only hold real costs:
+
+| The quarter-hour for a connection | Saved | API `costEur` | Chart |
+| --- | --- | --- | --- |
+| Net usage and a price | a row; `cost_eur` is the rounded product, zero included | the number | a bar (also at zero) |
+| Net usage, no price stored | no row | `null` | a gap |
+| No net usage | no row | `null` | a gap |
+| Net usage and a price, recalculation still waiting | no row yet, or a row made from other inputs | `null` | a gap |
+
+A zero can only come out of a calculation, never out of an absence. `hedge_position_interval` has nullable euro columns because its row exists for the energy figures.
+
+**3. Grants and policies.** `REVOKE ALL` first, then `SELECT` only. Row security is enabled and never forced: the owner (the Worker, the Migrator and the trigger functions) writes.
+
+| Table | `app_customer_role` | `app_employee_role` | Policies |
+| --- | --- | --- | --- |
+| `metering.interval_cost` | `SELECT` | `SELECT` | `metering_interval_cost_tenant_isolation`, `metering_interval_cost_back_office` |
+| `trading.hedge_position_interval` | `SELECT` | `SELECT` | `trading_hedge_position_interval_tenant_isolation`, `trading_hedge_position_interval_back_office` |
+| `metering.cost_recalc_request` | nothing | `SELECT` | `metering_cost_recalc_request_tenant_isolation` (inert for the customer role), `metering_cost_recalc_request_back_office` |
+| `metering.cost_check_run` | nothing | `SELECT` | `metering_cost_check_run_back_office` only |
+
+The employee role cannot write the saved tables either: it loses the inherited write rights the other metering tables keep.
+
+**4. The seven triggers.** Each function is one or two `INSERT`s into `metering.cost_recalc_request`, `SECURITY DEFINER`, with `EXECUTE` revoked from `PUBLIC`. A request is scope without a payload: a customer, a day range and a reason. The seven reasons are `BACKFILL`, `PRICE`, `READING`, `BLOCK`, `CONNECTION`, `MANUAL` and `VERIFY`.
+
+| Trigger | Table | Fires | Request written |
+| --- | --- | --- | --- |
+| `trg_day_ahead_price_recalc_insert` | `market.day_ahead_price` | after an `INSERT` statement | one `PRICE` request per distinct delivery date inserted |
+| `trg_day_ahead_price_recalc_update` | `market.day_ahead_price` | after an `UPDATE` statement | one per delivery date for which a price differs between old and new rows |
+| `trg_day_ahead_price_recalc_delete` | `market.day_ahead_price` | after a `DELETE` statement | one per delivery date deleted |
+| `trg_interval_data_version_recalc` | `metering.interval_data_version` | after an `INSERT`, a `DELETE` or an `UPDATE` of `is_current` or its keys, per row | one `READING` unit request for the customer and the delivery date |
+| `trg_block_recalc` | `trading.block` | after an `INSERT`, per row | one `BLOCK` request for the block's customer and delivery period |
+| `trg_trade_recalc` | `trading.trade` | after an `UPDATE OF state` that enters or leaves `CONFIRMED`, per row | one `BLOCK` request for the trade's customer and delivery period |
+| `trg_metering_point_recalc` | `customer.metering_point` | after an `UPDATE` of the customer, the commodity or the "never produces" declaration, per row | one `CONNECTION` request for the whole history of the old customer, and of the new one when it changed |
+
+A statement that changes nothing writes nothing, so the price job's prune on every tick costs nothing. A connection joining a customer, leaving it, or changing between "expected" and "unknown" production writes no request: a new connection is a new row with no readings, and its first reading fires the reading trigger.
+
+**5. Who writes.** The owner only, through one engine (`SavedCostRecalculator`), called by the Worker (`SavedCostRecalculationJob`) and by the Migrator (`SavedCostBackfill`, its last step). No API host calls it.
+
+**6. The rule that keeps a request from being lost.** A request is deleted only by a batch that claimed it, after it took the customer's advisory lock and then read the inputs, so the batch has seen the change behind every request it deletes. A change that commits later has its own request with an id the batch never claimed, and that request survives. Two engines at once get different request rows (`SKIP LOCKED`) and run one after the other on the same customer, so the worst case is one unnecessary recalculation, never a stale one.
+
 ## 4. Materialised rollups
 
 ```sql
@@ -1837,6 +2090,8 @@ CREATE TABLE metering.daily_position (
     PRIMARY KEY (metering_point_id, local_date)
 );
 ```
+
+⚠ **Not what was built, and not how costs are kept [DEC-180] (4), (5).** The built rollup holds consumption_kwh, production_kwh, net_usage_kwh, offtake_kwh and export_kwh, numeric(16,3), and no block or cost column. Costs and positions are saved per quarter-hour (§3.8) and follow a price, a reading or a block through the recalculation queue.
 
 Rebuilt whenever a new interval-data version, a new block, or a corrected day-ahead price touches
 that date. `source_version_ids` records exactly what it was computed from, so invalidation is precise
@@ -1881,6 +2136,8 @@ CREATE POLICY customer_isolation ON customer.metering_point
 The customer API sets `app.customer_id` from the validated token at the start of each request. The
 employee API connects as a role with no such policy. If the application filter is ever bypassed by a
 mistake, the database still refuses.
+
+⚠ **Added 2026-10-13 by [DEC-180].** `metering.interval_cost`, `trading.hedge_position_interval` and `metering.cost_recalc_request` carry the house policy pair; `metering.cost_check_run` is employee-only; `market.day_ahead_feed_run` has no tenant column and no row security, and the customer role holds nothing on it (§3.8).
 
 ⚠ **Four new tables need the same policy, 2026-08-19.** `customer.customer_bank_account`,
 `customer.approval_request` *(never built; struck 2026-10-12)*, `wallet.deposit_intent` and `wallet.withdrawal_request` all carry a
@@ -1963,7 +2220,7 @@ an `UPDATE`'s new row, and on a `DELETE` it cannot express it at all.
 - EF Core migrations, applied by a dedicated migrator job before any host starts
   ([Solution structure](02-solution-structure.md) §4).
 - Forward-only. No down migrations in production.
-- Expand/contract for anything breaking: add, backfill, switch, remove — across separate releases.
+- Expand/contract for anything breaking: add, backfill, switch, remove — across separate releases. ⚠ **Set aside for the landing of [DEC-180]: one release, no second column and no compatibility window, as for [DEC-179]. §7.12.**
 - Partition creation is a maintenance job that creates the next three months ahead.
 - Every migration is tested against a restored production-shaped dataset before release.
 
@@ -2165,6 +2422,78 @@ Roll forward only, as every migration here.
 
 **Kept, and why.** The `trade_event` `CHECK`s (`ck_trade_event_type`, `_from_state`, `_to_state`) are **not touched**: the table is append-only by trigger and its rows carry `APPROVED`, `APPROVAL_REFUSED` and `AWAITING_APPROVAL`. `wallet.withdrawal_request.decline_reason` stays, shown on old declined rows. Every `audit.audit_record` row with a `FOUR_EYES_*` action stays, and the ledger is never touched. **`customer_account.status = 'PENDING_APPROVAL'`** is out of scope: it is not four-eyes. **Pins:** `tools/verify-migrator.sh` (the migration count and name, the `customer.customer` `CHECK` list becomes exactly `ck_customer_deposit_pct_range`, the `wallet.withdrawal_request` `CHECK` list loses the approver one, the customer-readable `trading.trade` column count falls by the four dropped columns, and new pins assert no `four_eyes_%` column on `customer.customer`, that the three status `CHECK`s no longer contain `AWAITING_APPROVAL` or `PENDING_APPROVAL`, and that `ck_trade_event_type` still allows `APPROVED` and `APPROVAL_REFUSED`), `PeakPowerDbContextModelSnapshot.cs`, the migration-count tests and both OpenAPI snapshots move in the same commits. **Audit action names** (`FOUR_EYES_REMOVED`, `TRADE_APPROVAL_WAIVED`, `WITHDRAWAL_APPROVAL_WAIVED`, `WITHDRAWAL_APPROVED`) are the working names of this spec; the platform change fixes them.
 
+### 7.12 The 2026-10-13 kW, kWh and €/kWh migrations — [DEC-180], added 2026-10-13
+
+⚠ **Four migrations, 40 to 43 (`DayAheadFeed`, `IndicationPricePerKwh`, `TradingKwhUnits`, `SavedCosts`) in the platform lane, [DEC-180].** As built 2026-10-13 by [DEC-180], on the branch `feature/kwh-units`; not yet landed on the VM. Each is written to be correct for zero rows and for many and for an offer in flight, and each has a backfill test on a production-like database. Roll forward only, as every migration here, and each has a real `Down()` that is tested. The rollout is one coordinated landing: no second column and no compatibility window (§7).
+
+**1. The four.**
+
+| # | Name | Contains, in order | Data it touches |
+| --- | --- | --- | --- |
+| 40 | `DayAheadFeed` (`20261013164002_DayAheadFeed`) | add `market.day_ahead_price.updated_at`; create `market.day_ahead_feed_run` with its index and six `CHECK`s; `REVOKE ALL … FROM app_customer_role`; swap `operational_alert_kind_check` for the seven-value list | none |
+| 41 | `IndicationPricePerKwh` (`20261013184255_IndicationPricePerKwh`) | a 20-second `lock_timeout`; `CREATE OR REPLACE VIEW market.price_indication_latest` with `price_eur_per_kwh` appended; drop and create `market.price_indication_close_before` returning `price_eur_per_kwh`; `REVOKE … FROM PUBLIC`; `GRANT … TO app_customer_role` | none; the observation table is not altered, rewritten or locked exclusively |
+| 42 | `TradingKwhUnits` (`20261013191536_TradingKwhUnits`) | a 20-second `lock_timeout`; `LOCK TABLE trading.trade, trading.block IN ACCESS EXCLUSIVE MODE`; a money fingerprint; three audit inserts; the trade: drop four `CHECK`s, one `ALTER … TYPE … USING`, five renames, four `CHECK`s; the block: the same shape; two column grants; a self-check | rewrites `trading.trade` and `trading.block`; one audit row per price that lost digits. No euro amount, no wallet row, no ledger row |
+| 43 | `SavedCosts` (`20261013215101_SavedCosts`) | `LOCK TABLE` on five input tables `IN SHARE ROW EXCLUSIVE MODE`; four tables with grants, row security and policies; seven functions; seven triggers; one conditional `BACKFILL` request | at most one inserted row |
+
+**2. Why this order.** Four constraints decide it:
+
+| Constraint | How the order meets it |
+| --- | --- |
+| The view's lock is taken before the trade and block locks | 41 before 42 |
+| Nothing earlier in the run locks a relation a trading or Prices request uses | 40 locks `market.day_ahead_price` and `metering.operational_alert`; quote, submit, accept, offer and confirm read neither |
+| The triggers are created after every other statement of the landing | 43 is last. No statement of 40, 41 or 42 could fire them anyway |
+| The backfill request is decided on the final state | 43 is last |
+
+Migrations commit one by one (§5, test L4), and the order leaves as much as possible that old code can still use: after 40 old code runs unchanged, after 41 it runs except the end-of-day column of the Prices page, and from 42 on only new code runs.
+
+**3. What proves each.** The built test names (the platform's `tests/PeakPower.Integration.Tests/Migrations/`). The migration 42 file has one more, `A_failure_in_a_run_from_39_ends_at_41_or_at_39_and_never_in_a_mix`, and the 43 file a few that are not listed here.
+
+| Migration | Backfill tests |
+| --- | --- |
+| 40 | `Existing_prices_survive_byte_for_byte_and_get_a_null_stamp`; `An_empty_price_table_and_an_empty_alert_table_migrate`; `Alerts_of_all_six_old_kinds_open_and_resolved_survive_and_the_seventh_is_accepted_afterwards`; `The_old_five_column_insert_still_works_after_the_migration`; `The_ledger_the_wallets_the_trades_and_the_blocks_are_byte_identical_before_and_after` |
+| 41 | `The_view_keeps_what_the_source_sent_next_to_the_price_per_kWh_and_the_function_returns_per_kWh`; `The_observation_table_is_untouched` |
+| 42 | `An_empty_database_migrates_and_writes_no_audit_row`; `Power_and_volume_are_multiplied_by_1000_exactly_and_every_price_is_rounded_half_away_from_zero`; `No_stored_euro_amount_changes_and_the_ledger_and_every_wallet_are_byte_identical`; `Each_trade_and_block_whose_price_lost_digits_has_one_audit_row_with_the_original_price_and_no_other_has_one`; `An_offer_made_before_the_migration_is_accepted_for_exactly_the_amounts_it_showed`; `The_block_stays_immutable`; `Twenty_thousand_trades_and_ten_thousand_blocks_migrate_with_the_default_command_timeout`; `A_failure_late_in_the_migration_leaves_the_trading_tables_as_they_were` |
+| 43 | `An_empty_database_migrates_and_queues_nothing`; `A_production_like_database_queues_one_backfill_and_the_drain_fills_both_tables_for_all_history`; `An_offer_in_flight_is_untouched_and_adds_no_hedge`; `The_ledger_the_wallets_and_every_trade_row_are_byte_identical_before_and_after`; `The_backfill_can_be_stopped_and_resumed_and_ends_the_same`; `With_a_limit_of_zero_the_migrator_leaves_the_requests_and_one_worker_drain_finishes`; `The_budget_cancels_a_batch_in_flight_and_the_migrator_still_exits_0`; `A_reading_stored_after_the_migration_and_before_the_new_Worker_is_requested` |
+
+The landing as a whole has six tests, L1 to L6: all four migrations apply in one run on a production-like database (L1); the ledger, the wallets and every stored euro amount are byte-identical after the migrations and the whole backfill, `xmin` and `ctid` included (L2); an offer made at migration 39 is accepted after the landing for the amounts it showed, and its block enters the saved position at confirm (L3); a failure in the last migration leaves the database at migration 42, because each migration commits by itself (L4, `A_failure_in_the_last_migration_leaves_the_database_at_migration_42`, which decided assumption S2 on 2026-10-14); a second run applies nothing and the backfill goes on where it stopped (L5); and `Down()` walks back through all four to the schema of migration 39 (L6). Five more tests (L7 to L11) run the day-ahead job against the real triggers and engine.
+
+**4. The backfill.** One `BACKFILL` request, queued by migration 43 when there is anything to cost. The Migrator runs the engine as its last step, after the schema migrations and the seeders, for at most `SavedCosts:MigratorBackfillSeconds` (default 120, a hard limit: the batch in flight rolls back; 0 skips the step). It never fails the Migrator: it catches, logs and returns. The Worker finishes what is left, nearest day first. ⚠ **Measured 2026-10-14 (task L1), on a laptop, not on the VM:** the engine writes 131 000 to 148 000 saved rows a second (M1: one customer, 50 connections, 90 days), and 187 000 a second on the load-test set (M2: 3 538 640 rows in 18,9 s), against the 14 000 a second that the 1,65 million rows of 50 connections and all of 2026 need. **The default of 120 stays**: at the measured rate it would cover about 15 million rows. The VM's own rate is not known, and raising the limit is the product owner's call, because every second is downtime.
+
+**5. If the Migrator fails.** In every case the Migrator exits 1, Compose starts no host, and the platform stays down until a person acts (if no old host is still running: row 1 of the last table of this section). ⚠ **Assumption S2 is false, found 2026-10-14 (test L4, task L1): EF Core commits each migration by itself.** A failure in 43 leaves 40 to 42 applied, and the history ends `_TradingKwhUnits`. The right-hand column holds; the left-hand one is struck. Migration 42 is one transaction of its own, so a failure inside it writes nothing of it.
+
+| It fails in | ~~If the run is one transaction~~ | Each migration commits by itself (as found) |
+| --- | --- | --- |
+| 40 `DayAheadFeed` | ~~at 39, nothing changed~~ | at 39, nothing changed |
+| 41 `IndicationPricePerKwh` | ~~at 39, nothing changed~~ | at 40; old code runs unchanged |
+| 42 `TradingKwhUnits` | ~~at 39, nothing changed: no audit row, no rewrite~~ | at 41; old code runs except the end-of-day column of the Prices page. Nothing of 42 is written: no audit row, no rewrite |
+| 43 `SavedCosts` | ~~at 39, nothing changed~~ | at 42; only new code can run |
+| a seeder, after the migrations | ~~at 43; no backfill has run~~ | at 43; no backfill has run |
+| the backfill | ~~it cannot fail the Migrator~~ | it cannot fail the Migrator |
+
+**6. Locks.** Migration 42 takes `ACCESS EXCLUSIVE` on `trading.trade` and `trading.block` with a 20-second `lock_timeout`, and 43 takes `SHARE ROW EXCLUSIVE` on its five input tables. Whether a host is still running at that moment is row 1 of the last table of this section. Compose stopped the old hosts first on the deploy of 2026-10-13, as an observation and not a guarantee (row 1). Were one still running, a request in flight could deadlock with the run (the position read takes block then trade, the run takes trade then block), PostgreSQL would end one side within a second, and the deploy is run again: the migrations before the failing one stay applied and the run goes on from there.
+
+**7. Money.** No statement of the four assigns a euro column, a wallet row or a ledger row. Migration 42 ends with a self-check that compares the six money columns of every trade as text before and after, inside the transaction and under the lock, and raises if any changed. A test compares every wallet and ledger row before and after, `xmin` and `ctid` included, and then runs the ledger reconciliation.
+
+**8. Pins move in the same commits:** `tools/verify-migrator.sh` (the ordered migration list, the alert-kind pattern, the grants of the new tables, the employee-only trade columns under their new names, the policy and trigger lists, the empty tables after both migrator runs); the migration-count tests (`MigrationScriptTests`, `MigrationBehaviourTests`); the model snapshot (`PeakPowerDbContextModelSnapshot.cs`); the enum, model-shape, row-level-security and query-filter catalogue tests; and both OpenAPI snapshots (`customer.json`, `employee.json` and their verified copies). `tools/verify-migrator.sh` is run before landing.
+
+**9. To be confirmed at build.** The one table in the specifications that lists what is not known. ⚠ **Part R, 2026-10-14:** rows 2, 3, 4, 6 to 10 and 13 are answered by the build and say what was found; rows 1, 5, 11 and 12 stay open, and say what answers them. The specifications do not state an open row as fact.
+
+| # | Not known | What this page says now | Answered by |
+| --- | --- | --- | --- |
+| 1 | **Assumption S1:** does `docker compose up -d` stop the old hosts before the Migrator starts, for this landing? | Observed on the four-eyes deploy of 2026-10-13 (Deploy run 38384978431) and on a local stack: the two APIs and the Worker were recreated before the migrator started. An observation with its date, never a guarantee. ⚠ **Re-read 2026-10-14:** the platform's `DEPLOYING.md` records pre-flight O2 as answered by that deploy's log (no host runs while the Migrator runs). The log of this landing's own Deploy has not been read: the landing has not happened | **Open until the landing.** Pre-flight O2, re-read at the landing |
+| 2 | **Assumption S2:** does one Migrator run apply all pending migrations in one transaction? | ⚠ **No, found 2026-10-14.** Each migration commits by itself. With the saved-cost table created beforehand, migration 43 fails with `42P07` and the history ends `_TradingKwhUnits`: 40, 41 and 42 stay applied. The right-hand column of §5 holds | **Closed.** Test L4 `A_failure_in_the_last_migration_leaves_the_database_at_migration_42`, task L1 |
+| 3 | Saved rows per second; how long the backfill of the load-test set takes; the two range reads before and after; table sizes | ⚠ **Measured 2026-10-14, on a laptop (Apple silicon, 12 CPUs, 24 GiB), not on the VM.** M1: 131 000 and 148 000 saved rows a second (one customer, 50 connections, 90 days). M2: the load-test set (100 connections, 365 days, 4 905 600 readings) drained in 18,9 s, 3 503 600 cost rows and 35 040 position rows, about 187 000 rows a second; `metering.interval_cost` 577 MB, `trading.hedge_position_interval` 7,9 MB. M3, 50 connections over 92 days, median of five warm requests: `GET /consumption/intervals` is **slower** after (622 to 648 ms against 397 to 506 ms before) because it now joins the saved costs; `GET /consumption/position` is about ten times faster (37 to 39 ms against 376 to 410 ms). The VM's own figures are not known | **Closed for the laptop; the VM is not measured.** Task L1 (`L1`, `L1M2`) |
+| 4 | The final value of `SavedCosts:MigratorBackfillSeconds` | **120, unchanged (2026-10-14).** At the measured rate 120 seconds cover about 15 million rows against the 1,65 million that 50 connections and all of 2026 need. Raising it is the product owner's call, because every second is downtime | **Closed.** L1 |
+| 5 | How many decimals ENTSO-E sends, and whether it revises a published day | Not known. The feed records it: `max_source_decimals` and `rows_changed` on its saved runs | **Open.** After the landing: check C7 of the deploy plan |
+| 6 | The migration ids (timestamps) of 40 to 43 | **Fixed 2026-10-13:** `20261013164002_DayAheadFeed`, `20261013184255_IndicationPricePerKwh`, `20261013191536_TradingKwhUnits`, `20261013215101_SavedCosts` | **Closed.** Tasks D2, T3, T4, C3 |
+| 7 | The audit action names `TRADE_PRICE_ROUNDED`, `BLOCK_PRICE_ROUNDED`, `TRADE_REFERENCE_PRICE_ROUNDED`; the trigger, function, policy and setting names | **Built as designed (checked 2026-10-14 against migrations 42 and 43).** The three audit actions; the seven triggers `trg_day_ahead_price_recalc_insert`, `_update`, `_delete`, `trg_interval_data_version_recalc`, `trg_block_recalc`, `trg_trade_recalc`, `trg_metering_point_recalc`; the seven functions `metering.recalc_on_price_insert`, `recalc_on_price_update`, `recalc_on_price_delete`, `recalc_on_version_change`, `recalc_on_block_insert`, `recalc_on_trade_state` and `recalc_on_metering_point_update`; the policies of §3.8. The settings are `SavedCosts:Enabled`, `:Interval`, `:RunOnStartup`, `:MaxDaysPerBatch`, `:MaxConnectionDaysPerBatch`, `:MaxBatchesPerTick`, `:VerifyAtHour`, `:VerifyAtMinute`, `:VerifyRecentDays` and `:MigratorBackfillSeconds`, and `DayAheadIngestion:RecheckDays`, `:RecheckAfter`, `:MissingAlertAfter`, `:RunRetentionDays` and `:Provider` | **Closed.** T4 (audit), C3 (triggers), D2, D3, C5 (settings) |
+| 8 | The body of the 400 an unknown request member gets | **Found 2026-10-14:** a bare `application/problem+json` answer of the framework, `status` 400, `type` `https://tools.ietf.org/html/rfc9110#section-15.5.1`, no `errors` object and no problem type of ours; nothing is stored | **Closed.** T4, test `A_body_with_an_old_field_name_is_refused` |
+| 9 | Whether the four request schemas gain `additionalProperties: false`; whether the feed status string sets are published as OpenAPI enums; where `meteredIntervals` and `costedIntervals` sit in the record | **Found 2026-10-14, in the two committed documents:** all four request schemas have `additionalProperties: false`. The status string sets (`state`, `source`, `outcome`, `recheck`, `code`) are plain strings, with no enum. `meteredIntervals` and `costedIntervals` are the last two members of `ConsumptionSummaryDto`, after `totalCostEur`, each a nullable `int32` | **Closed.** Snapshot review of T4, D5, C7 |
+| 10 | The operation and schema counts after the landing | **Confirmed 2026-10-14** by reading both documents against the contract: customer 67 became 66 operations and 113 became 110 schemas (`GET /dashboard/position` and its three schemas gone; 25 members removed and 27 added, which is 24 renames, 1 removal and 3 additions); employee 57 became 59 operations and 84 became 91 schemas (the two status reads and their seven schemas; 10 renames and 1 addition) | **Closed.** L1 |
+| 11 | What the deployed database holds: offers in flight, prices with more than 2 decimals per MWh, gaps in the price table, whether a token is set | Nothing. The pre-flight queries exist (Q0 to Q16, O1 to O4 in the platform's `DEPLOYING.md`) and ran against a seeded database; their answers on the VM do not exist | **Open.** Pre-flight Q0 to Q16 and O1 to O4, run at the landing |
+| 12 | The twelve defaults of [DEC-180] (15), (a) to (l) | All twelve are built as defaults ((l) is recorded as not decided). **No confirmation or change has been received from the product owner as of 2026-10-14**; the defaults stay marked as taken | **Open.** The product owner |
+| 13 | Web wording and mechanics: the sentence for a partial total; the re-read schedule; how many days back the position is re-read; the typed-price and typed-volume parsers; the axis of the day-ahead chart; the card's source line for a simulated source; what an open page says after a deploy; the desk's "Whole MW" badge; whether the two status panels poll | **Built as designed (checked 2026-10-14 against the web reports W4 to W9 and the code).** The partial-total sentence exists in both languages and names no cause; the schedule is a 30-second tick, a waiting day read every 30 seconds six times and then every 5 minutes, and seven days back; the price parser takes at most five decimals, refuses 10 or more and suggests the figure divided by 1000 only when that is a valid price; the volume entry takes whole kW, so `1.000` is one thousand and `0.200` is refused; the day-ahead axis prints round ticks; a price prints in three spellings (`0,09475`, `€ 0,09475`, `€ 0,09475 / kWh`, `units.ts`); the cost chart's accessible name no longer says "priced"; the Data & feeds sentence no longer counts three panels; the card's source line for a simulated source reads the simulated sentence and names no ENTSO-E; an open page is not told about a deploy (no version check, [DEC-180] (14)); the desk's badge is gone; the two status panels do not poll. **Differences and gaps:** the day-ahead chart's Y gutter widens for a label that needs it (`−0,00004`), and the charts stacked on a page (Volume, connection detail) share one Y gutter, so a six-digit kWh tick (`300.000`) prints whole; the customer trades list Status column is wider (212 px) and Data & feeds stacks its two lower panels below 1320 px; a unit keeps its case in the Volume table head and in the back-office capacity label, which now reads "Capacity (kW)" / "Capaciteit (kW)" (the unit sits in its own span that the capitals rule leaves alone). The end-to-end suite and the real-API trial were not run | **Closed, with the gaps above.** Web tasks W4 (re-read, partial total), W5 (entry fields, badge), W6 (axis, source line), W8 (panels), W9 (browser pass) |
+
 ## 8. Retention & archival
 
 ⚠ **Settled 2026-08-19 by [DEC-95], closing [OQ-48].** Two things were decided, and the second is
@@ -2191,6 +2520,8 @@ the larger one:
 | ~~Approval requests **[DEC-71]**~~ | ~~7 years~~ | ~~Never deleted. It is the evidence a second person agreed~~ ⚠ **Never built, struck 2026-10-12 ([DEC-179]).** What exists of past approvals — the `trade_event` rows and the `FOUR_EYES_*` and `WITHDRAWAL_*` audit rows — keeps the retention of its own table |
 | Deposit intents, incoming payments, withdrawal requests **[DEC-106]**, **[DEC-83]** | 7 years | Never deleted. A matched payment is a money movement; an **unmatched** one is a fact about somebody's money and is kept for exactly as long |
 | Audit records | ~~Per **[OQ-48]**~~ **7 years [DEC-95]** | Never deleted within the window |
+| Day-ahead feed runs **[DEC-180]** | 90 days (`DayAheadIngestion:RunRetentionDays`) | Deleted by the job |
+| Saved costs and positions **[DEC-180]** | Derived data, rebuilt from their inputs | No history of a saved cost is kept [DEC-180] cost (c) |
 
 ⚠ **What "the bookkeeping program holds the financial record" costs, stated.** Deleting this
 database after seven years is now safe for *finance* and not safe for *evidence*: the trade timeline,

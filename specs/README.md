@@ -74,7 +74,7 @@ See the [feature index](10-features/README.md) for the full list, MoSCoW priorit
 | [03 Wallet deposits](30-integrations/03-payments-cm-com.md) | iDEAL and **bank transfer matched on a platform-issued payment reference [DEC-106]**. No provider is chosen **[DEC-86]** |
 | [04 Bookkeeping program](30-integrations/04-odoo-accounting.md) | Draft-invoice push and ledger entries. It owns numbering **[DEC-88]**, the PDF and the email **[DEC-89]**, and VAT **[DEC-76]** |
 | [05 Identity provider](30-integrations/05-identity-provider.md) | Microsoft Entra ID **[DEC-20]** on the existing corporate tenancy **[DEC-66]**. MFA is mandatory **[DEC-92]** |
-| [06 ENTSO-E day-ahead](30-integrations/06-entsoe-day-ahead.md) | The NL day-ahead curve, live and backfilled from 2020, into `market.day_ahead_price`. The token is optional **[DEC-169]** |
+| [06 ENTSO-E day-ahead](30-integrations/06-entsoe-day-ahead.md) | The NL day-ahead curve, live, backfilled from 2026-01-01 **[DEC-172]** and re-checked daily **[DEC-180]**, into `market.day_ahead_price`. The token is optional **[DEC-169]** |
 
 ### 40 — Processes
 | Doc | Purpose |
@@ -128,9 +128,10 @@ The consolidated register. Every **[OQ-nn]** reference in this set resolves here
 
 - **MUST / SHOULD / MAY** follow RFC 2119 meaning.
 - All times are **Europe/Amsterdam** unless a document explicitly says UTC.
-- Money is **EUR**, stored as `numeric(18,6)`, presented at 2 decimals.
-- Energy volume is **kWh** in storage, **MWh** in trading and presentation.
-- Power is **MW**. Minimum and increment for a requested volume are **0,01 MW** **[DEC-70]**.
+- Money is **EUR**, stored as `numeric(18,6)`, presented at 2 decimals. A **calculated cost** is rounded to 5 decimals, half away from zero, when it is calculated, and stored as `numeric(p,5)` **[DEC-180]**.
+- Energy is **kWh**, power is **kW** and a price is **euro per kWh with five decimals**: in storage, on the wire and on every screen **[DEC-180]**.
+- Minimum and increment for a requested volume are **10 kW** **[DEC-180]**, the 0,01 MW of **[DEC-70]**.
+- What an external source sent is kept as received (a Montel quote per MWh), and the invoice and energy-tax pages, which are specified and not built, still say MWh and €/MWh **[DEC-180]** (2).
 - Prices, balances and pushed amounts are **VAT-exclusive** **[DEC-26]**, **[DEC-76]**; the one
   exception is a **trade reservation and its wallet debit**, which are grossed up **[DEC-78]**.
 - **Bookkeeping program** is the generic name for Odoo, Moneybird or whatever is chosen — see

@@ -6,6 +6,8 @@ PeakPower's own Montel service is one of the four things [DEC-96] leaves to be r
 
 > ⚠ **Amended 2026-10-01 by [DEC-169]** — the second use below, **day-ahead prices, no longer comes from Montel**: it is read from the ENTSO-E Transparency Platform, see [06 ENTSO-E](06-entsoe-day-ahead.md). Forward price indications stay on Montel.
 
+> **As built 2026-10-13 by [DEC-180] (2), (10).** A quote is stored as it arrives: `raw_price numeric(12,4)`, unit `MWH`. The port still hands in a price per MWh and an observation in any other unit is refused. Every reader gets euro per kWh at 5 decimals from the view and the function.
+
 Two distinct uses of one provider:
 
 1. **Price indications** — forward prices for base and peak, month/quarter/year, shown to customers
@@ -76,7 +78,7 @@ public interface IMarketDataProvider
 public sealed record ForwardQuoteRequest(string ProductCode, BlockShape Shape, DeliveryPeriod Period, string? Ticker);
 
 public sealed record ForwardQuote(
-    string ProductCode, DeliveryPeriod Period, decimal PricePerMwh,
+    string ProductCode, DeliveryPeriod Period, decimal PricePerMwh,   // ⚠ [DEC-180]: kept, the as-received side
     string Currency, string Unit, DateTimeOffset ObservedAt);
 ```
 
@@ -374,7 +376,7 @@ records (§2; `ForwardQuote` is the as-built type, replacing the pre-build `Pric
 carry raw values by definition, which is what makes that half of the rule enforceable at the type
 level rather than by convention. ⚠ **This does not mean a marked-up number is never persisted
 anywhere.** **[F04-R10]** and **[F04-R17]** require the trade request to capture and store the
-marked-up price at 4 dp alongside the markup rate in force — deferred to **[F05](../10-features/F05-energy-block-trading.md)**
+marked-up price at ~~4 dp~~ ⚠ **[DEC-180] (10): per kWh at 5 decimals, as in F04-R10** alongside the markup rate in force — deferred to **[F05](../10-features/F05-energy-block-trading.md)**
 for Phase 1, since there is no trade request to capture it against until F05 ships, but not deferred
 forever. When F05 lands, it **reads** the observation table's raw value and the markup in force, and
 writes the computed marked-up price with the trade request it belongs to — a different table, a

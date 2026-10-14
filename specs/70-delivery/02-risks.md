@@ -58,6 +58,8 @@ mitigation in the plan, not just an entry in a table.
 > and the cadence at the foot of this document is changed to say so rather than pretending the meeting
 > is still one hour long.
 
+> **Reviewed 2026-10-13 on [DEC-180].** R-23 is re-pointed a second time; two entries are new, R-36 and R-37, both below 12. The scores of the two new entries are proposed by this change, for the risk owner to confirm.
+
 ---
 
 ## Top risks
@@ -1102,7 +1104,7 @@ back-fill / contract work it justified should be retired with it **[F09-R12]**.
 
 **Why the ID stays, and what it now points at.** **[DEC-74]** introduces a third €/kWh rate on the
 same day the other two leave: `billing.energy_tax_tariff.rate_eur_kwh`, applied to a **kWh** volume
-with **no `/1000`** **[F09-R18]**, in a system where every market price is still €/MWh. The hazard
+with **no `/1000`** **[F09-R18]**, ~~in a system where every market price is still €/MWh~~. ⚠ **Re-pointed 2026-10-13 by [DEC-180]: the platform now holds every price in €/kWh, so the tax rate and the market prices share a unit. The 1000× hazard is where a per-MWh figure still enters: a source that quotes per MWh, converted in exactly two places (the ENTSO-E mapper and the view and function of migration 41); a price typed per MWh at the desk [R-36]; and the invoice pages, which still say €/MWh.** The hazard
 moved; it did not disappear, and both
 [Vision & scope](../00-overview/01-vision-and-scope.md) and the volume payload in
 [Odoo accounting](../30-integrations/04-odoo-accounting.md) point here for it. It is also worth more
@@ -1131,7 +1133,7 @@ The line it protects is now **line 5**, not line 4.
   screen or API contract rounds it on the way in.
 - Unit in the name, everywhere it travels: `rate_eur_kwh` in the column, `volume_kwh` in the push
   payload **[DEC-73]**. No bare `rate`, no bare `volume`.
-- The lint rule survives verbatim: **no expression may contain a `/1000` and a `_kwh` rate.**
+- The lint rule survives verbatim: **no expression may contain a `/1000` and a `_kwh` rate.** ⚠ **[DEC-180]: and no factor of 1000 on a price exists outside those two places.**
 - One worked example asserted to the cent, plus one that asserts a 1000× error **fails**.
 - Reconcile the parallel run at line level. A 1000× error on line 5 hides inside a total dominated by
   lines 1 and 2, exactly as it would have on line 4.
@@ -1266,14 +1268,15 @@ in the top section so that the reason each one is small is on the record and can
 | ~~**R-31**~~ | ~~Four-eyes needs two admins, and a company can run short of them~~ | ~~3~~ | ~~3~~ | ~~🟡 9~~ | ~~⚠ **The obvious failure mode is designed out.** A one-admin company cannot have the control *silently* absent: **[F01-R43]** refuses to **enable** four-eyes below two `ACTIVE` admin accounts, and **[F01-R50]** refuses any change that would drop below two while it is on. What is left is the opposite and smaller harm — a company that loses an admin to illness or departure is **blocked** on trades, withdrawals, bank-account changes and user additions until a PeakPower employee clears the flag **[F01-R42]**, an audited action that under **[DEC-104]** reaches one person **[R-32]**. Impact 3: commercially bad during a delivery window, fully recoverable. **Raise it to 12 if the degenerate case is ever softened to self-approval** — **[F01-R48]** forbidding self-approval is what holds this at 9~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — **retired 2026-10-12**: there is no four-eyes, and a company with one admin is a normal company (the floor is one). |
 | **R-34** | No contractual SLA removes the external forcing function on availability | 3 | 3 | 🟡 9 | **[DEC-103]** makes every availability figure an **internal engineering goal** with no remedy behind it, and **[NFR-17]**'s trade-offs get cheaper to wave through — the register itself records one dissolving outright. The live consequence is **[OQ-62]**, single region versus a warm secondary, which must now be decided on **[NFR-29]**'s RPO/RTO and on **[DEC-104]**'s single operator **[R-32]** against roughly double the infrastructure cost, with nothing contractual on the other side of the scale. Impact 3 because the harm is under-investment discovered *during* an incident rather than the incident itself. **Raise it if a customer contract ever names a number** |
 | **R-35** | A 30-minute offer dies in one person's calendar | 3 | 2 | 🟡 6 | ⚠ **[DEC-111] reverses [DEC-63]**: only the account that raised the request is notified~~, plus the approving admin when four-eyes is on **[DEC-71]**~~ *(the requester only since 2026-10-12, [DEC-179]; the 30-minute exposure is back at the level [DEC-111] accepted)*. **[DEC-63]**'s rationale was precisely this scenario, and the reversal accepts it deliberately — **[DEC-18]** still lets **any** account of the company accept, so the offer is not unacceptable, only **unseen**. Likelihood 3: a 30-minute window and a meeting are both ordinary. Impact 2: a lapsed offer is re-requestable, and the real loss is the trader's time and a customer's patience. **Raise it if offer expiry becomes a measured cause of lost trades** — G2 in [F05](../10-features/F05-energy-block-trading.md) is where that would show |
-
+| **R-36** | A price or a volume is typed in the old unit | 2 | 4 | 🟡 8 | ⚠ **New 2026-10-13 [DEC-180].** A new price of 10 €/kWh or more is refused, so 81,25 meant as €/MWh never becomes an offer; 0,2 typed as kW fails the 10 kW grid; the form shows the total before it is sent. What remains is a price under 10 €/MWh typed by habit, which would raise this entry |
+| **R-37** | A saved cost no longer follows its inputs and nobody notices | 2 | 3 | 🟡 6 | ⚠ **New 2026-10-13 [DEC-180].** CHECK constraints on every row; a cost is served only when its recorded inputs equal the ones shown; the nightly check; the status read; the deploy check that pins all seven triggers. A trigger dropped by hand would raise this entry |
 ---
 
 ## Full register
 
 Sorted by score. IDs are stable and are never reused; the retired entry stays at the foot of the
 table rather than being deleted. **34 live entries after 2026-08-19** (R-01…R-35 less the retired
-R-03), of which **17 score 12 or above**.
+R-03), of which **17 score 12 or above**. ⚠ **2026-10-13, [DEC-180]: two more entries, R-36 and R-37, both below 12.**
 
 | ID | Risk | L | I | Score | Mitigation summary | Owner |
 | --- | --- | :-: | :-: | :-: | --- | --- |
@@ -1294,7 +1297,7 @@ R-03), of which **17 score 12 or above**.
 | **R-30** | **A push failure or an unchecked draft leaves the customer with no invoice** | 3 | 4 | 🟠 12 | **New** — [DEC-88] reverses [DEC-45] and its rationale named this. `CALCULATED → PUSHED → NUMBERED` with an **alert** on a draft that never gets a number; idempotent push per customer and period; the portal shows calculated data labelled *not an invoice* | Finance / Lead |
 | **R-32** | **One named operator, no rota** | 4 | 3 | 🟠 12 | **New** — [DEC-104]; [NFR-68] says it plainly: an unacknowledged P1 escalates to nobody. Automate what a rota would do — retries and an idempotent catch-up run; rehearsed hand-over; break-glass still blocked on [OQ-89] | Lead / MD |
 | **R-33** | **Nothing external validates the security before go-live** | 3 | 4 | 🟠 12 | **New** — [DEC-102]; [NFR-36] stays **unmet** with a written risk acceptance. Name the untested surface — usage API [DEC-97], deposit matching [DEC-106], ~~four-eyes [DEC-71],~~ admin, break-glass; buy the cheapest external signal; revisit when real money is held [R-05] | Lead / Security |
-| R-23 | ~~€/kWh surcharge migration~~ **€/kWh energiebelasting rate** misprices by 1000× | 2 | 5 | 🟡 10 | **Was 15, re-pointed** — [DEC-73] and [DEC-87] cancel both €/kWh rates and the migration with them; [DEC-74] introduces a third. Greenfield `numeric(14,8)` [F09-R18]; unit in every field name; no `/1000` beside a `_kwh` rate; reconcile at **line level** | Finance / Lead |
+| R-23 | ~~€/kWh surcharge migration~~ **€/kWh energiebelasting rate** misprices by 1000× | 2 | 5 | 🟡 10 | **Was 15, re-pointed** ⚠ **again 2026-10-13 by [DEC-180]: the platform now holds every price in €/kWh; the hazard is a per-MWh figure entering, see [R-36]** — [DEC-73] and [DEC-87] cancel both €/kWh rates and the migration with them; [DEC-74] introduces a third. Greenfield `numeric(14,8)` [F09-R18]; unit in every field name; no `/1000` beside a `_kwh` rate; reconcile at **line level** | Finance / Lead |
 | R-16 | Third-party lead times (contracts, DPIAs, licences) delay go-live | 3 | 3 | 🟡 9 | Start all in phase 0 — **Entra tenant access [DEC-66]**, dated in [Roadmap §2.1](01-roadmap-and-phasing.md). ⚠ 2026-08-19: [OQ-58] closed — Kikker holds the DPIA for the test phase and **the transfer to PeakPower is a dated go-live item [DEC-101]**; new items are the charting licence [DEC-79], the PSP that is still unchosen [DEC-86] and the bookkeeping program [R-10] | PO |
 | R-17 | Customer adoption lower than expected | 3 | 3 | 🟡 9 | Phase 1 ships value before any behaviour change is asked for. ⚠ 2026-08-19: **[DEC-92]** makes MFA mandatory and the onboarding friction is accepted; **[DEC-94]** gives the mockups the peakpower.nl brand to work from | Commercial |
 | R-24 | Entra tenant access outside the team's control; claim mapping unproven until it arrives | 3 | 3 | 🟡 9 | **Was 16, retitled** — [DEC-66] resolves the contradiction, [DEC-67] keeps the dependency: build against standard OIDC on a local container; dated Phase 0 dependency; never a second tenant. ⚠ 2026-08-19: **[DEC-92]** adds a Conditional Access policy to configure in that same tenancy, and **[DEC-110]** confirms there is nothing to migrate from | IT / Lead |
@@ -1307,6 +1310,8 @@ R-03), of which **17 score 12 or above**.
 | R-14 | Data volume outgrows a single PostgreSQL | 2 | 3 | 🟡 6 | Partitioning; defined revisit trigger **[DEC-09]**; [OQ-53]. ⚠ 2026-08-19: [DEC-70]'s 0,01 MW increment multiplies trade rows, not interval rows, which is the smaller table | Lead |
 | R-15 | Scope creep from gas being pulled forward | 2 | 3 | 🟡 6 | **Was 9** — ⚠ **[DEC-68] reverses [DEC-30]: gas is out of scope**, and [OQ-87] closes as not applicable until it returns. [DEC-15]'s discriminator stays, which is what keeps the later addition cheap — and what will make it look free when someone asks | PO |
 | R-18 | Trade desk response times slip in practice | 2 | 3 | 🟡 6 | Real-time desk; urgency ranking; escalation alerts; measure G2. ⚠ 2026-08-19: [DEC-70]'s 0,01 MW minimum means more, smaller requests per trader-hour | Trading |
+| **R-36** | **A price or a volume is typed in the old unit** | 2 | 4 | 🟡 8 | **New** — [DEC-180] (10): a new price of 10 €/kWh or more is refused, so 81,25 meant as €/MWh never becomes an offer; 0,2 typed as kW fails the 10 kW grid; the form shows the total before it is sent. What remains is a price under 10 €/MWh typed by habit | Trading |
+| **R-37** | **A saved cost no longer follows its inputs and nobody notices** | 2 | 3 | 🟡 6 | **New** — [DEC-180] (4), (6): CHECK constraints on every row; a cost is served only when its recorded inputs equal the ones shown; the nightly check; the status read; the deploy check that pins all seven triggers | Lead |
 | R-22 | Insufficient realistic test data for performance work | 3 | 2 | 🟡 6 | `DevStubs` generates volume; production-shaped test environment. ⚠ 2026-08-19: it must now generate **per BRP** [DEC-69] and cover a **correction arriving months late** [DEC-98] [DEC-99] | QA |
 | **R-35** | **A 30-minute offer dies in one person's calendar** | 3 | 2 | 🟡 6 | **New** — ⚠ [DEC-111] reverses [DEC-63]: the requester is notified~~, plus the approving admin under four-eyes [DEC-71]~~ *(requester only since 2026-10-12, [DEC-179])*. [DEC-18] still lets any account accept, so the offer is unseen rather than unacceptable. Measure lapsed offers before widening it again | Commercial |
 | R-07 | Montel licence restricts display | 2 | 2 | 🟢 4 | **Was 6** — [DEC-81] settles the residual from the product side: current curve, **no history, no export**; [DEC-97] keeps prices out of the customer API; [DEC-80] already shows a **derived** figure ⚠ **2026-09-29 [DEC-167]:** no longer — customers now see the **raw** quote, so read the impact as **3** (score 6) until **[OQ-117]** is answered. ⚠ [OQ-23] stays a ⏸ partial (ticker symbols, bid-versus-ask); [DEC-96] adds an existing Montel service to reuse | Commercial |

@@ -341,6 +341,8 @@ disagrees**: it uses `KWH` for `A14`, `A02` and `A20`, and `MWH` for `B24` and `
 therefore reads the unit from the message and converts, rather than assuming — and logs a warning
 when the unit is not the one the dependency table predicts.
 
+⚠ **Corrected 2026-10-13 ([DEC-180], a stale line): as built, `KWH` and `MWH` are accepted and stored in kWh (`MWH` × 1000); `KWT` and `MAW` are powers and are refused with `UnsupportedMeasurementUnit`.**
+
 ### 4.4 `ResourceObject`
 
 | Value shape | Meaning | Handling |

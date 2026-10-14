@@ -22,9 +22,9 @@ deleted, with the decision that removed it.
 | Content type | `application/json`; `application/problem+json` for errors |
 | Errors | RFC 7807 problem details |
 | Dates | ISO 8601 with offset. Delivery dates are plain `YYYY-MM-DD` (Amsterdam) |
-| Money | `{ "amount": "1234.56", "currency": "EUR" }` — **string** to avoid float parsing, as originally specified. ⚠ **Note added 2026-09-23 by [DEC-161], correcting rather than reusing this row's original framing.** Every customer-facing money field this platform has actually built is a **bare `decimal`**, not the string-wrapped envelope above — there is no `{ amount, currency }` type anywhere in `PeakPower.Contracts`. `WalletSummaryResponse.SettledBalance`/`ReservedAmount`/`AvailableBalance` and the wallet deposit/withdrawal `Amount` fields are all plain, **non-nullable** decimals. `ConsumptionIntervalDto.PriceEurPerKwh`/`CostEur` and `ConsumptionSummaryDto.TotalCostEur` are the one built exception that is **nullable**: a range with nothing measured or priced totals `null`, never `0.00`. The price-indications payload (§2.3) follows the bare-decimal convention and, like the consumption fields, is nullable: `price` is a bare, nullable `decimal` at 4 dp, with `currency` as a separate sibling field, because a string-wrapped amount has no honest representation for `UNAVAILABLE` (`"0.00"` reads as a real price, not as an absence). It is not an exception to the bare-decimal shape — only the wallet balance/amount fields are non-nullable; nullability, not the envelope, is what genuinely varies across this platform's built DTOs. This row's original text was aspirational rather than descriptive of anything built |
-| Energy | `{ "value": "744.000000", "unit": "MWH" }` |
-| Volume granularity | Requested power is MW with a **minimum of 0,01 MW and in multiples of 0,01 MW** **[DEC-70]** — §2.4.1 |
+| Money | `{ "amount": "1234.56", "currency": "EUR" }` — **string** to avoid float parsing, as originally specified. ⚠ **Note added 2026-09-23 by [DEC-161], correcting rather than reusing this row's original framing.** Every customer-facing money field this platform has actually built is a **bare `decimal`**, not the string-wrapped envelope above — there is no `{ amount, currency }` type anywhere in `PeakPower.Contracts`. `WalletSummaryResponse.SettledBalance`/`ReservedAmount`/`AvailableBalance` and the wallet deposit/withdrawal `Amount` fields are all plain, **non-nullable** decimals. `ConsumptionIntervalDto.PriceEurPerKwh`/`CostEur` and `ConsumptionSummaryDto.TotalCostEur` are the one built exception that is **nullable**: a range with nothing measured or priced totals `null`, never `0.00`. ⚠ **[DEC-180] (3): a calculated cost has at most 5 decimals on the wire and may arrive as 1.07300; a client formats. "Always 5 decimals" is a property of the column and of the screen.** The price-indications payload (§2.3) follows the bare-decimal convention and, like the consumption fields, is nullable: `price` is a bare, nullable `decimal` at 4 dp, with `currency` as a separate sibling field, because a string-wrapped amount has no honest representation for `UNAVAILABLE` (`"0.00"` reads as a real price, not as an absence). It is not an exception to the bare-decimal shape — only the wallet balance/amount fields are non-nullable; nullability, not the envelope, is what genuinely varies across this platform's built DTOs. This row's original text was aspirational rather than descriptive of anything built |
+| Energy | ~~`{ "value": "744.000000", "unit": "MWH" }`~~ ⚠ **Never built. [DEC-180]: energy is a bare number in kWh in a field named …Kwh; power …Kw; a price …EurPerKwh; a calculated cost …Eur.** |
+| Volume granularity | Requested power is ~~MW with a **minimum of 0,01 MW and in multiples of 0,01 MW**~~ kW, at least 10 and a multiple of 10, below 1 000 000 000 **[DEC-70]**, **[DEC-180] (10)** — §2.4.1 |
 | Prices | Every customer-facing indication is the quote **× (1 + markup)** **[DEC-80]**; there is **no price history and no price export** on any customer surface **[DEC-81]** — §2.3 |
 | Paging | `?page=1&pageSize=50`, response envelope with `total`, `page`, `pageSize` |
 | Sorting | `?sort=field:asc,other:desc` |
@@ -207,7 +207,9 @@ than API outcomes, so a correct client cannot reach them.
 | `GET` | `/consumption/month?month=&meteringPointIds=` | Daily totals |
 | `GET` | `/consumption/summary?from=&to=&meteringPointIds=` | KPI strip figures |
 | `GET` | `/consumption/export?…` | CSV |
-| `GET` | `/dashboard/position?month=YYYY-MM` | The month's position for the Dashboard: metered volume against confirmed BUY blocks. ⚠ Added 2026-10-01 ([DEC-167] (19)) |
+| ~~`GET`~~ | ~~`/dashboard/position?month=YYYY-MM`~~ | ~~The month's position for the Dashboard: metered volume against confirmed BUY blocks. ⚠ Added 2026-10-01 ([DEC-167] (19))~~ ⚠ **Removed 2026-10-13 by [DEC-180] (11).** |
+
+⚠ **The 2026-08 design, not what was built [DEC-149]: the built DTO has priceEurPerKwh and costEur as bare numbers and no block field.**
 
 ```jsonc
 // GET /api/v1/consumption/day?date=2026-08-12&meteringPointIds=mp-1
@@ -251,6 +253,17 @@ field: it is rendered in the tooltip and the KPI strip **[F03-R05]**, **[F03-R19
 the payloads, not by a flag on the export endpoint — a `?includePrices=` parameter would be one
 support request away from being turned on.
 
+**Cost on the consumption reads** ⚠ **as built 2026-10-13 by [DEC-180] (3), (4), (8).** On `GET /consumption/day` and `GET /consumption/intervals` the field `costEur` of each interval is the **sum of the saved costs of the reporting connections**, each `round(usage × price, 5)`; no read multiplies. It is null as follows:
+
+| The interval has | `priceEurPerKwh` | `costEur` | Counted as |
+| --- | --- | --- | --- |
+| No net usage | any | `null` | not metered |
+| Net usage, no price | `null` | `null` | metered, not costed: unpriced |
+| Net usage, a price, and a saved cost made from exactly this usage and this price for every reporting connection | a number | a number, zero included | metered and costed |
+| Net usage, a price, and anything else saved (nothing yet, fewer rows, another usage, another price) | a number | `null` | metered, not costed: waiting for its recalculation |
+
+A client tells "unpriced" from "waiting" by `priceEurPerKwh` alone; there is no extra field. `ConsumptionSummaryDto.totalCostEur` is the sum of the non-null `costEur` values of the answer (sums of 5-decimal values), null when there is none, and always null on `GET /consumption/month`. `ConsumptionSummaryDto` gains two fields, `meteredIntervals` (intervals of the answer with a net usage) and `costedIntervals` (intervals with a cost), both `int?` and null on the month read; they are the last two members of the record, after `totalCostEur`, each a nullable `int32` (found at build, task C7). A cost is never served from inputs that differ from the usage and price shown in the same answer. On the wire a cost has at most 5 decimals and may arrive as `1.07300`.
+
 **Volume position** ⚠ added 2026-10-07 ([DEC-175]). `GET /api/v1/consumption/position?from=YYYY-MM-DD&to=YYYY-MM-DD` — any member; tenant-scoped, with the authentication, tenancy and row-level security of `GET /consumption/intervals`; account-level; at most **92 days**, otherwise `400`; no `meteringPointIds`. A **separate DTO**, so [DEC-149] holds: the consumption DTOs gain no block field. The server does not gate it on Future Trading; the portal calls it only when the product is held. Dense: every quarter-hour of the range, the future included. Not documented, published or opened for programmatic use ([F03-R26]). Calculation, null, partial and totals rules: [DEC-175] (4), (5); the field names are those of the generated OpenAPI document.
 
 ```jsonc
@@ -261,13 +274,13 @@ support request away from being turned on.
     { "date": "2026-11-01", "intervalCount": 96, "connectionsExpected": 3,
       "intervals": [
         { "pos": 33, "start": "2026-11-01T08:00:00+01:00", "end": "2026-11-01T08:15:00+01:00", "dstPass": null,
-          "hedgeKwh": 2500.0, "hedgeCostEur": 175.0,       // always present, also in the future
+          "hedgeKwh": 2500.0, "hedgeCostEur": 175.0,       // always present, also in the future; ⚠ [DEC-180]: the saved row's value
           "netUsageKwh": 2310.5,                            // null when not metered; everything below it is then null
           "priceEurPerKwh": 0.08123,                        // day-ahead, may be negative; null when unpriced
           "coveredKwh": 2310.5, "shortKwh": 0.0, "longKwh": 189.5,
           "buyLegEur": 0.0, "sellLegEur": 15.39,            // sell leg is a credit; both null when unpriced
           "actualCostEur": 159.61,                          // hedge cost + buy leg - sell leg
-          "costWithoutHedgeEur": 187.68,                    // net usage x price: today's costEur
+          "costWithoutHedgeEur": 187.68,                    // ⚠ [DEC-180] (5): the saved row's value; was net usage x price
           "connectionsReported": 3, "partial": false },
         { "pos": 34, "start": "2026-11-01T08:15:00+01:00", "end": "2026-11-01T08:30:00+01:00", "dstPass": null,
           "hedgeKwh": 2500.0, "hedgeCostEur": 175.0,       // a future or unmetered interval: the hedge only
@@ -277,7 +290,7 @@ support request away from being turned on.
       ] }
   ],
   "blocks": [ { "id": "...", "reference": "...", "direction": "BUY", "shape": "BASE", "periodCode": "...",
-                 "deliveryStart": "2026-11-01", "deliveryEnd": "2026-12-01", "powerMw": 10.0, "priceEurMwh": 70.0 } ],
+                 "deliveryStart": "2026-11-01", "deliveryEnd": "2026-12-01", "powerKw": 10000, "priceEurPerKwh": 0.07 } ],   // ⚠ [DEC-180] (10): was powerMw 10.0, priceEurMwh 70.0
   "totals": {
     "meteredIntervals": 1, "costedIntervals": 1, "partialIntervals": 0,
     "netUsageKwh": 2310.5, "coveredKwh": 2310.5, "shortKwh": 0.0, "longKwh": 189.5,
@@ -290,7 +303,21 @@ support request away from being turned on.
 }
 ```
 
-**Dashboard position** ⚠ added 2026-10-01 ([DEC-167] (19)). Any member; tenant-scoped; `month` defaults to the current Amsterdam month, a malformed value is a `400`. A **separate DTO** from the consumption ones, so [DEC-149] holds. The server does not gate it on Future Trading; the portal calls it only when the product is enabled. Definitions (per 15-minute interval, C against the confirmed BUY block energy B) are in [F03](../10-features/F03-consumption-visualisation.md).
+⚠ **After the saved rows, as built 2026-10-13 by [DEC-180] (5).** The position read loads no reading; it serves the saved quarter-hour rows of the customer (at most 8 832 for 92 days, whatever the number of connections):
+
+| Fields | Value |
+| --- | --- |
+| `hedgeKwh`, `hedgeCostEur` | The saved row's values. **0 when the customer-day has no saved row** |
+| `netUsageKwh`, `coveredKwh`, `shortKwh`, `longKwh`, `connectionsReported` | The saved row's values. Null (and 0 connections) when there is no saved row |
+| `buyLegEur`, `sellLegEur`, `costWithoutHedgeEur`, `actualCostEur` | The saved row's values, each rounded to 5 decimals, served **only when the row's price equals the price shown**; otherwise all four are null. `actualCostEur` = `hedgeCostEur` + `buyLegEur` − `sellLegEur`, exactly |
+| `priceEurPerKwh` | Always the current stored price, also on unmetered intervals |
+| `partial` | The same rule, from the saved `connectionsReported` |
+| Totals | Sums and counts over the saved rows. `costedIntervals` counts metered intervals whose four euro figures are served; `cost` covers the costed intervals only and is null when none is |
+| `blocks` | Read live from the confirmed blocks that deliver in the window, not from saved rows; `powerKw` and `priceEurPerKwh` |
+
+A customer-day with no saved row looks exactly like "nothing metered and no block": every interval has `hedgeKwh: 0`, `hedgeCostEur: 0`, the usage figures and the four euro figures null and `connectionsReported: 0`.
+
+**Dashboard position** ⚠ **Removed 2026-10-13 by [DEC-180] (11): the route and its three schemas are deleted and it answers 404. Kept as the record.** ⚠ added 2026-10-01 ([DEC-167] (19)). Any member; tenant-scoped; `month` defaults to the current Amsterdam month, a malformed value is a `400`. A **separate DTO** from the consumption ones, so [DEC-149] holds. The server does not gate it on Future Trading; the portal calls it only when the product is enabled. Definitions (per 15-minute interval, C against the confirmed BUY block energy B) are in [F03](../10-features/F03-consumption-visualisation.md).
 
 ```jsonc
 // GET /api/v1/dashboard/position?month=2026-10
@@ -357,6 +384,8 @@ work:
 }
 ```
 
+⚠ **Amended 2026-10-13 by [DEC-180] (10).** The four price fields of this example are `priceEurPerKwh`, `buyPriceEurPerKwh`, `sellPriceEurPerKwh` and `eodPriceEurPerKwh`, in euro per kWh with at most 5 decimals; the example's `price` of 78.4482 reads `priceEurPerKwh: 0.07845`. The field `unit` is removed (the unit is in the field names); `currency` stays. Values and rules: Buy and end of day are `round(raw × 0,001, 5)`; Sell is `round(buy − abs(buy) × spread / 100, 5)`, from the served Buy. For a source that quotes at most 2 decimals per MWh each is today's on-screen figure with the decimal point moved three places (78,45 becomes 0,07845; Sell at 2 % 76,88 becomes 0,07688). The observation keeps what the source sent.
+
 ⚠ **The roll example is corrected.** Observed on **2026-07-30**, `M1` (`relative_offset 1`, the next
 whole calendar month) resolves to **2026-08**, not 2026-09 as an earlier draft of this example showed;
 `Q1` resolves to **2026-Q4**, the next whole quarter after the quarter containing 30 July — the second
@@ -376,7 +405,7 @@ a month is `YYYY-MM`, a quarter is `YYYY-Qn`, a calendar year is `YYYY`.
 | ~~`isStale: boolean`~~ | **Replaced 2026-09-23 by `status: "FRESH" \| "STALE" \| "UNAVAILABLE"`** **[DEC-161]**. A boolean answers "is it old"; it cannot also answer "does it exist at all" without a second field drifting out of sync with the first — `status` answers both: `price` is `null` exactly when `status` is `UNAVAILABLE`, and so is `observedAt` — whatever the cause (no row for the currently resolved period, no markup in force, or no provider configured at all), the customer surface does not distinguish which **[F04-R07]** |
 
 `price` is therefore the only priced number on this surface, and it is already marked up — a plain,
-nullable `decimal` at 4 dp: the bare-decimal shape §1's Money row note now describes for every
+nullable `decimal` ~~at 4 dp~~ ⚠ **[DEC-180] (10): at most 5 decimals, euro per kWh, as `priceEurPerKwh`**: the bare-decimal shape §1's Money row note now describes for every
 customer-facing money field this platform has built, and the nullable trait it shares specifically
 with the consumption price/cost fields, not with every built money field (see that row). The
 markup itself is reference data with a default of 2%, maintained through the Employee API §3.2
@@ -385,7 +414,7 @@ markup itself is reference data with a default of 2%, maintained through the Emp
 
 ⚠ **Amended 2026-09-29 by [DEC-167] — `price` is the raw quote.** The last paragraph's claims that `price` *"is already marked up"* and that the markup applies at display are **reversed**: `GET /prices/indications` returns the **raw** quote as `price` (4 dp on the wire, unchanged shape); no field is added or removed. The markup table stays and is **unused by customer reads**. The *no markup row in force ⇒ `UNAVAILABLE`* cause listed above no longer applies. The request-panel estimate in `POST /trades/quote` uses the same raw indication (§2.4). Licence caveat before Montel goes live: **[OQ-117]**. ⚠ **As built (2026-09-29, final review) the Prices read no longer consults the markup table at all** — the gate was removed from `IndicationStatusRules`, so `GET /prices/indications` and the request-panel estimate are raw on the same observation (see the "Slice 1 as built" box in F05 and [DEC-167]).
 
-⚠ **As built 2026-10-01, [DEC-169] (3) — four fields on `PriceIndicationDto`, and `price` is unchanged.** `buyPrice` (= `price`, the raw indication), `sellPrice` = `price` − |`price`| × (spread ÷ 100), rounded half away from zero to 2 decimals (the spread comes off the magnitude, so Sell stays below Buy for a negative price too: −50.00 gives −51.00 at 2 percent) with `ForwardPrices:SellSpreadPercent` (default **2**, validated **0–20**), `eodPrice` and `eodObservedAt` — the latest `PriceIndicationObservation` for the product with `ObservedAt` **before today's Amsterdam midnight**, or both null. All four are null when `price` is null. `GET /trades/products` carries `buyPrice` with its `price`. This bends the *one current value* rule of [F04-R20] for the end-of-day price, by a user decision.
+⚠ **As built 2026-10-01, [DEC-169] (3) — four fields on `PriceIndicationDto`, and `price` is unchanged.** `buyPrice` (= `price`, the raw indication), `sellPrice` = `price` − |`price`| × (spread ÷ 100), rounded half away from zero to ~~2 decimals~~ 5 decimals ⚠ **[DEC-180] (10): `sellPriceEurPerKwh` = round(buy − abs(buy) × spread / 100, 5), from the served `buyPriceEurPerKwh`** (the spread comes off the magnitude, so Sell stays below Buy for a negative price too: −50.00 gives −51.00 at 2 percent) with `ForwardPrices:SellSpreadPercent` (default **2**, validated **0–20**), `eodPrice` and `eodObservedAt` — the latest `PriceIndicationObservation` for the product with `ObservedAt` **before today's Amsterdam midnight**, or both null. All four are null when `price` is null. `GET /trades/products` carries `buyPrice` with its `price`. This bends the *one current value* rule of [F04-R20] for the end-of-day price, by a user decision.
 
 ### 2.3A Market day-ahead — [DEC-169], added 2026-10-01
 
@@ -400,26 +429,26 @@ Two reads for **any signed-in customer, of any role**. They return **market data
 // GET /api/v1/market/day-ahead?date=2027-03-28   (a DST day: 23 hours)
 {
   "date": "2027-03-28", "timeZone": "Europe/Amsterdam",
-  "published": true, "source": "ENTSOE",          // ENTSOE | null (the stored value; only ENTSOE is stored, DEC-172)
+  "published": true, "source": "ENTSOE",          // ENTSOE | null (the stored value; only ENTSOE is stored, DEC-172); ⚠ [DEC-180] (9): SIMULATED on a local run-mode stack
   "resolutionMinutes": 15,                          // the source's resolution, 15 or 60
-  "quarters": [ { "pos": 1, "start": "2027-03-28T00:00:00+01:00", "end": "2027-03-28T00:15:00+01:00", "priceEurMwh": 61.2 } ],
-  "hours":    [ { "start": "2027-03-28T00:00:00+01:00", "end": "2027-03-28T01:00:00+01:00", "priceEurMwh": 60.4 } ],
-  "averageEurMwh": 71.8,
+  "quarters": [ { "pos": 1, "start": "2027-03-28T00:00:00+01:00", "end": "2027-03-28T00:15:00+01:00", "priceEurPerKwh": 0.0612 } ],
+  "hours":    [ { "start": "2027-03-28T00:00:00+01:00", "end": "2027-03-28T01:00:00+01:00", "priceEurPerKwh": 0.0604 } ],
+  "averageEurPerKwh": 0.0718,
   "availableFrom": "2026-01-01", "availableTo": "2027-03-29"   // the min and max stored delivery dates
 }
 ```
 
-`hours[]` is the **average of the hour's quarters** — **23 or 25** entries on a DST day. An unpublished day answers `published: false` with empty arrays and a null `source`, not an error. **The CSV** has the columns `delivery_date,start,end,price_eur_mwh,source`, with times as ISO with the Amsterdam offset. **Caps:** `quarter` up to **366 days**, `hour` unlimited within the available range; a bad range (missing, reversed, outside the range or over the cap) is a `400`. Source: [06 ENTSO-E](../30-integrations/06-entsoe-day-ahead.md).
+`hours[]` is the **average of the hour's quarters** — **23 or 25** entries on a DST day. An unpublished day answers `published: false` with empty arrays and a null `source`, not an error. **The CSV** has the columns ~~`delivery_date,start,end,price_eur_mwh,source`~~ ~~`delivery_date,start,end,price_eur_per_kwh,source`, the price in the format `0.00000`, for example `2026-10-25,2026-10-25T00:00:00+02:00,2026-10-25T01:00:00+02:00,0.00150,ENTSOE`, with times as ISO with the Amsterdam offset~~ ⚠ **Amended 2026-10-13 by [DEC-180] (9), amended again 2026-10-14 (product owner): the header is `From;Until;Tariff (€)`; `From` and `Until` are Amsterdam local time as `dd-MM-yyyy HH:mm` and `Tariff (€)` is the price per kWh with exactly 5 decimals and a decimal comma, for example `25-10-2026 00:00;25-10-2026 01:00;0,00150` (a negative price has a leading hyphen). The separator is a semicolon, lines end with CRLF, the body is UTF-8 with a byte-order mark and the response type is `text/csv; charset=utf-8`. A row is a quarter-hour or an hour, as `resolution` says; on the 25-hour day the hour 02:00 to 03:00 is written twice and on the 23-hour day it is absent. There is no `source` column and no date column; the old columns are not kept.** **Caps:** `quarter` up to **366 days**, `hour` unlimited within the available range; a bad range (missing, reversed, outside the range or over the cap) is a `400`. Source: [06 ENTSO-E](../30-integrations/06-entsoe-day-ahead.md).
 
-⚠ **As built 2026-10-02 by [DEC-172].** The DTO shape is unchanged (`quarters[]`, `hours[]`, `resolutionMinutes`, `source`). `source` is the stored value passed through, in the DTO and in the CSV column, and only `ENTSOE` is ever stored; it is null when the day is not published. Once a tick with a token has run, `availableFrom` is no earlier than `DayAheadIngestion:BackfillFrom` (2026-01-01), because that tick deletes older rows; with no token nothing is pruned, so a database that already holds older `ENTSOE` rows reports them until the first tick with a token. Both reads are from the database and never call ENTSO-E. The Dashboard draws `quarters[]`.
+⚠ **As built 2026-10-02 by [DEC-172].** ~~The DTO shape is unchanged~~ ⚠ **Amended 2026-10-13 by [DEC-180] (9): the price fields are `priceEurPerKwh` on a quarter and an hour and `averageEurPerKwh` on the day, the stored values with at most 5 decimals (the hour and the day are averages over the stored quarters, rounded to 5); `source` may read `SIMULATED` on a local stack.** The arrays are still `quarters[]` and `hours[]`, beside `resolutionMinutes` and `source`. `source` is the stored value passed through, in the DTO ~~and in the CSV column~~ ⚠ **(the CSV has no source column since 2026-10-14, [DEC-180] (9))**, and only `ENTSOE` is ever stored; it is null when the day is not published. Once a tick with a token has run, `availableFrom` is no earlier than `DayAheadIngestion:BackfillFrom` (2026-01-01), because that tick deletes older rows; with no token nothing is pruned, so a database that already holds older `ENTSOE` rows reports them until the first tick with a token. Both reads are from the database and never call ENTSO-E. The Dashboard draws `quarters[]`.
 
 ### 2.4 Trading
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/trades` | List with state filter |
 | `GET` | `/trades/{id}` | Detail including the shared event timeline |
-| `POST` | `/trades/quote` | Compute volume and estimated value — **no side effects**. ⚠ 2026-09-30 ([DEC-167] (16)): one `powerMw`, no lines; also returns the covered and excluded connections and `currentCoverMw` |
-| `GET` | `/trades/products` | ⚠ **New 2026-09-30 [DEC-167] (16)** — the product list of the Prices table and its request panel (⚠ formerly the wizard's two tables, [DEC-178]): the products per shape (12 each, 24 in all) with the RAW price, hours and the value of 1 MW |
+| `POST` | `/trades/quote` | Compute volume and estimated value — **no side effects**. ⚠ 2026-09-30 ([DEC-167] (16)): one `powerMw`, no lines; also returns the covered and excluded connections and `currentCoverMw` ⚠ **[DEC-180] (10): `powerKw` and `currentCoverKw`** |
+| `GET` | `/trades/products` | ⚠ **New 2026-09-30 [DEC-167] (16)** — the product list of the Prices table and its request panel (⚠ formerly the wizard's two tables, [DEC-178]): the products per shape (12 each, 24 in all) with the RAW price, hours and the value of 1 ~~MW~~ kW ⚠ **[DEC-180] (10)** |
 | `POST` | `/trades` | Submit a request |
 | `POST` | `/trades/{id}/cancel` | Cancel while `REQUESTED` |
 | `POST` | `/trades/{id}/accept` | Accept the offer. Any active member of the company **[F05-R43]**. Returns state `ACCEPTED` ~~or `AWAITING_APPROVAL`~~ *(⚠ one destination since 2026-10-12, [DEC-179])* |
@@ -439,12 +468,25 @@ Two validation rules changed on 2026-08-19, in opposite directions: one got stri
 
 | Rule | Was | Is | Error `type` |
 | --- | --- | --- | --- |
-| Requested power per line | minimum 0,1 MW, multiples of 0,1 MW **[DEC-32]** | ⚠ **Reversed by [DEC-70]** — minimum **0,01 MW**, multiples of **0,01 MW**, per line and on the request total (⚠ 2026-09-30: there are no lines; the one `powerMw` is the whole request — [DEC-167] (16)) | `…/errors/invalid-volume` |
+| Requested power per line | minimum 0,1 MW, multiples of 0,1 MW **[DEC-32]** | ⚠ **Reversed by [DEC-70]** — ~~minimum **0,01 MW**, multiples of **0,01 MW**~~ ⚠ **Reversed 2026-10-13 by [DEC-180] (10): minimum 10 kW, multiples of 10 kW**, per line and on the request total (⚠ 2026-09-30: there are no lines; the one `powerMw` is the whole request — [DEC-167] (16)) | `…/errors/invalid-volume` |
 | Holdings on a `SELL` | the sold volume had to be covered by confirmed blocks **[DEC-34]** | ⚠ **Reversed by [DEC-72]** — **no holdings check at all**. A customer may sell a block they do not hold; the motivating case is a customer with solar production selling expected surplus **[F05-R69]** | *(none — the check is gone, not relaxed)* |
 
-`powerMw` is validated as a decimal with **at most two decimal places and a value ≥ 0.01**, which is
+~~`powerMw` is validated as a decimal with **at most two decimal places and a value ≥ 0.01**, which is
 the whole rule: "multiple of 0,01" and "two decimals" are the same statement, so the API expresses it
-once. ⚠ **2026-09-29 [DEC-167] (9):** `invalid-volume` is a **400** validation shape, not a 409; every other trading problem type is a 409. `0.005`, `0.0`, and a negative value are all rejected as `invalid-volume` (⚠ **2026-09-30 [DEC-167] (16): there are no lines, so there is no line index** — as built the `ValidationProblem` `errors` is keyed by `powerMw`). The check is server-side and repeated at acceptance, because the request panel is not the only
+once.~~
+
+⚠ **Amended 2026-10-13 by [DEC-180] (10): the rule is in kW.** `powerKw` must be greater than 0, less than 1 000 000 000 and a multiple of 10 (`value > 0`, `value < 1 000 000 000`, `value % 10 == 0`). So 10, 20 and 999 999 990 pass; 0, 5, 15 and 10,5 are refused. The keys and messages, the problem type being `validation` except for the volume (`invalid-volume`):
+
+| Case | Problem type | Key | Message |
+| --- | --- | --- | --- |
+| No power in the body | validation | `powerKw` | Enter the volume in kW. |
+| Power not above zero | invalid-volume | `powerKw` | Power must be greater than zero. |
+| Power at or above the ceiling | invalid-volume | `powerKw` | Power must be less than 1000000000 kW. |
+| Power off the grid | invalid-volume | `powerKw` | Power must be a multiple of 10 kW. |
+| The domain's own check at submit | invalid-volume | `powerKw` | The power must be at least 10 kW, a multiple of 10 kW and below 1000000000 kW. |
+| A period with no energy | invalid-volume | `powerKw` | The delivery period has no energy. |
+
+⚠ **2026-09-29 [DEC-167] (9):** `invalid-volume` is a **400** validation shape, not a 409; every other trading problem type is a 409. `0.005`, `0.0`, and a negative value are all rejected as `invalid-volume` (⚠ **2026-09-30 [DEC-167] (16): there are no lines, so there is no line index** — as built the `ValidationProblem` `errors` is keyed by `powerMw`). The check is server-side and repeated at acceptance, because the request panel is not the only
 client this API will ever have.
 
 ⚠ **What ten-times-finer granularity costs downstream.** ⚠ **Superseded 2026-09-30 by [DEC-167] (16): there are no allocations** — the paragraph below is the pre-2026-09-30 per-EAN model, and the one account-level `powerMw` is the only volume. Per-EAN allocation rounds to 0,01 MW instead
@@ -457,6 +499,8 @@ pre-trade balance check **[DEC-41]** does not bound it: a `SELL` **credits** the
 **[F05-R35]**. No collateral or exposure limit is decided — **[OQ-94]**. The API is specified without
 one; until it is answered, the sell path is not safe to open to volumes beyond confirmed holdings, and
 that is a product gate rather than a contract change.
+
+⚠ **The 2026-08 shape, not what is served after [DEC-180] (10).** The block after this one is the shape as built.
 
 ```jsonc
 // POST /api/v1/trades        Idempotency-Key: 01J9…
@@ -492,6 +536,18 @@ that is a product gate rather than a contract change.
 }
 ```
 
+⚠ **As built by [DEC-180] (10), 2026-10-13** (the other members of the answer are unchanged, and the amounts are bare numbers as built):
+
+```jsonc
+// POST /api/v1/trades        Idempotency-Key: 01J9…
+{ "direction": "BUY", "shape": "PEAK", "periodType": "QUARTER", "period": "2027-Q1",
+  "powerKw": 1000, "comment": "Hedging Q1 baseload growth" }
+
+// 201 Created: the fields that change name and unit
+{ "totalPowerKw": 1000, "totalKwh": 768000.0,
+  "estimate": { "priceEurPerKwh": 0.09615 } }
+```
+
 Two changes in that body, both from 2026-08-19.
 
 **`estimatedValue` is now VAT-inclusive [DEC-78].** Prices are quoted, offered and stored **ex-VAT**
@@ -501,10 +557,10 @@ the number the wallet will actually hold, or the customer passes the balance che
 it on acceptance. Both figures are on the wire, and the rate that produced them is too, so a client
 never re-derives one from the other:
 
-| Field | Q1 2027 peak, 1 MW | Working |
+| Field | Q1 2027 peak, 1 000 kW | Working |
 | --- | ---: | --- |
-| `totalMwh` | 768,000000 | 64 weekdays in Q1 2027 × 12 peak hours × 1 MW |
-| `estimatedValueExVat` | € 73 843,20 | `768 × 96.1500` |
+| `totalKwh` | 768 000,0 | 64 weekdays in Q1 2027 × 12 peak hours × 1 000 kW |
+| `estimatedValueExVat` | € 73 843,20 | `768 000 × 0,09615` |
 | `estimatedValue` (reserved) | € 89 350,27 | `round(73843.20 × 1.21, 2)` at the **[DEC-64]** reference rate of 21% |
 
 ~~**`fourEyes` is a mode, not a threshold [DEC-71].** `thresholdApplies`, `threshold` and `estimateAboveThreshold` are removed; what is left is `enabled`, `activeAdminCount` and `canBeApproved`.~~ ⚠ **The whole `fourEyes` block is removed 2026-10-12 by [DEC-179]**, from the quote, the submit response and the trade detail.
@@ -580,7 +636,7 @@ Error `type` URIs. ~~`…/errors/self-approval-not-permitted`, `…/errors/appro
 | ~~`…/errors/approval-required`~~ | ~~A confirm attempt against a trade still `AWAITING_APPROVAL`~~ ⚠ removed |
 | ~~`…/errors/admin-role-required`~~ | ~~an approve, decline or accept attempt by an account without `customer.admin`~~ ⚠ removed |
 | ~~`…/errors/four-eyes-not-satisfiable`~~ | ~~the company has four-eyes on and fewer than two active admin accounts~~ ⚠ removed |
-| `…/errors/invalid-volume` | ⚠ **New 2026-08-19 [DEC-70]** — a `powerMw` below 0,01 or not a multiple of 0,01 — §2.4.1 |
+| `…/errors/invalid-volume` | ⚠ **New 2026-08-19 [DEC-70]** — a ~~`powerMw` below 0,01 or not a multiple of 0,01~~ `powerKw` below 10 or not a multiple of 10 ⚠ **[DEC-180] (10)** — §2.4.1 |
 
 #### 2.4.2 Slice 1 as designed — [DEC-167]
 
@@ -603,15 +659,17 @@ Error `type` URIs. ~~`…/errors/self-approval-not-permitted`, `…/errors/appro
 | ~~`POST …/approve`~~ | ~~none → `TradeDetailDto`~~ | ~~404, 409~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — deleted ([DEC-179]). |
 | ~~`POST …/refuse-approval`~~ | ~~`{ "reason" }` (optional, ≤ 500) → `TradeDetailDto`~~ | ~~400, 404, 409~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — deleted ([DEC-179]). |
 
-**Request.** `direction, shape, periodType, period, powerMw, comment` (the quote omits `comment`) — ⚠ **amended 2026-09-30 ([DEC-167] (16)): one `powerMw` for the whole account, no `lines`.** `direction` null or `BUY` is accepted; **`SELL` is a 400 on `direction`** — *"Only BUY trades can be requested for now."* The server resolves `period` to one of the 24 active products by `(shape, periodType)`; none is a 400 on `period`. `powerMw` is at least 0,01, in steps of 0,01 and **under 1 000 000 MW** (`invalid-volume`). ~~Duplicates are a 400 on `lines`, and an unknown or foreign connection returns the same message as an ineligible one.~~ Nobody names a connection any more, so nothing foreign can be probed; the roster is the company's own connections **valid for the whole delivery period**, snapshotted at submit, and **none is `409 metering-point-not-eligible`** — *"None of your connections can take a block for the whole of {period}."* Accept ~~, approve~~ and confirm re-check only that **at least one** such connection remains.
+**Request.** `direction, shape, periodType, period, powerMw, comment` (the quote omits `comment`) — ⚠ **amended 2026-09-30 ([DEC-167] (16)): one `powerMw` for the whole account, no `lines`.** `direction` null or `BUY` is accepted; **`SELL` is a 400 on `direction`** — *"Only BUY trades can be requested for now."* The server resolves `period` to one of the 24 active products by `(shape, periodType)`; none is a 400 on `period`. `powerMw` is at least 0,01, in steps of 0,01 and **under 1 000 000 MW** (`invalid-volume`). ~~Duplicates are a 400 on `lines`, and an unknown or foreign connection returns the same message as an ineligible one.~~ Nobody names a connection any more, so nothing foreign can be probed; the roster is the company's own connections **valid for the whole delivery period**, snapshotted at submit, and **none is `409 metering-point-not-eligible`** — *"None of your connections can take a block for the whole of {period}."* Accept ~~, approve~~ and confirm re-check only that **at least one** such connection remains. ⚠ **Amended 2026-10-13 by [DEC-180] (10): the field is `powerKw`** (CD request body): at least 10, a multiple of 10 and below 1 000 000 000, refused as `invalid-volume` with the messages of §2.4.1. A body that carries a member the record does not know is refused (below).
 
-**Money on the wire** is a **bare decimal**, and every gross amount has its `vatRate` beside it, so no client does money arithmetic: `TradeOfferDto` carries `priceEurMwh`, `totalValueExVat` (rounded to 2 dp), `vatRate`, `vatAmount` (= ⚠ (17) the gross minus the rounded ex-VAT value, so the three confirmation lines always add up), ⚠ **(17) `totalInclVat` (renamed from `amountToReserve`, [DEC-167]; the gross, no longer the amount held)**, `offeredAt`, `expiresAt` and **`secondsRemaining`** — the client counts down from that, never from its reading of `expiresAt`. Once accepted the amount is the **stored** gross and `vatRate` the **stored** rate.
+**Money on the wire** is a **bare decimal**, and every gross amount has its `vatRate` beside it, so no client does money arithmetic: `TradeOfferDto` carries `priceEurMwh`, `totalValueExVat` (rounded to 2 dp), `vatRate`, `vatAmount` (= ⚠ (17) the gross minus the rounded ex-VAT value, so the three confirmation lines always add up), ⚠ **(17) `totalInclVat` (renamed from `amountToReserve`, [DEC-167]; the gross, no longer the amount held)**, `offeredAt`, `expiresAt` and **`secondsRemaining`** — the client counts down from that, never from its reading of `expiresAt`. Once accepted the amount is the **stored** gross and `vatRate` the **stored** rate. ⚠ **Amended 2026-10-13 by [DEC-180] (10): `TradeOfferDto` carries `priceEurPerKwh` (euro per kWh, at most 5 decimals; it may be `0` on a legacy trade) in place of `priceEurMwh`. While a trade is `OFFERED` the amounts `totalInclVat`, `vatAmount`, `depositAmount` and `balanceAmount` come from the stored trade value, `round(stored value × (1 + VAT), 2)`, not from volume times price; they are the same numbers as before for every trade whose price was not rounded by the migration. `TradeSummaryDto` gains `totalValueExVat` (the stored value rounded to 2 decimals, null until an offer exists), placed after its price field, and `TradeDeskCardDto` gains `totalInclVat` (§3.1).**
 
-**The estimate is RAW.** `TradeQuoteResponse.estimate` carries `productCode`, `priceEurMwh` — the **raw** indication, **no markup** — `observedAt`, `status` (`FRESH` or `STALE`), `estimatedValueExVat`, `vatRate`, `estimatedValue` (the gross) and `isSampleData`. It is **absent** when the indication is `UNAVAILABLE` or at or below zero; `walletCheck.sufficient` is then `null`. `TradeQuoteResponse` also carries the resolved dates, `peakDays`, `totalPowerMw` and `totalMwh`, ⚠ **(2026-09-30, [DEC-167] (16)) `connections[{ meteringPointId, ean, name, validTo? }]` (the covered roster), `excludedConnections[{ ean, name, reason }]` (electricity connections not valid for the whole period, reason e.g. "Ends 31 Dec 2026") and `currentCoverMw`** (the sum of `power_mw` of the company's confirmed BUY blocks of the same shape whose delivery period contains the requested one — `block.start <= period.start` and `block.end >= period.end` — and 0 when none; a quote with no covered connection is still a 200, the submit is the 409), the wallet check ~~and `fourEyes { enabled, activeAdminCount, canBeApproved }` (`canBeApproved` = at least two active admins)~~. **Only the quote and submit responses ever carry a raw estimate.**
+**The estimate is RAW.** `TradeQuoteResponse.estimate` carries `productCode`, `priceEurMwh` — the **raw** indication, **no markup** — `observedAt`, `status` (`FRESH` or `STALE`), `estimatedValueExVat`, `vatRate`, `estimatedValue` (the gross) and `isSampleData`. It is **absent** when the indication is `UNAVAILABLE` or at or below zero; `walletCheck.sufficient` is then `null`. `TradeQuoteResponse` also carries the resolved dates, `peakDays`, `totalPowerMw` and `totalMwh`, ⚠ **(2026-09-30, [DEC-167] (16)) `connections[{ meteringPointId, ean, name, validTo? }]` (the covered roster), `excludedConnections[{ ean, name, reason }]` (electricity connections not valid for the whole period, reason e.g. "Ends 31 Dec 2026") and `currentCoverMw`** (the sum of `power_mw` of the company's confirmed BUY blocks of the same shape whose delivery period contains the requested one — `block.start <= period.start` and `block.end >= period.end` — and 0 when none; a quote with no covered connection is still a 200, the submit is the 409), the wallet check ~~and `fourEyes { enabled, activeAdminCount, canBeApproved }` (`canBeApproved` = at least two active admins)~~. **Only the quote and submit responses ever carry a raw estimate.** ⚠ **Amended 2026-10-13 by [DEC-180] (10): on the estimate `priceEurMwh` is `priceEurPerKwh`, the served Buy `round(raw × 0,001, 5)`; the answer carries `totalPowerKw`, `totalKwh` (kW × hours, exact) and `currentCoverKw` (the sum of `power_kw` of the covering blocks). `estimatedValueExVat` is `totalKwh × priceEurPerKwh` rounded once to 2 decimals. There is no estimate when the served price is not positive.**
 
-**Products read — `GET /trades/products` (2026-09-30, [DEC-167] (16)).** Any member, `.RequireAuthorization()` and tenant-agnostic reference data with the same gating as the Prices read (the body is identical for every company). `TradeProductsResponse { items }`, each item `{ shape, periodType, period (the Code: `2026-11`, `2027-Q1`, `2027`), label ("Sep 2026", "Q4 2026", "Cal 2027"), deliveryStart, deliveryEnd, price (the RAW €/MWh, no markup, null without an indication), observedAt, status (`FRESH`/`STALE`/`UNAVAILABLE`), hours, mwhAt1Mw, valueAt1Mw }`. `hours` and `mwhAt1Mw` come from the volume calculator at 1 MW; `valueAt1Mw = mwhAt1Mw × price` ex VAT rounded to 2 dp, null without a price. **There are 12 products per shape (6 months, 4 quarters and 2 calendar years), 24 in all; a period that has already started is left out**, by the same test a request uses. It is registered in the route-table and OpenAPI harnesses.
+**Products read — `GET /trades/products` (2026-09-30, [DEC-167] (16)).** Any member, `.RequireAuthorization()` and tenant-agnostic reference data with the same gating as the Prices read (the body is identical for every company). `TradeProductsResponse { items }`, each item `{ shape, periodType, period (the Code: `2026-11`, `2027-Q1`, `2027`), label ("Sep 2026", "Q4 2026", "Cal 2027"), deliveryStart, deliveryEnd, price (the RAW €/MWh, no markup, null without an indication), observedAt, status (`FRESH`/`STALE`/`UNAVAILABLE`), hours, mwhAt1Mw, valueAt1Mw }`. `hours` and `mwhAt1Mw` come from the volume calculator at 1 MW; `valueAt1Mw = mwhAt1Mw × price` ex VAT rounded to 2 dp, null without a price. **There are 12 products per shape (6 months, 4 quarters and 2 calendar years), 24 in all; a period that has already started is left out**, by the same test a request uses. It is registered in the route-table and OpenAPI harnesses. ⚠ **Amended 2026-10-13 by [DEC-180] (10): per item `price` is `priceEurPerKwh` (the raw indication per kWh at no more than 5 decimals, null when unavailable or not positive), `mwhAt1Mw` is `kwhAt1Kw` (the same number as `hours`) and `valueAt1Mw` is `valueAt1Kw` (`round(hours × priceEurPerKwh, 2)`, the value of 1 kW). The operation summary ends "and the value of 1 kW.".**
 
-**Trade DTOs.** ⚠ **2026-09-30:** `TradeDetailDto` and `TradeSummaryDto` carry `totalPowerMw` and (detail) `connections[{ ean, name }]` — the snapshot — and **no `lines`**; `TradeOfferDto` has no per-EAN breakdown. `EmployeeTradeDetailDto` shows `totalPowerMw`, `connections[{ ean, name }]` and `anyConnectionEligible`, with no per-line power.
+**Trade DTOs.** ⚠ **2026-09-30:** `TradeDetailDto` and `TradeSummaryDto` carry `totalPowerMw` and (detail) `connections[{ ean, name }]` — the snapshot — and **no `lines`**; `TradeOfferDto` has no per-EAN breakdown. `EmployeeTradeDetailDto` shows `totalPowerMw`, `connections[{ ean, name }]` and `anyConnectionEligible`, with no per-line power. ⚠ **Amended 2026-10-13 by [DEC-180] (10): `totalPowerMw` and `totalMwh` are `totalPowerKw` and `totalKwh` on `TradeDetailDto`, `TradeSummaryDto` and `EmployeeTradeDetailDto`.**
+
+**Unknown request members are refused** ⚠ **as built 2026-10-13 by [DEC-180] (10).** The two customer request records (`TradeQuoteRequest`, `SubmitTradeRequest`) and the two employee ones (`PublishOfferRequest`, `ConfirmTradeRequest`) refuse a member they do not know: the answer is a 400 and nothing is stored. Until now an unknown member was ignored by every route. The reason is an old browser tab that posts `powerMw`, `priceEurMwh` or `actualMarketPrice`: it would otherwise confirm a trade without its market price, and no route adds it later. The 400 comes from the JSON binder before any validator runs, so a body that merely has no `powerKw` still gets "Enter the volume in kW." **The body of that 400 is the framework's bare problem answer** (`application/problem+json`, status 400, no `errors` object, no problem type of ours), found at build (task T4). The four schemas have `additionalProperties: false` in the OpenAPI documents.
 
 **Reads project.** Every customer read is a projection — the customer role cannot `SELECT` the captured indication, `actual_market_price` or `offered_by_employee_id` (§3.4.4) — newest first. Participant names and job titles come from the **`trade_event` actor snapshots** (`SUBMITTED` → requester, `ACCEPTED` → acceptor; ~~`APPROVED`/`APPROVAL_REFUSED` → decider~~ only on old trades), never a join on `customer_account`, whose customer policy hides removed members. Staff actors show as *PeakPower Trading*, the system as *PeakPower*. `availableActions` (`CANCEL`, `ACCEPT`, `REJECT`, ~~`APPROVE`, `REFUSE_APPROVAL`,~~ ⚠ **(17) `PAY_BALANCE`** — §2.4.3) is computed server-side: `ACCEPT` is offered to every active member while the offer is open.
 
@@ -998,7 +1056,7 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/trade-desk/queues` | The **four** queues with counts **[F12-R06]** |
+| `GET` | `/trade-desk/queues` | The **four** queues with counts **[F12-R06]** ⚠ **Amended 2026-10-13 by [DEC-180] (10): `TradeDeskCardDto` carries `totalPowerKw`, `totalKwh` and `priceEurPerKwh`, and gains `totalInclVat` after `tradeValueExVat`.** |
 | `GET` | `/trades?state=&customerId=&…` | Search |
 | `GET` | `/trades/{id}` | Full detail: position, wallet, indication, internal notes ~~, four-eyes status~~ |
 | `POST` | `/trades/{id}/offer` | Publish price + window |
@@ -1014,7 +1072,7 @@ Explicitly cross-customer; `customerId` is a real parameter here.
 ```jsonc
 // POST /api/v1/trades/{id}/offer
 {
-  "priceEurMwh": "94.7500",
+  "priceEurMwh": "94.7500",   // ⚠ [DEC-180] (10): priceEurPerKwh, 0.09475
   "reactionWindowMinutes": 30,
   "internalNote": "Bought 1MW at 93.10, 1.65 margin"
 }
@@ -1037,15 +1095,30 @@ The desk trade detail gains `settlement` (same shape as the customer's: `deposit
 | `GET /trade-desk/queues?limit=` | → the three queues (⚠ ~~the four queues~~ until 2026-10-12, [DEC-179]) (`limit` 1–200, default 50) with **true totals** and `valueAtRiskExVat` | 400 |
 | `GET /trades?state=&customerId=&page=&pageSize=` | → paged desk list | 400 |
 | `GET /trades/{tradeId}` | → `EmployeeTradeDetailDto` | 404 |
-| `POST …/offer` | `{ priceEurMwh, reactionWindowMinutes }` → detail | 400, 404, 409 |
+| `POST …/offer` | `{ priceEurMwh, reactionWindowMinutes }` → detail ⚠ **[DEC-180] (10): `priceEurPerKwh`** | 400, 404, 409 |
 | `POST …/decline`, `…/withdraw-offer`, `…/fail` | `{ reason }` (required, ≤ 500) → detail | 400, 404, 409 |
-| `POST …/confirm` | `{ externalReference?, actualMarketPrice? }` → detail | 400, 404, 409 |
+| `POST …/confirm` | `{ externalReference?, actualMarketPrice? }` → detail ⚠ **[DEC-180] (10): `actualMarketPriceEurPerKwh`** | 400, 404, 409 |
 
 **Queues.** *To price* = `REQUESTED` oldest first; *Awaiting customer* = `OFFERED` by `expires_at`; ~~*Awaiting approval* = `AWAITING_APPROVAL` by `expires_at`, each card carrying the acceptor's name and job title and the number of **other** active admins who can approve **[F12-R34]**;~~ *To confirm* = `ACCEPTED` ordered and aged by `readySince` = ~~`approval_decided_at`, else~~ `accepted_at` *(a trade the migration promoted from a waiting approval shows its original acceptance time, so it can look older than the deploy; the desk is told on the first day, [DEC-179] (10))* *(⚠ **three queues** since 2026-10-12, [DEC-179]: `TradeDeskQueuesResponse.awaitingApproval` is removed)*. `valueAtRiskExVat` sums the ex-VAT value of offered and accepted trades.
 
 **Detail.** Beside the trade, the customer (~~`fourEyesEnabled`, `activeAdminCount`~~ removed 2026-10-12, [DEC-179]), the requester's contact, ~~the lines with an *eligible now* flag~~ ⚠ **(2026-09-30, [DEC-167] (16)) `connections[{ ean, name }]` (no power, no per-line flag) and one `anyConnectionEligible`**, the wallet snapshot, and the **market reference**: the **captured** raw indication (raw price, observed-at, source) and the **current** one — the newest observation for the trade's `delivery_start` across **every** product of the trade's shape and period type and **all sources**, labelled with its source ([DEC-167] (13)). There is **no markup and no customer price** anywhere on the desk.
 
-**Actions.** *Offer* — the price is **typed**, the field starts empty (no prefill), above 0, at most 4 dp, and a value or gross reaching 1e12 is a 400 on `priceEurMwh`; the window is 5–1440 minutes (the portal defaults to 30); the company must be `ACTIVE` and the period not started. Offer mail goes to the requester ~~and, at a four-eyes company, to every active admin~~, **after** the commit. **Every employee trade write — offer, decline, withdraw-offer, confirm and fail — opens an explicit transaction (`BeginTransactionAsync`) and commits it explicitly**, because the employee host's middleware opens none and a `FOR UPDATE` outside a transaction is released when its statement ends: without it a desk withdraw racing a customer accept would check stale state and surface as a 500 on `ux_trade_event_trade_sequence` instead of a 409 `trade-state-conflict`. *Offer* locks the company's `customer.customer` row `FOR SHARE`, then the trade; *decline and withdraw-offer* lock the trade alone; *confirm and fail* lock the company row `FOR SHARE`, then the trade, then the wallet (**company → trade → wallet**, never the wallet before the trade) **[DEC-167]** (7); confirm re-checks that **at least one** electricity connection of the company is still valid for the whole period (`metering-point-not-eligible` when none is — *fail the trade instead*; ⚠ 2026-09-30, [DEC-167] (16)), creates the account-level block (~~and allocations~~ none) and debits the stored gross in one save; ~~while `AWAITING_APPROVAL` either is 409 `approval-required`;~~ **no customer-`ACTIVE` check** applies, because the money is already committed. The actor's display name is a projection of `employee.employee` — never a materialised entity, because the employee role holds only a column grant there.
+**Actions.** *Offer* — the price is **typed**, the field starts empty (no prefill), ~~above 0, at most 4 dp, and a value or gross reaching 1e12 is a 400 on `priceEurMwh`~~ **(⚠ Amended 2026-10-13 by [DEC-180] (10)) above 0, below 10, at most 5 decimals per kWh, and a value or gross reaching 1e12 is a 400 on `priceEurPerKwh`**; the window is 5–1440 minutes (the portal defaults to 30); the company must be `ACTIVE` and the period not started. Offer mail goes to the requester ~~and, at a four-eyes company, to every active admin~~, **after** the commit. **Every employee trade write — offer, decline, withdraw-offer, confirm and fail — opens an explicit transaction (`BeginTransactionAsync`) and commits it explicitly**, because the employee host's middleware opens none and a `FOR UPDATE` outside a transaction is released when its statement ends: without it a desk withdraw racing a customer accept would check stale state and surface as a 500 on `ux_trade_event_trade_sequence` instead of a 409 `trade-state-conflict`. *Offer* locks the company's `customer.customer` row `FOR SHARE`, then the trade; *decline and withdraw-offer* lock the trade alone; *confirm and fail* lock the company row `FOR SHARE`, then the trade, then the wallet (**company → trade → wallet**, never the wallet before the trade) **[DEC-167]** (7); confirm re-checks that **at least one** electricity connection of the company is still valid for the whole period (`metering-point-not-eligible` when none is — *fail the trade instead*; ⚠ 2026-09-30, [DEC-167] (16)), creates the account-level block (~~and allocations~~ none) and debits the stored gross in one save; ~~while `AWAITING_APPROVAL` either is 409 `approval-required`;~~ **no customer-`ACTIVE` check** applies, because the money is already committed. The actor's display name is a projection of `employee.employee` — never a materialised entity, because the employee role holds only a column grant there.
+
+⚠ **Amended 2026-10-13 by [DEC-180] (10): the price is above 0, below 10 and has at most 5 decimals per kWh; the field is `priceEurPerKwh`.** The refusals, keyed in Pascal case by the validator (`PriceEurPerKwh`, `ActualMarketPriceEurPerKwh`) and in camel case by the domain (`priceEurPerKwh`, `powerKw`), read as follows; the problem types do not change (validation, and invalid-volume for a volume):
+
+| Case | Key | Message |
+| --- | --- | --- |
+| Price not above zero | `PriceEurPerKwh` | The price must be greater than zero. |
+| Price at or above the ceiling | `PriceEurPerKwh` | The price must be below 10 EUR/kWh. |
+| Too many decimals | `PriceEurPerKwh` | The price can have at most five decimals. |
+| The value type refuses | `PriceEurPerKwh` | Price must be greater than zero. / Price must be less than 10 EUR/kWh. / Price may have at most five decimals. |
+| The domain's own check | `priceEurPerKwh` | The price must be greater than zero, with at most five decimals and below 10 EUR/kWh. |
+| The price makes the trade too large | `priceEurPerKwh` | That price makes the trade too large to settle. |
+| Market price, too many decimals | `ActualMarketPriceEurPerKwh` | The market price can have at most five decimals. |
+| Market price, too large | `ActualMarketPriceEurPerKwh` | The market price must be below 10 EUR/kWh in absolute value. |
+
+So 0,00001, 0,09475 and 9,99999 pass and 0, 0,000001, 10 and 81,25 are refused; a market price may be zero or negative. The ceiling of 10 euro per kWh is new: it refuses a price typed in the old unit by habit. The desk's market reference is served per kWh (`TradeIndicationObservationDto.priceEurPerKwh`, for the captured and the current observation) and the resolution carries `actualMarketPriceEurPerKwh`.
 
 
 ### 3.2 Customers, wallets, withdrawals, payments, invoicing, data, reference data
@@ -1092,6 +1165,9 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET` | `/data-health/messages?brpId=` | Inbound message log, **filtered by BRP [DEC-69]**. PVNed is one row in that filter, not the whole log **[F12-R27]** |
 | `POST` | `/data-health/messages/{id}/replay` | Replay. The stored `brp_id` selects the adapter, so a replay is parsed by the adapter that first parsed it — including after that BRP is deactivated **[F02-R41]** |
 | `GET` | `/data-health/quarantine` | Unattached series, including `WRONG_BRP` **[F02-R42]** |
+| `GET` | `/data-health/day-ahead` | ⚠ **New 2026-10-13 [DEC-180] (7), (13)** — the day-ahead feed's status for the Data & feeds screen: latest day stored, days missing, tomorrow, the overdue days, the newest run, the last success, the last failure and the last price change. Any signed-in employee; always 200 |
+| `GET` | `/data-health/saved-costs` | ⚠ **New 2026-10-13 [DEC-180] (7), (13)** — the recalculation of the saved costs and positions: what is waiting, what is failing, whether the seven triggers are in place, the last nightly check. Any signed-in employee; always 200 |
+| `GET` | `/data-health/summary` | ⚠ **As built, never listed in this table:** the ingestion screen's five stat cards (documents and processing lag today, and the failure, quarantine and silence backlogs) |
 | `GET`/`PUT` | `/reference/peak-calendars` | Calendars |
 | ~~`GET`/`PUT`~~ | ~~`/reference/tax-tariffs`~~ **`GET`/`POST` `/reference/energy-tax-brackets`** | ~~Energiebelasting. ⚠ Endpoint retained, tariffs unpopulated — **[DEC-24]**~~ ⚠ **Reversed 2026-08-19 by [DEC-74]** — energiebelasting is **back in scope and populated**. Per **calendar year**, an ordered set of tiers with lower and upper bound in kWh and a rate in €/kWh; the top tier is unbounded **[F12-R44]**. **Versioned, never edited in place**: `POST` creates a new version with a `valid_from`; a version a completed calculation has read can only be superseded **[F12-R45]**. `PUT` is gone with the in-place edit |
 | `POST` | `/reference/energy-tax-brackets/validate` | ⚠ **New [DEC-74]** — contiguity, no gap, no overlap, ascending bounds, year fully covered, **plus the blast radius**: how many customers and EANs the version affects and from when **[F12-R47]**. A wrong boundary silently mis-taxes every EAN for a year |
@@ -1104,6 +1180,40 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | ~~`GET`/`PUT`~~ | ~~`/reference/wallet-thresholds`~~ | ~~Alert rules~~ ⚠ **Removed 2026-08-19 by [DEC-90]**, reversing **[DEC-49]**. No warning amount, no critical amount, no low-balance alert and no `wallet_threshold_rule` **[F06-R39]** |
 | `GET` | `/audit?…` | Audit search. Retention is the fiscal **seven years** **[DEC-95]**; the trail covers **actions**, and the financial record of record is the bookkeeping program's |
 | `POST` | `/impersonation` | Start a read-only view-as session |
+
+⚠ **The two status reads, as built 2026-10-13 by [DEC-180] (7), (13).** Both are `.BackOffice(reason)` reads for any signed-in employee, take no parameter and no body, read the database only, and **answer 200 whatever the state of the feed** (no token, a database the Worker never ticked against, a failing source); 401 without a session. Neither serves a price, a unit or an exception text.
+
+`GET /data-health/day-ahead` (operation `GetDayAheadFeedStatus`) answers `asOf`, `today`, `state`, `workerLate`, `source`, `windowStart`, `latestDayStored`, `missingDayCount`, `missingDays`, `tomorrow { date, stored }`, `overdueCount`, `overdue [ { deliveryDate, raisedAt } ]`, `lastRun`, `lastSuccessAt`, `lastFailure { at, code, detail }`, `lastPriceChange { at, firstDay, lastDay, days, rows }` and `lastRecheckAt`.
+
+| Field | Meaning |
+| --- | --- |
+| `asOf`, `today` | The server clock and the Amsterdam day, read once |
+| `state` | `NEVER_RAN`: no run is saved. `NOT_CONFIGURED`: the newest run says the Worker has no token and no simulated source. `ACTIVE`: the newest run had a source; whether it worked is in `lastRun.outcome` |
+| `workerLate` | True when `asOf` is later than the newest run's `finishedAt` plus twice its `tickIntervalSeconds`. False when no run exists |
+| `source` | `ENTSOE`, `SIMULATED`, or null when no run exists or no source is configured |
+| `windowStart` | The first delivery day the feed keeps. Null when no run exists |
+| `latestDayStored` | The latest delivery day stored in full, tomorrow included |
+| `missingDayCount`, `missingDays` | Delivery days from `windowStart` to today not stored in full. The list is the 14 most recent, newest first; the count is all of them. Null and empty when `windowStart` is null |
+| `tomorrow` | `stored` is false before publication on an ordinary day. Whether that is late is in `overdue` |
+| `overdueCount`, `overdue` | Open `DAY_AHEAD_PRICES_MISSING` alerts, one per delivery date; the list is the 14 most recent. Zero is the healthy state |
+| `lastRun` | The newest run: `startedAt`, `finishedAt`, `outcome`, `tickIntervalSeconds`, `requests`, `notPublished`, `daysStored`, `daysChanged`, `recheck`. Its `finishedAt` is the feed's sign of life |
+| `lastSuccessAt` | The newest run with outcome `COMPLETED`. An `IDLE` tick is not a success |
+| `lastFailure` | The newest run with outcome `FAILED`. `code` is for the web's own sentence; `detail` is the redacted source text, at most 500 characters, and for code `ERROR` an exception type name only |
+| `lastPriceChange` | From the newest `updated_at` stamp in the price table: when, which days, how many days and rows |
+| `lastRecheckAt` | The newest run whose `recheck` is `DONE` |
+
+Value sets: `state` `NEVER_RAN`, `NOT_CONFIGURED`, `ACTIVE`; `source` `ENTSOE`, `SIMULATED`; `lastRun.outcome` `IDLE`, `COMPLETED`, `FAILED`, `NOT_CONFIGURED`; `lastRun.recheck` `NOT_RUN`, `DONE`, `FAILED`, `SKIPPED`; `lastFailure.code` `UNAVAILABLE` (the attempts ran out: 429, 5xx, timeout, network), `REFUSED` (ENTSO-E refused the request, for example a bad token), `UNREADABLE` (the reply is not a usable market document), `ERROR` (anything else). They are plain strings in the OpenAPI document, with no enum entry (found at build).
+
+`GET /data-health/saved-costs` (operation `GetSavedCostStatus`) answers `asOf`, `pendingRequests`, `oldestPendingRequestedAt`, `failingRequests`, `oldestFailingRequestedAt`, `triggersHealthy`, `lastCheckFinishedAt` and `lastCheckUnitsDifferent`.
+
+| Field | Meaning |
+| --- | --- |
+| `pendingRequests`, `oldestPendingRequestedAt` | Recalculation requests waiting, the check requests excluded. Zero is the healthy state; after the deploy it counts down while the backfill runs |
+| `failingRequests`, `oldestFailingRequestedAt` | Requests that failed at least once and are retried |
+| `triggersHealthy` | False when one of the seven recalculation triggers is missing or disabled: changes to an input are then not recorded |
+| `lastCheckFinishedAt`, `lastCheckUnitsDifferent` | The nightly check (03:30 Amsterdam): when it last finished and how many customer-days it found different |
+
+No error text is served by the second read. Neither read changes any stored state.
 
 ⚠ **The withdrawals desk and the payout body — new 2026-09-29 by [DEC-166].** Staff track withdrawals across every
 company, pay them by manual bank transfer outside the platform, and **mark them as paid** — the only staff action, with
@@ -1264,6 +1374,8 @@ Exceeding returns `429` with `Retry-After`.
 
 ⚠ **2026-10-12, [DEC-179]: the four-eyes removal is one deliberate breaking change** to the customer API's document: ten operations go (`GET /company/four-eyes` and its five `POST`s; `POST /trades/{id}/approve` and `/refuse-approval`; `POST /wallet/withdrawals/{id}/approval` and `/decline`), with their request and response schemas and the fields `TradeDetailDto.approval` and `.fourEyes`, `TradeQuoteResponse.fourEyes` and `WithdrawalRequestDto.approvedByAccountId`; the employee document loses `CustomerDetailDto.fourEyesEnabled` and `.fourEyesDisablePending`; `TradeCustomerDto.fourEyesEnabled` and `.activeAdminCount`; `TradeDeskCardDto.fourEyes`, `.eligibleApproverCount`, `.acceptedByName` and `.acceptedByJobTitle`; `EmployeeTradeAcceptanceDto.fourEyesApplied`, `.eligibleApproverCount`, `.approvedByName`, `.approvalDecidedAt` and `.refusedByName` (the refuser's name still reaches the desk as `resolution.resolvedBy` and in the timeline, so no screen reads the dedicated field); the trade desk's `awaitingApproval` queue, counts and `category` value; the withdrawal desk's `awaitingApproval` count, `approvedByName` and `status` value; and `WithdrawalRequestDto.approvedByAccountId`. It ships together with the web change that stops reading all of them, in one landing; the snapshot tests are regenerated and reviewed in the same change.
 
+⚠ **2026-10-13, [DEC-180]: a second deliberate breaking change.** Customer document: one operation goes (`GET /dashboard/position`), 24 fields are renamed, 3 are added (`TradeSummaryDto.totalValueExVat`, `ConsumptionSummaryDto.meteredIntervals` and `.costedIntervals`), 1 is removed (`PriceIndicationDto.unit`) and three schemas go (`DashboardPositionDto`, `DashboardLatestDayDto`, `DashboardDayIntervalDto`). Employee document: 10 fields are renamed, 1 is added (`TradeDeskCardDto.totalInclVat`) and two operations and seven schemas are added (the two status reads). No field keeps its name while its unit changes. The counts are confirmed against the two committed documents (2026-10-14, task L1): the customer document goes from 67 to 66 operations and from 113 to 110 schemas, the employee document from 57 to 59 operations and from 84 to 91 schemas.
+
 Both APIs publish OpenAPI 3.1 documents, and the Angular clients are generated from them. A snapshot
 test flags breaking changes against the previous release. ⚠ **The usage API §2.11 is in the customer
 API's document, not a third one [DEC-97]** — it is a surface on that host, so it shares the document,
@@ -1287,6 +1399,8 @@ a versioned package, the API repository fails its own build when the OpenAPI doc
 a version bump, and **expand/contract now applies to the HTTP contract as well as to the schema** —
 the API ships the additive change first, the web repository consumes it, and only then is the old
 shape removed. The safety property is preserved deliberately rather than for free.
+
+⚠ **Set aside for the landing of [DEC-180] (14), 2026-10-13, as for [DEC-179].** The renamed fields go in one release with no second name kept. This is safe because the web's merge deploys nothing until the platform's `main` carries the contract: the web merges first, the platform straight after, and the generated client is checked against the platform branch.
 
 ## 8. Open questions
 

@@ -74,7 +74,7 @@ Everything except the database scales horizontally. The database scales vertical
 read replica for reporting **[OQ-54]**.
 
 ⚠ **Added 2026-08-19 by [DEC-70].** The minimum requested volume and increment drop from 0,1 MW to
-**0,01 MW**, reversing [DEC-32]. That is ten times finer, and it lands on **NFR-15** rather than on
+~~**0,01 MW**~~ ⚠ **[DEC-180] (10): 10 kW, the same grid**, reversing [DEC-32]. That is ten times finer, and it lands on **NFR-15** rather than on
 NFR-12: the same MW of demand can now be expressed as more, smaller trades, and per-EAN allocation
 carries a non-whole-MW tail on every one of them. NFR-15's year-3 figure of 1 500 trades a month is
 kept, but it is now the number most likely to be wrong, and it should be the first row re-measured once

@@ -7,6 +7,13 @@ candidate** — it is the only product named more than once in the round, and **
 names it directly ("most information about finance needs to be stored in Odoo") — but it is a
 candidate, not a commitment, and **[OQ-69]** is still open about which version and which API.
 
+> ⚠ **Note 2026-10-13, [DEC-180] (2)(d).** The platform stores, serves and shows power in kW, energy in kWh
+> and every price in euro per kWh with five decimals. This page is specified, not built, and still states
+> block volumes in MWh and block and day-ahead prices in €/MWh, with a `/1000` in its formulas. It is not
+> rewritten by [DEC-180]. Before invoicing is built it must be restated in kWh and €/kWh, and the rounding of
+> an invoice line must be decided against the 5-decimal quarter-hour costs the platform now saves. Until then
+> read every €/MWh on this page as 1000 × the stored €/kWh.
+
 **The filename stays `04-odoo-accounting.md`.** [F10](../10-features/F10-invoicing-and-settlement.md),
 [the spec index](../README.md) and the built site all resolve to that path; renaming it would break
 those links to buy a tidier filename. The product name survives in the filename only, and means

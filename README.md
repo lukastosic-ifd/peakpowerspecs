@@ -135,11 +135,12 @@ that touches `specs/`. It can also be run manually from the Actions tab.
 
 - **MUST / SHOULD / MAY** follow RFC 2119.
 - Times are **Europe/Amsterdam** unless a document says UTC.
-- Money is **EUR**; energy is **kWh** in storage and **MWh** in trading. Market prices are **€/MWh**;
-  **energiebelasting bracket rates** `[DEC-74]` are **€/kWh**. A €/kWh figure read as €/MWh is wrong
-  by exactly 1000 and still looks plausible. The surcharge `[DEC-35]` and feed-in tariff `[DEC-44]`
-  rates that used to sit here were withdrawn on 2026-08-19 by `[DEC-73]` and `[DEC-87]`.
-- Requested volume has a **0,01 MW** minimum and increment `[DEC-70]`.
+- Money is **EUR**; energy is **kWh**, power is **kW** and every price the platform holds is **€/kWh**
+  with five decimals `[DEC-180]`; **energiebelasting bracket rates** `[DEC-74]` are **€/kWh** too. A
+  €/kWh figure read as €/MWh is wrong by exactly 1000 and still looks plausible: the hazard now sits at
+  what is quoted per MWh, a market source and the invoice pages that are not yet rewritten. The surcharge
+  `[DEC-35]` and feed-in tariff `[DEC-44]` rates that used to sit here were withdrawn on 2026-08-19 by `[DEC-73]` and `[DEC-87]`.
+- Requested volume has a **10 kW** minimum and increment `[DEC-180]`.
 - Everything is **VAT-exclusive** `[DEC-26]`, `[DEC-76]` except a **trade reservation and its wallet
   debit**, which are grossed up `[DEC-78]`.
 - `[OQ-nn]` open question · `[AS-nn]` assumption · `[DEC-nn]` decision · `[F-nn]` feature ·

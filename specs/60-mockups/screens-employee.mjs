@@ -40,7 +40,7 @@ export function employeeHome() {
     ['22 min', 'Accepted, not confirmed', 'Kramer Logistics · TRD-1049 · € 41.200', 'danger'],
     ['2 days', 'Withdrawal to pay out', 'Meijer Koelhuizen · € 8.000,00 · requested by an admin', 'danger'],
     ['19 h', 'Payment without a match', 'Kramer Logistics · € 9.400,00 · no reference on the transfer', 'amber'],
-    ['06 min', 'New request', 'Van Dijk Glastuinbouw · Base Cal-27 · 2,05 MW', 'amber'],
+    ['06 min', 'New request', 'Van Dijk Glastuinbouw · Base Cal-27 · 2.050 kW', 'amber'],
     ['1h 42', 'Montel feed stale', 'NL_POWER_PEAK_Y1 · last observed 12:40', 'amber'],
     ['2 days', 'No metering data', 'Vandersteen Koeling · Almere office (…0059) · PVNed', 'amber'],
   ];
@@ -76,7 +76,7 @@ export function employeeHome() {
     ['PVNed — metering (BRP)', 'Inbound push', '30 Jul 06:12', '412 documents today', 'Healthy', 'green'],
     ['Anode — metering (BRP)', 'Inbound push', '30 Jul 05:48', '38 documents today', 'Healthy', 'green'],
     ['Montel — indications', 'Poll · 5 min', '30 Jul 14:22', '5 of 6 products fresh', 'Degraded', 'amber'],
-    ['Montel — day-ahead', 'Poll · daily', '30 Jul 13:04', '31 Jul complete (96/96)', 'Healthy', 'green'],
+    ['ENTSO-E — day-ahead', 'Poll · 30 min', '30 Jul 13:04', '31 Jul complete (96/96)', 'Healthy', 'green'],
     ['Deposits — payment feed', 'Webhook', '30 Jul 09:14', '3 credited · 2 unmatched', 'Healthy', 'green'],
     ['Odoo — draft invoices', 'Push', '05 Jul 02:26', '43 drafts · all numbered', 'Healthy', 'green'],
   ];
@@ -105,26 +105,26 @@ export function employeeTradeDesk() {
     {
       title: 'To price', sub: '3 requests', accent: C.amber, x: cx,
       items: [
-        ['TRD-1058', 'Van Dijk Glastuinbouw', 'Base · Cal-27 · 2,05 MW', '6 min', '17.958 MWh', 'amber', '', 'muted'],
-        ['TRD-1057', 'Kramer Logistics', 'Peak · Q4-26 · 0,47 MW', '14 min', '372,2 MWh', 'amber', '', 'muted'],
-        ['TRD-1056', 'Meijer Koelhuizen', 'Base · Sep-26 · 0,25 MW', '31 min', '180 MWh', 'danger', '', 'muted'],
+        ['TRD-1058', 'Van Dijk Glastuinbouw', 'Base · Cal-27 · 2.050 kW', '6 min', '17.958.000,0 kWh', 'amber', '', 'muted'],
+        ['TRD-1057', 'Kramer Logistics', 'Peak · Q4-26 · 470 kW', '14 min', '372.200,0 kWh', 'amber', '', 'muted'],
+        ['TRD-1056', 'Meijer Koelhuizen', 'Base · Sep-26 · 250 kW', '31 min', '180.000,0 kWh', 'danger', '', 'muted'],
       ],
     },
     {
       title: 'Awaiting customer', sub: '5 offers counting down', accent: C.indigo, x: cx + colW + 16,
       items: [
-        ['TRD-1051', 'Vandersteen Koeling', 'Peak · Q1-27 · 1,00 MW', '04:12', '€ 72.768', 'danger', '', 'muted'],
-        ['TRD-1053', 'Hoekstra Staal', 'Base · Q4-26 · 0,75 MW', '11:48', '€ 61.220', 'amber', '', 'muted'],
-        ['TRD-1054', 'De Groot Papier', 'Peak · Nov-26 · 0,30 MW', '19:05', '€ 22.150', 'muted', '', 'muted'],
-        ['TRD-1055', 'Nolte Chemie', 'Base · Cal-27 · 1,50 MW', '24:33', '€ 21.045', 'muted', '', 'muted'],
-        ['TRD-1050', 'Bosman Tuinbouw', 'Peak · Dec-26 · 0,10 MW', '27:51', '€ 7.117', 'muted', '', 'muted'],
+        ['TRD-1051', 'Vandersteen Koeling', 'Peak · Q1-27 · 1.000 kW', '04:12', '€ 72.768', 'danger', '', 'muted'],
+        ['TRD-1053', 'Hoekstra Staal', 'Base · Q4-26 · 750 kW', '11:48', '€ 61.220', 'amber', '', 'muted'],
+        ['TRD-1054', 'De Groot Papier', 'Peak · Nov-26 · 300 kW', '19:05', '€ 22.150', 'muted', '', 'muted'],
+        ['TRD-1055', 'Nolte Chemie', 'Base · Cal-27 · 1.500 kW', '24:33', '€ 21.045', 'muted', '', 'muted'],
+        ['TRD-1050', 'Bosman Tuinbouw', 'Peak · Dec-26 · 100 kW', '27:51', '€ 7.117', 'muted', '', 'muted'],
       ],
     },
     {
       title: 'To confirm', sub: '2 accepted, awaiting execution', accent: C.danger, x: cx + 2 * (colW + 16),
       items: [
-        ['TRD-1049', 'Kramer Logistics', 'Base · Q4-26 · 0,50 MW', '22 min', '€ 41.200', 'danger', '', 'muted'],
-        ['TRD-1052', 'Hoekstra Staal', 'Peak · Sep-26 · 0,80 MW', '8 min', '€ 72.768', 'amber', '', 'muted'],
+        ['TRD-1049', 'Kramer Logistics', 'Base · Q4-26 · 500 kW', '22 min', '€ 41.200', 'danger', '', 'muted'],
+        ['TRD-1052', 'Hoekstra Staal', 'Peak · Sep-26 · 800 kW', '8 min', '€ 72.768', 'amber', '', 'muted'],
       ],
     },
   ];
@@ -180,14 +180,14 @@ export function employeeTradeDetail() {
     { label: 'CAL-27 FORECAST', w: 142, align: 'end' }, { label: 'EXISTING COVER', w: 130, align: 'end' },
     { label: 'REQUESTED', w: 108, align: 'end' },
   ], [
-    [{ t: 'Kas Noord 1', weight: 600 }, { t: '…0114', mono: true }, { t: '6.820 MWh', align: 'end' }, { t: '0,20 MW', align: 'end' }, { t: '0,83', align: 'end', weight: 700, mono: true }],
-    [{ t: 'Kas Noord 2', weight: 600 }, { t: '…0122', mono: true }, { t: '5.410 MWh', align: 'end' }, { t: '0,20 MW', align: 'end' }, { t: '0,71', align: 'end', weight: 700, mono: true }],
-    [{ t: 'WKK-installatie', weight: 600 }, { t: '…0139', mono: true }, { t: '4.180 MWh', align: 'end' }, { t: '—', align: 'end', fill: C.faint }, { t: '0,51', align: 'end', weight: 700, mono: true }],
+    [{ t: 'Kas Noord 1', weight: 600 }, { t: '…0114', mono: true }, { t: '6.820.000,0 kWh', align: 'end' }, { t: '200 kW', align: 'end' }, { t: '830 kW', align: 'end', weight: 700, mono: true }],
+    [{ t: 'Kas Noord 2', weight: 600 }, { t: '…0122', mono: true }, { t: '5.410.000,0 kWh', align: 'end' }, { t: '200 kW', align: 'end' }, { t: '710 kW', align: 'end', weight: 700, mono: true }],
+    [{ t: 'WKK-installatie', weight: 600 }, { t: '…0139', mono: true }, { t: '4.180.000,0 kWh', align: 'end' }, { t: '—', align: 'end', fill: C.faint }, { t: '510 kW', align: 'end', weight: 700, mono: true }],
   ], { rowH: 38 });
   b += line(cx + 18, cy + 228, cx + leftW - 18, cy + 228, { stroke: C.border2 });
   b += text(cx + 18, cy + 250, 'Total requested', { size: 12.5, weight: 700 });
-  b += text(cx + leftW - 18, cy + 250, '2,05 MW · 17.958,00 MWh', { size: 14, weight: 700, anchor: 'end' });
-  b += badge(cx + 150, cy + 237, '0,01 MW STEPS', 'green', { w: 104, h: 18 });
+  b += text(cx + leftW - 18, cy + 250, '2.050 kW · 17.958.000,0 kWh', { size: 14, weight: 700, anchor: 'end' });
+  b += badge(cx + 150, cy + 237, '10 kW STEPS', 'green', { w: 104, h: 18 });
   b += text(cx + 18, cy + 272, 'Customer note: “Locking in most of next year before the winter curve moves.”', { size: 11, fill: C.muted });
   b += rect(cx + leftW - 292, cy + 8, 274, 60, { fill: C.panel2, stroke: C.border, r: 7 });
   b += text(cx + leftW - 278, cy + 26, 'REQUESTED BY', { size: 9.5, fill: C.muted, weight: 700 });
@@ -196,7 +196,7 @@ export function employeeTradeDetail() {
   b += panel(cx, cy + 306, leftW, 300, 'Customer position — Cal 2027', { subtitle: 'existing cover vs. forecast consumption', right: 'Van Dijk Glastuinbouw' });
   const gx = cx + 62; const gy = cy + 376; const gw = leftW - 96; const gh = 168;
   const cons = loadShape(23, 340, 610);
-  const blk = blockShape(0.4, 0.0).map((mw) => mw * 250);
+  const blk = blockShape(400, 0).map((kw) => kw * 0.25); // kW -> kWh per quarter-hour
   b += axis(gx, gy, gw, gh, ['00', '04', '08', '12', '16', '20', '24'], { yLabels: ['700', '525', '350', '175', '0'] });
   b += coverageBands(cons, blk, gx, gy, gw, gh, 700);
   b += areaFill(cons, gx, gy, gw, gh, 700, { fill: C.sConsume, opacity: 0.1 });
@@ -205,18 +205,18 @@ export function employeeTradeDetail() {
   b += stepline(blk.map((v) => v + 512.5), gx, gy, gw, gh, 700, { stroke: C.accent, sw: 2, dash: '5 3' });
   b += legend(gx, cy + 586, [
     { color: C.sConsume, label: 'Typical day' },
-    { color: C.sBlock, label: 'Existing cover 0,40 MW', dash: true },
-    { color: C.accent, label: 'After this trade 2,45 MW', dash: true },
+    { color: C.sBlock, label: 'Existing cover 400 kW', dash: true },
+    { color: C.accent, label: 'After this trade 2.450 kW', dash: true },
   ]);
 
   const rx = cx + leftW + 16;
   const rw = cw - leftW - 16;
 
   b += panel(rx, cy, rw, 176, 'Market reference');
-  b += statLine(rx + 18, cy + 66, rw - 36, 'Indication at submission (14:22)', '€ 79,9000');
-  b += statLine(rx + 18, cy + 92, rw - 36, 'Indication now (14:28)', '€ 80,1500', { fill: C.amber });
-  b += statLine(rx + 18, cy + 118, rw - 36, 'Cal-27 base, 30-day range', '€ 76,20 – € 82,40');
-  b += statLine(rx + 18, cy + 144, rw - 36, 'Last traded with this customer', '€ 78,4000 (12 Jun)');
+  b += statLine(rx + 18, cy + 66, rw - 36, 'Indication at submission (14:22)', '€ 0,07990');
+  b += statLine(rx + 18, cy + 92, rw - 36, 'Indication now (14:28)', '€ 0,08015', { fill: C.amber });
+  b += statLine(rx + 18, cy + 118, rw - 36, 'Cal-27 base, 30-day range', '€ 0,07620 – € 0,08240');
+  b += statLine(rx + 18, cy + 144, rw - 36, 'Last traded with this customer', '€ 0,07840 (12 Jun)');
 
   b += panel(rx, cy + 192, rw, 168, 'Wallet check');
   b += statLine(rx + 18, cy + 250, rw - 36, 'Settled balance', eur(1850000));
@@ -226,12 +226,12 @@ export function employeeTradeDetail() {
 
   b += rect(rx, cy + 376, rw, 264, { fill: C.panel, stroke: C.accent, r: 10, sw: 2 });
   b += text(rx + 18, cy + 404, 'Make an offer', { size: 14, weight: 700 });
-  b += field(rx + 18, cy + 436, (rw - 48) / 2, 'PRICE (€/MWh)', '80,4500', { focus: true, mono: true, weight: 700 });
+  b += field(rx + 18, cy + 436, (rw - 48) / 2, 'PRICE (€/kWh)', '0,08045', { focus: true, mono: true, weight: 700 });
   b += field(rx + 30 + (rw - 48) / 2, cy + 436, (rw - 48) / 2, 'WINDOW (MIN)', '30', { mono: true, weight: 700 });
   b += rect(rx + 18, cy + 494, rw - 36, 70, { fill: C.panel2, stroke: C.border, r: 8 });
   b += statLine(rx + 32, cy + 518, rw - 64, 'Offer value (ex VAT)', eur(1444721.10), { weight: 700 });
   b += statLine(rx + 32, cy + 542, rw - 64, 'Reserved on acceptance, incl. VAT', eur(1748112.53), { fill: C.amber });
-  b += text(rx + 32, cy + 558, 'expires 14:58 · spread + € 0,30 · reservation grossed up at 21 %', { size: 10, fill: C.faint });
+  b += text(rx + 32, cy + 558, 'expires 14:58 · spread + € 0,00030 · reservation grossed up at 21 %', { size: 10, fill: C.faint });
   b += button(rx + 18, cy + 578, rw - 36, 'Publish offer', 'primary', { h: 42 });
   b += text(rx + rw / 2, cy + 636, 'Internal note (not visible to the customer)', { size: 10.5, fill: C.faint, anchor: 'middle' });
 

@@ -4,11 +4,13 @@ End-to-end, from a customer noticing an exposure to a confirmed position on the 
 
 Feature spec: [F05](../10-features/F05-energy-block-trading.md).
 
+> **As built 2026-10-13 by [DEC-180] (10).** Volumes are in kW and kWh and prices in €/kWh, with at most 5 decimals; the grid is 10 kW. The amount reserved is made from the stored trade value, `round(value × (1 + VAT rate), 2)`, never from volume and price again. Every amount in the worked example below is unchanged; only the units of its volumes and prices moved. The per-EAN volumes in this page predate [DEC-167] (16) and stay as a structure.
+
 > **What the 2026-08-19 round changed in this process.** ~~Four-eyes is no longer a value threshold but
 > a **per-customer-company mode** **[DEC-71]**, so the branch at acceptance asks *which company is
 > this*, not *how big is this*.~~ *(⚠ 2026-10-12, [DEC-179]: there is no four-eyes and no branch.)* The reservation and the wallet debit are **VAT-inclusive**
-> **[DEC-78]** while the price stays quoted ex-VAT **[DEC-26]**. Volumes step in **0,01 MW**
-> **[DEC-70]**. The sell path no longer checks holdings **[DEC-72]**. The wallet funds **trading
+> **[DEC-78]** while the price stays quoted ex-VAT **[DEC-26]**. Volumes step in **10 kW**
+> **[DEC-70]**, **[DEC-180]**. The sell path no longer checks holdings **[DEC-72]**. The wallet funds **trading
 > only** — nothing in this lifecycle touches an invoice **[DEC-77]**. And an offer is notified to the
 > **account that raised the request** ~~plus, under four-eyes, the **approving admin**~~ **[DEC-111]**,
 > not to every active account. Two more things move at the edges of the process: the indication the
@@ -26,7 +28,7 @@ flowchart TB
     subgraph cust["Customer company — any account may act  [DEC-18]"]
         A1["Reviews consumption chart<br/>and coverage"]
         A2["Checks price indications<br/><i>quote + markup · not firm</i>"]
-        A3["Composes request:<br/>shape · period · MW per EAN<br/><i>steps of 0,01 MW</i>"]
+        A3["Composes request:<br/>shape · period · kW per EAN<br/><i>steps of 10 kW</i>"]
         A4{"Wallet covers 100%<br/>of the <b>gross</b><br/>estimate?"}
         A5["Tops up wallet"]
         A6["Submits request"]
@@ -83,7 +85,7 @@ Three boxes on the customer side do more than their labels admit.
 | Box | What it actually does | Why |
 | --- | --- | --- |
 | `A2` | Shows the **marked-up** indication — the quote plus a configurable percentage, default 2%, held as reference data — labelled as an indication and **never firm unless PeakPower says so** **[DEC-80]** | The markup is the platform's only margin instrument now that surcharges have left it **[DEC-73]**. A raw quote here would give that margin away and imply a firmness the trader has not committed to **[F04](../10-features/F04-price-indications.md)** ⚠ **Reversed 2026-09-29 by [DEC-167]** — `A2` shows the **raw** indication (Prices page and request-panel estimate); the margin is in the offer price the trader types at `B3`-side pricing, not in the indication. |
-| `A3` | Accepts volumes in steps of **0,01 MW**, minimum 0,01 MW per line **[DEC-70]**, reversing [DEC-32]'s 0,1 MW | Ten times finer. The per-EAN total now almost never lands on a whole MW, so the "PeakPower rounds on the market side" notice next to it is routine information rather than a warning **[F05-R07]** |
+| `A3` | Accepts volumes in steps of **10 kW**, minimum 10 kW per line **[DEC-70]**, **[DEC-180]**, reversing [DEC-32]'s 100 kW | Ten times finer. The per-EAN total now almost never lands on a whole clip of 1 000 kW, so the "PeakPower rounds on the market side" notice next to it is routine information rather than a warning **[F05-R07]** |
 | `A4` | ⚠ **(17) [DEC-167]: compares available balance against the DEPOSIT (`depositPct` of the gross estimate), not 100% of it.** ~~Compares available balance against **100% of the gross estimate** — no buffer~~ **[DEC-41]**, grossed up at the 21% of **[DEC-64]** **[DEC-78]** | §4.1 works the figures. An ex-VAT check here clears a request whose own reservation it under-covers by 21%, and there is no buffer to absorb the difference |
 
 For a `SELL` the same path runs with **no holdings check at all** **[DEC-72]** — the customer may sell
@@ -194,7 +196,7 @@ whole problem once **[DEC-72]** allows one that is not: see §5.4.
 ### 4.1 The money, worked
 
 ⚠ **[DEC-78]** — the amount reserved at acceptance and debited at confirmation is **VAT-inclusive**:
-`totalMWh × price × (1 + VAT rate)` at the 21% of **[DEC-64]**. The price itself is still quoted,
+the stored trade value × `(1 + VAT rate)` at the 21% of **[DEC-64]** ⚠ **[DEC-180] (10): the value is `totalKwh × price` in €/kWh, frozen when the offer is made**. The price itself is still quoted,
 offered and stored **ex-VAT** **[DEC-26]**. This is a **sizing rule for a wallet hold, not a tax
 calculation** — it produces no VAT line anywhere, because the platform computes no VAT at all and the
 bookkeeping program applies a rate per ledger account **[DEC-76]**.
@@ -203,14 +205,14 @@ One trade, TRD-1051 at *Vandersteen Koeling B.V.* — base shape, May 2026, thre
 
 | Step | Calculation | Result |
 | --- | --- | --- |
-| Volume per EAN **[DEC-70]** | `1.37 + 0.86 + 0.52` MW, each a whole multiple of 0,01 MW | **2,75 MW** |
+| Volume per EAN **[DEC-70]** | `1370 + 860 + 520` kW, each a whole multiple of 10 kW | **2 750 kW** |
 | Delivery intervals | May 2026: `31 × 96`. No DST change in May — the 2026 changes are 29 March and 25 October | **2 976 intervals** |
-| Total volume | `2.75 × 2976 × 0.25` | **2 046,00 MWh** |
-| Indication shown at `A2` **[DEC-80]** | raw bid `66.50` × `(1 + 0.02)` markup | **€ 67,83/MWh** ⚠ **2026-09-29 [DEC-167]** — the customer now sees **€ 66,50/MWh** (the raw bid); the markup example above is history. |
-| Pre-submission estimate, ex VAT | `2046.00 × 67.83` | **€ 138.780,18** |
+| Total volume | `2750 × 2976 × 0.25` | **2 046 000,0 kWh** |
+| Indication shown at `A2` **[DEC-80]** | raw bid `0.06650` × `(1 + 0.02)` markup | **€ 0,06783/kWh** ⚠ **2026-09-29 [DEC-167]** — the customer now sees **€ 0,06650/kWh** (the raw bid); the markup example above is history. |
+| Pre-submission estimate, ex VAT | `2046000 × 0.06783` | **€ 138.780,18** |
 | Pre-submission check at `A4` **[DEC-41]**, **[DEC-78]** | `138780.18 × 1.21` — 100% of the **gross** estimate, no buffer. ⚠ **(17) [DEC-167]: at the default 20 % deposit the check is `167924.02 × 0.20`; the figures in this section are the gross, of which only the deposit is held at acceptance and the balance is paid later** | ~~**€ 167.924,02** must be available~~ **€ 33.584,80** (20 % deposit) must be available |
-| Offer price, firm for the window, ex VAT **[DEC-26]** | quoted by the trader | **€ 68,00/MWh** |
-| Trade value, ex VAT **[AS-10]** | `2046.00 × 68.00` | **€ 139.128,00** |
+| Offer price, firm for the window, ex VAT **[DEC-26]** | quoted by the trader | **€ 0,06800/kWh** |
+| Trade value, ex VAT **[AS-10]** | `2046000 × 0.06800` | **€ 139.128,00** |
 | VAT at the **[DEC-64]** reference rate | `139128.00 × 0.21` | **€ 29.216,88** |
 | **Gross incl. VAT** **[DEC-78]** — ⚠ (17) [DEC-167]: this is the stored gross; the amount *reserved at acceptance and debited unchanged at confirmation* is the **deposit** (20 % by default: **€ 33.668,98**), and the rest (€ 134.675,90) is the balance | `139128.00 × 1.21` | **€ 168.344,88** |
 
@@ -224,7 +226,7 @@ trade — € 139.128,00 — and then cannot cover its own reservation, short by
 **[DEC-41]** deliberately leaves no buffer to absorb that, which is precisely why the gross-up is not
 optional.
 
-⚠ The same arithmetic at the new minimum **[DEC-70]**: `0.01 × 744 = 7,44 MWh`, `7.44 × 68.00 =
+⚠ The same arithmetic at the minimum **[DEC-70]**, **[DEC-180]**: `10 × 744 = 7 440 kWh`, `7440 × 0.06800 =
 € 505,92` ex VAT, and `505.92 × 1.21 = € 612,1632` → **€ 612,16** reserved. ~~At a customer with
 four-eyes on, that trade needs the same second admin as the € 168.344,88 one **[DEC-71]**. There is
 no small-trade exemption to fall back on, and at 0,01 MW steps the number of trades — and therefore
@@ -386,8 +388,8 @@ costed in §4.1:
 
 | # | Event | Actor | At | Recorded |
 | --: | --- | --- | --- | --- |
-| 1 | `SUBMITTED` | Customer account — **J. de Vries** *(Energy Manager)* | 14:25:03 | Volumes per EAN — 1,37 + 0,86 + 0,52 MW **[DEC-70]** — comment, and the captured indication **including its markup** **[DEC-80]** ⚠ **2026-09-29 [DEC-167]** — the captured indication is the raw price, its time and its source; no markup is captured. |
-| 2 | `OFFERED` | Employee — M. Bakker | 14:31:20 | Price € 68,00/MWh ex VAT, 30-minute window, `expires_at` 15:01:00 |
+| 1 | `SUBMITTED` | Customer account — **J. de Vries** *(Energy Manager)* | 14:25:03 | Volumes per EAN — 1 370 + 860 + 520 kW **[DEC-70]** — comment, and the captured indication **including its markup** **[DEC-80]** ⚠ **2026-09-29 [DEC-167]** — the captured indication is the raw price, its time and its source; no markup is captured. |
+| 2 | `OFFERED` | Employee — M. Bakker | 14:31:20 | Price € 0,06800/kWh ex VAT, 30-minute window, `expires_at` 15:01:00 |
 | 3 | `ACCEPTED` | Customer account — **M. Vandersteen** *(Finance Director)* | 14:44:12 | Gross amount reserved **€ 168.344,88** **[DEC-78]**, ex-VAT value € 139.128,00, reservation id |
 | 4 | `CONFIRMED` | Employee — M. Bakker | 14:52:07 | External reference, block id, settled amount € 168.344,88 |
 

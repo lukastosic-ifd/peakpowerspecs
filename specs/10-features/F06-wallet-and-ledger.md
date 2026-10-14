@@ -187,6 +187,8 @@ reservationAmount = round(volumeMWh * priceExVat * 1.21, 2)
 tradeDebitAmount  = reservationAmount        // identical, by [F06-R14]
 ```
 
+⚠ **Amended 2026-10-13 by [DEC-180] (10): the reservation is round(stored trade value × 1,21, 2).** The stored value is kWh × €/kWh, exact, frozen when the offer is made; nothing multiplies volume and price again.
+
 ⚠ **This amends [AS-10]**, which said the reservation is the full trade value *excluding* VAT, and it
 amends the sizing rule under **[DEC-41]**. The reason it has to change: the settlement of a hedge is
 inclusive of VAT (the source for **[DEC-78]** is explicit — *"The settlement is incl. VAT and only
@@ -214,7 +216,7 @@ on the energy.** The block bought here is settled from the wallet **[DEC-77]**; 
 against it in the months that follow is invoiced separately, pushed to the bookkeeping program as a
 draft **[DEC-88]** and paid to the bank. Nothing in the diagram below is ever repeated at invoice time.
 
-Worked example: 1,0 MW Peak Q4-26 at a trade value of **€18 400,00 ex-VAT**. The reservation and the
+Worked example: ~~1,0 MW~~ 1.000 kW (⚠ **[DEC-180] (10).**) Peak Q4-26 at a trade value of **€18 400,00 ex-VAT**. The reservation and the
 debit are grossed up at 21% **[DEC-78]**, **[DEC-64]**:
 
 ```
@@ -422,8 +424,8 @@ The required format, as described in the brief:
 | Date & time | Type | Description | By | Ref | Debit | Credit | Available after |
 | --- | --- | --- | --- | --- | --: | --: | --: |
 | 12-08-2026 09:14 | Deposit (iDEAL) | Top-up | J. de Vries | `PAY-2291` | | €25 000.00 | €50 000.00 |
-| 12-08-2026 11:02 | Funds reserved | Peak Q4-26 · 1.0 MW · incl. VAT | **M. Vandersteen** | **`TRD-1051`** | €22 264.00 | | €27 736.00 |
-| 12-08-2026 11:47 | Trade confirmed | Peak Q4-26 · 1.0 MW · incl. VAT | PeakPower | **`TRD-1051`** | €22 264.00 | | €27 736.00 |
+| 12-08-2026 11:02 | Funds reserved | Peak Q4-26 · 1.000 kW · incl. VAT | **M. Vandersteen** | **`TRD-1051`** | €22 264.00 | | €27 736.00 |
+| 12-08-2026 11:47 | Trade confirmed | Peak Q4-26 · 1.000 kW · incl. VAT | PeakPower | **`TRD-1051`** | €22 264.00 | | €27 736.00 |
 | 28-08-2026 14:20 | Withdrawal requested | To `NL91…` | **M. Vandersteen** | **`WDR-0037`** | €10 000.00 | | €17 736.00 |
 | 28-08-2026 16:05 | Withdrawal paid | Transfer made 28-08 | S. Willems (PeakPower) | **`WDR-0037`** | €10 000.00 | | €17 736.00 |
 | 01-09-2026 08:30 | Deposit (bank) | Ref `PP-DEP-8Q4T` | System (matched) | `DEP-0118` | | €40 000.00 | €57 736.00 |

@@ -90,6 +90,8 @@ could already afford, or a withdrawal they asked for **[DEC-83]**.
 
 ## 2. Value objects
 
+⚠ **Superseded 2026-10-13 by [DEC-180] (10): the sketch below is in MW and MWh.** Power is `Kw`, a price is `PricePerKwh`, and energy is a decimal in kWh; the block after it, "as built", replaces `Mw`, `MWh` and `PricePerMwh`. The rest of the sketch stands.
+
 ```csharp
 public readonly record struct Money(decimal Amount, Currency Currency)
 {
@@ -98,6 +100,7 @@ public readonly record struct Money(decimal Amount, Currency Currency)
     public Money Round2()      => this with { Amount = Math.Round(Amount, 2, MidpointRounding.AwayFromZero) };
 }
 
+// ⚠ [DEC-180] (10): Mw and MWh below are the sketch before kW and kWh; see the block after this one.
 public readonly record struct Mw(decimal Value)
 {
     /// Smallest tradable quantity and the step between quantities  [DEC-70].
@@ -200,6 +203,32 @@ public readonly record struct DeliveryPeriod(PeriodType Type, DateOnly Start, Da
 }
 ```
 
+The value objects of trading **as built 2026-10-13 by [DEC-180] (10)**, in kW and €/kWh.
+
+```csharp
+// ⚠ [DEC-180] (10): as built, replaces Mw, MWh and PricePerMwh above.
+public readonly record struct Kw(decimal Value)
+{
+    /// Smallest tradable quantity and the step between quantities: 10 kW, the grid of [DEC-70].
+    public const decimal Increment = 10m;
+    public const decimal Ceiling = 1_000_000_000m;
+
+    // Create refuses unless  value > 0,  value < Ceiling  and  value % 10m == 0m.
+    // 10, 20 and 999 999 990 pass. 0, 5, 15 and 10,5 are refused.
+}
+
+public readonly record struct PricePerKwh(decimal Value)
+{
+    public const decimal Ceiling = 10m;     // refuses a price typed in the old unit by habit (81,25)
+
+    // Create refuses unless  value > 0,  value < Ceiling  and  FiveDecimals.Holds(value),
+    // that is Math.Round(value, 5, MidpointRounding.AwayFromZero) == value.
+    // FromStored(decimal) is unchecked: a converted price may read 0,00000.
+}
+```
+
+Energy is a decimal in kWh. A block's volume is `Kw × hours` (`BlockVolumeCalculator.HoursOf`, one quarter-hour is `HoursPerInterval` = 0,25 h), not rounded; it is a multiple of 2,5 kWh, so one decimal is used in practice.
+
 Why these exist: `Money.Add` cannot silently mix currencies, `Mw.OverIntervals` is the only route to
 a volume so the 0.25 factor lives in one place, and `EanCode` cannot be constructed invalid. Each one
 removes a class of bug rather than a line of code.
@@ -209,7 +238,7 @@ the increment at 0,1 MW; both are now 0,01 MW, ten times finer. The constant is 
 rather than in a validator so the request panel, the API contract and the allocation rounding read the
 same number. Cost: every per-EAN allocation is now a multiple of 0,01 MW, so the largest-remainder
 split in `IBlockVolumeCalculator` distributes a tail that is ten times smaller and ten times more
-frequent. Nothing about the algorithm changes; the residue does.
+frequent. Nothing about the algorithm changes; the residue does. ⚠ **[DEC-180] (10): Kw.Increment is 10; the grid is the same.**
 
 ### 2.1 Superseded value objects
 
@@ -236,6 +265,21 @@ Kept readable because trades accepted before 2026-08-19 were pinned against them
 | `SurchargeRate`, `SurchargeScope` | — nothing. The platform pushes volume; the bookkeeping program multiplies it by the topup fee | **[DEC-73]** |
 | `FeedInTariff` | — nothing. Export is credited at the day-ahead price for the interval, raw | **[DEC-87]** |
 | `VatRate` as a computed value | The constant 21% **[DEC-64]**, used for one thing only: grossing up a trade reservation **[DEC-78]** | **[DEC-76]** |
+
+### 2.2 Rounding and saved figures — [DEC-180], added 2026-10-13
+
+⚠ **As built 2026-10-13 by [DEC-180].** Every price per kWh and every calculated cost has five decimals, rounded half away from zero where it is calculated, once. The rule is stated in one place and the arithmetic lives in the domain as pure functions. The names are the built names.
+
+| Type or function | Namespace | Rule |
+| --- | --- | --- |
+| `FiveDecimals` | `PeakPower.Domain.Common` | `Scale` = 5; `Round(value)` = `Math.Round(value, 5, MidpointRounding.AwayFromZero)`; `Holds(value)` is true when rounding changes nothing |
+| `EnergyPrice.PerKwhFromPerMwh` | `PeakPower.Domain.Market` | `FiveDecimals.Round(perMwh / 1000m)`; used by the ENTSO-E mapper, the only place a day-ahead price is rounded |
+| `UsageCost.Of(usageKwh, priceEurPerKwh)` | `PeakPower.Domain.Costs` | `FiveDecimals.Round(usage × price)`; the only usage × price in the solution |
+| `IntervalUsage`, `PointDayReadings` | `PeakPower.Domain.Metering` | The per-connection fold of net usage, moved out of the consumption read so that the kWh on the wire and the usage in a saved row come from one implementation |
+| `HedgePositionCalculator` with `HedgeBlock(Guid Id, TradeDirection Direction, BlockShape Shape, decimal PowerKw, decimal PriceEurPerKwh, DateOnly Start, DateOnly End)` | `PeakPower.Domain.Trading` | Block energy = sign × kW × 0,25 h; hedge cost = `FiveDecimals.Round(Σ energy × price)`, one rounding for stacked blocks; bought and sold each rounded; actual cost = hedge cost + bought − sold, with no rounding of its own |
+| `CustomerDayCosts.Calculate` | `PeakPower.Domain.Trading` | Pure: no database, no clock. One day of one customer in; the rows of the saved costs and positions out |
+
+Read models, written by the system only: `IntervalCost` (one saved cost per connection per quarter-hour) and `HedgePositionInterval` (one saved position per customer per quarter-hour), `DayAheadFeedRun` (one row per tick of the day-ahead feed) and `DayAheadPrice.UpdatedAt` (the stamp of a changed price). No API host calls the cost arithmetic: an architecture test (`CallSiteFacts`) makes that executable. See [database design](04-database-design.md) §3.8.
 
 ## 3. The Customer aggregate
 
@@ -527,11 +571,13 @@ public sealed class Trade : AggregateRoot
 }
 ```
 
+⚠ **Amended 2026-10-13 by [DEC-180] (10):** in `MakeOffer` and `Confirm` the types are `PricePerKwh`; the gross is made from the stored trade value (`WalletAmountGross.Of(TradeValueExVat, vatRate)`); the overload that took a volume and a price is deleted, so nothing multiplies again after the offer.
+
 ### 4.1 Invariants
 
 | # | Invariant | Enforced |
 | --- | --- | --- |
-| T1 | At least one line; every line has power > 0. ⚠ **Amended 2026-08-19 by [DEC-70]**: every line power is a whole multiple of **0,01 MW** and the trade total is at least **0,01 MW** | Constructor and `AddLine`, via `Mw.IsTradable` |
+| T1 | At least one line; every line has power > 0. ⚠ **Amended 2026-08-19 by [DEC-70]**: every line power is a whole multiple of **0,01 MW** and the trade total is at least **0,01 MW** ⚠ **[DEC-180] (10): 10 kW.** | Constructor and `AddLine`, via `Mw.IsTradable` |
 | T2 | All lines reference metering points of the owning customer | Application service, checked against the token's `customer_id` |
 | T2a | A customer `Actor` on any transition belongs to the owning customer — **any** of its accounts, not only the requester **[DEC-18]** | Application service, checked against the token's `account_id` and `customer_id` |
 | T3 | `TotalPower` = Σ line power, exactly | Computed, never stored independently |
@@ -801,6 +847,8 @@ public sealed class Block : AggregateRoot
 }
 ```
 
+⚠ **Amended 2026-10-13 by [DEC-180] (10):** the block holds `PowerKw` (a `Kw`), `TotalKwh` and `PriceEurPerKwh` (a `PricePerKwh`).
+
 | # | Invariant |
 | --- | --- |
 | B1 | Σ allocation power = `Power`, **exactly** — no floating-point drift, no tolerance |
@@ -814,7 +862,7 @@ public sealed class Block : AggregateRoot
 | Service | Responsibility |
 | --- | --- |
 | `IMarketCalendar` | Interval ↔ timestamp, `Pos` mapping, `IsPeakInterval`, interval count per date, working days, delivery-period expansion. **The only place date arithmetic happens.** |
-| `IBlockVolumeCalculator` | Block → total MWh, per-metering-point split, largest-remainder rounding |
+| `IBlockVolumeCalculator` | Block → total MWh, per-metering-point split, largest-remainder rounding ⚠ **[DEC-180] (10): total kWh = kW × hours (BlockVolumeCalculator.HoursOf; HoursPerInterval = 0,25). No factor of 1000 is left in the trading domain.** |
 | `IPositionCalculator` | Per-interval consumption, block volume, net position, coverage |
 | `IInvoiceCalculator` | Full invoice from positions, prices, tariffs and surcharges |
 | `IEnergyTaxCalculator` | Cumulative tiered tax with the YTD-delta method. ⚠ **Interface retained, not implemented — [DEC-24]** defers energiebelasting. Keep the seam so the calculation drops in rather than being retrofitted through the invoice engine; energiebelasting is a legal obligation and must return before a real customer is invoiced |
@@ -835,7 +883,7 @@ In-process, published after a successful commit, handled asynchronously.
 | `WalletBalanceChanged` | Threshold rule evaluation **[F11](../10-features/F11-notifications.md)** |
 | `IntervalDataVersionSuperseded` | Rollup rebuild, invoice-correction flagging |
 | `InvoiceFinalised` | Odoo push, wallet debit, notification |
-| `DayAheadPricesPublished` | Coverage cache invalidation |
+| `DayAheadPricesPublished` | Coverage cache invalidation ⚠ **Not built. [DEC-180] (6): a price change is recorded by a database trigger as a recalculation request; there is no domain event and no port.** |
 
 **Published after commit, not during.** A handler must never be able to roll back the transaction
 that caused it, and a failed notification must never undo a confirmed trade.

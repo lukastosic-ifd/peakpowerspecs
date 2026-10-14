@@ -105,9 +105,9 @@ export function employeeTradeDesk() {
     {
       title: 'To price', sub: '3 requests', accent: C.amber, x: cx,
       items: [
-        ['TRD-1058', 'Van Dijk Glastuinbouw', 'Base · Cal-27 · 2.050 kW', '6 min', '17.958.000,0 kWh', 'amber', '', 'muted'],
-        ['TRD-1057', 'Kramer Logistics', 'Peak · Q4-26 · 470 kW', '14 min', '372.200,0 kWh', 'amber', '', 'muted'],
-        ['TRD-1056', 'Meijer Koelhuizen', 'Base · Sep-26 · 250 kW', '31 min', '180.000,0 kWh', 'danger', '', 'muted'],
+        ['TRD-1058', 'Van Dijk Glastuinbouw', 'Base · Cal-27 · 2.050 kW', '6 min', '17.958.000,0 kW', 'amber', '', 'muted'],
+        ['TRD-1057', 'Kramer Logistics', 'Peak · Q4-26 · 470 kW', '14 min', '372.200,0 kW', 'amber', '', 'muted'],
+        ['TRD-1056', 'Meijer Koelhuizen', 'Base · Sep-26 · 250 kW', '31 min', '180.000,0 kW', 'danger', '', 'muted'],
       ],
     },
     {
@@ -180,13 +180,13 @@ export function employeeTradeDetail() {
     { label: 'CAL-27 FORECAST', w: 142, align: 'end' }, { label: 'EXISTING COVER', w: 130, align: 'end' },
     { label: 'REQUESTED', w: 108, align: 'end' },
   ], [
-    [{ t: 'Kas Noord 1', weight: 600 }, { t: '…0114', mono: true }, { t: '6.820.000,0 kWh', align: 'end' }, { t: '200 kW', align: 'end' }, { t: '830 kW', align: 'end', weight: 700, mono: true }],
-    [{ t: 'Kas Noord 2', weight: 600 }, { t: '…0122', mono: true }, { t: '5.410.000,0 kWh', align: 'end' }, { t: '200 kW', align: 'end' }, { t: '710 kW', align: 'end', weight: 700, mono: true }],
-    [{ t: 'WKK-installatie', weight: 600 }, { t: '…0139', mono: true }, { t: '4.180.000,0 kWh', align: 'end' }, { t: '—', align: 'end', fill: C.faint }, { t: '510 kW', align: 'end', weight: 700, mono: true }],
+    [{ t: 'Kas Noord 1', weight: 600 }, { t: '…0114', mono: true }, { t: '6.820.000,0 kW', align: 'end' }, { t: '200 kW', align: 'end' }, { t: '830 kW', align: 'end', weight: 700, mono: true }],
+    [{ t: 'Kas Noord 2', weight: 600 }, { t: '…0122', mono: true }, { t: '5.410.000,0 kW', align: 'end' }, { t: '200 kW', align: 'end' }, { t: '710 kW', align: 'end', weight: 700, mono: true }],
+    [{ t: 'WKK-installatie', weight: 600 }, { t: '…0139', mono: true }, { t: '4.180.000,0 kW', align: 'end' }, { t: '—', align: 'end', fill: C.faint }, { t: '510 kW', align: 'end', weight: 700, mono: true }],
   ], { rowH: 38 });
   b += line(cx + 18, cy + 228, cx + leftW - 18, cy + 228, { stroke: C.border2 });
   b += text(cx + 18, cy + 250, 'Total requested', { size: 12.5, weight: 700 });
-  b += text(cx + leftW - 18, cy + 250, '2.050 kW · 17.958.000,0 kWh', { size: 14, weight: 700, anchor: 'end' });
+  b += text(cx + leftW - 18, cy + 250, '2.050 kW · 17.958.000,0 kW', { size: 14, weight: 700, anchor: 'end' });
   b += badge(cx + 150, cy + 237, '10 kW STEPS', 'green', { w: 104, h: 18 });
   b += text(cx + 18, cy + 272, 'Customer note: “Locking in most of next year before the winter curve moves.”', { size: 11, fill: C.muted });
   b += rect(cx + leftW - 292, cy + 8, 274, 60, { fill: C.panel2, stroke: C.border, r: 7 });

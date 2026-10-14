@@ -253,7 +253,7 @@ field: it is rendered in the tooltip and the KPI strip **[F03-R05]**, **[F03-R19
 the payloads, not by a flag on the export endpoint — a `?includePrices=` parameter would be one
 support request away from being turned on.
 
-**Cost on the consumption reads** ⚠ **specified 2026-10-13 by [DEC-180] (3), (4), (8).** On `GET /consumption/day` and `GET /consumption/intervals` the field `costEur` of each interval is the **sum of the saved costs of the reporting connections**, each `round(usage × price, 5)`; no read multiplies. It is null as follows:
+**Cost on the consumption reads** ⚠ **as built 2026-10-13 by [DEC-180] (3), (4), (8).** On `GET /consumption/day` and `GET /consumption/intervals` the field `costEur` of each interval is the **sum of the saved costs of the reporting connections**, each `round(usage × price, 5)`; no read multiplies. It is null as follows:
 
 | The interval has | `priceEurPerKwh` | `costEur` | Counted as |
 | --- | --- | --- | --- |
@@ -262,7 +262,7 @@ support request away from being turned on.
 | Net usage, a price, and a saved cost made from exactly this usage and this price for every reporting connection | a number | a number, zero included | metered and costed |
 | Net usage, a price, and anything else saved (nothing yet, fewer rows, another usage, another price) | a number | `null` | metered, not costed: waiting for its recalculation |
 
-A client tells "unpriced" from "waiting" by `priceEurPerKwh` alone; there is no extra field. `ConsumptionSummaryDto.totalCostEur` is the sum of the non-null `costEur` values of the answer (sums of 5-decimal values), null when there is none, and always null on `GET /consumption/month`. `ConsumptionSummaryDto` gains two fields, `meteredIntervals` (intervals of the answer with a net usage) and `costedIntervals` (intervals with a cost), both `int?` and null on the month read; where they sit in the record is to be confirmed at build (snapshot review of task C7). A cost is never served from inputs that differ from the usage and price shown in the same answer. On the wire a cost has at most 5 decimals and may arrive as `1.07300`.
+A client tells "unpriced" from "waiting" by `priceEurPerKwh` alone; there is no extra field. `ConsumptionSummaryDto.totalCostEur` is the sum of the non-null `costEur` values of the answer (sums of 5-decimal values), null when there is none, and always null on `GET /consumption/month`. `ConsumptionSummaryDto` gains two fields, `meteredIntervals` (intervals of the answer with a net usage) and `costedIntervals` (intervals with a cost), both `int?` and null on the month read; they are the last two members of the record, after `totalCostEur`, each a nullable `int32` (found at build, task C7). A cost is never served from inputs that differ from the usage and price shown in the same answer. On the wire a cost has at most 5 decimals and may arrive as `1.07300`.
 
 **Volume position** ⚠ added 2026-10-07 ([DEC-175]). `GET /api/v1/consumption/position?from=YYYY-MM-DD&to=YYYY-MM-DD` — any member; tenant-scoped, with the authentication, tenancy and row-level security of `GET /consumption/intervals`; account-level; at most **92 days**, otherwise `400`; no `meteringPointIds`. A **separate DTO**, so [DEC-149] holds: the consumption DTOs gain no block field. The server does not gate it on Future Trading; the portal calls it only when the product is held. Dense: every quarter-hour of the range, the future included. Not documented, published or opened for programmatic use ([F03-R26]). Calculation, null, partial and totals rules: [DEC-175] (4), (5); the field names are those of the generated OpenAPI document.
 
@@ -303,7 +303,7 @@ A client tells "unpriced" from "waiting" by `priceEurPerKwh` alone; there is no 
 }
 ```
 
-⚠ **After the saved rows, specified 2026-10-13 by [DEC-180] (5).** The position read loads no reading; it serves the saved quarter-hour rows of the customer (at most 8 832 for 92 days, whatever the number of connections):
+⚠ **After the saved rows, as built 2026-10-13 by [DEC-180] (5).** The position read loads no reading; it serves the saved quarter-hour rows of the customer (at most 8 832 for 92 days, whatever the number of connections):
 
 | Fields | Value |
 | --- | --- |
@@ -500,7 +500,7 @@ pre-trade balance check **[DEC-41]** does not bound it: a `SELL` **credits** the
 one; until it is answered, the sell path is not safe to open to volumes beyond confirmed holdings, and
 that is a product gate rather than a contract change.
 
-⚠ **The 2026-08 shape, not what is served after [DEC-180] (10).** The block after this one is the shape as specified.
+⚠ **The 2026-08 shape, not what is served after [DEC-180] (10).** The block after this one is the shape as built.
 
 ```jsonc
 // POST /api/v1/trades        Idempotency-Key: 01J9…
@@ -536,7 +536,7 @@ that is a product gate rather than a contract change.
 }
 ```
 
-⚠ **As specified by [DEC-180] (10), 2026-10-13** (the other members of the answer are unchanged, and the amounts are bare numbers as built):
+⚠ **As built by [DEC-180] (10), 2026-10-13** (the other members of the answer are unchanged, and the amounts are bare numbers as built):
 
 ```jsonc
 // POST /api/v1/trades        Idempotency-Key: 01J9…
@@ -669,7 +669,7 @@ Error `type` URIs. ~~`…/errors/self-approval-not-permitted`, `…/errors/appro
 
 **Trade DTOs.** ⚠ **2026-09-30:** `TradeDetailDto` and `TradeSummaryDto` carry `totalPowerMw` and (detail) `connections[{ ean, name }]` — the snapshot — and **no `lines`**; `TradeOfferDto` has no per-EAN breakdown. `EmployeeTradeDetailDto` shows `totalPowerMw`, `connections[{ ean, name }]` and `anyConnectionEligible`, with no per-line power. ⚠ **Amended 2026-10-13 by [DEC-180] (10): `totalPowerMw` and `totalMwh` are `totalPowerKw` and `totalKwh` on `TradeDetailDto`, `TradeSummaryDto` and `EmployeeTradeDetailDto`.**
 
-**Unknown request members are refused** ⚠ **specified 2026-10-13 by [DEC-180] (10).** The two customer request records (`TradeQuoteRequest`, `SubmitTradeRequest`) and the two employee ones (`PublishOfferRequest`, `ConfirmTradeRequest`) refuse a member they do not know: the answer is a 400 and nothing is stored. Until now an unknown member was ignored by every route. The reason is an old browser tab that posts `powerMw`, `priceEurMwh` or `actualMarketPrice`: it would otherwise confirm a trade without its market price, and no route adds it later. The 400 comes from the JSON binder before any validator runs, so a body that merely has no `powerKw` still gets "Enter the volume in kW." **The body of that 400 is to be confirmed at build (task T4).** The four schemas may gain `additionalProperties: false` in the OpenAPI documents.
+**Unknown request members are refused** ⚠ **as built 2026-10-13 by [DEC-180] (10).** The two customer request records (`TradeQuoteRequest`, `SubmitTradeRequest`) and the two employee ones (`PublishOfferRequest`, `ConfirmTradeRequest`) refuse a member they do not know: the answer is a 400 and nothing is stored. Until now an unknown member was ignored by every route. The reason is an old browser tab that posts `powerMw`, `priceEurMwh` or `actualMarketPrice`: it would otherwise confirm a trade without its market price, and no route adds it later. The 400 comes from the JSON binder before any validator runs, so a body that merely has no `powerKw` still gets "Enter the volume in kW." **The body of that 400 is the framework's bare problem answer** (`application/problem+json`, status 400, no `errors` object, no problem type of ours), found at build (task T4). The four schemas have `additionalProperties: false` in the OpenAPI documents.
 
 **Reads project.** Every customer read is a projection — the customer role cannot `SELECT` the captured indication, `actual_market_price` or `offered_by_employee_id` (§3.4.4) — newest first. Participant names and job titles come from the **`trade_event` actor snapshots** (`SUBMITTED` → requester, `ACCEPTED` → acceptor; ~~`APPROVED`/`APPROVAL_REFUSED` → decider~~ only on old trades), never a join on `customer_account`, whose customer policy hides removed members. Staff actors show as *PeakPower Trading*, the system as *PeakPower*. `availableActions` (`CANCEL`, `ACCEPT`, `REJECT`, ~~`APPROVE`, `REFUSE_APPROVAL`,~~ ⚠ **(17) `PAY_BALANCE`** — §2.4.3) is computed server-side: `ACCEPT` is offered to every active member while the offer is open.
 
@@ -1181,7 +1181,7 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET` | `/audit?…` | Audit search. Retention is the fiscal **seven years** **[DEC-95]**; the trail covers **actions**, and the financial record of record is the bookkeeping program's |
 | `POST` | `/impersonation` | Start a read-only view-as session |
 
-⚠ **The two status reads, specified 2026-10-13 by [DEC-180] (7), (13).** Both are `.BackOffice(reason)` reads for any signed-in employee, take no parameter and no body, read the database only, and **answer 200 whatever the state of the feed** (no token, a database the Worker never ticked against, a failing source); 401 without a session. Neither serves a price, a unit or an exception text.
+⚠ **The two status reads, as built 2026-10-13 by [DEC-180] (7), (13).** Both are `.BackOffice(reason)` reads for any signed-in employee, take no parameter and no body, read the database only, and **answer 200 whatever the state of the feed** (no token, a database the Worker never ticked against, a failing source); 401 without a session. Neither serves a price, a unit or an exception text.
 
 `GET /data-health/day-ahead` (operation `GetDayAheadFeedStatus`) answers `asOf`, `today`, `state`, `workerLate`, `source`, `windowStart`, `latestDayStored`, `missingDayCount`, `missingDays`, `tomorrow { date, stored }`, `overdueCount`, `overdue [ { deliveryDate, raisedAt } ]`, `lastRun`, `lastSuccessAt`, `lastFailure { at, code, detail }`, `lastPriceChange { at, firstDay, lastDay, days, rows }` and `lastRecheckAt`.
 
@@ -1202,7 +1202,7 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `lastPriceChange` | From the newest `updated_at` stamp in the price table: when, which days, how many days and rows |
 | `lastRecheckAt` | The newest run whose `recheck` is `DONE` |
 
-Value sets: `state` `NEVER_RAN`, `NOT_CONFIGURED`, `ACTIVE`; `source` `ENTSOE`, `SIMULATED`; `lastRun.outcome` `IDLE`, `COMPLETED`, `FAILED`, `NOT_CONFIGURED`; `lastRun.recheck` `NOT_RUN`, `DONE`, `FAILED`, `SKIPPED`; `lastFailure.code` `UNAVAILABLE` (the attempts ran out: 429, 5xx, timeout, network), `REFUSED` (ENTSO-E refused the request, for example a bad token), `UNREADABLE` (the reply is not a usable market document), `ERROR` (anything else). They are plain strings in the OpenAPI document; whether they get an enum entry is to be confirmed at build.
+Value sets: `state` `NEVER_RAN`, `NOT_CONFIGURED`, `ACTIVE`; `source` `ENTSOE`, `SIMULATED`; `lastRun.outcome` `IDLE`, `COMPLETED`, `FAILED`, `NOT_CONFIGURED`; `lastRun.recheck` `NOT_RUN`, `DONE`, `FAILED`, `SKIPPED`; `lastFailure.code` `UNAVAILABLE` (the attempts ran out: 429, 5xx, timeout, network), `REFUSED` (ENTSO-E refused the request, for example a bad token), `UNREADABLE` (the reply is not a usable market document), `ERROR` (anything else). They are plain strings in the OpenAPI document, with no enum entry (found at build).
 
 `GET /data-health/saved-costs` (operation `GetSavedCostStatus`) answers `asOf`, `pendingRequests`, `oldestPendingRequestedAt`, `failingRequests`, `oldestFailingRequestedAt`, `triggersHealthy`, `lastCheckFinishedAt` and `lastCheckUnitsDifferent`.
 
@@ -1374,7 +1374,7 @@ Exceeding returns `429` with `Retry-After`.
 
 ⚠ **2026-10-12, [DEC-179]: the four-eyes removal is one deliberate breaking change** to the customer API's document: ten operations go (`GET /company/four-eyes` and its five `POST`s; `POST /trades/{id}/approve` and `/refuse-approval`; `POST /wallet/withdrawals/{id}/approval` and `/decline`), with their request and response schemas and the fields `TradeDetailDto.approval` and `.fourEyes`, `TradeQuoteResponse.fourEyes` and `WithdrawalRequestDto.approvedByAccountId`; the employee document loses `CustomerDetailDto.fourEyesEnabled` and `.fourEyesDisablePending`; `TradeCustomerDto.fourEyesEnabled` and `.activeAdminCount`; `TradeDeskCardDto.fourEyes`, `.eligibleApproverCount`, `.acceptedByName` and `.acceptedByJobTitle`; `EmployeeTradeAcceptanceDto.fourEyesApplied`, `.eligibleApproverCount`, `.approvedByName`, `.approvalDecidedAt` and `.refusedByName` (the refuser's name still reaches the desk as `resolution.resolvedBy` and in the timeline, so no screen reads the dedicated field); the trade desk's `awaitingApproval` queue, counts and `category` value; the withdrawal desk's `awaitingApproval` count, `approvedByName` and `status` value; and `WithdrawalRequestDto.approvedByAccountId`. It ships together with the web change that stops reading all of them, in one landing; the snapshot tests are regenerated and reviewed in the same change.
 
-⚠ **2026-10-13, [DEC-180]: a second deliberate breaking change.** Customer document: one operation goes (`GET /dashboard/position`), 24 fields are renamed, 3 are added (`TradeSummaryDto.totalValueExVat`, `ConsumptionSummaryDto.meteredIntervals` and `.costedIntervals`), 1 is removed (`PriceIndicationDto.unit`) and three schemas go (`DashboardPositionDto`, `DashboardLatestDayDto`, `DashboardDayIntervalDto`). Employee document: 10 fields are renamed, 1 is added (`TradeDeskCardDto.totalInclVat`) and two operations and seven schemas are added (the two status reads). No field keeps its name while its unit changes. The counts are the design's, **to be confirmed at build (task L1)**.
+⚠ **2026-10-13, [DEC-180]: a second deliberate breaking change.** Customer document: one operation goes (`GET /dashboard/position`), 24 fields are renamed, 3 are added (`TradeSummaryDto.totalValueExVat`, `ConsumptionSummaryDto.meteredIntervals` and `.costedIntervals`), 1 is removed (`PriceIndicationDto.unit`) and three schemas go (`DashboardPositionDto`, `DashboardLatestDayDto`, `DashboardDayIntervalDto`). Employee document: 10 fields are renamed, 1 is added (`TradeDeskCardDto.totalInclVat`) and two operations and seven schemas are added (the two status reads). No field keeps its name while its unit changes. The counts are confirmed against the two committed documents (2026-10-14, task L1): the customer document goes from 67 to 66 operations and from 113 to 110 schemas, the employee document from 57 to 59 operations and from 84 to 91 schemas.
 
 Both APIs publish OpenAPI 3.1 documents, and the Angular clients are generated from them. A snapshot
 test flags breaking changes against the previous release. ⚠ **The usage API §2.11 is in the customer

@@ -4,7 +4,7 @@ End-to-end, from a customer noticing an exposure to a confirmed position on the 
 
 Feature spec: [F05](../10-features/F05-energy-block-trading.md).
 
-> **Specified 2026-10-13 by [DEC-180] (10).** Volumes are in kW and kWh and prices in €/kWh, with at most 5 decimals; the grid is 10 kW. The amount reserved is made from the stored trade value, `round(value × (1 + VAT rate), 2)`, never from volume and price again. Every amount in the worked example below is unchanged; only the units of its volumes and prices moved. The per-EAN volumes in this page predate [DEC-167] (16) and stay as a structure.
+> **As built 2026-10-13 by [DEC-180] (10).** Volumes are in kW and kWh and prices in €/kWh, with at most 5 decimals; the grid is 10 kW. The amount reserved is made from the stored trade value, `round(value × (1 + VAT rate), 2)`, never from volume and price again. Every amount in the worked example below is unchanged; only the units of its volumes and prices moved. The per-EAN volumes in this page predate [DEC-167] (16) and stay as a structure.
 
 > **What the 2026-08-19 round changed in this process.** ~~Four-eyes is no longer a value threshold but
 > a **per-customer-company mode** **[DEC-71]**, so the branch at acceptance asks *which company is

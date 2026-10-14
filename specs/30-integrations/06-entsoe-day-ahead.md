@@ -17,14 +17,14 @@ missing price **[F08-R07]**
 > older rows, and the first tick loads all of 2026 (`MaxChunksPerTick` 12). Everything below that still
 > says *2020-01-01*, *three month-chunks* or *the EPEX seed* is superseded by this paragraph.
 
-> **Specified 2026-10-13 by [DEC-180] (7).** The feed asks again, stamps, records itself and alerts. (1) A request made to fill
+> **As built 2026-10-13 by [DEC-180] (7).** The feed asks again, stamps, records itself and alerts. (1) A request made to fill
 > missing days writes only those days. (2) Once a day, on the first tick at or after 16:00 Amsterdam, one request asks again for
 > the 7 delivery days before today, with today and tomorrow when they are stored, and a price is written only when it differs at
 > 5 decimals. (3) A changed price is stamped `updated_at`; no version is kept. (4) Every tick saves its outcome as one row of
 > `market.day_ahead_feed_run`, kept 90 days, and the back office shows the feed's status. (5) The alert
 > `DAY_AHEAD_PRICES_MISSING` is raised for today, and for tomorrow from 15:00 Amsterdam, and closes by itself when the day is
 > stored. (6) A price change leads to the recalculation of the saved costs and positions of that day. Everything below that
-> says "a stored day is never asked for again" is superseded by this paragraph. Specified, not built.
+> says "a stored day is never asked for again" is superseded by this paragraph.
 
 ## 1. The request
 
@@ -59,7 +59,7 @@ transparency.entsoe.eu (*Login → Register*); email transparency@entsoe.eu with
 API access* and the registered address; once access is granted, *My Account Settings → Web API
 Security Token → Generate*; put the token in the VM's `.env` as `ENTSOE_SECURITY_TOKEN`.
 
-⚠ **[DEC-180] (7):** no variable is added to the compose file for the five new `DayAheadIngestion:` keys, and all have working defaults. To change one on the VM it is set on the worker service. All are working names, to be confirmed at build.
+⚠ **[DEC-180] (7):** no variable is added to the compose file for the five new `DayAheadIngestion:` keys, and all have working defaults. To change one on the VM it is set on the worker service. The keys are `RecheckDays`, `RecheckAfter`, `MissingAlertAfter`, `RunRetentionDays` and `Provider`, as built.
 
 ## 3. The response
 
@@ -108,7 +108,7 @@ most one request a second. (3) ~~A stored day is never asked for again, so after
 a cheap database query and is what retries when publication is late.~~ ⚠ **Reversed 2026-10-13 by [DEC-180] (7).** See
 [background jobs §2](../20-architecture/06-background-jobs.md).
 
-⚠ **The re-check, specified 2026-10-13 by [DEC-180] (7).** Once a day, on the first tick at or after `DayAheadIngestion:RecheckAfter` (16:00), one request asks again for the `RecheckDays` delivery days before today (default 7), with today and tomorrow when they are stored. Only this re-check can change a stored day. A row is written only for a real change, which is a stored price of the same source whose 5-decimal value differs from the incoming one:
+⚠ **The re-check, as built 2026-10-13 by [DEC-180] (7).** Once a day, on the first tick at or after `DayAheadIngestion:RecheckAfter` (16:00), one request asks again for the `RecheckDays` delivery days before today (default 7), with today and tomorrow when they are stored. Only this re-check can change a stored day. A row is written only for a real change, which is a stored price of the same source whose 5-decimal value differs from the incoming one:
 
 | What the reply holds | Result |
 | --- | --- |

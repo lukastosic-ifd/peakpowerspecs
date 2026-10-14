@@ -90,7 +90,7 @@ could already afford, or a withdrawal they asked for **[DEC-83]**.
 
 ## 2. Value objects
 
-⚠ **Superseded 2026-10-13 by [DEC-180] (10): the sketch below is in MW and MWh.** Power is `Kw`, a price is `PricePerKwh`, and energy is a decimal in kWh; the block after it, "as specified", replaces `Mw`, `MWh` and `PricePerMwh`. The rest of the sketch stands.
+⚠ **Superseded 2026-10-13 by [DEC-180] (10): the sketch below is in MW and MWh.** Power is `Kw`, a price is `PricePerKwh`, and energy is a decimal in kWh; the block after it, "as built", replaces `Mw`, `MWh` and `PricePerMwh`. The rest of the sketch stands.
 
 ```csharp
 public readonly record struct Money(decimal Amount, Currency Currency)
@@ -203,10 +203,10 @@ public readonly record struct DeliveryPeriod(PeriodType Type, DateOnly Start, Da
 }
 ```
 
-The value objects of trading **as specified 2026-10-13 by [DEC-180] (10)**, in kW and €/kWh. Working names; the platform change fixes them.
+The value objects of trading **as built 2026-10-13 by [DEC-180] (10)**, in kW and €/kWh.
 
 ```csharp
-// ⚠ [DEC-180] (10): specified, replaces Mw, MWh and PricePerMwh above.
+// ⚠ [DEC-180] (10): as built, replaces Mw, MWh and PricePerMwh above.
 public readonly record struct Kw(decimal Value)
 {
     /// Smallest tradable quantity and the step between quantities: 10 kW, the grid of [DEC-70].
@@ -219,11 +219,10 @@ public readonly record struct Kw(decimal Value)
 
 public readonly record struct PricePerKwh(decimal Value)
 {
-    public const int Decimals = 5;
     public const decimal Ceiling = 10m;     // refuses a price typed in the old unit by habit (81,25)
 
-    // Create refuses unless  value > 0,  value < Ceiling  and
-    // Math.Round(value, 5, MidpointRounding.AwayFromZero) == value.
+    // Create refuses unless  value > 0,  value < Ceiling  and  FiveDecimals.Holds(value),
+    // that is Math.Round(value, 5, MidpointRounding.AwayFromZero) == value.
     // FromStored(decimal) is unchecked: a converted price may read 0,00000.
 }
 ```
@@ -269,7 +268,7 @@ Kept readable because trades accepted before 2026-08-19 were pinned against them
 
 ### 2.2 Rounding and saved figures — [DEC-180], added 2026-10-13
 
-⚠ **Specified, not yet built.** Every price per kWh and every calculated cost has five decimals, rounded half away from zero where it is calculated, once. The rule is stated in one place and the arithmetic lives in the domain as pure functions. The names are working names of the design.
+⚠ **As built 2026-10-13 by [DEC-180].** Every price per kWh and every calculated cost has five decimals, rounded half away from zero where it is calculated, once. The rule is stated in one place and the arithmetic lives in the domain as pure functions. The names are the built names.
 
 | Type or function | Namespace | Rule |
 | --- | --- | --- |
@@ -280,7 +279,7 @@ Kept readable because trades accepted before 2026-08-19 were pinned against them
 | `HedgePositionCalculator` with `HedgeBlock(Guid Id, TradeDirection Direction, BlockShape Shape, decimal PowerKw, decimal PriceEurPerKwh, DateOnly Start, DateOnly End)` | `PeakPower.Domain.Trading` | Block energy = sign × kW × 0,25 h; hedge cost = `FiveDecimals.Round(Σ energy × price)`, one rounding for stacked blocks; bought and sold each rounded; actual cost = hedge cost + bought − sold, with no rounding of its own |
 | `CustomerDayCosts.Calculate` | `PeakPower.Domain.Trading` | Pure: no database, no clock. One day of one customer in; the rows of the saved costs and positions out |
 
-Read models, written by the system only: `IntervalCost` (one saved cost per connection per quarter-hour) and `HedgePositionInterval` (one saved position per customer per quarter-hour), `DayAheadFeedRun` (one row per tick of the day-ahead feed) and `DayAheadPrice.UpdatedAt` (the stamp of a changed price). No API host calls the cost arithmetic: an architecture test is to make that executable. See [database design](04-database-design.md) §3.8.
+Read models, written by the system only: `IntervalCost` (one saved cost per connection per quarter-hour) and `HedgePositionInterval` (one saved position per customer per quarter-hour), `DayAheadFeedRun` (one row per tick of the day-ahead feed) and `DayAheadPrice.UpdatedAt` (the stamp of a changed price). No API host calls the cost arithmetic: an architecture test (`CallSiteFacts`) makes that executable. See [database design](04-database-design.md) §3.8.
 
 ## 3. The Customer aggregate
 

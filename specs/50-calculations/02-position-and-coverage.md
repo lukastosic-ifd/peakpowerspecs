@@ -538,7 +538,7 @@ day-ahead prices ~~remain **€/MWh**~~ ⚠ **[DEC-180]: are €/kWh too**.
 
 ### 5.4 Rounding, and what is saved — [DEC-180]
 
-⚠ **Specified 2026-10-13 by [DEC-180] (5), not built.** The position is saved **per customer per quarter-hour** (`trading.hedge_position_interval`) as the output of one pure function, `CustomerDayCosts.Calculate`, over `HedgePositionCalculator`. A row holds the metered usage, the hedge energy, covered, short and long energy (kWh), and five euro figures, each rounded half away from zero to 5 decimals at the moment it is calculated:
+⚠ **As built 2026-10-13 by [DEC-180] (5).** The position is saved **per customer per quarter-hour** (`trading.hedge_position_interval`) as the output of one pure function, `CustomerDayCosts.Calculate`, over `HedgePositionCalculator`. A row holds the metered usage, the hedge energy, covered, short and long energy (kWh), and five euro figures, each rounded half away from zero to 5 decimals at the moment it is calculated:
 
 ```
 blockEnergy      = sign(b) × power_kW(b) × 0.25                    // kWh, per block and quarter-hour

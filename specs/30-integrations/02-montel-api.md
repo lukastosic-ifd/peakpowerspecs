@@ -6,7 +6,7 @@ PeakPower's own Montel service is one of the four things [DEC-96] leaves to be r
 
 > ⚠ **Amended 2026-10-01 by [DEC-169]** — the second use below, **day-ahead prices, no longer comes from Montel**: it is read from the ENTSO-E Transparency Platform, see [06 ENTSO-E](06-entsoe-day-ahead.md). Forward price indications stay on Montel.
 
-> **Specified 2026-10-13 by [DEC-180] (2), (10).** A quote is stored as it arrives: `raw_price numeric(12,4)`, unit `MWH`. The port still hands in a price per MWh and an observation in any other unit is refused. Every reader gets euro per kWh at 5 decimals from the view and the function.
+> **As built 2026-10-13 by [DEC-180] (2), (10).** A quote is stored as it arrives: `raw_price numeric(12,4)`, unit `MWH`. The port still hands in a price per MWh and an observation in any other unit is refused. Every reader gets euro per kWh at 5 decimals from the view and the function.
 
 Two distinct uses of one provider:
 

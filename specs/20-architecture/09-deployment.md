@@ -496,7 +496,7 @@ a cross-region restore from geo-redundant backup — hours, not minutes. Whether
 | Wallet ledger mismatch | any | **P1** |
 | Unconfirmed accepted trade | > 4 h | P2 |
 | **Break-glass enabled or used [DEC-53]** | any — success or failure | **P1**, over this path and never over the notification outbox. [Security](07-security.md) §3.2.3 |
-| **Day-ahead curve incomplete** at the completeness check | any, 22:00 **[DEC-36]** | **P1** — a missing price blocks invoicing for the day **[F08-R07]**, and the manual-entry window closes at midnight ⚠ **[DEC-180] (7): specified as the alert kind `DAY_AHEAD_PRICES_MISSING`, from 15:00 Amsterdam, a row and a panel on Data & feeds; it pages nobody and there is no manual-entry window.** |
+| **Day-ahead curve incomplete** at the completeness check | any, 22:00 **[DEC-36]** | **P1** — a missing price blocks invoicing for the day **[F08-R07]**, and the manual-entry window closes at midnight ⚠ **[DEC-180] (7): built as the alert kind `DAY_AHEAD_PRICES_MISSING`, from 15:00 Amsterdam, a row and a panel on Data & feeds; it pages nobody and there is no manual-entry window.** |
 | Montel feed stale | > 30 min in market hours | P2 |
 | **SendGrid delivery failures [DEC-48]** | > 5% of a run, or any bounce on an invoice | P2, **P1 if offer notifications are affected** — a 30-minute window is not survivable by a retry |
 | Odoo push failing | > 3 consecutive | P2 |

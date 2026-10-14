@@ -71,7 +71,7 @@ the data underneath it is trustworthy.
 > no rota. None of them adds a task; all three move risk past go-live, where it is someone's to carry
 > rather than the plan's to absorb. §10.
 
-> **Updated 2026-10-13: [DEC-180].** Trading is stored, served and shown in kW, kWh and €/kWh, on a 10 kW grid. Usage costs and the hedge position are saved per quarter-hour and recalculated when a price, a reading or a block changes. The day-ahead feed asks stored days again once a day, records its runs, shows its status on Data & feeds and raises an alert when tomorrow's prices are missing; that brings forward the monitoring F08 placed in phase 3. All of it lands at once, as three pull requests (specifications, web, platform). No effort percentage is recomputed.
+> **Updated 2026-10-13: [DEC-180].** Trading is stored, served and shown in kW, kWh and €/kWh, on a 10 kW grid. Usage costs and the hedge position are saved per quarter-hour and recalculated when a price, a reading or a block changes. The day-ahead feed asks stored days again once a day, records its runs, shows its status on Data & feeds and raises an alert when tomorrow's prices are missing; that brings forward the monitoring F08 placed in phase 3. All of it lands at once, as three pull requests (specifications, web, platform). No effort percentage is recomputed. ⚠ **2026-10-14, [DEC-181]:** a displayed volume is labelled kW, the same number.
 
 ---
 

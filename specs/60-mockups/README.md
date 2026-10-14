@@ -29,6 +29,8 @@ provider now redirects to.
 
 **Revised again 2026-10-13** for **[DEC-180]**: twelve screens are regenerated with power in kW, energy in kWh and prices in €/kWh (customer-dashboard, ean-list, ean-detail, chart-day-view, chart-month-view, price-indications, trade-offer-countdown, trade-history, wallet-ledger, employee-home, employee-trade-desk and employee-trade-detail). Three keep their units on purpose and say why in their rows: trade-wizard (retired by [DEC-178]), invoice-detail and employee-invoice-run (the invoice pages are specified, not built, and are not converted by [DEC-180]). Only unit strings and the numbers that carry them changed; the amounts in euro are the same to the cent.
 
+**Revised again 2026-10-14** for **[DEC-181]**: nine screens are regenerated with every energy volume labelled kW, the same number (customer-dashboard, ean-list, ean-detail, chart-day-view, chart-month-view, trade-offer-countdown, trade-history, employee-trade-desk and employee-trade-detail). Prices keep €/kWh and powers kW. invoice-detail and employee-invoice-run keep their units (the invoice pages are specified, not built). Only unit strings changed.
+
 ---
 
 ## Customer portal

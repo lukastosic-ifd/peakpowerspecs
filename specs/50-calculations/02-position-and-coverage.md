@@ -366,7 +366,7 @@ coverageRatio(P,m) = Σ_i∈P covered(i,m)  /  Σ_i∈P max( netUsage(i,m), 0 )
 | Per-interval stacked area: covered / uncovered | Chart body |
 | Block step-line overlay | Chart body |
 
-⚠ **[DEC-180] (11): the volumes of this table are printed in kWh.**
+⚠ **[DEC-180] (11): the volumes of this table are printed in kWh.** ⚠ **[DEC-181]: labelled kW, the same number.**
 
 See the [consumption chart mockup](../60-mockups/README.md).
 

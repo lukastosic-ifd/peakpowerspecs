@@ -129,7 +129,7 @@ The consolidated register. Every **[OQ-nn]** reference in this set resolves here
 - **MUST / SHOULD / MAY** follow RFC 2119 meaning.
 - All times are **Europe/Amsterdam** unless a document explicitly says UTC.
 - Money is **EUR**, stored as `numeric(18,6)`, presented at 2 decimals. A **calculated cost** is rounded to 5 decimals, half away from zero, when it is calculated, and stored as `numeric(p,5)` **[DEC-180]**.
-- Energy is **kWh**, power is **kW** and a price is **euro per kWh with five decimals**: in storage, on the wire and on every screen **[DEC-180]**.
+- Energy is **kWh**, power is **kW** and a price is **euro per kWh with five decimals**: in storage, on the wire and on every screen **[DEC-180]**. ⚠ **[DEC-181]:** on screen and in mails an energy volume is labelled **kW**, the same number; storage and the wire stay kWh.
 - Minimum and increment for a requested volume are **10 kW** **[DEC-180]**, the 0,01 MW of **[DEC-70]**.
 - What an external source sent is kept as received (a Montel quote per MWh), and the invoice and energy-tax pages, which are specified and not built, still say MWh and €/MWh **[DEC-180]** (2).
 - Prices, balances and pushed amounts are **VAT-exclusive** **[DEC-26]**, **[DEC-76]**; the one

@@ -715,7 +715,7 @@ CREATE TABLE customer.onboarding_application (
     registered_address   jsonb,
     industry             varchar(60),
     flow_direction       text,                      -- steps 5-6: CONSUMPTION | PRODUCTION | BOTH
-    volume_band          text,   -- UP_TO250_MWH … ABOVE2500_MWH: identifiers, kept; their labels are in kWh [DEC-180] (11)
+    volume_band          text,   -- UP_TO250_MWH … ABOVE2500_MWH: identifiers, kept; their labels are in kWh [DEC-180] (11), printed kW [DEC-181]
     iban                 varchar(34),               -- steps 6-7
     bank_account_holder  varchar(200),
     bank_verified_at     timestamptz,

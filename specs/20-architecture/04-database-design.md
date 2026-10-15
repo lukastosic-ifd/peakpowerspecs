@@ -24,7 +24,7 @@ and an entirely avoidable one.
 | Schema | Contents |
 | --- | --- |
 | `customer` | customer companies, **accounts**, **bank accounts [DEC-71]**, ~~**approval requests [DEC-71]**~~ *(never built; struck 2026-10-12, [DEC-179])*, metering points, **refresh tokens [DEC-117]**, **password-reset tokens [DEC-113]**, **onboarding applications [DEC-113]** |
-| `metering` | **BRPs [DEC-69]**, **the shared EAN pool [DEC-113]**, inbound messages, interval data versions, readings, imbalance, data state, **saved usage costs, the recalculation queue and its check runs [DEC-180]** |
+| `metering` | **BRPs [DEC-69]**, ~~**the shared EAN pool [DEC-113]**~~ ⚠ removed by [DEC-182] (2), inbound messages, interval data versions, readings, imbalance, data state, **saved usage costs, the recalculation queue and its check runs [DEC-180]**, **EDSN master data and grid-operator names [DEC-182]** |
 | `market` | peak calendars, calendar intervals, price indications, **the indication markup [DEC-80]**, day-ahead prices, **day-ahead feed runs [DEC-180]** |
 | `trading` | trades, ~~lines~~ connections, offers, events, blocks, ~~allocations~~, ~~**four-eyes thresholds [DEC-33]**~~ ⚠ **Built as designed by [DEC-167]** — ⚠ four tables (amended 2026-09-30, [DEC-167] (16)) and one sequence, §3.4.4; migration 30 (⚠ five from migration 32, `trade_desk_notice`, owner-only, [DEC-168]), **saved hedge positions [DEC-180]**. |
 | `wallet` | wallets, entries, reservations, payments, **deposit intents, incoming payments [DEC-106]**, **withdrawal requests [DEC-83]** |
@@ -76,6 +76,8 @@ pair explicitly, so that a future key in the same direction to a non-reference t
 | ~~`customer.approval_request`~~ | ~~**Hundreds**~~ | ~~Only companies with `four_eyes_enabled` write rows, and only for five action types **[DEC-71]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — the table was never built. |
 | `wallet.deposit_intent`, `wallet.incoming_payment` | **Thousands** | One intent per deposit the customer starts; one row per credit line on the feed, matched or not **[DEC-106]** |
 | `metering.brp` | **Single digits** | Reference data. PVNed is row one **[DEC-69]**, **[F02-R44]** |
+| `metering.connection_master_data` | One row per EAN met, no purge (no size promised) | ⚠ **New [DEC-182] (7)** — one row for each EAN a search, an attach, a popup or the backfill has met, households included; retention is [OQ-122] |
+| `metering.grid_operator` | About 30 rows | ⚠ **New [DEC-182] (8)** — the grid-operator mapping list plus the codes asked once; a refresh upserts and deletes nothing |
 
 At 500 metering points that is roughly 17 M interval rows a year — comfortable for PostgreSQL with
 monthly partitions. **[DEC-09]** holds until the metering-point count reaches four digits.
@@ -478,6 +480,7 @@ CREATE TABLE customer.metering_point (
     grid_operator  text,
     capacity_kw    numeric(12,3),   -- ⚠ stale: built as numeric(18,6) (corrected 2026-10-13, [DEC-180])
     address        jsonb,
+    edsn_verified_at timestamptz,   -- ⚠ [DEC-182] (6), migration 44: null = "not verified by EDSN"
     name           text,
     description    text,
     created_at     timestamptz NOT NULL DEFAULT now(),
@@ -762,6 +765,7 @@ CREATE TABLE metering.brp (
     UNIQUE (adapter_key, code)
 );
 
+-- ⚠ Removed 2026-10-15 by [DEC-182] (2), migration 45 RemoveEanPool: claimed rows copied to audit.audit_record (EAN_POOL_CLAIM), then the table is dropped.
 -- ⚠ Added 2026-09-03  [DEC-113]. The shared pool of unclaimed grid connections both portals draw
 -- from. Self-service onboarding needs somewhere to claim a connection FROM, and a customer cannot
 -- be handed a connection that belongs to nobody unless the pool exists as reference data.
@@ -878,6 +882,68 @@ row one **[F02-R44]**. Three schema consequences, all small:
 that authenticated the request**, never by a field in the payload ([Security](07-security.md) §4.1);
 storing the secret here would put every BRP's credential one `SELECT` away from every reader of
 reference data.
+
+#### 3.2.2 EDSN master data and grid-operator names — [DEC-182], added 2026-10-15
+
+⚠ **Specified 2026-10-15 by [DEC-182] (7), (8), (13); not built.** Two tables in the `metering` schema, created by migration 44 (`EanSearchMasterData`, a working name). Neither has a `customer_id` or a row-security policy, on purpose (§6).
+
+```sql
+-- ⚠ New 2026-10-15 [DEC-182] (7). One row per EAN that a search, an attach, a popup or the backfill has met.
+CREATE TABLE metering.connection_master_data (
+    ean                varchar(18) NOT NULL,
+    searched_at        timestamptz,                  -- last time an EDSN search returned this EAN
+    search_hit         jsonb,                        -- the search result of that search
+    fetched_at         timestamptz,                  -- last SUCCESSFUL master-data fetch, zero items included
+    item_count         integer,                      -- items EDSN returned over every page read (0 = no master data)
+    pages_complete     boolean,                      -- false when paging stopped early
+    item_id            bigint,                       -- the chosen item
+    mutation_date      date,                         -- its mutationDate: the popup's "as of"
+    mutation_type      text,
+    dossier_id         text,
+    received_date      timestamp without time zone,  -- as EDSN sent it, no offset
+    external_reference text,
+    update_data        text,                         -- the chosen item's updateData, VERBATIM
+    facts              jsonb,                        -- parsed from update_data; can be re-derived without EDSN
+    gps_latitude       numeric(9,6),                 -- from a Pro6pp address suggestion, for one address
+    gps_longitude      numeric(9,6),
+    gps_address_key    text,                         -- the normalised address the coordinates belong to
+    gps_recorded_at    timestamptz,
+    CONSTRAINT pk_connection_master_data PRIMARY KEY (ean),
+    CONSTRAINT ck_connection_master_data_ean  CHECK (ean ~ '^[0-9]{18}$'),
+    CONSTRAINT ck_connection_master_data_item CHECK ((item_id IS NULL) = (update_data IS NULL)),
+    CONSTRAINT ck_connection_master_data_gps  CHECK ((gps_latitude IS NULL) = (gps_longitude IS NULL))
+);
+
+-- ⚠ New 2026-10-15 [DEC-182] (8). The grid-operator mapping list, plus the codes asked once.
+CREATE TABLE metering.grid_operator (
+    code          varchar(13) NOT NULL,              -- the mapping's eanSubOperator
+    name          text NOT NULL,                     -- nameSubOperator: what the popup shows
+    operator_code varchar(13) NOT NULL,              -- eanOperator
+    operator_name text NOT NULL,                     -- nameOperator
+    source        text NOT NULL,                     -- which endpoint last confirmed it
+    refreshed_at  timestamptz NOT NULL,
+    CONSTRAINT pk_grid_operator PRIMARY KEY (code),
+    CONSTRAINT ck_grid_operator_code   CHECK (code ~ '^[0-9]{13}$'),
+    CONSTRAINT ck_grid_operator_source CHECK (source IN ('LIST', 'LOOKUP'))
+);
+```
+
+No secondary index: every read is by primary key, and the backfill joins from `customer.metering_point`, whose EAN index exists. A refresh upserts every listed row and deletes nothing, so a code once named stays named; a sub-operator the list files under an unexpected parent is stored as given.
+
+**Grants.** `REVOKE ALL` on both tables from both application roles first (migration 2's default privileges grant everything on `CREATE TABLE`), then:
+
+| Table | `app_customer_role` | `app_employee_role` |
+| --- | --- | --- |
+| `metering.connection_master_data` | `SELECT` | `SELECT, INSERT, UPDATE` |
+| `metering.grid_operator` | `SELECT` | `SELECT, INSERT, UPDATE` |
+
+No `DELETE` for either role. The new column `customer.metering_point.edsn_verified_at` needs no grant: table privileges cover added columns. The customer role keeps table-level `UPDATE` on `customer.metering_point` for the rename, so a SQL actor holding it could set `edsn_verified_at` on its own rows; a column-level `REVOKE` does not narrow a table-level grant in PostgreSQL. That is accepted: it forges a back-office mark on the actor's own connection only, and the migration says so.
+
+**Who writes.** One store, three statements, each an `INSERT … ON CONFLICT (ean) DO UPDATE` that touches only its own columns (the search hit, the master data, the coordinates), so concurrent searches never raise a unique violation inside a request transaction, and each guarded on its own timestamp so an older fetch finishing late never overwrites a newer one. The grid-operator store upserts likewise. The customer API writes through the owner path after its endpoint has decided the write; the employee API connects as its own role; the Worker as the owner.
+
+**The latest item ([DEC-182] (7)).** Keep the items whose mutation date is not null and on or before today in Amsterdam. Order them by mutation date, then received date, then id, all descending. Take the first, or none. Whether its `updateData` parsed plays no part: an unreadable latest item is still the latest, is stored raw with `facts` null, and the popup then shows only the search fields with the "no master data" notice, never an older item as current.
+
+**The 24-hour rule.** A popup refetches when `fetched_at` is null or older than 24 hours; a failed refetch serves the stored copy and says so, and with nothing stored the popup says EDSN could not be reached. A search skips an EAN fetched within the last five minutes (`Edsn:MasterDataRecentWindow`); an attach always refetches.
 
 ### 3.3 Market — the interval spine
 
@@ -2157,12 +2223,16 @@ policies sit on. Slice 1 is local-only with no deployment, so the two login pass
 the migration with a comment saying exactly that. **[OQ-102]** owns them before anything is deployed
 anywhere.
 
+⚠ **Amended 2026-10-15 by [DEC-182]:** `metering.ean_pool` is gone (migration 45); two new tables are exempt, below.
+
 ⚠ **Two tables are deliberately exempt, and both are named in the guard rather than hidden from it**
 (added 2026-09-03). An exemption a guard can see is reviewable; a table no guard ever looks at is not.
 
 | Table | Why it has no policy | What reopens it |
 | --- | --- | --- |
-| `metering.ean_pool` **[DEC-113]** | Shared reference data. It has **no `customer_id`** and no tenant to isolate to: an unclaimed entry belongs to nobody and must be visible to every customer at once, so a `column = app.customer_id` policy would evaluate false on every row and hide the whole pool from everyone. A **claimed row leaves the pool** — what keeps one customer's choices private from another is that the API only ever selects `claimed_at IS NULL`, so a claimed row is invisible to every customer including its claimant. `metering.brp` is the same shape and predates it | The pool gaining a customer-scoped read — a "connections I claimed" screen would be one |
+| `metering.ean_pool` **[DEC-113]** ⚠ **Removed by [DEC-182] (2).** | Shared reference data. It has **no `customer_id`** and no tenant to isolate to: an unclaimed entry belongs to nobody and must be visible to every customer at once, so a `column = app.customer_id` policy would evaluate false on every row and hide the whole pool from everyone. A **claimed row leaves the pool** — what keeps one customer's choices private from another is that the API only ever selects `claimed_at IS NULL`, so a claimed row is invisible to every customer including its claimant. `metering.brp` is the same shape and predates it | The pool gaining a customer-scoped read — a "connections I claimed" screen would be one |
+| `metering.connection_master_data` **[DEC-182]** | A row describes one grid connection as EDSN registers it, keyed by EAN. It belongs to no company: several companies hold one EAN one after another, and many EANs are held by none, so a tenant policy would hide every row from every caller. No application role may write directly (the customer role reads only; the customer API writes through the owner path once its endpoint has decided), and a customer reads master data through exactly three routes: the details of a connection held today, and the eligibility check and the add after the full proof of DEC-182 (5) | A fourth customer route that reads the table or asks EDSN for master data; any of the three returning a master-data field beyond the ones fixed for it; the eligibility check or the add revealing anything before the full proof |
+| `metering.grid_operator` **[DEC-182]** | Public reference data: the names of grid operators by party code, the same for every caller. Writes are as above | A column that names a customer or a connection |
 | `customer.onboarding_application` **[DEC-113]** | Its `customer_id` is **nullable** and null for the whole life of a draft, and **every path is anonymous**: a prospect has no company and no token, so there is no `app.customer_id` for a policy to key on. A row is addressed by its own id — a capability, not a query | An authenticated read of a *signed* application, e.g. a customer viewing their own onboarding history |
 
 ⚠ **How the coverage guards discover a table, and why it had to change** (added 2026-09-03).
@@ -2172,6 +2242,8 @@ caught. Both once matched a property named **exactly** `CustomerId`; both now ma
 **ends** in it, which is what makes `ean_pool.claimed_by_customer_id` visible to them at all. Under
 the exact-name predicate that table would have been invisible rather than exempt — and an invisible
 table is not a decision, it is an omission nobody made.
+
+⚠ **[DEC-182]:** neither new table ends in customer_id, so neither guard discovers them: they are pinned instead by a schema test (no policy, row security off, no customer column, the customer role cannot write) and by tools/verify-migrator.sh. ean_pool was the last live table with a suffix-only customer column; a synthetic test keeps the suffix half of both guards honest.
 
 ⚠ **`refresh_token` and `password_reset_token` were scoped by ACCOUNT, not by company**, so neither
 carried a `customer_id` and neither was exempt: migration 3 gave each a policy whose predicate joined
@@ -2493,6 +2565,57 @@ The landing as a whole has six tests, L1 to L6: all four migrations apply in one
 | 11 | What the deployed database holds: offers in flight, prices with more than 2 decimals per MWh, gaps in the price table, whether a token is set | Nothing. The pre-flight queries exist (Q0 to Q16, O1 to O4 in the platform's `DEPLOYING.md`) and ran against a seeded database; their answers on the VM do not exist | **Open.** Pre-flight Q0 to Q16 and O1 to O4, run at the landing |
 | 12 | The twelve defaults of [DEC-180] (15), (a) to (l) | All twelve are built as defaults ((l) is recorded as not decided). **No confirmation or change has been received from the product owner as of 2026-10-14**; the defaults stay marked as taken | **Open.** The product owner |
 | 13 | Web wording and mechanics: the sentence for a partial total; the re-read schedule; how many days back the position is re-read; the typed-price and typed-volume parsers; the axis of the day-ahead chart; the card's source line for a simulated source; what an open page says after a deploy; the desk's "Whole MW" badge; whether the two status panels poll | **Built as designed (checked 2026-10-14 against the web reports W4 to W9 and the code).** The partial-total sentence exists in both languages and names no cause; the schedule is a 30-second tick, a waiting day read every 30 seconds six times and then every 5 minutes, and seven days back; the price parser takes at most five decimals, refuses 10 or more and suggests the figure divided by 1000 only when that is a valid price; the volume entry takes whole kW, so `1.000` is one thousand and `0.200` is refused; the day-ahead axis prints round ticks; a price prints in three spellings (`0,09475`, `€ 0,09475`, `€ 0,09475 / kWh`, `units.ts`); the cost chart's accessible name no longer says "priced"; the Data & feeds sentence no longer counts three panels; the card's source line for a simulated source reads the simulated sentence and names no ENTSO-E; an open page is not told about a deploy (no version check, [DEC-180] (14)); the desk's badge is gone; the two status panels do not poll. **Differences and gaps:** the day-ahead chart's Y gutter widens for a label that needs it (`−0,00004`), and the charts stacked on a page (Volume, connection detail) share one Y gutter, so a six-digit kWh tick (`300.000`) prints whole; the customer trades list Status column is wider (212 px) and Data & feeds stacks its two lower panels below 1320 px; a unit keeps its case in the Volume table head and in the back-office capacity label, which now reads "Capacity (kW)" / "Capaciteit (kW)" (the unit sits in its own span that the capitals rule leaves alone). The end-to-end suite and the real-API trial were not run | **Closed, with the gaps above.** Web tasks W4 (re-read, partial total), W5 (entry fields, badge), W6 (axis, source line), W8 (panels), W9 (browser pass) |
+
+### 7.13 The 2026-10-15 EAN search migrations — [DEC-182], added 2026-10-15
+
+⚠ **Two migrations, 44 and 45 (`EanSearchMasterData` and `RemoveEanPool`, working names), in the platform lane, [DEC-182].** Specified 2026-10-15; not built. Each is written to be correct for zero rows and for many, each has a real `Down()`, and neither is rolled back in production: the platform rolls forward.
+
+**1. The two.**
+
+| # | Name | Up | Down | Runtime |
+| --- | --- | --- | --- | --- |
+| 44 | `EanSearchMasterData` | create `metering.connection_master_data` and `metering.grid_operator` with their checks; `REVOKE ALL` then the grants of §3.2.2; add `customer.metering_point.edsn_verified_at timestamptz NULL`; the row-security exemption argument of §6 as the migration's comment | `REVOKE ALL` on both; drop both tables; drop the column (a stated data loss) | instant: two empty tables and a nullable column |
+| 45 | `RemoveEanPool` | copy every claimed pool row into `audit.audit_record`, then drop `metering.ean_pool` | recreate the table as migrations 5 and 13 left it, restore the claimed rows from the audit rows, delete those audit rows | proportional to the claimed pool rows; instant |
+
+**2. Migration 45.**
+
+```sql
+-- ⚠ [DEC-182] (2). Claimed rows keep who claimed which EAN and when; unclaimed rows record nothing.
+INSERT INTO audit.audit_record (id, occurred_at, actor, action, entity_type, entity_id, customer_id, before, after)
+SELECT gen_random_uuid(), p.claimed_at, 'system:migration', 'EAN_POOL_CLAIM', 'EanPoolEntry', p.id,
+       p.claimed_by_customer_id, NULL,
+       jsonb_build_object(
+         'ean', p.ean, 'claimedAt', p.claimed_at, 'claimedByCustomerId', p.claimed_by_customer_id,
+         'commodity', p.commodity, 'gridOperator', p.grid_operator, 'capacityKw', p.capacity_kw, 'address', p.address,
+         'meteringPointId', (SELECT mp.id FROM customer.metering_point mp
+                              WHERE mp.ean = p.ean AND mp.customer_id = p.claimed_by_customer_id
+                              ORDER BY mp.valid_from DESC LIMIT 1),
+         'note', 'metering.ean_pool removed by DEC-182; this row keeps who claimed which EAN and when')
+FROM metering.ean_pool p
+WHERE p.claimed_at IS NOT NULL;
+
+DROP TABLE metering.ean_pool;
+```
+
+The actor `system:migration` is the house spelling for audit rows a migration writes. The migration runs as the owner, so row security does not filter the insert, and each row carries its customer id so each company's audit view sees its own claim. A claim that [DEC-151] had already released cleared both columns and is not recoverable. `Down()` recreates `metering.ean_pool` exactly as migrations 5 and 13 left it (columns, primary key, the unique EAN index, the partial claimed-at index, `REVOKE ALL`, `SELECT, UPDATE` for the customer role, `SELECT` and a column `UPDATE` on the two claim columns for the employee role), re-inserts the claimed rows from the audit rows this migration wrote (a SQL-null address was written as a JSON null, so it is turned back with `NULLIF`), then deletes exactly those audit rows by actor and action. Up, Down, Up is idempotent. Unclaimed rows are not restored.
+
+**3. Why 44 before 45.** The new tables exist before the old one goes, and every task in between builds against a schema that has both.
+
+**4. The pins that move.** `tools/verify-migrator.sh` (the ordered list of migrations, the pool grants replaced by the new grants, `ean_pool` absent, `edsn_verified_at` nullable, row security off on both new tables); the migration-count tests; the EF model snapshot, which loses `EanPoolEntry`. Migrations 5 and 13 and their designers stay as history.
+
+**5. To be confirmed at build.** The one place this table lives; [DEC-182] (20) points here.
+
+| Not known | What this page says now | Answered by |
+| --- | --- | --- |
+| Whether the product owner's EDSN preprod address answers from the VM | It is the built-in default of `Edsn:BaseUrl` and `EDSN_BASE_URL`; after the deploy one signed-in search must not answer 503 | The operator, at the landing |
+| The master-data page parameter | `pageNumber`, assumed. Probed 2026-10-15: the endpoint ignores `pageNumber`, `page`, `itemsPerPage` and `pageSize` and answers page 1 with up to 100 items and its `maximumPages`; later pages are asked for only when that is more than 1 | P1 |
+| Whether the search reply carries the house-number extension, and whether an empty extension matches every suffix | Neither is assumed; the master data's extension is preferred for the address match, the search reply's is the fallback | P1, P6 |
+| The problem type and the eligibility outcome for a company that is not active | Named at build; the add refuses with a 409 that points to PeakPower | P6 |
+| The migration ids of 44 and 45 | Working names; the timestamps come from the build | P2, P8 |
+| The operation, schema and route counts of both documents | Counted from the contract at build | P8, W10 |
+| The print proof of the popup in both portals | Two A4 pages at most | W6, W8 |
+| Whether the VM holds pool rows or real EANs | Not known; the migration and the backfill are right for zero and for many; run the counts at the landing | The operator |
+| The product owner's confirmation of the defaults of [DEC-182] (17), (a) to (u) | All built; none blocks | The product owner |
 
 ## 8. Retention & archival
 

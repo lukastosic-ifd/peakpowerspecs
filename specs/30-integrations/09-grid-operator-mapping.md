@@ -1,6 +1,6 @@
 # Integration — Grid-operator mapping
 
-**Direction:** outbound, daily and once per unknown code · **Protocol:** REST, JSON over HTTPS · **Criticality:** low — a name falls back to the code
+**Direction:** outbound, daily and once per unknown code · **Protocol:** REST, JSON over HTTPS · **Criticality:** low: a name falls back to the code
 
 > **Specified 2026-10-15 by [DEC-182] (8).** PeakPower's own service names grid operators by their 13-digit party code. The platform stores its list in `metering.grid_operator`, refreshes it once a day in the Worker and on demand from the back office, and looks up a code missing from the list once. Every party code the EAN-detail popup shows is named this way; a code the service does not know shows as the code with "name not known". Nothing here is built yet.
 

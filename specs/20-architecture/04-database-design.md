@@ -76,8 +76,8 @@ pair explicitly, so that a future key in the same direction to a non-reference t
 | ~~`customer.approval_request`~~ | ~~**Hundreds**~~ | ~~Only companies with `four_eyes_enabled` write rows, and only for five action types **[DEC-71]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — the table was never built. |
 | `wallet.deposit_intent`, `wallet.incoming_payment` | **Thousands** | One intent per deposit the customer starts; one row per credit line on the feed, matched or not **[DEC-106]** |
 | `metering.brp` | **Single digits** | Reference data. PVNed is row one **[DEC-69]**, **[F02-R44]** |
-| `metering.connection_master_data` | One row per EAN met, no purge (no size promised) | ⚠ **New [DEC-182] (7)** — one row for each EAN a search, an attach, a popup or the backfill has met, households included; retention is [OQ-122] |
-| `metering.grid_operator` | About 30 rows | ⚠ **New [DEC-182] (8)** — the grid-operator mapping list plus the codes asked once; a refresh upserts and deletes nothing |
+| `metering.connection_master_data` | One row per EAN met, no purge (no size promised) | ⚠ **New [DEC-182] (7):** one row for each EAN a search, an attach, a popup or the backfill has met, households included; retention is [OQ-122] |
+| `metering.grid_operator` | About 30 rows | ⚠ **New [DEC-182] (8):** the grid-operator mapping list plus the codes asked once; a refresh upserts and deletes nothing |
 
 At 500 metering points that is roughly 17 M interval rows a year — comfortable for PostgreSQL with
 monthly partitions. **[DEC-09]** holds until the metering-point count reaches four digits.

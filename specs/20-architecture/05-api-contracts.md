@@ -180,10 +180,10 @@ the wizard, not an omission in this table.
 | `GET` | `/metering-points/{id}` | Detail with data-quality summary |
 | `PATCH` | `/metering-points/{id}/naming` | Set friendly name and description |
 | `GET` | `/ean-pool` | ~~⚠ **Added 2026-09-03 [DEC-113].** The unclaimed pool. It is **shared reference data**, not tenant-scoped — two different companies must receive byte-identical bodies — so it has its own tenancy classification rather than being labelled tenant-scoped and lying about it. It still requires a token~~ ⚠ **Removed 2026-10-15 by [DEC-182] (2).** |
-| `GET` | `/connection-search` | ⚠ **New 2026-10-15 [DEC-182]** — search EDSN by EAN or by postcode, house number and extension; any signed-in member; shared reference data. |
-| `GET` | `/address-suggestions` | ⚠ **New 2026-10-15 [DEC-182]** — Pro6pp address suggestions for the search box; any signed-in member; never an error for text it cannot read. |
-| `GET` | `/metering-points/eligibility` | ⚠ **New 2026-10-15 [DEC-182]** — whether the company can add an EAN, with EDSN's hints beside the production question; company admins only. |
-| `GET` | `/metering-points/{id}/details` | ⚠ **New 2026-10-15 [DEC-182]** — the EAN-detail popup of a connection the company holds today; any other id is the constant 404. |
+| `GET` | `/connection-search` | ⚠ **New 2026-10-15 [DEC-182]:** search EDSN by EAN or by postcode, house number and extension; any signed-in member; shared reference data. |
+| `GET` | `/address-suggestions` | ⚠ **New 2026-10-15 [DEC-182]:** Pro6pp address suggestions for the search box; any signed-in member; never an error for text it cannot read. |
+| `GET` | `/metering-points/eligibility` | ⚠ **New 2026-10-15 [DEC-182]:** whether the company can add an EAN, with EDSN's hints beside the production question; company admins only. |
+| `GET` | `/metering-points/{id}/details` | ⚠ **New 2026-10-15 [DEC-182]:** the EAN-detail popup of a connection the company holds today; any other id is the constant 404. |
 | `GET` | `/metering-points/{id}/data-quality` | Per-date data state for a range |
 
 ⚠ **As built 2026-10-01, [DEC-169] (4) — `displayLabel` is the name or the unspaced EAN.** The metering-point read models carry `displayLabel` = `name ?? ean` with the EAN as **raw digits, no spaces**, and `ean` is the unspaced EAN; `eanDisplay` (grouped) stays on the wire for the back office but a customer screen no longer prints it. Sorting by `displayLabel` is unchanged.
@@ -1242,11 +1242,11 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET` | `/data-health/quarantine` | Unattached series, including `WRONG_BRP` **[F02-R42]** |
 | `GET` | `/data-health/day-ahead` | ⚠ **New 2026-10-13 [DEC-180] (7), (13)** — the day-ahead feed's status for the Data & feeds screen: latest day stored, days missing, tomorrow, the overdue days, the newest run, the last success, the last failure and the last price change. Any signed-in employee; always 200 |
 | `GET` | `/data-health/saved-costs` | ⚠ **New 2026-10-13 [DEC-180] (7), (13)** — the recalculation of the saved costs and positions: what is waiting, what is failing, whether the seven triggers are in place, the last nightly check. Any signed-in employee; always 200 |
-| `GET` | `/connection-search` | ⚠ **New 2026-10-15 [DEC-182]** — the same search as the customer's, with the holding company, a master-data summary and a pre-fill for the attach form; §3.5. |
-| `GET` | `/address-suggestions` | ⚠ **New 2026-10-15 [DEC-182]** — Pro6pp address suggestions, as for the customer; §3.5. |
-| `GET` | `/connection-details/{ean}` | ⚠ **New 2026-10-15 [DEC-182]** — the EAN-detail popup of any EAN, with the holder and EDSN's support facts; §3.5. |
-| `POST` | `/connection-master-data/backfill` | ⚠ **New 2026-10-15 [DEC-182] (12)** — fetch EDSN details of open connections in batches; §3.5. |
-| `POST` | `/reference-data/grid-operators/refresh` | ⚠ **New 2026-10-15 [DEC-182] (8)** — refresh the grid-operator names now; §3.5. |
+| `GET` | `/connection-search` | ⚠ **New 2026-10-15 [DEC-182]:** the same search as the customer's, with the holding company, a master-data summary and a pre-fill for the attach form; §3.5. |
+| `GET` | `/address-suggestions` | ⚠ **New 2026-10-15 [DEC-182]:** Pro6pp address suggestions, as for the customer; §3.5. |
+| `GET` | `/connection-details/{ean}` | ⚠ **New 2026-10-15 [DEC-182]:** the EAN-detail popup of any EAN, with the holder and EDSN's support facts; §3.5. |
+| `POST` | `/connection-master-data/backfill` | ⚠ **New 2026-10-15 [DEC-182] (12):** fetch EDSN details of open connections in batches; §3.5. |
+| `POST` | `/reference-data/grid-operators/refresh` | ⚠ **New 2026-10-15 [DEC-182] (8):** refresh the grid-operator names now; §3.5. |
 | ~~`GET`~~ | ~~`/ean-pool`~~ | ⚠ **Removed 2026-10-15 by [DEC-182] (2).** |
 | `GET` | `/data-health/summary` | ⚠ **As built, never listed in this table:** the ingestion screen's five stat cards (documents and processing lag today, and the failure, quarantine and silence backlogs) |
 | `GET`/`PUT` | `/reference/peak-calendars` | Calendars |
@@ -1468,9 +1468,9 @@ This is what makes "the customer double-clicked Accept" a non-event.
 | ~~PVNed webhook~~ **BRP webhook, per BRP** | 60 req/min, burst 200 | ⚠ **Amended 2026-08-19 by [DEC-69]** — the limit is **per BRP**, so a noisy adapter cannot throttle a quiet one **[F02-R39]** |
 | Payment webhook | 120 req/min | — |
 | Bank feed webhook | 120 req/min | **[DEC-106]**, **[OQ-93]** |
-| `connection-lookup` | 30 req/min per account (customer), 120 per employee | ⚠ **New 2026-10-15 [DEC-182] (15)** — search, eligibility, add and details (customer); search and details (employee). The platform's first limit |
-| `address-suggestions` | 120 req/min per account (customer), 240 per employee | ⚠ **New 2026-10-15 [DEC-182] (15)** — suggestions |
-| `connection-register-batch` | One at a time per host | ⚠ **New 2026-10-15 [DEC-182] (15)** — the backfill and the grid-operator refresh |
+| `connection-lookup` | 30 req/min per account (customer), 120 per employee | ⚠ **New 2026-10-15 [DEC-182] (15):** search, eligibility, add and details (customer); search and details (employee). The platform's first limit |
+| `address-suggestions` | 120 req/min per account (customer), 240 per employee | ⚠ **New 2026-10-15 [DEC-182] (15):** suggestions |
+| `connection-register-batch` | One at a time per host | ⚠ **New 2026-10-15 [DEC-182] (15):** the backfill and the grid-operator refresh |
 
 Exceeding returns `429` with `Retry-After`. ⚠ **[DEC-182] (15):** the 429 of the three limits above is `application/problem+json` of type `too-many-lookups`.
 

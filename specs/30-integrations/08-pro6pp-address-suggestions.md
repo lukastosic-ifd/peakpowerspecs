@@ -1,6 +1,6 @@
 # Integration — Pro6pp address suggestions
 
-**Direction:** outbound, per keystroke, through the platform · **Protocol:** REST, JSON over HTTPS · **Criticality:** low — search by a full postcode and number, and by EAN, works without it
+**Direction:** outbound, per keystroke, through the platform · **Protocol:** REST, JSON over HTTPS · **Criticality:** low: search by a full postcode and number, and by EAN, works without it
 
 > **Specified 2026-10-15 by [DEC-182] (3), (4).** Pro6pp is a Dutch postcode service. The search box of both portals asks the platform for address suggestions while a postcode and house number are typed; the platform asks Pro6pp and answers a short list. A browser never calls Pro6pp, because the call carries the key. The key is a secret the product owner sets later. Nothing here is built yet.
 

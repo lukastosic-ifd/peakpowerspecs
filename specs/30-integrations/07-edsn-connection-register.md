@@ -1,6 +1,6 @@
 # Integration — EDSN connection register (search and master data)
 
-**Direction:** outbound, on demand · **Protocol:** REST, JSON over HTTPS · **Criticality:** high — no customer can add a connection without it, and staff attach an unconfirmed EAN only through the typed fallback
+**Direction:** outbound, on demand · **Protocol:** REST, JSON over HTTPS · **Criticality:** high: no customer can add a connection without it, and staff attach an unconfirmed EAN only through the typed fallback
 
 > **Specified 2026-10-15 by [DEC-182] (3), (4), (7).** PeakPower asks EDSN, the Dutch central connection register, what it knows about a connection: by its EAN, or by postcode, house number and extension (search), and for the latest master-data update of an electricity connection. The platform alone makes the calls, never a browser. The service PeakPower calls is a **preprod proof of concept** run in front of EDSN; who owns it, what it promises, its production address and whether a processor agreement is needed are [OQ-119]. Nothing here is built yet. Names of settings and tables are the design's working names ([DEC-182] (20)).
 

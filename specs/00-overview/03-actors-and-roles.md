@@ -250,6 +250,9 @@ function set) and [OQ-62] (single region versus warm secondary). See
 | **Bank** | Both | Deposits in, payouts out | ~~No direct integration in the first track. Finance registers received transfers manually or from a statement import. See [OQ-07].~~ ⚠ **Amended 2026-08-19 by [DEC-106]**, **[DEC-83]** — a bank transfer is a **first-class deposit method**: the platform issues a **unique payment reference** per deposit intent, matches the incoming payment on it, credits the wallet and emails the customer that funds were received. IBAN matching **[DEC-61]** is the fallback when the reference is omitted; manual registration is the fallback to that. **Withdrawals are paid out manually** by an employee to the company bank account. [OQ-07] is **closed** — an incoming-payment feed is in scope for wallet deposits only; **which** feed (CAMT.053 import, PSP webhook, SEPA-instant push) is [OQ-93]. |
 | **Customer systems** | Inbound | Customer-initiated | New **[DEC-97]** — interval and aggregated **net usage** per metering point, scoped to the calling company. Nothing priced: no forward prices, no price history, no export of prices **[DEC-81]**. Whether the transport is an API, file/FTP or both is [OQ-95]. |
 | **Notification channels** | Outbound | Rules + events | Email first; in-app notification centre. SMS/push out of scope. ⚠ **Amended 2026-08-19 by [DEC-89]**, **[DEC-111]** — invoice emails are sent by the **bookkeeping program**, so this channel carries the platform's own notifications only (offers, wallet events, alerts) over SendGrid **[DEC-48]**; and an offer notifies the **requester** *(⚠ "plus, under four-eyes, the approving admin" struck 2026-10-12, [DEC-179])*, not every active account. |
+| **EDSN connection register** | Outbound | A search, an attach, a stale popup open, the staff backfill | ⚠ **New 2026-10-15 by [DEC-182]** — the proof-of-concept service in front of EDSN, searched by EAN or by postcode and house number and asked for master-data updates. Called by the platform only, never by a browser; Simulated in `./dev-up`. When it is down a customer cannot search or add and stored details stay viewable; staff attach through the typed fallback. See [07](../30-integrations/07-edsn-connection-register.md). |
+| **Pro6pp** | Outbound | Typing an address (through the platform) | ⚠ **New 2026-10-15 by [DEC-182]** — Dutch address suggestions for the search box. Called by the platform only, with a secret key the product owner sets later; Simulated in `./dev-up`. When it is down or has no key the portals say suggestions are not available and a full postcode with a number, or an EAN, still searches. See [08](../30-integrations/08-pro6pp-address-suggestions.md). |
+| **Grid-operator mapping** | Outbound | Daily from the Worker, on demand, and once per unknown code | ⚠ **New 2026-10-15 by [DEC-182]** — PeakPower's service naming grid operators by their party code. Called by the platform only; Simulated in `./dev-up`. When it is down, names read "name not known" until the next lookup. See [09](../30-integrations/09-grid-operator-mapping.md). |
 
 ## 4. Role & permission model
 
@@ -300,6 +303,10 @@ account of any company can do within its own company.
 | --- | :--: | :--: | :--: | :--: | :--: | :--: |
 | View own company's metering points & data | ✅ | ✅ | — | — | — | — |
 | Edit metering point name/description | ✅ | ✅ | — | ✅ | — | ✅ |
+| Search EDSN for a connection **[DEC-182]** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Add a connection found in EDSN to own company: electricity grootverbruik at the company's own address, company active **[DEC-182]** | — | ✅ | — | — | — | — |
+| See the EAN-detail popup: own connections held today; staff any EAN **[DEC-182]** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Attach a connection from an EDSN search or a typed EAN, refresh grid-operator names, fetch EDSN details **[DEC-182]** | — | — | ✅ | ✅ | ✅ | ✅ |
 | View any customer's data | — | — | ✅ | ✅ | ✅ | ✅ |
 | Create/cancel a trade request for own company | ✅ | ✅ | — | — | — | — |
 | Accept/reject **any** offer of own company — acceptance reserves the deposit at once; rejecting releases nothing because nothing is held *(⚠ the ⚖ and the second pair of eyes struck 2026-10-12, [DEC-179]; any active member may accept [F05-R43])* | ✅ | ✅ | — | — | — | — |
@@ -321,7 +328,7 @@ account of any company can do within its own company.
 | Run / re-run invoicing — produces a **draft** **[DEC-88]** | — | — | — | — | ✅ | ✅ |
 | ~~Finalise & push invoice to Odoo~~ ⚠ **Amended 2026-08-19 by [DEC-88]** — push a **draft** to the bookkeeping program; it checks, numbers and issues. The platform never finalises or mints a number | — | — | — | — | ✅ | ✅ |
 | ~~Credit an invoice~~ ⚠ **Amended 2026-08-19 by [DEC-99]**, **[DEC-88]** — calculate the delta from a late metering correction and push a **correction draft**; the bookkeeping program credits and numbers it | — | — | — | — | ✅ | ✅ |
-| Manage customers & metering points | — | — | — | ✅ | — | ✅ |
+| Manage customers & metering points ⚠ **[DEC-182] (6): attaching uses an EDSN search, or a typed EAN marked "not verified by EDSN".** | — | — | — | ✅ | — | ✅ |
 | **Set an account's admin flag [DEC-71]** ~~and a company's four-eyes mode — subject to rules **FE-1**/**FE-2**~~ *(⚠ no four-eyes mode since 2026-10-12, [DEC-179])* | — | — | — | ✅ | — | ✅ |
 | ~~Manage surcharges per customer~~ ⚠ **Reversed 2026-08-19 by [DEC-73]** — the surcharge left the platform; the bookkeeping program multiplies pushed volume by the topup fee | — | — | — | — | ~~✅~~ | ~~✅~~ |
 | Manage peak calendar & ~~tax tariffs~~ **energiebelasting brackets and per-customer reductions [DEC-74]** | — | — | — | — | — | ✅ |

@@ -143,10 +143,10 @@ export function eanList() {
 }
 
 /* ───────────────────────────────────────────────────── connection detail */
-export function eanDetail() {
+function eanDetailBody() {
   const s = shell({
     portal: 'customer', title: 'Venlo cold store', crumb: 'Connections › EAN 8716 8710 0000 0000 27',
-    nav: NAV, active: 1, user: USER, actions: [{ label: 'Request a trade' }],
+    nav: NAV, active: 1, user: USER, actions: [{ label: 'See details', variant: 'secondary', w: 110 }, { label: 'Request a trade' }],
   });
   let b = s.svg;
   const { cx, cy, cw } = s;
@@ -204,7 +204,142 @@ export function eanDetail() {
     [{ t: 'TRD-1067', mono: true, fill: C.indigo }, { t: 'Base (sell)' }, { t: 'Aug 2026' }, { t: '−40 kW', align: 'end', fill: C.danger }, { t: '€ 0,07820', align: 'end' }, { t: '−29.760,0 kW', align: 'end', fill: C.danger }, { t: 'Confirmed', badge: 'green' }],
   ], { rowH: 38 });
 
-  return svgDoc(b, { label: 'Customer portal — connection detail' });
+  return b;
+}
+
+export function eanDetail() {
+  return svgDoc(eanDetailBody(), { label: 'Customer portal — connection detail' });
+}
+
+/* ──────────────────────────────────────── add a connection (EDSN search) — [DEC-182] */
+// Simulated data only: Simulatiestraat 1, 9999AA PROEFDORP. English labels, as the set does; the slide's Dutch words
+// sit in the glossary and in DEC-182 (9). The built page is "Add a connection" / "Aansluiting toevoegen".
+export function connectionAdd() {
+  const s = shell({
+    portal: 'customer', title: 'Add a connection', crumb: 'Search EDSN by EAN or address',
+    nav: NAV, active: 1, user: USER,
+  });
+  let b = s.svg;
+  const { cx, cy, cw } = s;
+
+  // the search card
+  b += panel(cx, cy, cw, 336, 'Find the connection', {
+    subtitle: 'EDSN is the national register of grid connections. Only large-scale electricity connections can be added.',
+  });
+  b += rect(cx + 18, cy + 76, 760, 38, { fill: C.panel, stroke: C.accent, sw: 2, r: 7 });
+  b += text(cx + 32, cy + 100, '9999AA 1', { size: 13, mono: true });
+  b += button(cx + 794, cy + 76, 100, 'Search', 'primary', { h: 38 });
+  b += text(cx + 18, cy + 142, '3 connections found', { size: 12, fill: C.muted, weight: 600 });
+
+  const rows = [
+    { ean: '871999000000000018', addr: 'Simulatiestraat 1, 9999AA PROEFDORP', meta: 'Electricity · Large-scale (GVB) · Grid operator Enexis Maastricht', ok: true },
+    { ean: '871999000000000025', addr: 'Simulatiestraat 1, 9999AA PROEFDORP', meta: 'Electricity · Small-scale (KVB) · Grid operator Simulatienet Proefdorp', why: 'Not supported: a small-scale connection.' },
+    { ean: '871999000000000032', addr: 'Simulatiestraat 1, 9999AA PROEFDORP', meta: 'Gas · Small-scale (KVB)', why: 'Not supported: a gas connection.' },
+  ];
+  rows.forEach((r, i) => {
+    const y = cy + 154 + i * 56;
+    b += rect(cx + 18, y, cw - 36, 50, { fill: r.ok ? C.accentBg : C.panel2, stroke: r.ok ? C.accent : C.border, sw: r.ok ? 2 : 1, r: 8, opacity: r.ok ? 0.55 : 1 });
+    b += text(cx + 34, y + 21, r.ean, { size: 12.5, mono: true, weight: 600, fill: r.ok ? C.text : C.muted });
+    b += text(cx + 232, y + 21, r.addr, { size: 12.5, weight: 600, fill: r.ok ? C.text : C.muted });
+    b += text(cx + 34, y + 39, r.meta, { size: 11, fill: C.muted });
+    if (r.ok) {
+      b += badge(cx + cw - 36 - 190, y + 15, 'Chosen', 'accent', { w: 70 });
+      b += button(cx + cw - 36 - 100, y + 8, 90, 'Add', 'primary');
+    } else {
+      b += text(cx + cw - 36, y + 21, r.why, { size: 12, fill: C.amber, weight: 600, anchor: 'end' });
+    }
+  });
+
+  // the add card for the chosen result
+  const ay = cy + 352;
+  const lw = 640;
+  b += panel(cx, ay, cw, 380, 'Add 871999000000000018', {});
+  b += text(cx + 18, ay + 66, 'Does this connection produce electricity?', { size: 12.5, weight: 600 });
+  ['It only consumes', 'It produces as well', 'I do not know yet'].forEach((l, i) => {
+    b += circle(cx + 28, ay + 90 + i * 28, 7, { fill: C.panel, stroke: C.border2, sw: 1.5 });
+    b += text(cx + 44, ay + 94 + i * 28, l, { size: 12.5 });
+  });
+  b += field(cx + 18, ay + 196, lw - 36, 'NAME (OPTIONAL)', '', {});
+  b += field(cx + 18, ay + 260, lw - 36, 'DESCRIPTION (OPTIONAL)', '', {});
+  b += button(cx + 18, ay + 322, 170, 'Add this connection', 'disabled');
+
+  const rx = cx + lw + 16;
+  const rw = cw - lw - 16;
+  b += rect(rx, ay + 60, rw - 16, 304, { fill: C.panel2, stroke: C.border, r: 10 });
+  b += text(rx + 18, ay + 86, 'What EDSN says', { size: 13, weight: 700 });
+  b += note(rx + 18, ay + 100, rw - 52, "The address matches your company's billing address.", 'accent');
+  b += statLine(rx + 18, ay + 168, rw - 52, 'Delivery direction', 'Delivery');
+  b += statLine(rx + 18, ay + 196, rw - 52, 'Standard annual feed-in, normal', '0,0 kW');
+  b += statLine(rx + 18, ay + 224, rw - 52, 'Standard annual feed-in, low', '0,0 kW');
+  b += statLine(rx + 18, ay + 252, rw - 52, 'EDSN details as of', '15 Jan 2026');
+  b += text(rx + 18, ay + 296, 'For reference only: your answer is what counts.', { size: 11.5, fill: C.muted });
+
+  return svgDoc(b, { label: 'Customer portal — add a connection (EDSN search)' });
+}
+
+/* ─────────────────────────────────────────── the EAN-detail popup — [DEC-182] */
+// The frame is 1440 x 900 and fixed, so the two tables sit side by side here; the built popup stacks them at 720 px.
+export function eanDetailsPopup() {
+  let b = eanDetailBody();
+  b += rect(0, 0, W, H, { fill: '#0f172a', stroke: null, r: 0, opacity: 0.55 });
+  const px = 130, py = 64, pw = 1180, ph = 740;
+  b += rect(px, py, pw, ph, { fill: C.panel, stroke: C.border2, r: 12 });
+  b += text(px + 28, py + 44, 'EAN: 871999000000000018', { size: 19, weight: 700 });
+  b += text(px + pw - 28, py + 44, '×', { size: 24, fill: C.muted, anchor: 'end' });
+  b += text(px + 28, py + 68, 'Electricity · Large-scale (GVB) · EDSN details as of 15 Jan 2026', { size: 12, fill: C.muted });
+  b += line(px, py + 84, px + pw, py + 84, { stroke: C.border });
+
+  const dash = { t: '—', fill: C.faint };
+  const t1 = [
+    ['Contracting party', 'Vandersteen Koeling B.V.'],
+    ['Grid operator', { t: 'Enexis Maastricht', sub: 'code 8716904000009' }],
+    ['Supplier', { t: '8719328011804 (name not known)' }],
+    ['Metering responsible party', { t: '8719999000008 (name not known)' }],
+    ['Balance responsible party', { t: '8714252005776 (name not known)' }],
+    ['Switchability', dash],
+    ['Address', 'Simulatiestraat 1'],
+    ['Postcode and city', '9999AA PROEFDORP'],
+    ['Country', 'Netherlands'],
+    ['GPS', '52.090737 N, 5.121420 E'],
+    ['Grid area', { t: '871999000000000100', mono: true }],
+    ['BAG', { t: '9999010000000001', mono: true }],
+  ].map(([k, v]) => [{ t: k, fill: C.muted, size: 11.5 }, typeof v === 'string' ? { t: v, weight: 600, size: 12 } : { weight: 600, size: 12, ...v }]);
+  const ty = py + 104;
+  b += table(px + 28, ty, 540, [{ label: 'PARTIES AND ADDRESS', w: 190 }, { label: 'VALUE', w: 350 }], t1, { rowH: 42 });
+
+  const kw = (v) => `${nl(v, 1)}`;
+  const t2 = [
+    ['Contracted capacity', '56', 'kW'],
+    ['Physical capacity', '173', 'kVA'],
+    ['Allocation method', 'Telemetry', ''],
+    ['Profile category', 'E3A (large-scale electricity, telemetric)', ''],
+    ['Standard annual consumption, normal', kw(41067), 'kW'],
+    ['Standard annual consumption, low', kw(41145), 'kW'],
+    ['Standard annual feed-in, normal', kw(0), 'kW'],
+    ['Standard annual feed-in, low', kw(0), 'kW'],
+    ['Renewable energy', '—', ''],
+    ['Subsidy scheme', '—', ''],
+    ['Article 1(2) or (3)', '—', ''],
+    ['Delivery direction', 'Delivery', ''],
+    ['Metering method', 'Telemetric', ''],
+    ['Linked PAP', '—', ''],
+    ['Linked SAPs', '—', ''],
+    ['Delivery status (EDSN)', 'Active', ''],
+    ['Physical status (EDSN)', 'In operation', ''],
+  ].map(([k, v, u]) => [
+    { t: k, fill: C.muted, size: 11.5 },
+    v === '—' ? dash : { t: v, weight: 600, size: v.length > 20 ? 10.5 : 12 },
+    { t: u, fill: C.muted, size: 11.5 },
+  ]);
+  b += table(px + 28 + 564, ty, 560, [{ label: 'ITEM', w: 230 }, { label: 'VALUE', w: 260 }, { label: 'UNIT', w: 70 }], t2, { rowH: 29 });
+  // table 2 carries a dark head, as on the slide
+  b += rect(px + 28 + 564, ty, 560, 30, { fill: C.navBg, stroke: null, r: 6 });
+  [['Item', 12], ['Value', 242], ['Unit', 502]].forEach(([l, dx]) => { b += text(px + 28 + 564 + dx, ty + 19, l, { size: 10.5, fill: '#ffffff', weight: 700 }); });
+
+  b += line(px, py + ph - 70, px + pw, py + ph - 70, { stroke: C.border });
+  b += button(px + pw - 28 - 90, py + ph - 52, 90, 'Close', 'primary');
+  b += button(px + pw - 28 - 90 - 12 - 130, py + ph - 52, 130, 'Save as PDF', 'secondary');
+  return svgDoc(b, { label: 'Customer portal — EAN details popup' });
 }
 
 /* ─────────────────────────────────────────────────────────── day chart */

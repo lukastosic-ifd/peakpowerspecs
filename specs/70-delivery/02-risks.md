@@ -60,6 +60,8 @@ mitigation in the plan, not just an entry in a table.
 
 > **Reviewed 2026-10-13 on [DEC-180].** R-23 is re-pointed a second time; two entries are new, R-36 and R-37, both below 12. The scores of the two new entries are proposed by this change, for the risk owner to confirm.
 
+> **Reviewed 2026-10-15 on [DEC-182].** Three entries are new, R-38 to R-40; scores proposed for the risk owner to confirm.
+
 ---
 
 ## Top risks
@@ -1270,13 +1272,16 @@ in the top section so that the reason each one is small is on the record and can
 | **R-35** | A 30-minute offer dies in one person's calendar | 3 | 2 | 🟡 6 | ⚠ **[DEC-111] reverses [DEC-63]**: only the account that raised the request is notified~~, plus the approving admin when four-eyes is on **[DEC-71]**~~ *(the requester only since 2026-10-12, [DEC-179]; the 30-minute exposure is back at the level [DEC-111] accepted)*. **[DEC-63]**'s rationale was precisely this scenario, and the reversal accepts it deliberately — **[DEC-18]** still lets **any** account of the company accept, so the offer is not unacceptable, only **unseen**. Likelihood 3: a 30-minute window and a meeting are both ordinary. Impact 2: a lapsed offer is re-requestable, and the real loss is the trader's time and a customer's patience. **Raise it if offer expiry becomes a measured cause of lost trades** — G2 in [F05](../10-features/F05-energy-block-trading.md) is where that would show |
 | **R-36** | A price or a volume is typed in the old unit | 2 | 4 | 🟡 8 | ⚠ **New 2026-10-13 [DEC-180].** A new price of 10 €/kWh or more is refused, so 81,25 meant as €/MWh never becomes an offer; 0,2 typed as kW fails the 10 kW grid; the form shows the total before it is sent. What remains is a price under 10 €/MWh typed by habit, which would raise this entry |
 | **R-37** | A saved cost no longer follows its inputs and nobody notices | 2 | 3 | 🟡 6 | ⚠ **New 2026-10-13 [DEC-180].** CHECK constraints on every row; a cost is served only when its recorded inputs equal the ones shown; the nightly check; the status read; the deploy check that pins all seven triggers. A trigger dropped by hand would raise this entry |
+| **R-38** | A preprod register is on the path of every customer add | 4 | 3 | 🟠 12 | ⚠ **New 2026-10-15 [DEC-182].** It sits at the line, not above it: only a customer add depends on it, staff keep the typed fallback, and the address is a setting. Customers add nothing while EDSN is down; a second outage in a quarter would raise it ([OQ-119]) |
+| **R-39** | A connection is attached to the wrong company on a self-declared address | 2 | 4 | 🟡 8 | ⚠ **New 2026-10-15 [DEC-182].** The admin policy, the active-company rule, the address match, an audit row with the matched address and the exclusion constraint; one add at a stranger's address found in the audit would raise this entry ([OQ-121]) |
+| **R-40** | Household master data is stored with no retention rule | 3 | 3 | 🟡 9 | ⚠ **New 2026-10-15 [DEC-182].** Only staff and the current holder read it, and nothing is purged; an answer that the DPIA does not cover it would raise this entry ([OQ-122], [DEC-101]) |
 ---
 
 ## Full register
 
 Sorted by score. IDs are stable and are never reused; the retired entry stays at the foot of the
 table rather than being deleted. **34 live entries after 2026-08-19** (R-01…R-35 less the retired
-R-03), of which **17 score 12 or above**. ⚠ **2026-10-13, [DEC-180]: two more entries, R-36 and R-37, both below 12.**
+R-03), of which **17 score 12 or above**. ⚠ **2026-10-13, [DEC-180]: two more entries, R-36 and R-37, both below 12.** ⚠ **2026-10-15, [DEC-182]: three more entries, R-38 to R-40.**
 
 | ID | Risk | L | I | Score | Mitigation summary | Owner |
 | --- | --- | :-: | :-: | :-: | --- | --- |
@@ -1312,6 +1317,9 @@ R-03), of which **17 score 12 or above**. ⚠ **2026-10-13, [DEC-180]: two more 
 | R-18 | Trade desk response times slip in practice | 2 | 3 | 🟡 6 | Real-time desk; urgency ranking; escalation alerts; measure G2. ⚠ 2026-08-19: [DEC-70]'s 0,01 MW minimum means more, smaller requests per trader-hour | Trading |
 | **R-36** | **A price or a volume is typed in the old unit** | 2 | 4 | 🟡 8 | **New** — [DEC-180] (10): a new price of 10 €/kWh or more is refused, so 81,25 meant as €/MWh never becomes an offer; 0,2 typed as kW fails the 10 kW grid; the form shows the total before it is sent. What remains is a price under 10 €/MWh typed by habit | Trading |
 | **R-37** | **A saved cost no longer follows its inputs and nobody notices** | 2 | 3 | 🟡 6 | **New** — [DEC-180] (4), (6): CHECK constraints on every row; a cost is served only when its recorded inputs equal the ones shown; the nightly check; the status read; the deploy check that pins all seven triggers | Lead |
+| **R-38** | **A preprod register is on the path of every customer add** | 4 | 3 | 🟠 12 | **New** — [DEC-182] (4), (5), cost (a): EDSN down or slow means customers add nothing and staff use the typed fallback; the product owner's address is the built-in default and one signed-in search is run after the deploy; the stack degrades with a clear message; [OQ-119] | Product |
+| **R-39** | **A connection is attached to the wrong company on a self-declared address** | 2 | 4 | 🟡 8 | **New** — [DEC-182] (5), cost (b): the admin policy, the active-company rule, the address match, an audit row with the matched address and its source, the exclusion constraint; [OQ-121] | Product |
+| **R-40** | **Household master data is stored with no retention rule** | 3 | 3 | 🟡 9 | **New** — [DEC-182] (7), cost (e): only staff and the current holder read it, no purge; [OQ-122], [DEC-101] | Legal |
 | R-22 | Insufficient realistic test data for performance work | 3 | 2 | 🟡 6 | `DevStubs` generates volume; production-shaped test environment. ⚠ 2026-08-19: it must now generate **per BRP** [DEC-69] and cover a **correction arriving months late** [DEC-98] [DEC-99] | QA |
 | **R-35** | **A 30-minute offer dies in one person's calendar** | 3 | 2 | 🟡 6 | **New** — ⚠ [DEC-111] reverses [DEC-63]: the requester is notified~~, plus the approving admin under four-eyes [DEC-71]~~ *(requester only since 2026-10-12, [DEC-179])*. [DEC-18] still lets any account accept, so the offer is unseen rather than unacceptable. Measure lapsed offers before widening it again | Commercial |
 | R-07 | Montel licence restricts display | 2 | 2 | 🟢 4 | **Was 6** — [DEC-81] settles the residual from the product side: current curve, **no history, no export**; [DEC-97] keeps prices out of the customer API; [DEC-80] already shows a **derived** figure ⚠ **2026-09-29 [DEC-167]:** no longer — customers now see the **raw** quote, so read the impact as **3** (score 6) until **[OQ-117]** is answered. ⚠ [OQ-23] stays a ⏸ partial (ticker symbols, bid-versus-ask); [DEC-96] adds an existing Montel service to reuse | Commercial |

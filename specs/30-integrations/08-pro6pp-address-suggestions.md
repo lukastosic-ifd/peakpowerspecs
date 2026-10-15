@@ -2,7 +2,7 @@
 
 **Direction:** outbound, per keystroke, through the platform · **Protocol:** REST, JSON over HTTPS · **Criticality:** low: search by a full postcode and number, and by EAN, works without it
 
-> **Specified 2026-10-15 by [DEC-182] (3), (4).** Pro6pp is a Dutch postcode service. The search box of both portals asks the platform for address suggestions while a postcode and house number are typed; the platform asks Pro6pp and answers a short list. A browser never calls Pro6pp, because the call carries the key. The key is a secret the product owner sets later. Nothing here is built yet.
+> **As built 2026-10-16 by [DEC-182] (3), (4), on `feature/ean-search`; not on the VM until the landing.** Pro6pp is a Dutch postcode service. The search box of both portals asks the platform for address suggestions while a postcode and house number are typed; the platform asks Pro6pp and answers a short list. A browser never calls Pro6pp, because the call carries the key. The key is a secret the product owner sets later. **Checked 2026-10-16 against `Pro6ppOptions.cs`, `Pro6ppClient.cs` and `AddressSuggestionQuery.cs` (platform `0c17204`):** the settings and defaults below are the code's.
 
 ## 1. The two requests
 
@@ -15,7 +15,7 @@ Which input asks which (whitespace removed, upper case):
 
 | Input | Kind | Call |
 | --- | --- | --- |
-| Seven or more digits only (an EAN being typed), or nothing recognisable | `NONE` | none |
+| ~~Seven or more digits only (an EAN being typed), or nothing recognisable~~ ⚠ **as built 2026-10-16:** digits only beyond four (an EAN being typed), or nothing recognisable | `NONE` | none |
 | A partial postcode of 2 to 5 characters | `POSTCODE` | postcode suggestions |
 | A full postcode followed by a house-number token | `ADDRESS` | address suggestions with the token |
 | A full postcode alone | `ADDRESS` | address suggestions without a token, which lists the house numbers |
@@ -38,11 +38,11 @@ With the key empty the answer is `available: false` with the reason `NOT_CONFIGU
 
 ## 3. The response and its statuses
 
-A 200 is a root array, read case-insensitively. Postcode suggestions carry `postalCode`, `settlement` and `municipality`; address suggestions carry `postalCode`, `street`, `streetNumberAndPremise`, `settlement`, `lat` and `lng`. A 404 is "no results found" and is an empty list. A 401 means Pro6pp refused the key: suggestions are unavailable and one line is logged at most once a minute. A 429, a 5xx and a timeout are unavailable. The platform answers 200 with `available: false` in every unavailable case, never an error per keystroke. Pro6pp's cursor link is never followed.
+A 200 is a root array, read case-insensitively. Postcode suggestions carry `postalCode`, `settlement` and `municipality`; address suggestions carry `postalCode`, `street`, `streetNumberAndPremise`, `settlement`, `lat` and `lng`. A 404 is "no results found" and is an empty list. A 401 means Pro6pp refused the key: suggestions are unavailable and one line is logged at most once a minute. A 429, a 5xx, a timeout and ⚠ **as built 2026-10-16** a 403 are unavailable (a 403 would trip the architecture test that forbids the literal in the platform). The platform answers 200 with `available: false` in every unavailable case, never an error per keystroke. Pro6pp's cursor link is never followed.
 
 ## 4. What is kept
 
-The coordinates of each address suggestion are remembered in memory for 30 minutes, keyed by the normalised postcode, house number and extension. An address search for the same address writes them onto each result's master-data row with the address they belong to, and the popup shows them as GPS only while that address is the one it shows. The client never sends coordinates. A search by EAN, or an address typed without picking a suggestion in that time, leaves GPS as "—". Coordinates are never returned in a suggestion.
+The coordinates of each address suggestion are remembered in memory for 30 minutes, keyed by the normalised postcode, house number and extension. The memory holds 10 000 entries at most; past that new entries are refused until old ones expire or are compacted (`AddressCoordinateCache.cs`, ⚠ as built 2026-10-16). An address search for the same address writes them onto each result's master-data row with the address they belong to, and the popup shows them as GPS only while that address is the one it shows. The client never sends coordinates. A search by EAN, or an address typed without picking a suggestion in that time, leaves GPS as "—". Coordinates are never returned in a suggestion.
 
 ## 5. Redaction
 

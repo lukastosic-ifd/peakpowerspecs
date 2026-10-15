@@ -2,7 +2,7 @@
 
 **Direction:** outbound, on demand · **Protocol:** REST, JSON over HTTPS · **Criticality:** high: no customer can add a connection without it, and staff attach an unconfirmed EAN only through the typed fallback
 
-> **Specified 2026-10-15 by [DEC-182] (3), (4), (7).** PeakPower asks EDSN, the Dutch central connection register, what it knows about a connection: by its EAN, or by postcode, house number and extension (search), and for the latest master-data update of an electricity connection. The platform alone makes the calls, never a browser. The service PeakPower calls is a **preprod proof of concept** run in front of EDSN; who owns it, what it promises, its production address and whether a processor agreement is needed are [OQ-119]. Nothing here is built yet. Names of settings and tables are the design's working names ([DEC-182] (20)).
+> **As built 2026-10-16 by [DEC-182] (3), (4), (7), on `feature/ean-search`; not on the VM until the landing.** PeakPower asks EDSN, the Dutch central connection register, what it knows about a connection: by its EAN, or by postcode, house number and extension (search), and for the latest master-data update of an electricity connection. The platform alone makes the calls, never a browser. The service PeakPower calls is a **preprod proof of concept** run in front of EDSN; who owns it, what it promises, its production address and whether a processor agreement is needed are [OQ-119]. **Checked 2026-10-16 against `EdsnOptions.cs` and the clients (platform `0c17204`):** every setting and default below is the code's, and the names of the settings and tables stand.
 
 ## 1. The requests
 
@@ -22,6 +22,7 @@
 | `Edsn:Provider` | `Edsn__Provider` | empty; `Simulated` is set by `./dev-up`, the tests and e2e |
 | `Edsn:RequestTimeout` | — | 8 seconds, one attempt |
 | `Edsn:MaxAttempts` | — | 2, counting the first; only 429, 5xx, a timeout and a network error are retried |
+| `Edsn:RetryBaseDelay` | — | 300 milliseconds ⚠ as built 2026-10-16; a `Retry-After` of seconds or an HTTP date is honoured up to 5 seconds |
 | `Edsn:MasterDataPageParameter` | — | `pageNumber` |
 | `Edsn:MaxMasterDataPages` | — | 20 |
 | `Edsn:MaxMasterDataFetchesPerSearch` | — | 10 electricity results per search |
@@ -34,7 +35,7 @@ All of them are documented in `deploy/env.example`. The HTTP client factory's lo
 
 JSON is read case-insensitively: three casings meet in one reply, and a number may arrive as a string. A missing member is null, never an error.
 
-- **Search reply.** The results sit in `searchResults` (or a bare array). The envelope's `header` is never passed on (its message id is logged at debug for support). Per result: the EAN, product type, market segment, grid area, grid operator code (the name in the reply is always empty and ignored), and the address (street, building number, extension, postcode, city, country, BAG id). The reply carried no extension key for an address without one, so the extension of an address match prefers the master data's. A result whose EAN is not 18 digits is dropped with a warning. Results are ordered ELK first, then by market segment, then by EAN.
+- **Search reply.** The results sit in `searchResults` (or a bare array). The envelope's `header` is never passed on (its message id is logged at debug for support). Per result: the EAN, product type, market segment, grid area, grid operator code (the name in the reply is always empty and ignored), and the address (street, building number, extension, postcode, city, country, BAG id). The reply carried no extension key for an address without one, so the extension of an address match prefers the master data's; ⚠ **as built 2026-10-16:** the parser reads `exBuildingNr` and `houseNumberExtension`, names that no live reply has confirmed (§8). A result whose EAN is not 18 digits is dropped with a warning. Results are ordered ELK first, then by market segment, then by EAN.
 - **Master-data reply.** `header.pageNumber`, `header.maximumPages`, `header.totalItems`, and `items[]`; each item has `id`, `receivedDate`, `mutationDate`, `mutationType`, `dossierId`, `externalReference` (absent on most items) and `updateData`, a JSON string.
 - **`updateData`.** The nested shape: the top-level fields (EAN, product type, market segment, grid area, grid operator), the address block with the BAG id, the commercial block (supplier, balance responsible party and metering responsible party, each an object with an `ID` that may be null), the physical block (allocation method, delivery status, flow direction, metering method, physical status, profile category, contracted and physical capacity, and the four yearly figures), the metering-point group (kept as raw text; its shape is unknown), and the mutation (`Portaal_Mutation`, spelled with a double a as the live item carries it, accepted also as `Portal_Mutation`; null in every sample, so its shape is unconfirmed). A string that is not JSON returns no facts and a warning, and never fails the request.
 - **The 404 split.** A 404 whose body parses as JSON with a results member is "no results"; any other 404 body (an HTML page, a wrong base URL) is "unavailable" with an error log naming the path. Without the split a wrong base URL would read as "nothing found" for ever.
@@ -75,4 +76,4 @@ Used by `./dev-up`, the tests and e2e; its data is fictional (`Simulatiestraat 1
 
 ## 8. Open
 
-The service is a preprod proof of concept: its owner, its production address and a processor agreement are [OQ-119]. The page parameter's real name, whether the search carries the extension, and whether an empty extension matches every suffix are listed in [database design §7.13](../20-architecture/04-database-design.md). EDSN returns household addresses and supplier data for small-scale connections; retention is [OQ-122].
+The service is a preprod proof of concept: its owner, its production address and a processor agreement are [OQ-119]. The page parameter's real name (still not found), whether the search carries the extension, and whether an empty extension matches every suffix are answered, or left open with their owner, in [database design §7.13](../20-architecture/04-database-design.md). EDSN returns household addresses and supplier data for small-scale connections; retention is [OQ-122].

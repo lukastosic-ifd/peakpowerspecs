@@ -2,7 +2,7 @@
 
 **Direction:** outbound, daily and once per unknown code · **Protocol:** REST, JSON over HTTPS · **Criticality:** low: a name falls back to the code
 
-> **Specified 2026-10-15 by [DEC-182] (8).** PeakPower's own service names grid operators by their 13-digit party code. The platform stores its list in `metering.grid_operator`, refreshes it once a day in the Worker and on demand from the back office, and looks up a code missing from the list once. Every party code the EAN-detail popup shows is named this way; a code the service does not know shows as the code with "name not known". Nothing here is built yet.
+> **As built 2026-10-16 by [DEC-182] (8), on `feature/ean-search`; not on the VM until the landing.** PeakPower's own service names grid operators by their 13-digit party code. The platform stores its list in `metering.grid_operator`, refreshes it once a day in the Worker and on demand from the back office, and looks up a code missing from the list once. Every party code the EAN-detail popup shows is named this way; a code the service does not know shows as the code with "name not known". **Checked 2026-10-16 against `GridOperatorMappingOptions.cs` and the directory and refresh code (platform `0c17204`):** the settings and defaults below are the code's.
 
 ## 1. The two requests
 
@@ -30,7 +30,7 @@ The base URL is the product owner's: `https://ke-gridoperator-costs-g3yecgunzq-e
 
 ## 4. Resolving a code
 
-Used for the search's grid operator and for all four party codes of the popup: read the table for every code at once; for each miss that is not in the not-found cache, ask the single-code endpoint (four at a time, HTTP only); a 404 is cached as "not found" for a day; a failure leaves the name unknown this time and is cached for 5 minutes; then, after every call has finished, write the found rows with one upsert. A code still unknown is shown with "name not known" / "naam onbekend". A supplier code costs one call per host per day, not one per popup.
+Used for the search's grid operator and for all four party codes of the popup: read the table for every code at once; for each miss that is not in the not-found cache, ask the single-code endpoint (four at a time, HTTP only); a 404 is cached as "not found" for a day; a failure leaves the name unknown this time and is cached for 5 minutes; then, after every call has finished, write the found rows with one upsert. ⚠ **As built 2026-10-16:** a reply counts only when its code equals the code asked and its name is not blank, otherwise it is treated as a 404; a code that is not 13 digits (a full-width digit or a trailing newline included) is never asked. A code still unknown is shown with "name not known" / "naam onbekend". A supplier code costs one call per host per day, not one per popup.
 
 ## 5. What it does not name
 

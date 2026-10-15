@@ -2,7 +2,7 @@
 
 **Direction:** outbound, daily and once per unknown code · **Protocol:** REST, JSON over HTTPS · **Criticality:** low: a name falls back to the code
 
-> **As built 2026-10-16 by [DEC-182] (8), on `feature/ean-search`; not on the VM until the landing.** PeakPower's own service names grid operators by their 13-digit party code. The platform stores its list in `metering.grid_operator`, refreshes it once a day in the Worker and on demand from the back office, and looks up a code missing from the list once. Every party code the EAN-detail popup shows is named this way; a code the service does not know shows as the code with "name not known". **Checked 2026-10-16 against `GridOperatorMappingOptions.cs` and the directory and refresh code (platform `0c17204`):** the settings and defaults below are the code's.
+> **As built 2026-10-16 by [DEC-182] (8), on `feature/ean-search`; not on the VM until the landing.** PeakPower's own service names grid operators by their 13-digit party code. The platform stores its list in `metering.grid_operator`, refreshes it once a day in the Worker and on demand from the back office, and looks up a code missing from the list once. Every party code the EAN-detail popup shows is named this way; a code the service does not know shows as the code with "name not known". **Checked 2026-10-16 against `GridOperatorMappingOptions.cs` and the directory and refresh code (platform `0c17204`, re-checked at the final review's tip `45b5ead`, where only the row filter of §3 was added):** the settings and defaults below are the code's.
 
 ## 1. The two requests
 
@@ -27,7 +27,7 @@ The base URL is the product owner's: `https://ke-gridoperator-costs-g3yecgunzq-e
 
 ## 3. Storage
 
-`metering.grid_operator` ([database design](../20-architecture/04-database-design.md) §3.2.2) holds the code, `nameSubOperator`, `eanOperator`, `nameOperator`, which endpoint last confirmed it (the list or a single lookup) and when. A refresh **upserts every listed row and deletes nothing**, so a code once named stays named. A sub-operator the list files under an unexpected parent is stored as given.
+`metering.grid_operator` ([database design](../20-architecture/04-database-design.md) §3.2.2) holds the code, `nameSubOperator`, `eanOperator`, `nameOperator`, which endpoint last confirmed it (the list or a single lookup) and when. A refresh **upserts every listed row and deletes nothing**, so a code once named stays named. A sub-operator the list files under an unexpected parent is stored as given. ⚠ **Added by the final review (platform `45b5ead`):** the table holds 13-digit codes and a name for each, and one row that does not fit would fail the whole upsert, so the reader drops a listed row whose code is not 13 digits or whose name is blank, and stores a malformed parent operator code (the optional `eanOperator`) as empty.
 
 ## 4. Resolving a code
 

@@ -2,7 +2,7 @@
 
 **Direction:** outbound, per keystroke, through the platform · **Protocol:** REST, JSON over HTTPS · **Criticality:** low: search by a full postcode and number, and by EAN, works without it
 
-> **As built 2026-10-16 by [DEC-182] (3), (4), on `feature/ean-search`; not on the VM until the landing.** Pro6pp is a Dutch postcode service. The search box of both portals asks the platform for address suggestions while a postcode and house number are typed; the platform asks Pro6pp and answers a short list. A browser never calls Pro6pp, because the call carries the key. The key is a secret the product owner sets later. **Checked 2026-10-16 against `Pro6ppOptions.cs`, `Pro6ppClient.cs` and `AddressSuggestionQuery.cs` (platform `0c17204`):** the settings and defaults below are the code's.
+> **As built 2026-10-16 by [DEC-182] (3), (4), on `feature/ean-search`; not on the VM until the landing.** Pro6pp is a Dutch postcode service. The search box of both portals asks the platform for address suggestions while a postcode and house number are typed; the platform asks Pro6pp and answers a short list. A browser never calls Pro6pp, because the call carries the key. The key is a secret the product owner sets later. **Checked 2026-10-16 against `Pro6ppOptions.cs`, `Pro6ppClient.cs` and `AddressSuggestionQuery.cs` (platform `0c17204`, re-checked at the final review's tip `45b5ead`, where only the https rule below was added):** the settings and defaults below are the code's.
 
 ## 1. The two requests
 
@@ -34,7 +34,7 @@ The postcode must match `^[1-9][0-9]{3}[A-Za-z]{2}$` and the house-number token 
 | `Pro6pp:MaxResults` | — | 10 |
 | `Pro6pp:CoordinateCacheDuration` | — | 30 minutes |
 
-With the key empty the answer is `available: false` with the reason `NOT_CONFIGURED`, and everything else works. The product owner puts the key in the VM's `.env` as `PRO6PP_AUTH_KEY` when they have it.
+With the key empty the answer is `available: false` with the reason `NOT_CONFIGURED`, and everything else works. The product owner puts the key in the VM's `.env` as `PRO6PP_AUTH_KEY` when they have it. ⚠ **Added by the final review (platform `45b5ead`):** the key travels in the query string, so with a key set the base URL must be **https** (a loopback host, a local stand-in during development, is the one exception); an `http` address with a key stops the host at start with a message naming `Pro6pp:BaseUrl`.
 
 ## 3. The response and its statuses
 

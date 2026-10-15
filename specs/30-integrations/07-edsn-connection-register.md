@@ -29,7 +29,7 @@
 | `Edsn:MasterDataFetchConcurrency` | — | 4 |
 | `Edsn:MasterDataRecentWindow` | — | 5 minutes; 0 restores the literal reading of "fetched when a search returns" |
 
-All of them are documented in `deploy/env.example`. The HTTP client factory's logger and the service defaults' resilience handler are removed from this client: URLs carry a postcode and house number, which is personal data for a household, and the client owns its retry and timeout so retries do not stack.
+~~All of them are documented in `deploy/env.example`.~~ ⚠ **As built 2026-10-16 by [DEC-182]: only the four base-URL and key variables (`EDSN_BASE_URL`, `GRID_OPERATOR_MAPPING_BASE_URL`, `PRO6PP_BASE_URL`, `PRO6PP_AUTH_KEY`) are in `deploy/env.example`; the `Edsn:*` settings keep their code defaults and are set by their configuration key.** The HTTP client factory's logger and the service defaults' resilience handler are removed from this client: URLs carry a postcode and house number, which is personal data for a household, and the client owns its retry and timeout so retries do not stack.
 
 ## 3. The response
 

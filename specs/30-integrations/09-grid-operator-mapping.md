@@ -20,6 +20,7 @@ The base URL is the product owner's: `https://ke-gridoperator-costs-g3yecgunzq-e
 | `GridOperatorMapping:BaseUrl` | `GridOperatorMapping__BaseUrl` (compose `GRID_OPERATOR_MAPPING_BASE_URL`, on both APIs and the Worker) | `https://ke-gridoperator-costs-g3yecgunzq-ez.a.run.app` |
 | `GridOperatorMapping:Provider` | `GridOperatorMapping__Provider` | empty; `Simulated` is set by `./dev-up`, the tests and e2e |
 | `GridOperatorMapping:RequestTimeout` | — | 5 seconds |
+| `GridOperatorMapping:MaxAttempts` | — | 2 (the first call counts); ⚠ as built 2026-10-16, `GridOperatorMappingOptions.cs` line 17 |
 | `GridOperatorMapping:RefreshInterval` | — | 1 day, Worker only |
 | `GridOperatorMapping:RunOnStartup` | — | true, Worker only |
 | `GridOperatorMapping:NotFoundCacheDuration` | — | 1 day |

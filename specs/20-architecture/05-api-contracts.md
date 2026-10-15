@@ -176,10 +176,14 @@ the wizard, not an omission in this table.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/metering-points` | List with search, filter, sort |
-| `POST` | `/metering-points` | ⚠ **Added 2026-09-03 [DEC-113].** Claim an unclaimed EAN out of the shared pool and attach it to the company. `201` with `Location`; `409` when someone claimed it first; `404` for an EAN that is not in the pool at all — those are two different answers and a client needs both |
+| `POST` | `/metering-points` | ⚠ **Added 2026-09-03 [DEC-113].** Claim an unclaimed EAN out of the shared pool and attach it to the company. `201` with `Location`; `409` when someone claimed it first; `404` for an EAN that is not in the pool at all — those are two different answers and a client needs both ⚠ **Changed 2026-10-15 by [DEC-182] (5), (14): Add a connection (operation AddConnection, admins of an active company only); the 404 for an EAN not in the pool is gone; see §2.1A.** |
 | `GET` | `/metering-points/{id}` | Detail with data-quality summary |
 | `PATCH` | `/metering-points/{id}/naming` | Set friendly name and description |
-| `GET` | `/ean-pool` | ⚠ **Added 2026-09-03 [DEC-113].** The unclaimed pool. It is **shared reference data**, not tenant-scoped — two different companies must receive byte-identical bodies — so it has its own tenancy classification rather than being labelled tenant-scoped and lying about it. It still requires a token |
+| `GET` | `/ean-pool` | ~~⚠ **Added 2026-09-03 [DEC-113].** The unclaimed pool. It is **shared reference data**, not tenant-scoped — two different companies must receive byte-identical bodies — so it has its own tenancy classification rather than being labelled tenant-scoped and lying about it. It still requires a token~~ ⚠ **Removed 2026-10-15 by [DEC-182] (2).** |
+| `GET` | `/connection-search` | ⚠ **New 2026-10-15 [DEC-182]** — search EDSN by EAN or by postcode, house number and extension; any signed-in member; shared reference data. |
+| `GET` | `/address-suggestions` | ⚠ **New 2026-10-15 [DEC-182]** — Pro6pp address suggestions for the search box; any signed-in member; never an error for text it cannot read. |
+| `GET` | `/metering-points/eligibility` | ⚠ **New 2026-10-15 [DEC-182]** — whether the company can add an EAN, with EDSN's hints beside the production question; company admins only. |
+| `GET` | `/metering-points/{id}/details` | ⚠ **New 2026-10-15 [DEC-182]** — the EAN-detail popup of a connection the company holds today; any other id is the constant 404. |
 | `GET` | `/metering-points/{id}/data-quality` | Per-date data state for a range |
 
 ⚠ **As built 2026-10-01, [DEC-169] (4) — `displayLabel` is the name or the unspaced EAN.** The metering-point read models carry `displayLabel` = `name ?? ean` with the EAN as **raw digits, no spaces**, and `ean` is the unspaced EAN; `eanDisplay` (grouped) stays on the wire for the back office but a customer screen no longer prints it. Sorting by `displayLabel` is unchanged.
@@ -198,6 +202,77 @@ would replace `HttpValidationProblemDetails` with a bare `ProblemDetails` on the
 legitimately return a field-keyed `errors` map. **Cost, accepted:** a generated client types a
 malformed-body `400` and a wrong-content-type `415` as untyped failures. They are client bugs rather
 than API outcomes, so a correct client cannot reach them.
+
+### 2.1A EAN search, eligibility and details — [DEC-182], added 2026-10-15
+
+⚠ **Specified 2026-10-15 by [DEC-182] (3), (5), (7), (9), (14); not built.** Four routes are new, one is changed and one is removed. JSON names are camelCase. "Closed set" means the OpenAPI document lists the values, so the generated TypeScript type is a union; "open code" means a raw EDSN code passed through as a string, whose known values are listed for the web's labels and whose unknown values must still render raw. Problem bodies are `application/problem+json` with `type`, `title`, `status`, `detail` and the named extensions. The `detail` texts below are exactly what the API returns, in English. **The web picks its own English or Dutch copy by `type` and by the extension named, never by `detail`.**
+
+**Problem types.** The prefix of every `type` is `https://peakpower.dev/problems/`.
+
+| `type` | Status | `title` | `detail` | Extensions | Where |
+| --- | --- | --- | --- | --- | --- |
+| `validation` (existing) | 400 | The request is not valid. | none | `errors` keyed by field; on the search also `reason` | all |
+| `not-found` (existing, constant body) | 404 | Not found | The requested resource does not exist. | none | details of a connection that is not the company's or not held today |
+| `connection-search-unavailable` | 503 | Connection search is not available | EDSN, the connection register, can't be reached right now. Try again in a few minutes. Or, when the server has no EDSN address configured: Searching EDSN is not set up on this server yet. | `cause`: `UNAVAILABLE` or `NOT_CONFIGURED` | search, eligibility and add (customer); search (employee). Never on either details route |
+| `connection-not-in-edsn` | 409 | EDSN does not know this connection | EDSN does not know EAN {ean}. Check the number, or contact PeakPower. | `ean` | customer add |
+| `connection-not-supported` | 409 | This connection can't be added | Only large-scale electricity connections can be added. This is a gas connection. (product `GAS`) / This is a small-scale connection. (segment not `GVB`) / EDSN does not register this as electricity. (any other product) | `reason`: `PRODUCT_NOT_SUPPORTED` or `SEGMENT_NOT_SUPPORTED`; `productType`; `marketSegment` | customer add, employee attach |
+| a 409 for a company that is not active (name fixed at build) | 409 | says the company is not active | says to contact PeakPower, who attach the connection | none | customer add |
+| `connection-address-mismatch` | 409 | The address does not match | This connection's address does not match your company's billing or visiting address. Contact PeakPower to add it. | none | customer add |
+| `connection-already-yours` | 409 | This connection is already yours | This connection is already one of your connections. | `meteringPointId` | customer add |
+| `connection-already-registered` | 409 | This connection is already registered | This connection is already registered with PeakPower. Contact us. | none (names no holder) | customer add |
+| `brp-differs-requires-confirmation` | 409 | Confirm the balance responsible party | EDSN lists another balance responsible party for this connection ({code}). PeakPower balances it through PVNed. Send the request again with acknowledgeBrpDifference set to add it anyway. | `edsnBrpCode` | customer add (a warning) |
+| `conflict` (existing) | 409 | The request conflicts with the current state. | No single active balance responsible party is configured. Contact PeakPower. | none | customer add (unchanged rule) |
+| `connection-not-verified-requires-confirmation` | 409 | EDSN did not confirm this EAN | EDSN does not know EAN {ean}. Send the request again with attachUnverified set to attach it as not verified by EDSN. (and two like it for EDSN not reachable and not set up) | `edsnStatus`: `NOT_FOUND`, `UNAVAILABLE` or `NOT_CONFIGURED`; `ean` | employee attach (a warning) |
+| `grid-operator-mapping-unavailable` | 503 | The grid-operator list is not available | The grid-operator mapping service can't be reached right now. Try again later. Or: is not set up on this server. | `cause` | employee refresh |
+| `too-many-lookups` | 429 | Too many searches | You have searched too often in a short time. Wait a minute and try again. | header `Retry-After` when known | every lookup route, both details routes, the customer add, and the employee backfill and refresh while one runs |
+
+A 403 on the customer add and eligibility routes comes from the authorization middleware (policy `customer-can-add-connection`: company admins only). The web avoids it by showing those actions only when `GET /api/v1/auth/me` reports `membershipRole: "admin"`.
+
+**Shared shapes.** `PartyDto`: `code` (the 13-digit market-party code from EDSN) and `name` (from the grid-operator mapping, `nameSubOperator`; null means not known, shown as the code with "name not known" / "naam onbekend"). `ConnectionAddressDto`: `street`, `houseNumber`, `houseNumberSuffix`, `postalCode` (no space, `9999AA`), `city` (as EDSN sends it, upper case), `country` (ISO code), all nullable. `GpsDto`: `latitude`, `longitude`, six decimals.
+
+**Open codes** (the web labels them in both languages; an unknown value shows raw):
+
+| Field | Known values |
+| --- | --- |
+| `productType` | `ELK` electricity, `GAS` gas |
+| `marketSegment` | `GVB` large-scale (grootverbruik), `KVB` small-scale (kleinverbruik) |
+| `allocationMethod` | `TMT` telemetry, `PRF` profile |
+| `meteringMethod` | `TMT` telemetric, `NTM` non-telemetric, `JRL` (seen, not in the field guide: shown raw or as "yearly reading", unconfirmed) |
+| `energyFlowDirection` | `LVR` delivery only, `TLV` feed-in, `CMB` combined |
+| `deliveryStatus` | `ACT` active, `INA` inactive |
+| `physicalStatus` | `IBD` in operation (others unknown) |
+| `profileCategory` | shown raw (`E3A`, `E1B`, …); `E3A` is labelled "E3A (large-scale electricity, telemetric)" |
+
+**`GET /api/v1/connection-search?q={text}` (operation `SearchConnections`).** Any signed-in member; tenancy `SharedReferenceData`; rate limit `connection-lookup`. `q` is an EAN (18 digits, spaces allowed) or a postcode and house number with an optional extension (`8471KG 16`, `8471 kg 16a`, `1234AB 10-2`). The answer, `ConnectionSearchResponse`: `kind` (`EAN` or `ADDRESS`, closed set), `ean`, `postalCode`, `houseNumber`, `houseNumberExtension` (how `q` was read), `results` (ELK first, then segment, then EAN; at most 50) and `total` (before the cap). Each `ConnectionSearchResultDto` carries `ean`, `eanDisplay` (grouped in fours), `productType`, `marketSegment`, `address`, `gridOperator` (`PartyDto`), `supported` (ELK and GVB) and `notSupportedReason` (`PRODUCT_NOT_SUPPORTED` or `SEGMENT_NOT_SUPPORTED`, null when supported); nothing more, so two companies get byte-identical bodies and no holder is marked. An empty `results` with 200 means EDSN found nothing. A 400 `validation` carries `errors.q[0]` and a `reason` (closed set): `EMPTY` and `NOT_RECOGNISED` ("Type an EAN (18 digits) or a postcode and house number, for example 1234AB 10."), `EAN_LENGTH` ("An EAN is exactly 18 digits."), `HOUSE_NUMBER_MISSING` ("Add the house number after the postcode, for example 1234AB 10."). Also 401, 429 and 503.
+
+**`GET /api/v1/address-suggestions?q={text}` (operation `SuggestAddresses`).** Any signed-in member; `SharedReferenceData`; rate limit `address-suggestions`; never a 400. `AddressSuggestionsResponse`: `kind` (`POSTCODE` for a partial postcode of 2 to 5 characters, `ADDRESS` for a full postcode with or without a house-number token, `NONE` for an EAN being typed or unrecognised text), `available`, `unavailableReason` (`NOT_CONFIGURED` until the Pro6pp key is set, or `UNAVAILABLE`, null when available) and `suggestions` (at most 10). Each `AddressSuggestionDto`: `postalCode`, `houseNumberAndPremise` (null for a postcode suggestion), `street`, `city`, and `searchText`, exactly what to put in the box when picked (`9999AA ` with a trailing space, or `9999AA 1A`). Coordinates are never returned. Also 401 and 429.
+
+**`GET /api/v1/metering-points/eligibility?ean={ean}` (operation `CheckConnectionEligibility`).** Company admins only; `TenantScoped("metering-point")`; rate limit `connection-lookup`. Called when the user picks a search result, before the production question is shown. `ConnectionEligibilityDto`: `ean`, `eanDisplay`, `outcome` (`CAN_ADD`, `ALREADY_YOURS`, `NOT_IN_EDSN`, `NOT_SUPPORTED`, `ADDRESS_MISMATCH`, and one further outcome for a company that is not active, named at build; closed set), `notSupportedReason`, `meteringPointId` (with `ALREADY_YOURS`), `matchedAddress` (`BILLING` or `VISITING`, with `CAN_ADD`) and `edsn` (`ConnectionEdsnHintsDto`, only with `CAN_ADD`): `energyFlowDirection`, `standardAnnualProductionPeakKwh` and `standardAnnualProductionOffPeakKwh` (the yearly feed-in, labelled kW under [DEC-181]), `balanceResponsibleParty`, `brpDiffersFromPeakPower` and `masterDataAsOf`. These are master-data facts of an EAN the company does not hold yet: the one narrow exception to "served only for a connection you hold", given only after the full proof of [DEC-182] (5) and limited to exactly these fields. A 400 `validation` keys `errors.ean` ("EAN must not be blank." or "EAN must be exactly 18 digits."). Also 401, 403, 429 and 503.
+
+**`POST /api/v1/metering-points` (operation `AddConnection`, was `ClaimConnection`).** Company admins only; `TenantScoped("metering-point")`; rate limit `connection-lookup`. `AddConnectionRequest` (was `ClaimConnectionRequest`): `ean` (required), `productionExpectation` (`UNKNOWN`, `NEVER` or `EXPECTED`; required, no default, [DEC-112]), `name` (at most 80 characters), `description` (at most 500) and `acknowledgeBrpDifference` (default false). Answers 201 `ConnectionDetailDto` (unchanged shape) with `Location: /api/v1/metering-points/{id}`; the connection starts today, balanced by PVNed, with its grid operator, capacity and address from EDSN. **The order of checks:** 401 (no session); 403 (not a company admin); 429 (the limiter runs after authorization); 400 (validation); 409 `conflict` (no single active BRP); 409 `connection-already-yours`; 503 `connection-search-unavailable`; 409 `connection-not-in-edsn`; 409 `connection-not-supported`; the 409 for a company that is not active; 409 `connection-address-mismatch`; 409 `brp-differs-requires-confirmation`; 409 `connection-already-registered` (the exclusion constraint). The 404 "not in the pool" is gone. When EDSN knows the EAN but its master data cannot be fetched at this moment, the add proceeds: the address is matched against the search result's address and no BRP warning can be given.
+
+**`GET /api/v1/metering-points/{id}/details` (operation `GetConnectionDetails`).** Any signed-in member; `TenantScoped("metering-point")`; rate limit `connection-lookup`. The popup of a connection the company holds today (status `ACTIVE` or `ENDING`); any other id (another company's, pending, ended, unknown) is the constant 404. Always 200 for a held connection. `ConnectionDetailsDto`:
+
+| Field | Popup row |
+| --- | --- |
+| `ean`, `eanDisplay` | the title "EAN: {ean}" |
+| `source` (`MASTER_DATA`, `SEARCH_ONLY`, `NOT_IN_EDSN`, `UNAVAILABLE`; closed set) | the notice: master data read; EDSN knows the connection but no current master data can be shown (none, only future-dated, the latest unreadable, or none stored and EDSN unreachable, then with `refreshFailed`); EDSN does not know it; EDSN unreachable and nothing stored |
+| `asOf`, `fetchedAt`, `refreshFailed` | "as of {date}", when PeakPower last asked EDSN, and an older stored copy shown because EDSN could not be reached |
+| `contractant` | Contractant: this company's legal name |
+| `gridOperator`, `supplier`, `meteringResponsibleParty`, `balanceResponsibleParty` (`PartyDto`) | Netbeheerder, Leverancier, Meetverantwoordelijke, Programmaverantwoordelijke |
+| none | Switchbaarheid: always "—" |
+| `address`, `gps`, `gridArea`, `bagId` | Adres, Postcode en plaats, Land; GPS; Netgebied; BAG |
+| `productType`, `marketSegment`, `deliveryStatus`, `physicalStatus` | header context and EDSN's two statuses as labelled rows (open codes) |
+| `contractedCapacityKw`, `physicalCapacityKva` | Contractcapaciteit in kW; Fysieke capaciteit in kVA (unit unconfirmed by the field guide) |
+| `allocationMethod`, `profileCategory` | Allocatiemethode, Profielcategorie |
+| `standardAnnualConsumptionPeakKwh`, `standardAnnualConsumptionOffPeakKwh`, `standardAnnualProductionPeakKwh`, `standardAnnualProductionOffPeakKwh` | the four "Standaard jaar" rows, the kWh figure labelled kW ([DEC-181]) |
+| none | Duurzame energie, Subsidieregeling, Artikel 1 lid 2 of 3: always "—" |
+| `energyFlowDirection`, `meteringMethod` | Leveringsrichting, Wijze van bemeting (open codes) |
+| `linkedPrimaryAllocationPoint`, `linkedSecondaryAllocationPoints` | Gekoppelde PAP and SAP's: null and empty until EDSN's group shape is known |
+
+Any null shows "—". Also 401, 404 and 429.
+
+**Removed.** `GET /api/v1/ean-pool` (operation `SearchEanPool`) and the schemas `EanPoolEntryDto` and `EanPoolResponse`. `ClaimConnectionRequest` is renamed `AddConnectionRequest`. `GET /metering-points`, `GET /metering-points/{id}` and `PATCH /metering-points/{id}/naming` are unchanged; `status` (`PENDING`, `ACTIVE`, `ENDING`, `ENDED`) stays the badge and decides whether "See details" shows.
 
 ### 2.2 Consumption
 
@@ -1136,7 +1211,7 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | --- | --- | --- |
 | `GET`/`POST`/`PATCH` | `/customers`, `/customers/{id}` | Administration |
 | `PUT` | `/customers/{id}/commercial-terms` | ⚠ **New 2026-09-30 [DEC-167] (17)** — the company's deposit percentage on a bought block (default 20). Audited before and after. Back office only |
-| `POST` | `/customers/{id}/metering-points` | Attach an EAN |
+| `POST` | `/customers/{id}/metering-points` | Attach an EAN ⚠ **Changed 2026-10-15 by [DEC-182] (6): attachUnverified; 409 connection-not-supported and connection-not-verified-requires-confirmation; §3.5.** |
 | `GET` | `/customers/{id}/accounts` | List the company's accounts |
 | `POST` | `/customers/{id}/accounts` | Create an account and its membership together. ⚠ **Corrected 2026-09-10 by [DEC-152]: also names a role.** The request carries **`membershipRole`**; the handler writes the account and the `customer_membership` row in one transaction (`AccountEndpoints.cs:30`/`:125` @ debadda0). ~~and send the invitation~~ — ⚠ **struck: no route sends one, see the resend row below** |
 | `PATCH` | ~~`/accounts/{accountId}`~~ **`/customers/{id}/accounts/{accountId}`** | Edit name, job title, phone, email and **`membershipRole`**. Username is immutable. ⚠ **Corrected 2026-09-10 by [DEC-152]: the route nests under the company** (`AccountEndpoints.cs:40`), and the role edit is **this** route, not a separate one — see the struck row below. There is **no admin-floor check on this path**: `CustomerMembership.ChangeRole` is a bare setter (`CustomerMembership.cs:86`) and `UpdateAsync` calls it unconditionally, unlike the customer-side `PATCH /company/memberships` above, which does check the floor. ⚠ **Amended 2026-09-23 by [DEC-157]: this route now checks the floor and refuses a demotion below it.** `UpdateAsync` guards the `admin`→non-admin case through the shared `CustomerMembershipCore.WouldBreachAdminFloorAsync` and answers **`409`**, race-safe by opening its own transaction on this transaction-less host so the `SELECT … FOR UPDATE` spans the save (the [DEC-154] lock-ownership fix). It is the back-office twin of the customer `PATCH /company/memberships` refusal and of the [DEC-154] remove-from-company floor; the "no admin-floor check" statement above is closed |
@@ -1167,6 +1242,12 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET` | `/data-health/quarantine` | Unattached series, including `WRONG_BRP` **[F02-R42]** |
 | `GET` | `/data-health/day-ahead` | ⚠ **New 2026-10-13 [DEC-180] (7), (13)** — the day-ahead feed's status for the Data & feeds screen: latest day stored, days missing, tomorrow, the overdue days, the newest run, the last success, the last failure and the last price change. Any signed-in employee; always 200 |
 | `GET` | `/data-health/saved-costs` | ⚠ **New 2026-10-13 [DEC-180] (7), (13)** — the recalculation of the saved costs and positions: what is waiting, what is failing, whether the seven triggers are in place, the last nightly check. Any signed-in employee; always 200 |
+| `GET` | `/connection-search` | ⚠ **New 2026-10-15 [DEC-182]** — the same search as the customer's, with the holding company, a master-data summary and a pre-fill for the attach form; §3.5. |
+| `GET` | `/address-suggestions` | ⚠ **New 2026-10-15 [DEC-182]** — Pro6pp address suggestions, as for the customer; §3.5. |
+| `GET` | `/connection-details/{ean}` | ⚠ **New 2026-10-15 [DEC-182]** — the EAN-detail popup of any EAN, with the holder and EDSN's support facts; §3.5. |
+| `POST` | `/connection-master-data/backfill` | ⚠ **New 2026-10-15 [DEC-182] (12)** — fetch EDSN details of open connections in batches; §3.5. |
+| `POST` | `/reference-data/grid-operators/refresh` | ⚠ **New 2026-10-15 [DEC-182] (8)** — refresh the grid-operator names now; §3.5. |
+| ~~`GET`~~ | ~~`/ean-pool`~~ | ⚠ **Removed 2026-10-15 by [DEC-182] (2).** |
 | `GET` | `/data-health/summary` | ⚠ **As built, never listed in this table:** the ingestion screen's five stat cards (documents and processing lag today, and the failure, quarantine and silence backlogs) |
 | `GET`/`PUT` | `/reference/peak-calendars` | Calendars |
 | ~~`GET`/`PUT`~~ | ~~`/reference/tax-tariffs`~~ **`GET`/`POST` `/reference/energy-tax-brackets`** | ~~Energiebelasting. ⚠ Endpoint retained, tariffs unpopulated — **[DEC-24]**~~ ⚠ **Reversed 2026-08-19 by [DEC-74]** — energiebelasting is **back in scope and populated**. Per **calendar year**, an ordered set of tiers with lower and upper bound in kWh and a rate in €/kWh; the top tier is unbounded **[F12-R44]**. **Versioned, never edited in place**: `POST` creates a new version with a `valid_from`; a version a completed calculation has read can only be superseded **[F12-R45]**. `PUT` is gone with the in-place edit |
@@ -1331,6 +1412,26 @@ Reads need **any signed-in employee**. **Every write carries `.RequireAuthorizat
 
 **Audit.** Each write is an `AuditRecord` with `customer_id` null and the actor `employee:{username}`: `LEGAL_DOCUMENT_UPLOADED` and `LEGAL_DOCUMENT_VERSION_WITHDRAWN` (entity `LegalDocumentVersion`; the payload names the employee, the type key, the version number, the effective-from time, `files` — a list of language, file name, size and SHA-256, one per language — and the change note; old payloads are not rewritten), and `LEGAL_DOCUMENT_TYPE_CREATED` and `LEGAL_DOCUMENT_TYPE_UPDATED` (entity `LegalDocumentType`; the payload names the employee, the type key, the title, the visibility and the sort order).
 
+### 3.5 EDSN connection register — [DEC-182], added 2026-10-15
+
+⚠ **Specified 2026-10-15 by [DEC-182] (3), (6), (7), (8), (12), (14); not built.** All routes are back-office routes, open to any signed-in operator. The problem types are those of §2.1A. The employee search, the suggestions and the details of an EAN use the same grammar and the same `PartyDto`, `ConnectionAddressDto`, `GpsDto` and open codes as the customer routes.
+
+**`GET /api/v1/connection-search?q={text}` (operation `SearchConnections`).** Rate limit `connection-lookup`. The same `q`, the same 400 and the same 503. The answer repeats `kind`, `ean`, `postalCode`, `houseNumber`, `houseNumberExtension` and `total`, and each result carries everything in the customer's, plus `gridArea`, `bagId`, `heldBy` (`customerId` and `legalName` of the PeakPower company holding it today, read across tenants), `masterData` (a summary, null for gas) and `prefill`. The summary: `status` (`AVAILABLE`; `NONE` when EDSN has no current master data that can be shown; `NOT_FETCHED` beyond the per-search cap of ten electricity results or when the fetch failed), `asOf`, `contractedCapacityKw`, `energyFlowDirection`, the two yearly feed-in figures, `balanceResponsibleParty` and `brpDiffersFromPeakPower`, which is the staff flag. `prefill` is what to copy into the attach form or the wizard row: `gridOperator` (the mapped name, else the code), `capacityKw` (master data's contracted capacity) and `address` (the employee `AddressDto` from master data, else the search; null when EDSN omits street, number, postcode or city).
+
+**`GET /api/v1/address-suggestions?q={text}` (operation `SuggestAddresses`).** The shape and rules of §2.1A; rate limit `address-suggestions`.
+
+**`GET /api/v1/connection-details/{ean}` (operation `GetConnectionDetails`).** Rate limit `connection-lookup`. Any EAN: staff see any searched EAN. A path that is not 18 digits is a 400 keyed `ean` ("EAN must be exactly 18 digits."). Never a 503: an unreachable EDSN gives `source: "UNAVAILABLE"`, or a stored copy with `refreshFailed`. The answer is every field of `ConnectionDetailsDto`, with `contractant` the legal name of the company holding it today (else null), and `heldBy`, `brpDiffersFromPeakPower`, `masterDataItemId`, `mutationType`, `dossierId`, `itemCount` and `pagesComplete` for support.
+
+**`POST /api/v1/customers/{customerId}/metering-points` (operation `AttachMeteringPoint`).** The request gains `attachUnverified` (default false): true attaches although EDSN did not confirm the EAN, which is then "not verified by EDSN". It is read only when EDSN did not find the EAN: when EDSN found it the flag changes nothing, and a gas or small-scale result stays 409 `connection-not-supported`. Every other field and validator message is unchanged, and the server stores `gridOperator`, `capacityKw` and `address` as sent. Answers 201 `MeteringPointDto`; errors: 400 (unchanged), 404 (customer), 409 `connection-not-supported`, 409 `connection-not-verified-requires-confirmation`, and 409 `conflict` with the existing overlap detail.
+
+**`POST /api/v1/connection-master-data/backfill` (operation `BackfillConnectionMasterData`).** One at a time per host (a second call while one runs is 429 `too-many-lookups`). The body is optional: `batchSize` (1 to 50, default 25; "batchSize must be between 1 and 50.") and `force` (also refetch copies fetched within the last 24 hours, except those fetched within the last hour). The answer, `MasterDataBackfillResultDto`: `attempted`, `withMasterData`, `searchOnly`, `notInEdsn`, `failed`, `verified` (connections newly marked verified by EDSN) and `remaining`; call again until `remaining` is 0. It never changes a connection's grid operator, capacity or address.
+
+**`POST /api/v1/reference-data/grid-operators/refresh` (operation `RefreshGridOperators`).** One at a time. No body. Answers 200 `GridOperatorRefreshResultDto` (`refreshedAt`, `count`, `added`, `renamed`) or 503 `grid-operator-mapping-unavailable`.
+
+**`MeteringPointDto`.** Two new fields on every response that carries it: `status` (`PENDING`, `ACTIVE`, `ENDING`, `ENDED`; closed set; PeakPower's own connection status from the validity period and today in Amsterdam, ending meaning within 90 days; the row badge) and `edsnVerifiedAt` (null means "not verified by EDSN": show the mark). `POST /metering-points/{id}/end-date` no longer releases anything; its responses are otherwise unchanged.
+
+**Removed.** `GET /api/v1/ean-pool` (operation `SearchEmployeeEanPool`) and the schemas `EanPoolEntryDto` and `EanPoolListResponse`.
+
 ## 4. Worker endpoints
 
 | Method | Path | Auth | Purpose |
@@ -1360,15 +1461,18 @@ This is what makes "the customer double-clicked Accept" a non-event.
 
 | Scope | Limit | Source |
 | --- | --- | --- |
-| Customer API, per user | 300 req/min | — |
+| Customer API, per user | 300 req/min | — ⚠ **Never built (see [Security](07-security.md) §6). The platform's first limits are the three of [DEC-182] (15), below.** |
 | Customer API, `POST /trades*` | 20 req/min | — |
 | **Customer usage API, per calling company** | **60 req/min, burst 120**; at most **35 040 interval rows** per response | **[NFR-62]**, **[DEC-97]** — §2.11. Limits are reference data, not constants **[NFR-54]** |
 | Employee API, per user | 600 req/min | — |
 | ~~PVNed webhook~~ **BRP webhook, per BRP** | 60 req/min, burst 200 | ⚠ **Amended 2026-08-19 by [DEC-69]** — the limit is **per BRP**, so a noisy adapter cannot throttle a quiet one **[F02-R39]** |
 | Payment webhook | 120 req/min | — |
 | Bank feed webhook | 120 req/min | **[DEC-106]**, **[OQ-93]** |
+| `connection-lookup` | 30 req/min per account (customer), 120 per employee | ⚠ **New 2026-10-15 [DEC-182] (15)** — search, eligibility, add and details (customer); search and details (employee). The platform's first limit |
+| `address-suggestions` | 120 req/min per account (customer), 240 per employee | ⚠ **New 2026-10-15 [DEC-182] (15)** — suggestions |
+| `connection-register-batch` | One at a time per host | ⚠ **New 2026-10-15 [DEC-182] (15)** — the backfill and the grid-operator refresh |
 
-Exceeding returns `429` with `Retry-After`.
+Exceeding returns `429` with `Retry-After`. ⚠ **[DEC-182] (15):** the 429 of the three limits above is `application/problem+json` of type `too-many-lookups`.
 
 ## 7. OpenAPI
 
@@ -1401,6 +1505,8 @@ the API ships the additive change first, the web repository consumes it, and onl
 shape removed. The safety property is preserved deliberately rather than for free.
 
 ⚠ **Set aside for the landing of [DEC-180] (14), 2026-10-13, as for [DEC-179].** The renamed fields go in one release with no second name kept. This is safe because the web's merge deploys nothing until the platform's `main` carries the contract: the web merges first, the platform straight after, and the generated client is checked against the platform branch.
+
+⚠ **2026-10-15, [DEC-182]: a third deliberate breaking change.** The lists of [DEC-182] (14): the customer document gains four operations and loses one (`GET /ean-pool`), renames `ClaimConnection` to `AddConnection` and gains the eligibility, search, suggestion and details schemas; the employee document gains five operations, loses one, and `MeteringPointDto` gains two fields. Safe for the same reason: the web merges first, the platform straight after. The operation, schema and route counts are confirmed at build (§7.13 of the [database design](04-database-design.md)).
 
 ## 8. Open questions
 

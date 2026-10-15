@@ -243,7 +243,6 @@ export function connectionAdd() {
     b += text(cx + 232, y + 21, r.addr, { size: 12.5, weight: 600, fill: r.ok ? C.text : C.muted });
     b += text(cx + 34, y + 39, r.meta, { size: 11, fill: C.muted });
     if (r.ok) {
-      b += badge(cx + cw - 36 - 190, y + 15, 'Chosen', 'accent', { w: 70 });
       b += button(cx + cw - 36 - 100, y + 8, 90, 'Add', 'primary');
     } else {
       b += text(cx + cw - 36, y + 21, r.why, { size: 12, fill: C.amber, weight: 600, anchor: 'end' });

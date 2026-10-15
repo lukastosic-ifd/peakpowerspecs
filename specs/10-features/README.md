@@ -313,6 +313,7 @@ it and a pointer to what replaced it. Nothing was renumbered.
 | **[DEC-179]** four-eyes is removed | 0 new, **35 struck and 42 amended** | Struck: F01-R42/R43/R45/R48/R49/R50, F05-R57/R58/R59/R60/R61/R62/R63/R64/R65/R66/R71, F06-R34, F07-R30, F11-R19/R20/R21/R26/R27, F12-R34/R35/R40/R41/R42/R43/R55, F13-R42/R44, F15-R25/R26. Amended: F01-R06/R13/R15/R16/R19/R21/R44/R46/R47, F05-R24/R28/R31/R43/R55/R56/R67/R68/R75/R77, F06-R27/R37, F07-R31/R32/R33, F11-R07/R12/R23/R24/R25/R29/R30, F12-R01/R06/R10/R36/R39/R53/R67, F13-R23/R28/R41/R43. Nothing is renumbered |
 | **[DEC-180]** kW, kWh and €/kWh | **9 new, 2 struck and 25 amended** | New: F03-R28/R29/R30, F08-R19/R20/R21/R22, F12-R69/R70. Struck: F08-R04, F08-R10. Amended: F01-R35/R38, F03-R05/R17/R19, F04-R04/R10/R17, F05-R01/R04/R05/R07/R08/R16/R17/R70, F08-R06/R07/R08/R09/R15/R16, F12-R29/R30/R67. Nothing is renumbered |
 | **[DEC-181]** volumes labelled kW | **7 amended** | Amended: F01-R35, F03-R04/R19/R26, F05-R05/R16, F12-R67. Nothing is new, struck or renumbered |
+| **[DEC-182]** the EAN pool replaced by EDSN search | **10 new and 7 amended** | New: F01-R56/R57/R58/R59/R60/R61, F12-R71/R72/R73/R74. Amended: F01-R14/R23/R24/R25/R30/R38/R54. Nothing is struck or renumbered |
 | **[DEC-93]** no CMS | F14-R05 — **1** | **F14-R11**: content is files in the repository, changed by release |
 
 ### Deferred

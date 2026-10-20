@@ -482,6 +482,8 @@ public sealed class MeteringPoint : Entity
 public enum ProductionExpectation { Unknown = 0, Expected = 1, Never = 2 }
 ```
 
+⚠ **[DEC-182] (6):** `MeteringPoint` gains `EdsnVerifiedAt` and `MarkVerifiedByEdsn(DateTimeOffset)`. New records, BCL only, in `PeakPower.Domain.Metering.ConnectionRegister`: `RegisteredConnection`, `RegisteredAddress`, `MasterDataItem`, `MasterDataUpdates`, `ConnectionMasterDataFacts`, `GridOperatorName`; rules `MasterDataItemSelection.Latest` (the latest item of DEC-182 (7)) and `ConnectionAttachRules` (ELK + GVB~~, the address match~~); input parsing `ConnectionSearchQuery`, `AddressSuggestionQuery`, `DutchPostcode`. The pool's `EanPoolEntry` is gone. ⚠ **Amended 2026-10-20 by [DEC-182] (21)(a), (21)(b):** the address match (`ConnectionAttachRules.AddressMatch`, `MatchedCompanyAddress`) and the final review's staff approval (`Customer.ApprovedAt`, `ApprovedBy`, `Approve` and `MaySelfServeConnections`) are removed; the company check is `Status == Active` (platform `fc2daad`).
+
 ### 3.1 Invariants
 
 | # | Invariant | Enforced |
@@ -500,7 +502,7 @@ public enum ProductionExpectation { Unknown = 0, Expected = 1, Never = 2 }
 | ~~C10~~ | ~~An approver is an **active admin of the same company** and is **not** the account that raised the action **[DEC-71]**~~ | ~~`Customer.CanApproveFor`, called with ids taken from the token, never from the request body **[DEC-17]**~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no approver. |
 | C11 | A bank account is **immutable once added**. It may be added and deactivated; it may never be edited **[DEC-61]**, **[DEC-71]** | No setters; there is no `EditBankAccount` method to call |
 | C12 | A deactivated bank account is never reactivated and never removed, so a past withdrawal payout stays resolvable to the account it went to | `DeactivatedAt` is write-once; no delete path |
-| C13 | `ProductionExpectation` is set by a declaration with an actor and a timestamp, never inferred from SJV or from observed production **[DEC-112]** | Only the declaration method writes it; the SJV comparison is a report, not a writer |
+| C13 | `ProductionExpectation` is set by a declaration with an actor and a timestamp, never inferred from SJV or from observed production **[DEC-112]** ⚠ **[DEC-182] (11): EDSN's flow direction and SJI are shown beside the question, never written to it.** | Only the declaration method writes it; the SJV comparison is a report, not a writer |
 
 ### 3.2 ~~Four-eyes, and what it governs~~
 

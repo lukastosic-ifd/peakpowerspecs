@@ -16,6 +16,8 @@ const SCREENS = [
   ['customer-dashboard',        cust.customerDashboard,     'Customer portal — dashboard'],
   ['ean-list',                  cust.eanList,               'Customer portal — connections list'],
   ['ean-detail',                cust.eanDetail,             'Customer portal — connection detail'],
+  ['connection-add',            cust.connectionAdd,         'Customer portal — add a connection (EDSN search)'],
+  ['ean-details-popup',         cust.eanDetailsPopup,       'Customer portal — EAN details popup'],
   ['chart-day-view',            cust.chartDayView,          'Customer portal — day chart with block overlay'],
   ['chart-month-view',          cust.chartMonthView,        'Customer portal — month chart'],
   ['price-indications',         cust.priceIndications,      'Customer portal — price indications'],

@@ -75,6 +75,9 @@ See the [feature index](10-features/README.md) for the full list, MoSCoW priorit
 | [04 Bookkeeping program](30-integrations/04-odoo-accounting.md) | Draft-invoice push and ledger entries. It owns numbering **[DEC-88]**, the PDF and the email **[DEC-89]**, and VAT **[DEC-76]** |
 | [05 Identity provider](30-integrations/05-identity-provider.md) | Microsoft Entra ID **[DEC-20]** on the existing corporate tenancy **[DEC-66]**. MFA is mandatory **[DEC-92]** |
 | [06 ENTSO-E day-ahead](30-integrations/06-entsoe-day-ahead.md) | The NL day-ahead curve, live, backfilled from 2026-01-01 **[DEC-172]** and re-checked daily **[DEC-180]**, into `market.day_ahead_price`. The token is optional **[DEC-169]** |
+| [07 EDSN connection register](30-integrations/07-edsn-connection-register.md) | Search by EAN or address and master-data updates, called by the platform only; stored per EAN **[DEC-182]** |
+| [08 Pro6pp address suggestions](30-integrations/08-pro6pp-address-suggestions.md) | Address suggestions for the search box, with a secret key that never reaches a log or a browser **[DEC-182]** |
+| [09 Grid-operator mapping](30-integrations/09-grid-operator-mapping.md) | PeakPower's service naming grid operators by party code, stored and refreshed daily **[DEC-182]** |
 
 ### 40 — Processes
 | Doc | Purpose |

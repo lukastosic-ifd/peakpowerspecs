@@ -53,6 +53,8 @@ peakpower-platform/                             # repository 1 — .NET
 │       │                                       # Integration.Odoo  [DEC-88] [DEC-107] [OQ-69]
 │       ├── PeakPower.Integration.Email/        # SendGrid — platform notifications only,
 │       │                                       # no invoice mail  [DEC-48] [DEC-89]
+│       ├── PeakPower.Integration.ConnectionRegister/ # EDSN, grid-operator mapping and
+│       │                                       # Pro6pp clients + Simulated providers [DEC-182] (4)
 │       └── PeakPower.Jobs/                     # Hangfire job definitions
 │
 ├── tests/
@@ -411,7 +413,7 @@ dotnet run --project src/Hosts/PeakPower.AppHost
 >    **Consequence, and it is the largest of the seven: the demo seed had never once run, on any
 >    `dev-up`.** The Production gate declined correctly on every single run. The symptom was not an
 >    error — migrations applied, every resource went green, and `dev-up` handed over an **empty
->    schema**, so the six demo companies, their connections and the unclaimed EAN pool the whole
+>    schema**, so the six demo companies, their connections and the unclaimed EAN pool ⚠ **(the pool is removed by [DEC-182] (2); the seed fills companies and connections only)** the whole
 >    demo is built around were simply absent. The gate was right; nothing had ever told it this is
 >    a developer's machine.
 >
@@ -687,7 +689,7 @@ first eight do: each one fails silently in production and shows up as money.
 | Async everywhere, `CancellationToken` threaded through | |
 | Central package management | One version of everything |
 | **Packages are judged on fit, not on licence cost. A commercial licence is acceptable** | ~~**[DEC-39]** — open-source and free, or in-house~~ ⚠ **Reversed 2026-08-19 by [DEC-79]**. What replaces the old rule is not "anything goes": a paid package needs a licence bought before the spike ends, a key the build agent can read from Key Vault rather than a developer's machine, and a renewal date someone owns. The rule that survives unchanged is that no package may be used under a licence whose terms have not been read |
-| **No PDF rendering package, in any project** | **[DEC-89]** — the bookkeeping program renders and emails the invoice **[DEC-88]**, so nothing on the invoice path needs one. This is written as a standing rule rather than left as an omission because a PDF library is exactly the dependency that arrives quietly for something small and takes invoice branding back into the platform with it. ⚠ One caller survives the round untouched: **[F06-R22]** offers the wallet ledger as CSV **and PDF**. Under this rule that export is CSV-only unless someone re-opens the dependency on purpose, with the licence and the renewal owner from the row above |
+| **No PDF rendering package, in any project** | **[DEC-89]** — the bookkeeping program renders and emails the invoice **[DEC-88]**, so nothing on the invoice path needs one. This is written as a standing rule rather than left as an omission because a PDF library is exactly the dependency that arrives quietly for something small and takes invoice branding back into the platform with it. ⚠ One caller survives the round untouched: **[F06-R22]** offers the wallet ledger as CSV **and PDF**. Under this rule that export is CSV-only unless someone re-opens the dependency on purpose, with the licence and the renewal owner from the row above ⚠ **Corrected 2026-10-15 by [DEC-182]: the rule did not hold. The customer API references PDFsharp-MigraDoc for the funding-instructions PDF and the wallet ledger statement. The EAN-detail Save as PDF is browser print and adds no package; the employee API has none.** |
 
 ## 8. Open questions
 

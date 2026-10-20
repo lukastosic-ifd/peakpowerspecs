@@ -60,6 +60,9 @@ flowchart TB
     BOOK["<b>Bookkeeping program</b><br/>Odoo · Moneybird · other<br/>Numbering · PDF · invoice email ·<br/>VAT · payment matching · chargebacks"]
     IDP["<b>Identity provider</b><br/>Microsoft Entra ID · OIDC"]
     MAIL["<b>SendGrid</b><br/>Platform notifications only:<br/>offers, wallet events, alerts"]
+    EDSN["<b>EDSN</b><br/>Connection register<br/>search and master data"]
+    PRO6PP["<b>Pro6pp</b><br/>Address suggestions"]
+    GRIDMAP["<b>Grid-operator mapping</b><br/>PeakPower service<br/>grid-operator names"]
 
     CU --> PP
     EMP --> PP
@@ -67,6 +70,9 @@ flowchart TB
 
     BRP -->|"push document · adapter per BRP"| PP
     PP -->|"poll REST"| MONTEL
+    PP -->|"search, master data"| EDSN
+    PP -->|"address suggestions"| PRO6PP
+    PP -->|"names, daily"| GRIDMAP
     PP <-->|"redirect + webhook"| PSP
     BANK -->|"incoming payments"| PP
     PP -->|"draft invoices + ledger entries"| BOOK
@@ -328,7 +334,7 @@ so the one place [DEC-01] is load-bearing is also the one place it is exercised.
 | Real-time | SignalR | First-class in ASP.NET Core |
 | SOAP | `System.ServiceModel` / hand-rolled `XmlReader` | The inbound document is simple enough that a hand-written reader with XSD validation is more predictable than generated clients. ⚠ Under **[DEC-69]** this is a property of the **PVNed adapter**, not of ingestion: another BRP may push JSON, CSV or a file drop, and the port does not care |
 | Bookkeeping client | Typed HTTP client behind an `IBookkeepingGateway` port | **[DEC-88]**, **[DEC-89]**. Push draft invoice and ledger entries, read back the assigned number. Odoo is the assumed first implementation; the version and API are **[OQ-69]** and are now blocking rather than informational |
-| PDF rendering | **None** | ⚠ **Removed 2026-08-19 by [DEC-89].** No rendering library, no headless browser, no font pipeline, no document store. Branding of the invoice moves out of platform control, which is the price paid |
+| PDF rendering | **None** | ⚠ **Removed 2026-08-19 by [DEC-89].** No rendering library, no headless browser, no font pipeline, no document store. Branding of the invoice moves out of platform control, which is the price paid ⚠ **Corrected 2026-10-15 by [DEC-182]: stale. As built, the customer API references PDFsharp-MigraDoc 6.2.4 for two documents, the funding-instructions PDF and the wallet ledger statement. The EAN-detail Save as PDF adds no package: it is the browser's print.** |
 | Observability | OpenTelemetry | Backend per **[OQ-47]** |
 | Cloud | Azure Container Apps | Aspire's smoothest target; not a lock-in — see [Deployment](09-deployment.md) |
 

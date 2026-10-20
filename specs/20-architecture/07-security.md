@@ -25,6 +25,8 @@ What is actually worth protecting here, and from whom.
 | **Employee accounts** | Credential compromise | Insider-level access to everything | MFA, least privilege, session limits, audit |
 | **Customer accounts** | Credential compromise | Trading and withdrawal on someone else's money | ⚠ **Strengthened 2026-08-19 by [DEC-92]** — MFA is **mandatory** for customer users and the platform verifies the authentication-method claim rather than trusting the tenant **[F13-R45]**. Previously this row had no platform-side control at all — §3.1 |
 | **Break-glass credentials [DEC-53]** | Theft of the hash, or misuse of the account by its holder | Authenticated employee access that bypasses the identity provider entirely | Named accounts only, disabled by default, Argon2id + peppered hashes, an independent second factor, alert on **every** use — §3.2 |
+| **A national connection register through our API [DEC-182]** | Attaching someone else's connection; scraping the register | Another party's connection, supplier or consumption in the wrong company; household data exposed | The admin policy, ~~the staff-approval rule (active is not enough, migration 46),~~ ELK + GVB, ~~the address match,~~ the audit row, rate limits (per account and a host-wide ceiling); search answers carry only the register's result fields, and the popup only for the connection held today. ⚠ **Amended 2026-10-20 by [DEC-182] (21)(a), (21)(b):** the active status and the held-by-another check replace the staff approval and the address match, and the exclusion constraint of the save still guards a race. **Accepted residual (21)(e), B22:** any admin of an active company can add any large-scale electricity EAN in the Netherlands that no other company holds, and then read its stored EDSN master data; on the VM a self-onboarded company becomes active through the bank-verification step (the simulator, while it is on); `ALREADY_REGISTERED` tells such an admin that some PeakPower company holds an EAN, naming none; no staff notification and no other guard is built |
+| **The Pro6pp key [DEC-182]** | The key leaking through a log, an exception, a trace or a browser | Paid quota abused | The five redaction rules of DEC-182 (4) |
 
 The two that keep the design honest are **wallet integrity** and **tenancy isolation**. Almost every
 architectural rule in this set traces back to one of them.
@@ -144,20 +146,24 @@ well, and any future mutation exercise must do both.
 
 ⚠ **Two tables are deliberately exempt from row-level security** (added 2026-09-03), and both are
 named in the coverage guards rather than hidden from them — an exemption a guard can see is
-reviewable, a table no guard ever looks at is not. `metering.ean_pool` is shared reference data with
+reviewable, a table no guard ever looks at is not. ~~`metering.ean_pool` is shared reference data with
 **no `customer_id`**: an unclaimed entry belongs to nobody and must be visible to every customer at
-once, and a **claimed row leaves the pool**, because the API only ever selects `claimed_at IS NULL`.
+once, and a **claimed row leaves the pool**, because the API only ever selects `claimed_at IS NULL`.~~
 `customer.onboarding_application` has a **nullable `customer_id`** that is null for the whole life of
 a draft, and **every path that reaches it is anonymous** — a prospect has no token, so there is no
 `app.customer_id` to key a policy on; a row is addressed by its own id, a capability rather than a
 query. [Database design §6](04-database-design.md) carries both reasons in full, with what reopens
 each.
 
+⚠ **Amended 2026-10-15 by [DEC-182]:** metering.ean_pool is removed; metering.connection_master_data and metering.grid_operator are exempt instead, for the reasons in [Database design §6](04-database-design.md).
+
 ⚠ **Both coverage guards match a `CustomerId` *suffix*, not the exact name** (added 2026-09-03).
 That is what makes `ean_pool.claimed_by_customer_id` visible to them; under the exact-name predicate
 the table would have been invisible rather than exempt. `refresh_token` and `password_reset_token`
 carry no `customer_id` at all — they are scoped by **account** — and are held to the same two-policy
 bar by a separate account-owned discovery pass, not waved through.
+
+⚠ **[DEC-182]:** neither new table ends in customer_id, so neither guard discovers them: they are pinned instead by a schema test (no policy, row security off, no customer column, the customer role cannot write) and by tools/verify-migrator.sh. ean_pool was the last live table with a suffix-only customer column; a synthetic test keeps the suffix half of both guards honest.
 
 ### 2.1 The test that must exist
 
@@ -427,12 +433,15 @@ structural test.
 | Odoo | Service account with the minimum object rights; TLS; retries never duplicate a document (external reference is the key) |
 | Email — **SendGrid [DEC-48]** | Dedicated signed sending domain (SPF, DKIM, **DMARC at `p=reject`**); API key in Key Vault, scoped to send only, rotated; no tokens, credentials or invoice attachments-by-link that bypass authentication in message bodies. **[DEC-47]** puts invoices on this channel, so a spoofable sending domain is now an invoice-fraud surface, not only a deliverability problem |
 | Identity provider | Client secret in the secret store; JWKS cached with a bounded TTL |
+| EDSN **[DEC-182]** | The base URL is configuration and no credential is used; TLS; a timeout and a bounded retry; replies parsed defensively; an HTML 404 is "unavailable", not "nothing found", while EDSN's own plain-text 404 "No MasterDataUpdates could be found." is "no items"; a search waits at most 5 seconds in all for the master data it fetches on the side; the HTTP client factory's logger is removed because URLs carry a postcode and house number |
+| Pro6pp **[DEC-182]** | The key is a secret parameter, never logged or traced; the cursor link in its replies is never followed |
+| Grid-operator mapping **[DEC-182]** | No key; a plain-text 404 is "not found" |
 
 ## 6. Application security
 
 | Area | Control |
 | --- | --- |
-| Input validation | FluentValidation at the boundary; domain invariants behind it |
+| Input validation | FluentValidation at the boundary; domain invariants behind it ⚠ **[DEC-182] (3): the search box grammar is parsed in the domain; the web sends the raw text.** |
 | SQL injection | Parameterised everywhere; EF Core or Dapper with parameters, never string concatenation |
 | XSS | Angular's default escaping; `bypassSecurityTrust*` banned; strict CSP |
 | CSRF | Bearer tokens for the API; the refresh cookie is `SameSite=Strict` and its endpoint requires a custom header |
@@ -477,8 +486,8 @@ structural test.
 
 Processing bases: **contract** for platform operation, **legal obligation** for invoicing and fiscal
 retention, **legitimate interest** for security logging. A processor agreement is required with every
-third party that touches personal data — PVNed, the payment provider, the identity provider, the
-email provider and the cloud provider. **[OQ-58]**
+third party that touches personal data — ~~PVNed, the payment provider, the identity provider, the
+email provider and the cloud provider.~~ PVNed, the payment provider, the identity provider, the email provider, the cloud provider, ⚠ **and, from [DEC-182], the operator of the EDSN service PeakPower calls ([OQ-119]), Pro6pp and the grid-operator mapping service. EDSN returns household addresses and supplier data for small-scale connections; their retention is [OQ-122].** **[OQ-58]**
 
 ### 7.2 Encryption
 

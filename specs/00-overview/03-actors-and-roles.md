@@ -304,10 +304,10 @@ account of any company can do within its own company.
 | View own company's metering points & data | ✅ | ✅ | — | — | — | — |
 | Edit metering point name/description | ✅ | ✅ | — | ✅ | — | ✅ |
 | Search EDSN for a connection **[DEC-182]** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Add a connection found in EDSN to own company: electricity grootverbruik at the company's own address, company active and approved by staff **[DEC-182]** | — | ✅ | — | — | — | — |
+| Add a connection found in EDSN to own company: electricity grootverbruik ~~at the company's own address, company active and approved by staff~~ ⚠ **Amended 2026-10-20 by [DEC-182] (21):** any address, company active (no staff approval) **[DEC-182]** | — | ✅ | — | — | — | — |
 | See the EAN-detail popup: own connections held today; staff any EAN **[DEC-182]** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Attach a connection from an EDSN search or a typed EAN, refresh grid-operator names, fetch EDSN details **[DEC-182]** | — | — | ✅ | ✅ | ✅ | ✅ |
-| Approve a company, the staff approval it needs besides being active before it can add a connection itself **[DEC-182] (17)(t)** | — | — | ✅ | ✅ | ✅ | ✅ |
+| ~~Approve a company, the staff approval it needs besides being active before it can add a connection itself **[DEC-182] (17)(t)**~~ ⚠ **Removed 2026-10-20 by [DEC-182] (21)(b)** | — | — | ~~✅~~ | ~~✅~~ | ~~✅~~ | ~~✅~~ |
 | View any customer's data | — | — | ✅ | ✅ | ✅ | ✅ |
 | Create/cancel a trade request for own company | ✅ | ✅ | — | — | — | — |
 | Accept/reject **any** offer of own company — acceptance reserves the deposit at once; rejecting releases nothing because nothing is held *(⚠ the ⚖ and the second pair of eyes struck 2026-10-12, [DEC-179]; any active member may accept [F05-R43])* | ✅ | ✅ | — | — | — | — |

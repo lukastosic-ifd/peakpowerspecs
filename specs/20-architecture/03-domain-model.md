@@ -482,7 +482,7 @@ public sealed class MeteringPoint : Entity
 public enum ProductionExpectation { Unknown = 0, Expected = 1, Never = 2 }
 ```
 
-⚠ **[DEC-182] (6):** `MeteringPoint` gains `EdsnVerifiedAt` and `MarkVerifiedByEdsn(DateTimeOffset)`. New records, BCL only, in `PeakPower.Domain.Metering.ConnectionRegister`: `RegisteredConnection`, `RegisteredAddress`, `MasterDataItem`, `MasterDataUpdates`, `ConnectionMasterDataFacts`, `GridOperatorName`; rules `MasterDataItemSelection.Latest` (the latest item of DEC-182 (7)) and `ConnectionAttachRules` (ELK + GVB, the address match); input parsing `ConnectionSearchQuery`, `AddressSuggestionQuery`, `DutchPostcode`. The pool's `EanPoolEntry` is gone.
+⚠ **[DEC-182] (6):** `MeteringPoint` gains `EdsnVerifiedAt` and `MarkVerifiedByEdsn(DateTimeOffset)`. New records, BCL only, in `PeakPower.Domain.Metering.ConnectionRegister`: `RegisteredConnection`, `RegisteredAddress`, `MasterDataItem`, `MasterDataUpdates`, `ConnectionMasterDataFacts`, `GridOperatorName`; rules `MasterDataItemSelection.Latest` (the latest item of DEC-182 (7)) and `ConnectionAttachRules` (ELK + GVB~~, the address match~~); input parsing `ConnectionSearchQuery`, `AddressSuggestionQuery`, `DutchPostcode`. The pool's `EanPoolEntry` is gone. ⚠ **Amended 2026-10-20 by [DEC-182] (21)(a), (21)(b):** the address match (`ConnectionAttachRules.AddressMatch`, `MatchedCompanyAddress`) and the final review's staff approval (`Customer.ApprovedAt`, `ApprovedBy`, `Approve` and `MaySelfServeConnections`) are removed; the company check is `Status == Active` (platform `fc2daad`).
 
 ### 3.1 Invariants
 

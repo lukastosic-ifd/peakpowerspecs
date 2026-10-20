@@ -214,6 +214,10 @@ export function eanDetail() {
 /* ──────────────────────────────────────── add a connection (EDSN search) — [DEC-182] */
 // Simulated data only: Simulatiestraat 1, 9999AA PROEFDORP. English labels, as the set does; the slide's Dutch words
 // sit in the glossary and in DEC-182 (9). The built page is "Add a connection" / "Aansluiting toevoegen".
+// ⚠ Redrawn 2026-10-20 (DEC-182 (3), (21)): the result rows follow the UX round (street and number as the title, postcode
+// and city under it, the labelled facts EAN and Grid operator, two tags, a "Not supported" badge with the reason in a
+// full-width note, the chosen row with a left bar and a "Chosen" badge, and a count line that says how many are supported),
+// and the add card no longer says that the address matches the company's: there is no address match (DEC-182 (21)(a)).
 export function connectionAdd() {
   const s = shell({
     portal: 'customer', title: 'Add a connection', crumb: 'Search EDSN by EAN or address',
@@ -222,35 +226,72 @@ export function connectionAdd() {
   let b = s.svg;
   const { cx, cy, cw } = s;
 
-  // the search card
-  b += panel(cx, cy, cw, 336, 'Find the connection', {
+  // the search card (grown to hold the three rows of the UX round)
+  b += panel(cx, cy, cw, 562, 'Find the connection', {
     subtitle: 'EDSN is the national register of grid connections. Only large-scale electricity connections can be added.',
   });
   b += rect(cx + 18, cy + 76, 760, 38, { fill: C.panel, stroke: C.accent, sw: 2, r: 7 });
   b += text(cx + 32, cy + 100, '9999AA 1', { size: 13, mono: true });
   b += button(cx + 794, cy + 76, 100, 'Search', 'primary', { h: 38 });
-  b += text(cx + 18, cy + 142, '3 connections found', { size: 12, fill: C.muted, weight: 600 });
+  b += text(cx + 18, cy + 142, '3 connections found · 1 supported, 2 not supported', { size: 12, fill: C.muted, weight: 600 });
 
-  const rows = [
-    { ean: '871999000000000018', addr: 'Simulatiestraat 1, 9999AA PROEFDORP', meta: 'Electricity · Large-scale (GVB) · Grid operator Enexis Maastricht', ok: true },
-    { ean: '871999000000000025', addr: 'Simulatiestraat 1, 9999AA PROEFDORP', meta: 'Electricity · Small-scale (KVB) · Grid operator Simulatienet Proefdorp', why: 'Not supported: a small-scale connection.' },
-    { ean: '871999000000000032', addr: 'Simulatiestraat 1, 9999AA PROEFDORP', meta: 'Gas · Small-scale (KVB)', why: 'Not supported: a gas connection.' },
+  // a small outlined tag, the width of its label
+  const tagW = (l) => Math.round(l.length * 5.9 + 16);
+  const tags = (x, y, labels) => {
+    let t = '';
+    let tx = x;
+    labels.forEach((l) => {
+      const w = tagW(l);
+      t += rect(tx, y, w, 18, { fill: C.panel, stroke: C.border2, r: 4 })
+        + text(tx + w / 2, y + 12.5, l, { size: 11, fill: C.muted, anchor: 'middle' });
+      tx += w + 6;
+    });
+    return t;
+  };
+  // the labelled facts: EAN (unspaced, DEC-169 (4)) and Grid operator
+  const facts = (x, y, ean, operator) => text(x, y, 'EAN', { size: 11.5, fill: C.muted })
+    + text(x + 28, y, ean, { size: 11.5, mono: true })
+    + text(x + 176, y, 'Grid operator', { size: 11.5, fill: C.muted })
+    + text(x + 260, y, operator, { size: 11.5 });
+
+  const lx = cx + 34;
+  const rowX = cx + 18;
+  const rowW = cw - 36; // 1130
+  const reasons = {
+    kvb: 'This is a small-scale connection. Only large-scale electricity connections can be added. Questions? Contact PeakPower (support@peakpower.nl).',
+    gas: 'This is a gas connection. Only large-scale electricity connections can be added. Questions? Contact PeakPower (support@peakpower.nl).',
+  };
+  const titleBadge = (x, y, title, label, tone, w) => badge(x + title.length * 7.6 + 12, y, label, tone, { w });
+
+  // row 1: supported, and chosen (its add card is open below): left bar, tint, "Chosen" badge, Add
+  let y = cy + 154;
+  b += rect(rowX, y, rowW, 96, { fill: C.accentBg, stroke: null, r: 6, opacity: 0.35 });
+  b += rect(rowX, y, 3, 96, { fill: C.accent, stroke: null, r: 1.5 });
+  b += text(lx, y + 24, 'Simulatiestraat 1', { size: 13.5, weight: 600 });
+  b += titleBadge(lx, y + 9, 'Simulatiestraat 1', 'Chosen', 'indigo', 62);
+  b += text(lx, y + 43, '9999AA PROEFDORP', { size: 12.5, fill: C.muted });
+  b += facts(lx, y + 62, '871999000000000018', 'Enexis Maastricht');
+  b += tags(lx, y + 70, ['Electricity', 'Large-scale (GVB)']);
+  b += button(rowX + rowW - 12 - 80, y + 8, 80, 'Add', 'primary');
+
+  // rows 2 and 3: not supported; quieter title, a status badge, the reason in a full-width note, no button
+  const quiet = [
+    { ean: '871999000000000025', operator: 'Simulatienet Proefdorp', tags: ['Electricity', 'Small-scale (KVB)'], why: reasons.kvb },
+    { ean: '871999000000000032', operator: 'Enexis Maastricht', tags: ['Gas', 'Small-scale (KVB)'], why: reasons.gas },
   ];
-  rows.forEach((r, i) => {
-    const y = cy + 154 + i * 56;
-    b += rect(cx + 18, y, cw - 36, 50, { fill: r.ok ? C.accentBg : C.panel2, stroke: r.ok ? C.accent : C.border, sw: r.ok ? 2 : 1, r: 8, opacity: r.ok ? 0.55 : 1 });
-    b += text(cx + 34, y + 21, r.ean, { size: 12.5, mono: true, weight: 600, fill: r.ok ? C.text : C.muted });
-    b += text(cx + 232, y + 21, r.addr, { size: 12.5, weight: 600, fill: r.ok ? C.text : C.muted });
-    b += text(cx + 34, y + 39, r.meta, { size: 11, fill: C.muted });
-    if (r.ok) {
-      b += button(cx + cw - 36 - 100, y + 8, 90, 'Add', 'primary');
-    } else {
-      b += text(cx + cw - 36, y + 21, r.why, { size: 12, fill: C.amber, weight: 600, anchor: 'end' });
-    }
+  quiet.forEach((r) => {
+    y += (y === cy + 154 ? 96 : 146);
+    b += line(rowX, y, rowX + rowW, y, { stroke: C.border });
+    b += text(lx, y + 24, 'Simulatiestraat 1', { size: 13.5, weight: 600, fill: C.muted });
+    b += titleBadge(lx, y + 9, 'Simulatiestraat 1', 'Not supported', 'amber', 100);
+    b += text(lx, y + 43, '9999AA PROEFDORP', { size: 12.5, fill: C.muted });
+    b += facts(lx, y + 62, r.ean, r.operator);
+    b += tags(lx, y + 70, r.tags);
+    b += note(cx + 34, y + 98, cw - 68, r.why, 'muted');
   });
 
-  // the add card for the chosen result
-  const ay = cy + 352;
+  // the add card for the chosen result, 16 px under the search card; it runs past the bottom edge of the frame
+  const ay = cy + 578;
   const lw = 640;
   b += panel(cx, ay, cw, 380, 'Add 871999000000000018', {});
   b += text(cx + 18, ay + 66, 'Does this connection produce electricity?', { size: 12.5, weight: 600 });
@@ -262,31 +303,53 @@ export function connectionAdd() {
   b += field(cx + 18, ay + 260, lw - 36, 'DESCRIPTION (OPTIONAL)', '', {});
   b += button(cx + 18, ay + 322, 170, 'Add this connection', 'disabled');
 
+  // ⚠ 2026-10-20 (DEC-182 (21)(a)): the line "The address matches your company's billing address." is gone, and the four
+  // lines under it moved up by its height; the box is 40 px shorter
   const rx = cx + lw + 16;
   const rw = cw - lw - 16;
-  b += rect(rx, ay + 60, rw - 16, 304, { fill: C.panel2, stroke: C.border, r: 10 });
+  b += rect(rx, ay + 60, rw - 16, 264, { fill: C.panel2, stroke: C.border, r: 10 });
   b += text(rx + 18, ay + 86, 'What EDSN says', { size: 13, weight: 700 });
-  b += note(rx + 18, ay + 100, rw - 52, "The address matches your company's billing address.", 'accent');
-  b += statLine(rx + 18, ay + 168, rw - 52, 'Delivery direction', 'Delivery');
-  b += statLine(rx + 18, ay + 196, rw - 52, 'Standard annual feed-in, normal', '0,0 kW');
-  b += statLine(rx + 18, ay + 224, rw - 52, 'Standard annual feed-in, low', '0,0 kW');
-  b += statLine(rx + 18, ay + 252, rw - 52, 'EDSN details as of', '15 Jan 2026');
-  b += text(rx + 18, ay + 296, 'For reference only: your answer is what counts.', { size: 11.5, fill: C.muted });
+  b += statLine(rx + 18, ay + 128, rw - 52, 'Delivery direction', 'Delivery');
+  b += statLine(rx + 18, ay + 156, rw - 52, 'Standard annual feed-in, normal', '0,0 kW');
+  b += statLine(rx + 18, ay + 184, rw - 52, 'Standard annual feed-in, low', '0,0 kW');
+  b += statLine(rx + 18, ay + 212, rw - 52, 'EDSN details as of', '15 Jan 2026');
+  b += text(rx + 18, ay + 256, 'For reference only: your answer is what counts.', { size: 11.5, fill: C.muted });
 
   return svgDoc(b, { label: 'Customer portal — add a connection (EDSN search)' });
 }
 
 /* ─────────────────────────────────────────── the EAN-detail popup — [DEC-182] */
 // The frame is 1440 x 900 and fixed, so the two tables sit side by side here; the built popup stacks them at 720 px.
+// ⚠ Redrawn 2026-10-20 (DEC-182 (21)(d)): the head follows the result rows of connection-add: the address as its title,
+// postcode and city, EDSN's two statuses as worded badges, the labelled facts EAN (grouped by spacing here; the built text
+// is the raw digits) and Grid operator, two tags, and the as-of date. The dialog keeps the title "EAN: ..." and both tables.
 export function eanDetailsPopup() {
   let b = eanDetailBody();
   b += rect(0, 0, W, H, { fill: '#0f172a', stroke: null, r: 0, opacity: 0.55 });
-  const px = 130, py = 64, pw = 1180, ph = 740;
+  const px = 130, py = 36, pw = 1180, ph = 810;
   b += rect(px, py, pw, ph, { fill: C.panel, stroke: C.border2, r: 12 });
-  b += text(px + 28, py + 44, 'EAN: 871999000000000018', { size: 19, weight: 700 });
-  b += text(px + pw - 28, py + 44, '×', { size: 24, fill: C.muted, anchor: 'end' });
-  b += text(px + 28, py + 68, 'Electricity · Large-scale (GVB) · EDSN details as of 15 Jan 2026', { size: 12, fill: C.muted });
-  b += line(px, py + 84, px + pw, py + 84, { stroke: C.border });
+  b += text(px + 28, py + 40, 'EAN: 871999000000000018', { size: 19, weight: 700 });
+  b += text(px + pw - 28, py + 40, '×', { size: 24, fill: C.muted, anchor: 'end' });
+  b += line(px, py + 58, px + pw, py + 58, { stroke: C.border });
+
+  // the identity head, in the helpers of the result rows
+  const hx = px + 28;
+  const hy = py + 58;
+  b += text(hx, hy + 30, 'Simulatiestraat 1', { size: 13.5, weight: 600 });
+  const bx = hx + 'Simulatiestraat 1'.length * 7.6 + 12;
+  b += badge(bx, hy + 15, 'Delivery: Active', 'green', { w: 118 });
+  b += badge(bx + 126, hy + 15, 'Physical: In operation', 'green', { w: 152 });
+  b += text(hx, hy + 49, '9999AA PROEFDORP', { size: 12.5, fill: C.muted });
+  b += text(hx, hy + 69, 'EAN', { size: 11.5, fill: C.muted });
+  b += text(hx + 28, hy + 69, '871999 000000 000018', { size: 11.5, mono: true });
+  b += text(hx + 190, hy + 69, 'Grid operator', { size: 11.5, fill: C.muted });
+  b += text(hx + 274, hy + 69, 'Enexis Maastricht', { size: 11.5 });
+  [['Electricity', 0, 80], ['Large-scale (GVB)', 86, 116]].forEach(([l, dx, w]) => {
+    b += rect(hx + dx, hy + 78, w, 18, { fill: C.panel, stroke: C.border2, r: 4 });
+    b += text(hx + dx + w / 2, hy + 90.5, l, { size: 11, fill: C.muted, anchor: 'middle' });
+  });
+  b += text(hx, hy + 114, 'EDSN details as of 15 Jan 2026', { size: 11.5, fill: C.muted });
+  b += line(hx, hy + 126, px + pw - 28, hy + 126, { stroke: C.border });
 
   const dash = { t: '—', fill: C.faint };
   const t1 = [
@@ -303,8 +366,8 @@ export function eanDetailsPopup() {
     ['Grid area', { t: '871999000000000100', mono: true }],
     ['BAG', { t: '9999010000000001', mono: true }],
   ].map(([k, v]) => [{ t: k, fill: C.muted, size: 11.5 }, typeof v === 'string' ? { t: v, weight: 600, size: 12 } : { weight: 600, size: 12, ...v }]);
-  const ty = py + 104;
-  b += table(px + 28, ty, 540, [{ label: 'PARTIES AND ADDRESS', w: 190 }, { label: 'VALUE', w: 350 }], t1, { rowH: 42 });
+  const ty = hy + 140;
+  b += table(px + 28, ty, 540, [{ label: 'PARTIES AND ADDRESS', w: 190 }, { label: 'VALUE', w: 350 }], t1, { rowH: 40 });
 
   const kw = (v) => `${nl(v, 1)}`;
   const t2 = [

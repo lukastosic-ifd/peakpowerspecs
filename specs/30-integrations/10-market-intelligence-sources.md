@@ -18,11 +18,13 @@ update yet when nothing has arrived.
 Unread mail from the sender is stored once by `Message-Id` and then marked read. The original text (which may contain
 prices) is kept in `market.market_news_message`, which the customer role cannot read.
 
-## 2. Claude API (rewriting)
+## 2. Gemini API (rewriting)
 
-**Direction:** outbound · **Protocol:** HTTPS (`api.anthropic.com`) · **Criticality:** low — without it the
-price-stripped Dutch text is published unrewritten. Setting `MarketNews__Ai__ApiKey` (empty = off). One structured-output
-request per email; the input is the price-stripped text only, no personal data. A processor under [DEC-101] ([OQ-123]).
+**Direction:** outbound · **Protocol:** HTTPS, REST (`generativelanguage.googleapis.com`, `POST /v1beta/models/{model}:generateContent`,
+key in the `x-goog-api-key` header) · **Criticality:** low — without it the price-stripped Dutch text is published unrewritten.
+Settings: `MarketNews__Ai__ApiKey` (`GEMINI_API_KEY`, empty = off) and `MarketNews__Ai__Model` (`MARKET_NEWS_AI_MODEL`, default
+`gemini-2.5-flash`). One JSON-output request per email; the input is the price-stripped text only, no personal data. A processor
+under [DEC-101] ([OQ-123]); use a paid-tier key, because input sent with a free-tier key may be used by Google to improve its products.
 
 ## 3. dynamische-energieprijzen.nl (expected prices)
 

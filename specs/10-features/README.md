@@ -1,6 +1,6 @@
 # Feature Index
 
-Sixteen features, each specified in its own document with user stories, numbered functional
+Seventeen features, each specified in its own document with user stories, numbered functional
 requirements, business rules and edge cases.
 
 **Requirement IDs** are stable: `F05-R12` is requirement 12 of feature F05, and can be referenced from
@@ -36,9 +36,12 @@ resolves.
 | [F14](F14-public-website.md) | Public Website | Public | **Could** | 4 | S |
 | [F15](F15-audit-and-observability.md) | Audit Trail & Observability | Both | **Must** | 1–3 | M |
 | [F16](F16-legal-documents.md) | Legal Documents | Both | **Must** | 1 | S |
+| [F17](F17-market-intelligence.md) | Market Intelligence | Customer | **Should** | 3 | S |
 
 Sizes are relative, for sequencing only: **S** ≈ 1 sprint or less, **M** ≈ 1–2, **L** ≈ 2–4,
 **XL** ≈ 4+ with meaningful unknowns.
+
+> **F17 is the seventeenth, added 2026-10-21 by [DEC-184].** Market updates from marketnews@peakpower.nl, read by IMAP, stripped of every price and rewritten by AI in Dutch and English, shown in a new Market Intelligence screen and a Dashboard card beside the expected kWh price for the next 12 months from dynamische-energieprijzen.nl. Like F16, its requirements are not in the *Requirement count by feature* table below.
 
 > **F16 is the sixteenth, added 2026-10-05 by [DEC-174].** Versioned legal documents (the Terms of Use and the Privacy Statement), their back-office management (the only place with the list and the version history), the PDF links customers open (no customer page) and the recorded Terms version at sign-up. ⚠ **Amended 2026-10-09 by [DEC-177]:** every document is published in English and Dutch (a version is an edition with an English and a Dutch PDF, both required), customers get the PDF in their language, and the sign-up also records the language served; new rows F16-R38 to F16-R40. Its requirements are not in the *Requirement count by feature* table below, which was counted on 2026-08-19 and is not maintained by hand since; the stakeholder site counts F16 from its own table.
 

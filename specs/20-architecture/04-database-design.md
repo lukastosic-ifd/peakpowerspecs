@@ -1379,6 +1379,8 @@ The Worker's `TradeDeskNotificationJob` takes unsent rows (at most `BatchSize` =
 
 #### 3.4.5 Trading in kW, kWh and €/kWh — [DEC-180], added 2026-10-13
 
+⚠ **Reversed 2026-10-22 by [DEC-186], migration 49 (`20261022090000_TradingMwhUnits`).** The eight unit columns below go back to MW, MWh and euro per MWh, in place: `total_power_kw`/`power_kw` → `total_power_mw`/`power_mw numeric(12,6)` (/ 1000), `total_kwh` → `total_mwh numeric(18,6)` (/ 1000), each `…_eur_per_kwh numeric(12,5)` → `…_eur_per_mwh numeric(12,2)` (× 1000). Every value converts exactly, which the migration checks before it rewrites; the `CHECK`s are recreated in MW, the column grants under the new names, the money columns are fingerprinted, and no audit row is written. The saved hedge positions (§3.8) stay in kWh and euro per kWh.
+
 ⚠ **As built 2026-10-13 by [DEC-180].** Migration 42 (`20261013191536_TradingKwhUnits`) rewrites the two trading tables that hold a unit: power in kW, energy in kWh, every price in euro per kWh with five decimals. **Every stored euro amount stays exactly as it is.** The names below are the built names.
 
 **1. The columns.**

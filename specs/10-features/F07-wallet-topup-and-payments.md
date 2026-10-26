@@ -28,6 +28,16 @@
 > company's open withdrawals, and the payout re-resolves the destination after it locks the request. ~~A company
 > with four-eyes on cannot change its account yet — the approval flow **[F01-R45]** is not built.~~ *(⚠ moot since 2026-10-12, [DEC-179]: one admin changes it.)*
 
+> ⚠ **Reversed in part 2026-10-23 by [DEC-187]** — **iDEAL is removed.** Bank transfer is the only deposit
+> method: the deposit page asks for an amount and hands over PeakPower's IBAN, account holder and a `PP-DEP-…`
+> reference; there is no method choice, no test checkout and no PSP webhook any more (the iDEAL sections below are
+> history). A new back-office **Deposits** desk lists every pending transfer; a staff member **accepts** it with the
+> amount actually received (the wallet is credited with that amount and the customer is mailed) or **rejects** it
+> with a reason the customer sees (new status `REJECTED`). Onboarding's € 0,01 check is a bank transfer only, and
+> staff accept or reject it on the same page (*Bank account checks*); accepting one for a signed `PROSPECT` company
+> makes it `ACTIVE`. After wiring, the customer presses *I've transferred the money*; that puts the deposit on the
+> desk's *To check* list and mails the back office a link straight to it.
+
 Two ways to put money in the wallet, and **only** two **[DEC-58]**:
 
 1. **iDEAL via a payment provider** (CM.com is the candidate) — funds land in the wallet within

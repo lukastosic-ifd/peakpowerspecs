@@ -33,7 +33,9 @@
 > reference; there is no method choice, no test checkout and no PSP webhook any more (the iDEAL sections below are
 > history). A new back-office **Deposits** desk lists every pending transfer; a staff member **accepts** it with the
 > amount actually received (the wallet is credited with that amount and the customer is mailed) or **rejects** it
-> with a reason the customer sees (new status `REJECTED`). Onboarding's € 0,01 check is a bank transfer only.
+> with a reason the customer sees (new status `REJECTED`). Onboarding's € 0,01 check is a bank transfer only, and
+> staff accept or reject it on the same page (*Bank account checks*); accepting one for a signed `PROSPECT` company
+> makes it `ACTIVE`.
 
 Two ways to put money in the wallet, and **only** two **[DEC-58]**:
 

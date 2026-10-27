@@ -136,6 +136,8 @@ short is a promise to deliver, not a spend, so neither the prepaid wallet **[AS-
 pre-trade balance check **[DEC-41]** bounds it. No collateral or exposure limit is decided —
 **[OQ-94]**, which must be answered before the sell path opens.
 
+⚠ **Answered 2026-10-27 by [DEC-190]:** the sell path is open; a SELL reserves a collateral at accept and holds it until delivery ends.
+
 **Metering data comes from a configurable BRP; PVNed is the first, not the only one [DEC-69].** A BRP
 is reference data with its own credentials, endpoint, document format and ingestion adapter, and a
 metering point is assigned to one. The PVNed webhook, parser and validation path become *one adapter
@@ -276,7 +278,7 @@ can be audited in one place.
 | **Out** | Wallet balance thresholds and low-balance alerts | **[DEC-90]** | reverses **[DEC-49]** |
 | **Out** | Minimum and maximum deposit amounts | **[DEC-84]** | — |
 | **In** | Energiebelasting — brackets, per-customer reductions, ledger push | **[DEC-74]** | reverses **[DEC-24]** |
-| **In** | Short selling | **[DEC-72]** | reverses **[DEC-34]**, opens **[OQ-94]** |
+| **In** | Short selling | **[DEC-72]** | reverses **[DEC-34]**, opens **[OQ-94]** ⚠ **[DEC-190]: enabled, [OQ-94] closed** |
 | **In** | Configurable BRPs beyond PVNed | **[DEC-69]** | extends **[DEC-21]** |
 | **In** | Bank-transfer deposits matched by the platform | **[DEC-106]** | amends **[DEC-58]**, opens **[OQ-93]** |
 | **In** | Withdrawals | **[DEC-83]** | reverses **[DEC-43]** |

@@ -305,7 +305,7 @@ it and a pointer to what replaced it. Nothing was renumbered.
 | **[DEC-89]** the bookkeeping program generates and sends | F10-R18, F11-R22 — **2** | **F10-R46**, **F11-R31**: the platform keeps the calculated data and shows it in the portal against the returned number |
 | **[DEC-81]** no history, no export | F04-R09, F04-R13 — **2** | **F04-R20**: the current curve only, on authenticated surfaces, never exported |
 | **[DEC-88]** the bookkeeping program numbers | F10-R16 — **1** | **F10-R44**, **F10-R45**: push a draft, store the number that comes back, never mint one |
-| **[DEC-72]** short selling permitted | F05-R10 — **1** | **F05-R69**: the sell path stops validating against confirmed holdings. Gated on **[OQ-94]** |
+| **[DEC-72]** short selling permitted | F05-R10 — **1** | **F05-R69**: the sell path stops validating against confirmed holdings. Gated on **[OQ-94]** ⚠ **2026-10-27 [DEC-190]: F05-R69 is enacted; [OQ-94] closed** |
 | **[DEC-68]** gas out of scope | F01-R28 — **1** | **F01-R52**. **[DEC-15]**'s `commodity` discriminator stays — cheap now, expensive to retrofit |
 | **[DEC-83]** withdrawals exist | F06-R29 — **1** | **F06-R35**: the requirement that *no* code path moves money out of a wallet is exactly what a withdrawal is |
 | **[DEC-84]** no min/max deposit | F07-R02 — **1** | Nothing. The €100 / €250 000 defaults are removed, not configured |

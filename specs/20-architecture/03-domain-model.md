@@ -594,7 +594,7 @@ public sealed class Trade : AggregateRoot
 | ~~T12~~ | ~~Leaving `AwaitingApproval` other than by `Approve` releases that reservation in the **same** transaction~~ | ~~`Expire` and `RefuseApproval` both call `ReleaseReservation`~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step; accept lands in `Accepted` and holds the reservation from there. |
 | ~~T13~~ | ~~`Approve` is only valid while `now < Offer.ExpiresAt`. **One clock governs the whole customer response** — there is no separate approval window **[DEC-13]**, **[DEC-71]**~~ | ~~Same guard and same job as `Accept`~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step; accept lands in `Accepted` and holds the reservation from there. |
 | ~~T14~~ | ~~`ThresholdVersion` and `ThresholdApplied` are set by `Accept` and never change~~ ⚠ **Reversed 2026-08-19 by [DEC-71]** — there is no threshold to pin. Replaced by **T18** | ~~Pinned like `CalendarVersion`, for the same reason~~ |
-| T15 | A `Sell` is **not** validated against confirmed holdings for the period. ⚠ **[DEC-34] reversed by [DEC-72]** — short selling is permitted, the motivating case being a customer with solar production selling expected surplus | No holdings check exists in the sell path. See the exposure note below |
+| T15 | A `Sell` is **not** validated against confirmed holdings for the period. ⚠ **[DEC-34] reversed by [DEC-72]** — short selling is permitted, the motivating case being a customer with solar production selling expected surplus | No holdings check exists in the sell path. See the exposure note below ⚠ **2026-10-27 [DEC-190]: the transition is open to customers; `Accept` sets the collateral on a `Sell` and `Confirm` credits the gross** |
 | T16 | The amount reserved on `Accept`, and later debited on `Confirm`, is **VAT-inclusive**: `volume × price × (1 + 21%)` **[DEC-78]**, **[DEC-64]**. Prices stay quoted and stored **ex-VAT** **[DEC-26]**, **[DEC-76]** | One helper, `Offer.TotalValueGross`, used by both `Reserve` and the debit. Nothing else grosses up ⚠ **2026-09-29 [DEC-167] (2):** the gross is computed **once**, at accept, and stored as `trade.wallet_amount_gross`; Confirm debits that stored number and no path recomputes it (`TradeMoney` reads it off the locked trade). |
 | T17 | The reservation covers **100%** of that gross value — there is no buffer and no partial cover **[DEC-41]** | `Reserve` refuses when `AvailableBalance` is short (W3) |
 | ~~T18~~ | ~~`FourEyesApplied` is set by `Accept` from the company's mode at that instant and never changes. Turning the mode off while a trade sits in `AwaitingApproval` does **not** release it~~ | ~~Pinned like `CalendarVersion`, for the same reason: the branch must be reconstructable years later~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval step; accept lands in `Accepted` and holds the reservation from there. |
@@ -606,6 +606,8 @@ have no production to cover, and the loss if the market moves against them is un
 PeakPower. No collateral rule, margin call or position limit is decided. This is registered as
 **[OQ-94]** and it blocks the sell path opening to customers — the aggregate permits the transition,
 the product must not until OQ-94 is answered.
+
+⚠ **Answered 2026-10-27 by [DEC-190] (3):** OQ-94 is closed by a collateral held until the delivery period has ended; the product opens the sell path. The collateral is not an exposure limit.
 
 ### 4.2 State transition table
 

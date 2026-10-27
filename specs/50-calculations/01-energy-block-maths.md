@@ -287,6 +287,8 @@ not either, because that check sizes a *debit* and a short creates none — it c
 or exposure rule is decided: **[OQ-94]**. Until that is answered the maths here is complete and the
 sell path is not safe to open beyond confirmed holdings.
 
+⚠ **Amended 2026-10-27 by [DEC-190]: the sell path is open and [OQ-94] is answered.** The maths in this section is unchanged and was already signed; a SELL reserves a collateral at accept (§4) and holds it until delivery ends. The risk it leaves is not bounded by the collateral, which is a percentage of the gross and not an exposure limit.
+
 ## 4. Money
 
 ```
@@ -302,6 +304,7 @@ walletAmount = round(tradeValue × (1 + vatRate), 2)                      // fro
   debited — and it is the gross figure on that side too, because the wallet holds VAT-inclusive cash
   in both directions **[DEC-78]**. Under **[DEC-72]** a SELL no longer requires a holding, so this is
   now also the path a short takes; see §3.6 and **[OQ-94]**.
+  ⚠ **Amended 2026-10-27 by [DEC-190] (3):** `walletAmount` is credited at confirm (`TRADE_PROCEEDS`) and, at accept, a **collateral** `round(walletAmount × deposit_pct / 100, 2)` (the BUY deposit's rule, [DEC-167] (17)) is reserved and held until the delivery period has ended, then released (`TRADE_RESERVATION_RELEASED`). A SELL is priced at the Sell indication (Buy less `SellSpreadPercent`, default 2 %).
 - Reservation and debit are the **same stored number**, never two calculations **[F05-R70]**. A VAT
   rate change between acceptance and confirmation therefore cannot open a gap.
 
@@ -541,7 +544,7 @@ precisely the exposure **[OQ-94]** has to size.
 | ~~[OQ-02]~~ | ~~Do peak blocks exclude public holidays, and who owns the holiday list?~~ | ✅ **Closed by [DEC-19]** — they are not excluded; a weekday holiday is a peak day, and `excluded_dates[]` is empty. **Re-confirmed 2026-08-19** verbatim: *"Peak is Mo-Fr 08:00 - 20:00"*, holidays not needed. No new decision number; **[DEC-14]** and **[DEC-19]** are unchanged (§2.1) |
 | ~~[OQ-08]~~ | ~~What is the minimum and the increment for a requested volume?~~ | ✅ **Closed by [DEC-70]** — minimum **0,01 MW**, increment **0,01 MW**, both reference data with those shipped defaults **[F05-R08]**. ⚠ Reverses **[DEC-32]**; consequences in §1.1, §3.4, §5.1, §5.2, §5.3 |
 | ~~[OQ-10]~~ | ~~Can a customer sell a block they do not hold (short), and if so, who authorises it?~~ | ✅ **Closed by [DEC-72]** — yes, short selling is permitted, motivated by a customer selling expected solar surplus. No authorisation flag and no holdings check **[F05-R69]**; volume is simply signed §3.6. ⚠ Reverses **[DEC-34]**, and hands the residual on as **[OQ-94]** |
-| **[OQ-94]** | What collateral or exposure limit applies to a short position? | 🟠 **Open — raised by [DEC-72]**. The maths here is complete and sign-transparent; the risk is not bounded by anything in this document. The prepaid wallet **[AS-11]** and the pre-trade check **[DEC-41]** size a *debit*, and a short creates a **credit** and a delivery obligation §3.6. **[DEC-82]** makes it worse in one specific case: a short outlives the contract that would otherwise have produced the volume §6.1. Needed before the sell path opens beyond confirmed holdings |
+| **[OQ-94]** | What collateral or exposure limit applies to a short position? | 🟠 **Open — raised by [DEC-72]**. The maths here is complete and sign-transparent; the risk is not bounded by anything in this document. The prepaid wallet **[AS-11]** and the pre-trade check **[DEC-41]** size a *debit*, and a short creates a **credit** and a delivery obligation §3.6. **[DEC-82]** makes it worse in one specific case: a short outlives the contract that would otherwise have produced the volume §6.1. Needed before the sell path opens beyond confirmed holdings ⚠ **Closed 2026-10-27 by [DEC-190] (3):** a collateral held until delivery ends |
 
 Nothing else in this document is open. Three of this file's questions closed on 2026-08-19; the one
 new question it inherits is **[OQ-94]**, and it is the only thing here that can still change a number.

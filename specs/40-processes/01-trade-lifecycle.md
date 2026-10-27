@@ -188,10 +188,12 @@ this process can produce. The consequence for the diagram is exact: between `S3`
 available balance can be moved by **another trade** and by nothing else, which is what ~~keeps the
 "no second balance check on approval" rule safe~~ *(no approval since 2026-10-12, [DEC-179])* now that the reservation is the larger, gross figure.
 
-⚠ The diagram's held amounts describe a **BUY**. A `SELL` holds nothing — `TRADE_PROCEEDS` carries no
+⚠ The diagram's held amounts describe a **BUY**. ~~A `SELL` holds nothing — `TRADE_PROCEEDS` carries no
 reserved delta at all ([F06 §3](../10-features/F06-wallet-and-ledger.md)), it simply credits the
 wallet on confirmation. That is unremarkable while a sell is covered by a position, and it is the
-whole problem once **[DEC-72]** allows one that is not: see §5.4.
+whole problem once **[DEC-72]** allows one that is not: see §5.4.~~
+
+⚠ **Amended 2026-10-27 by [DEC-190] (3):** a `SELL` now holds a **collateral** — `TRADE_RESERVED` at accept for the deposit percentage of the gross, `TRADE_RESERVATION_RELEASED` on failure, and the same entry again from a daily job once the delivery period has ended. `TRADE_PROCEEDS` credits the gross at confirm and the collateral stays held; `TRADE_SETTLED` and `TRADE_BALANCE_PAID` do not occur for a SELL. The sentence above that a SELL holds nothing is struck.
 
 ### 4.1 The money, worked
 
@@ -293,7 +295,7 @@ document bites on it.
 | --- | --- | --- |
 | Pre-trade balance check **[DEC-41]** at `A4` | Blocks a request the wallet cannot cover, at 100% of the gross estimate **[DEC-78]** | **Nothing.** A sell credits the wallet; there is no spend to bound |
 | Prepaid wallet, never negative **[AS-11]** | Caps the loss at the balance | **Nothing.** A short is a *promise to deliver*, not a spend, and the promise is not on the balance sheet the wallet keeps |
-| Reservation at acceptance | Puts the money beyond reach until confirmation | Reserves nothing; `TRADE_PROCEEDS` is credited at confirmation |
+| Reservation at acceptance | Puts the money beyond reach until confirmation | Reserves nothing; `TRADE_PROCEEDS` is credited at confirmation ⚠ **[DEC-190] (3): a SELL reserves its collateral** |
 
 So a customer whose panels underperform must buy back the shortfall — under **[DEC-23]** and
 **[DEC-87]** the uncovered volume settles at the day-ahead price for the interval, raw, at whatever
@@ -303,6 +305,8 @@ the platform's only recourse is a wallet that may be empty.
 ⚠ **[OQ-94]** — *what collateral or exposure limit applies to a short position?* — is registered
 against that gap and **blocks the sell path opening to customers**, even though the state machine in
 §2 already permits the transition. Do not read §2 as authority to ship it.
+
+⚠ **Answered 2026-10-27 by [DEC-190] (3): the sell path is open.** **[OQ-94]** is closed: accept reserves a collateral that is held until the delivery period has ended, which gives the third control above something to act on. It is a percentage of the gross and not an exposure limit, so the buy-back risk in the paragraph above stays; the owner accepted it with *Shorts allowed*.
 
 ### 5.5 The customer's contract ends before the block does
 
@@ -411,7 +415,7 @@ Post-2026-08-19 state for the questions this process turns on. The register of r
 
 | Ref | Question | Status |
 | --- | --- | --- |
-| **[OQ-94]** | What collateral or exposure limit applies to a short position? | 🟠 **Open** — opened 2026-08-19 by **[DEC-72]**. The wallet is prepaid **[AS-11]** and a short is a promise to deliver rather than a spend, so neither §4's reservation nor **[DEC-41]**'s balance check bounds it. **Blocks the sell path opening to customers** — §5.4 |
+| **[OQ-94]** | What collateral or exposure limit applies to a short position? | 🟠 **Open** — opened 2026-08-19 by **[DEC-72]**. The wallet is prepaid **[AS-11]** and a short is a promise to deliver rather than a spend, so neither §4's reservation nor **[DEC-41]**'s balance check bounds it. **Blocks the sell path opening to customers** — §5.4 ⚠ **Closed 2026-10-27 by [DEC-190] (3).** |
 | **[OQ-92]** | Are the hedge and the day-ahead delivery one invoice document or two? | 🟠 **Open**. Outside this lifecycle since **[DEC-77]** — no invoice is touched here — but it decides what the confirmed block eventually appears on, and under **[DEC-88]** how many drafts are pushed per customer per month |
 | ~~[OQ-09]~~ | ~~Is four-eyes approval required above a value threshold?~~ | ✅ **Closed — [DEC-71]**, replacing **[DEC-33]**. There is no threshold. Four-eyes is a **per-customer-company mode**; a different **admin** of the same company approves or declines ⚠ **Four-eyes itself was removed 2026-10-12 by [DEC-179].** |
 | ~~[OQ-85]~~ | ~~What is the four-eyes threshold amount, and is it one figure or per customer?~~ | ✅ **Closed — [DEC-71]**. No figure exists in euros or in megawatts, so the threshold reference table is **not built** and acceptance can no longer fail for want of a row in force ⚠ **Four-eyes itself was removed 2026-10-12 by [DEC-179].** |

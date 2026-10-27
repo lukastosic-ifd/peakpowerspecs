@@ -47,6 +47,8 @@ and the pre-trade balance check **[DEC-41]** — the two things that bound every
 can lose PeakPower money — do not bound it. No collateral or exposure limit is decided; it is
 **[OQ-94]**, and it blocks the sell path rather than being mitigated here.
 
+⚠ **Amended 2026-10-27 by [DEC-190] (3):** the sell path is open. A SELL's collateral is reserved at accept and held until the delivery period has ended; it narrows the exposure and does not bound it, and the platform still caps nothing.
+
 ## 2. Tenancy isolation
 
 Four layers. Any one of them failing should not expose data. **The layers themselves are unchanged by

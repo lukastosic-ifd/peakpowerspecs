@@ -260,13 +260,21 @@ flowchart LR
 **[DEC-83]** reverses **[DEC-43]**: a payout path exists, and it is manual end to end. The platform
 records the request and the debit; a human makes the payment. ~~The approval~~ is gone since 2026-10-12 **[DEC-179]**.
 
+> ⚠ **Amended 2026-10-26 by [DEC-189]** — PeakPower **reviews** every request before paying it. A staff member
+> accepts it (`APPROVED`) or rejects it with a reason (`REJECTED`, the hold is released); only an accepted request can
+> be marked paid, and the customer can cancel only while it is still `REQUESTED`. The diagram and table below show the
+> current states.
+
 ```mermaid
 stateDiagram-v2
     [*] --> REQUESTED
-    REQUESTED --> DECLINED: customer cancels
-    REQUESTED --> PAID: employee transfers and records it
-    REQUESTED --> DECLINED: PeakPower refuses, reason mandatory
-    DECLINED --> [*]
+    REQUESTED --> CANCELLED: customer cancels
+    REQUESTED --> APPROVED: employee accepts
+    REQUESTED --> REJECTED: employee rejects, reason mandatory
+    APPROVED --> REJECTED: employee rejects, reason mandatory
+    APPROVED --> PAID: employee transfers and records it
+    CANCELLED --> [*]
+    REJECTED --> [*]
     PAID --> [*]
 
     note right of REQUESTED
@@ -281,7 +289,9 @@ stateDiagram-v2
 | → `REQUESTED` | `WITHDRAWAL_REQUESTED` | 0 | + | Customer **admin** account **[DEC-71]**, **[DEC-17]** |
 | ~~`REQUESTED` → `APPROVED`~~ | ~~none — the approval is an audit record, not a movement~~ | ~~0~~ | ~~0~~ | ~~A **different** admin of the same company when four-eyes is on **[DEC-71]**; when it is off the request enters `APPROVED` on submission with the requester as the only actor~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — there is no approval; the request is payable the moment it exists. |
 | → `DECLINED` | `WITHDRAWAL_RELEASED` | 0 | − | ~~Second admin,~~ the customer, or a PeakPower employee — reason mandatory |
-| `REQUESTED` → `PAID` | `WITHDRAWAL_PAID` | − | − | PeakPower employee, after the bank transfer has actually been made **[DEC-83]** |
+| `REQUESTED` → `APPROVED` | none — the review is a record on the request, not a movement | 0 | 0 | PeakPower employee **[DEC-189]** |
+| `REQUESTED` or `APPROVED` → `REJECTED` | `WITHDRAWAL_RELEASED` | 0 | − | PeakPower employee, reason mandatory (1-500 characters), shown to the customer **[DEC-189]** |
+| ~~`REQUESTED` → `PAID`~~ `APPROVED` → `PAID` | `WITHDRAWAL_PAID` | − | − | PeakPower employee, after the bank transfer has actually been made **[DEC-83]**; ⚠ only from `APPROVED` since 2026-10-26 **[DEC-189]** |
 
 Worked example, continuing from **€27 736,00** settled after the trade above: the customer requests
 **€10 000,00**.
@@ -337,8 +347,8 @@ bookkeeping program either — it learns about both from its bank feed **[DEC-10
 | --- | --- | :--: |
 | F06-R33 | A customer **admin** account can raise a withdrawal request for any amount up to `availableBalance`. The request writes `WITHDRAWAL_REQUESTED`, which reserves the amount **[DEC-05]** so it cannot be traded away before it is paid. No minimum and no maximum amount is defined — **[DEC-84]** removes them on the deposit side and no decision sets one here. | Must |
 | ~~F06-R34~~ | ~~When four-eyes is enabled for the company **[DEC-71]**, the request must be approved by a **different** admin account of the same company before PeakPower is asked to pay. A decline writes `WITHDRAWAL_RELEASED` with a mandatory reason and returns the amount to available in full. When four-eyes is off, the request is approved on submission by the requester alone.~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — a withdrawal needs no second admin; it is payable once requested, and an admin can cancel it while it is `REQUESTED`. A request that was waiting for a second admin when migration 39 ran became `REQUESTED` with an audit row that says so. | Must |
-| F06-R35 | PeakPower is notified when a withdrawal request becomes payable ([F11](F11-notifications.md)). There is no automatic payout and no provider integration: an employee makes the transfer by hand **[DEC-83]**. | Must |
-| F06-R36 | An employee records the payment they have made. `WITHDRAWAL_PAID` debits the settled balance and clears the reservation in one transaction, and stores the value date, the bank reference and the acting employee **[DEC-17]**. The entry is written **after** the transfer, never as an instruction to make one. | Must |
+| F06-R35 | PeakPower is notified when a withdrawal request becomes payable ([F11](F11-notifications.md)). There is no automatic payout and no provider integration: an employee makes the transfer by hand **[DEC-83]**. ⚠ **Amended 2026-10-26 by [DEC-189]:** a request is payable once a staff member has **accepted** it; staff are mailed when it is requested (with a link to its page) and the requester is mailed when it is accepted, rejected or paid. | Must |
+| F06-R36 | An employee records the payment they have made. `WITHDRAWAL_PAID` debits the settled balance and clears the reservation in one transaction, and stores the value date, the bank reference and the acting employee **[DEC-17]**. The entry is written **after** the transfer, never as an instruction to make one. ⚠ **Amended 2026-10-26 by [DEC-189]:** only an `APPROVED` request can be recorded as paid. | Must |
 | F06-R37 | A withdrawal may be paid **only** to the company bank account on the customer record **[DEC-61]**, **[F01-R01]**. That account **cannot be edited** — it can only be deactivated and a new one added — and ~~both adding and deactivating need a second admin's approval when four-eyes is on **[DEC-71]**.~~ ⚠ **Amended 2026-09-28 by [DEC-165]** — twin of **[F07-R33]**: a company **admin** replaces the account themselves from the Balance page, ~~and a company with four-eyes on is blocked from changing it (`409`) until the approval flow **[F01-R45]** is built~~. ⚠ **Amended 2026-10-08 by [DEC-176] (9): on the Company page, not Balance.** The payout goes to the `ACTIVE` account as resolved at payout time. ⚠ **Amended 2026-10-12 by [DEC-179]:** the payout goes to the company's `ACTIVE` bank account; adding or replacing it is one admin's action and needs no approval **[F01-R45]** (struck), and nothing is blocked at a four-eyes company. | Must |
 | F06-R38 | **No invoice is raised for a deposit or a withdrawal** **[DEC-106]**, and neither is pushed to the bookkeeping program; it learns about both through its bank feed **[DEC-109]**. | Must |
 

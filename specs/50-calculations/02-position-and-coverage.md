@@ -74,6 +74,8 @@ quadrant is now **reachable in production** rather than unreachable by validatio
 caveats written in §4 as free insurance are now load-bearing. Nothing in the platform bounds the
 exposure that creates — see **[OQ-94]**.
 
+⚠ **Amended 2026-10-27 by [DEC-190] (4): the sell path is open.** `sign(SELL) = −1` is now exercised in production: the hedge energy `H` and the hedge cost go negative, and a customer whose sales exceed purchases has `H < 0`. No formula changes. The position reads every CONFIRMED block with no direction filter (Volume page, dashboard block line, saved costs). **[OQ-94]** is answered by a collateral, which holds against the buy-back and does not bound it.
+
 Everything else in this document is bookkeeping around those two lines.
 
 ## 2. Inputs
@@ -276,6 +278,8 @@ it is worked below.
 > ⚠ What the clamp does **not** do is bound the risk. A short position can be entered with an empty
 > wallet, because a short is a promise to deliver rather than a spend **[AS-11]**, **[DEC-41]**. That
 > is **[OQ-94]**, and it is open.
+>
+> ⚠ **Amended 2026-10-27 by [DEC-190] (4):** the quadrant is now reachable by an accepted SELL, not only in theory; **[OQ-94]** is closed by a collateral held until delivery ends, which does not bound the exposure.
 
 Behaviour by case:
 
@@ -790,4 +794,4 @@ stopped producing data — §7.
 | [OQ-16] | What resolution and coverage does the Montel day-ahead curve provide for NL? | ~~**Partly answered by [DEC-36]** — the curve arrives at 18:00 Europe/Amsterdam. Resolution and backfill depth are still open~~ ✅ **Closed 2026-08-19 by [DEC-75]** — history is available for backfill, so there is no cliff and a position can be settled retrospectively to whatever depth the licence allows. Arrival time was already fixed by **[DEC-36]**. Resolution is absorbed by the store-what-arrives rule in §5.1 and needs no answer |
 | [OQ-35] | Is the raw day-ahead price used for settlement, or a price plus a spread? | **Closed by [DEC-44]** — the **raw** price, no spread, on both the buy and the sell leg. ⚠ **Unaffected by [DEC-87]**, which reverses only [DEC-44]'s second half; export now settles on that same raw price |
 | ~~*(unnumbered)*~~ | ~~When a customer exports but no feed-in tariff resolves, is the export valued at zero or at the day-ahead price?~~ | ✅ **Closed 2026-08-19 by [DEC-87]** as **[OQ-86]** — it was numbered and answered in the same round. There is no feed-in tariff to fail to resolve; export is valued at the **day-ahead price**, which was one of the two candidate answers. The interim warning-or-skip behaviour in §5.3 and **[F10-R39]** is withdrawn |
-| [OQ-94] | What collateral or exposure limit applies to a short position? | **Open.** Not raised here — it comes from **[DEC-72]** — but recorded because §4's `B < 0` quadrant, §5's simultaneous purchase and sale legs and §8's data-state asymmetry all describe a position this document can now compute and the platform cannot bound. The maths is complete; the risk control is missing. Tracked in [Open questions](../80-open-questions.md) |
+| [OQ-94] | What collateral or exposure limit applies to a short position? | **Open.** Not raised here — it comes from **[DEC-72]** — but recorded because §4's `B < 0` quadrant, §5's simultaneous purchase and sale legs and §8's data-state asymmetry all describe a position this document can now compute and the platform cannot bound. The maths is complete; the risk control is missing. Tracked in [Open questions](../80-open-questions.md) ⚠ **Closed 2026-10-27 by [DEC-190] (3).** |

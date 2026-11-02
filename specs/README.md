@@ -78,6 +78,7 @@ See the [feature index](10-features/README.md) for the full list, MoSCoW priorit
 | [07 EDSN connection register](30-integrations/07-edsn-connection-register.md) | Search by EAN or address and master-data updates, called by the platform only; stored per EAN **[DEC-182]** |
 | [08 Pro6pp address suggestions](30-integrations/08-pro6pp-address-suggestions.md) | Address suggestions for the search box, with a secret key that never reaches a log or a browser **[DEC-182]** |
 | [09 Grid-operator mapping](30-integrations/09-grid-operator-mapping.md) | PeakPower's service naming grid operators by party code, stored and refreshed daily **[DEC-182]** |
+| [11 EEX forward prices](30-integrations/11-eex-forward-prices.md) | Dutch power futures from the EEX Group DataSource REST API as the forward price indications **[DEC-193]** |
 
 ### 40 — Processes
 | Doc | Purpose |

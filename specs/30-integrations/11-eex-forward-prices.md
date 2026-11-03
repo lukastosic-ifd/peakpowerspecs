@@ -23,7 +23,7 @@
 > reuses an old quote, and after a Worker restart the last stored EEX row is the starting default. Sections 2-4 below are
 > superseded where they say otherwise.
 
-> **[DEC-194], 2026-11-02:** the order book's bid and ask are stored next to the price; the customer buys at the ask and sells at the bid, and the back office sees bid, ask and spread (ask minus bid) for each request.
+> **[DEC-194], 2026-11-02:** the order book's bid and ask are stored next to the price; the customer buys at the ask and sells at the bid, and the back office sees bid, ask and spread (ask minus bid) for each request. Amended 2026-11-03: the customer is never shown the spread, and the customer API does not send bid, ask or spread.
 
 ## 1. What it is used for
 

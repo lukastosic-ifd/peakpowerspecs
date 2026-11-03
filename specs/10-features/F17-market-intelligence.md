@@ -21,9 +21,12 @@ price-stripped original; the expected price shows *Calculated at* with no source
 (its receiving feature), because marketnews@peakpower.nl is a Microsoft 365 mailbox that refuses IMAP password sign-in. The IMAP
 mailbox is removed from the platform.
 
+⚠ **Amended 2026-11-03 by the product owner ([DEC-184] (10)):** the feature is **off unless `MARKET_INTELLIGENCE_ENABLED=true`**. Off, nothing
+is read, rewritten or fetched, the API routes answer 404 and the portal shows no Market Intelligence anywhere (F17-R12).
+
 | Question | Decision |
 | --- | --- |
-| Where it shows | A new rail item **Market Intelligence** (*Marktinformatie*) in the Overview group, for every signed-in customer (no product entitlement), and a compact card on the Dashboard. |
+| Where it shows | A new rail item **Market Intelligence** (*Marktinformatie*) in the Overview group, for every signed-in customer (no product entitlement), and a compact card on the Dashboard. ⚠ **2026-11-03:** only while the deployment switch `MARKET_INTELLIGENCE_ENABLED` is on; it is off by default. |
 | How mail arrives | ~~The Worker polls one mailbox over **IMAP** every 5 minutes and reads unread mail whose sender is exactly the configured address (default `marketnews@peakpower.nl`).~~ ⚠ **2026-10-30:** Exchange redirects the market mail to an address on a **Resend receiving domain** (a subdomain such as `inbound.peakpower.nl`, so the Microsoft 365 MX records stay); every 5 minutes the Worker lists the mail Resend received (`GET /emails/receiving`), keeps mail whose sender is exactly the configured address (default `marketnews@peakpower.nl`), skips what is already stored and reads the rest. A message is processed once, keyed by its `Message-Id`. |
 | Which mail is trusted | Only mail from the configured sender **and**, by default, with ~~a passing DKIM or DMARC result for that sender's domain in `Authentication-Results`~~ ⚠ **2026-10-30:** a passing **DMARC** result as Resend's receiving server reports it (a DKIM pass alone does not count: Resend does not say which domain signed). Anything else is ~~marked read,~~ recorded as rejected and never shown. |
 | What "remove all prices" means | Every sentence that states a monetary amount or rate (€, EUR, euro, cent/ct, $, £, `/MWh`, `/kWh`, `per MWh` …) is removed **before** the text reaches the AI, and every AI output is checked again with the same rule; a sentence that still carries a price is removed. Volumes (m³, TWh), percentages, temperatures and dates are not prices and stay. |
@@ -47,6 +50,7 @@ mailbox is removed from the platform.
 | F17-R09 | The customer portal has a **Market Intelligence** rail item and screen showing the expected kWh price for the next 12 months with ~~a tooltip naming the source and~~ *Calculated at: dd-mm-yyyy* under it (⚠ *amended 2026-10-22:* no source tooltip), and the articles in the customer's language (Dutch when no English version exists, marked as Dutch). | Must |
 | F17-R10 | The Dashboard shows a compact Market Intelligence card **above the day-ahead prices card** (product owner 2026-10-21): the expected kWh price and the latest article's title and summary, linking to the screen. | Should |
 | F17-R11 | When the mail source (⚠ *2026-10-30:* `MARKET_NEWS_PROVIDER=Resend` and a full-access Resend key) or the AI is not configured, the Worker logs it once and keeps running; the screen says there is no market update yet. When no expected price is stored, the figure says it is not available. | Must |
+| F17-R12 | ⚠ *Added 2026-11-03.* One deployment switch, `MARKET_INTELLIGENCE_ENABLED` (configuration `Features:MarketIntelligence`), **off by default**, turns the whole feature on. While it is off the Worker registers no mailbox, AI or expected-price job (one log line says so), the two market-intelligence routes answer 404, and the customer portal reads `GET /api/v1/features` and shows no rail item, screen or Dashboard card and makes no market-intelligence request; the screen's address leads to the Dashboard. Stored data is kept. | Must |
 
 ## 3. Out of scope (for now)
 

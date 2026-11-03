@@ -82,7 +82,32 @@ for every other source.
 | *(no .env line)* | `EEX__Commodity`, `EEX__Area`, set on the Worker only if they must change | `POWER`, `NL` |
 | *(no .env line)* | `EEX__BaseMonth` … `EEX__PeakYear`, pin a short code when the log says the name match failed | empty (found by name) |
 
-## 5. Licence — open
+## 5. Price history per contract (DEC-195)
+
+Clicking a product code on the Prices page (DEC-26, Q1-27, CAL-27 …) opens that contract's price history: a line
+and area chart with the date and EUR/MWh on hover, a CSV download and the number of observations. The back office
+opens the same chart from a trade's market reference.
+
+- **EEX publishes no settlement price under our subscription.** `stat/derivatives/POWER/NL/{day}/{ShortCode}/{Maturity}`
+  has `OpenPx`, `HighPx`, `LowPx`, `LastPx` and `NumberOfTrd`, and nothing else; `stats` answers 404. The history is
+  therefore **EEX's daily last traded price** (`LastPx`), labelled "EEX daily close" / "EEX-slotkoers", never
+  "settlement". A day without trades has no point; the line joins its neighbours.
+- **Stored, not fetched per view.** Migration 57 adds `market.forward_daily_close`, one row per (source, shape, period
+  type, delivery start, trading date), keyed by the **contract**, not the product slot, so a contract keeps its history
+  when the relative products roll. A no-trade day is a row with a NULL price, so it is never asked again. Both login
+  roles hold SELECT only; the Worker writes on the owner connection.
+- **Backfill.** A Worker tick every 10 minutes fills the last `ForwardPrices:History:BackfillDays` (default 92) calendar
+  days of every active product's current contract, newest first, at most `ForwardPrices:History:MaxRequestsPerRun`
+  (default 60) EEX requests per tick through the same one-request-per-second throttle as the live poll. Trading days
+  come from `rd/derivatives/POWER/NL/`; today counts from 18:30 Amsterdam. A day EEX has not published yet (404 or an
+  empty reply, less than 6 days old) is not stored and is asked again later; a contract EEX cannot price is skipped
+  for the rest of the tick so it cannot eat the cap. A full backfill of 24 contracts is about 1,500 requests, so it
+  completes over a few hours after the first start.
+- **Read.** `GET /api/v1/prices/history?shape=&periodType=&deliveryStart=&days=` on both APIs (days 1–366, default 92,
+  counting today), priced days only, ascending, from the configured source only. The Simulated provider draws a
+  deterministic history, so the chart works locally without a key.
+
+## 6. Licence — open
 
 EEX's webshop subscriptions are for internal use within one legal entity. Showing EEX prices to customers in the
 portal is external use and needs EEX's dissemination licence (quote from datasource@eex-group.com). This is the

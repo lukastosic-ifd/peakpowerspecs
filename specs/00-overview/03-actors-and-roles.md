@@ -192,6 +192,7 @@ The PeakPower employee who turns a request into a price and executes it with the
 | **Expertise** | Expert. Works with the wholesale market daily |
 | **Pressure** | Time-critical. An offer has a countdown; the market moves underneath it |
 | **Key screens** | Trade desk queue, trade detail with pricing panel, confirm/fail actions, customer wallet check |
+| **Devices** | ⚠ **New 2026-11-09 by [DEC-208]:** a laptop at the desk, and a phone or tablet away from it; the back office is responsive below 1024 px. |
 
 ### 2.3 Finance
 

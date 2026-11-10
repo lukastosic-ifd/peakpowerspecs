@@ -195,7 +195,7 @@ transport is an API, a file/FTP drop or both is **[OQ-95]**.
 | Customer self-onboarding | Customers and EANs are created by PeakPower employees. Self-service registration is a later phase. ⚠ **Stale since [DEC-113]; [DEC-182] (5): a company admin adds connections found in EDSN; staff attach the rest.** |
 | Platform-held credentials for **customers** — password storage, resets, lockout | **[DEC-29]** — the identity provider owns the credential and the platform never stores a customer password. The proof of concept has no authentication at all **[DEC-20]**, which removes the login but **not** the tenancy context pipeline. ⚠ **One bounded exception, and it is not a customer one:** **[DEC-53]** brings hashing, rotation, lockout and breach handling back for a small set of **named employee break-glass accounts** — see §4.1 and the glossary. |
 | Customer-managed encryption keys | **[DEC-52]** — platform-managed keys at rest. |
-| Native mobile apps | Responsive web only. ⚠ **Amended 2026-10-02 by [DEC-173]: this is now true for the **customer portal**, which is responsive below 1024 px; the back office stays a fixed 1280 desktop layout.** |
+| Native mobile apps | Responsive web only. ⚠ **Amended 2026-10-02 by [DEC-173]: this is now true for the **customer portal**, which is responsive below 1024 px; the back office stays a fixed 1280 desktop layout.** ⚠ **Amended 2026-11-09 by [DEC-208]: the back office is responsive below 1024 px too.** |
 
 ⚠ **What the eight new rows cost, stated once.** Numbering **[DEC-88]**, the document and its email
 **[DEC-89]**, VAT **[DEC-76]**, topups **[DEC-73]**, chargebacks **[DEC-85]**, settlement

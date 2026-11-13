@@ -720,8 +720,8 @@ CREATE TABLE customer.onboarding_application (
     kvk_number           varchar(8),
     registered_address   jsonb,
     industry             varchar(60),
-    flow_direction       text,                      -- steps 5-6: CONSUMPTION | PRODUCTION | BOTH
-    volume_band          text,   -- UP_TO250_MWH … ABOVE2500_MWH: identifiers, kept; their labels are in kWh [DEC-180] (11), printed kW [DEC-181]
+    flow_direction       text,                      -- steps 5-6: CONSUMPTION | PRODUCTION | BOTH. No longer asked [DEC-218]; earlier values kept
+    volume_band          text,   -- UP_TO250_MWH … ABOVE2500_MWH: identifiers, kept; their labels are in kWh [DEC-180] (11), printed kW [DEC-181]. No longer asked [DEC-218]; earlier values kept
     iban                 varchar(34),               -- steps 6-7
     bank_account_holder  varchar(200),
     bank_verified_at     timestamptz,

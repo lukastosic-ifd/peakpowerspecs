@@ -432,6 +432,17 @@ Continuing this file's numbering from its previous maximum, **F10-R42**.
 | F10-R50 | **No materiality threshold.** Every non-zero difference is invoiced individually **[DEC-100]**; nothing is netted, batched or waived below a value. The **€25 default is removed rather than configured**. ⚠ Cost, stated: a €0,40 correction becomes a numbered document with a manual check behind it **[DEC-88]**, and correction volume is now bounded only by correction frequency — see risk **[R-20]**. ⚠ **[DEC-100]**'s source comment is phrased about deposits and withdrawals and may be misplaced on the true-up row; it is recorded as read and flagged for confirmation. | Must |
 | F10-R51 | The platform pushes the **invoiced volume per EAN per period** as its own field on the draft, distinct from any priced line, because the bookkeeping program multiplies it by the **topup fee [DEC-73]**. The platform holds **no surcharge rate** and computes **no surcharge amount**; a rate stored here would be a second source of truth for PeakPower's margin. | Must |
 
+### Monthly settlement statements — 2026-11-20, [DEC-222]
+
+Built ahead of the invoice run. A statement is not an invoice: it is the stored usage-and-cost file the invoice is aligned with.
+
+| ID | Requirement | MoSCoW |
+| --- | --- | :--: |
+| F10-R52 | ⚠ **New 2026-11-20 by [DEC-222].** On or after working day 5 of each month the platform **stores one settlement CSV per company** for the month before, in English and Dutch, with each file's SHA-256 and the usage versions it read. The rows are those of the Portfolio whole-month export ([DEC-191], [DEC-202]). | Must |
+| F10-R53 | ⚠ **New 2026-11-20 by [DEC-222].** A stored statement file is **never changed or recomputed**; a download serves the stored bytes. | Must |
+| F10-R54 | ⚠ **New 2026-11-20 by [DEC-222].** When the current usage of a statement's month differs from the versions it stored, the back office shows *correction available*; staff **re-issue** a new version, which becomes current; every earlier version stays downloadable in the back office as replaced, and customers see only the current one. | Must |
+| F10-R55 | ⚠ **New 2026-11-20 by [DEC-222].** Every member of a company sees the **latest version** of each month's statement on the customer *Settlements* page, with no version number or generated date, and downloads it as `Settlement YYYY MM.csv` (Dutch `Afrekening YYYY MM.csv`). | Must |
+
 ## 5. Business rules
 
 1. ~~**Finalised invoices are immutable.**~~ **Pushed invoices are immutable** ⚠ *(amended

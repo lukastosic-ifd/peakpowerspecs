@@ -4,6 +4,53 @@ Hangfire on PostgreSQL storage **[DEC-10]**, hosted in the worker. Three kinds o
 (triggered by an event, run once), **recurring** (cron), and **scheduled** (run at a specific future
 time).
 
+> ⚠ **As built, 2026-11-26.** Sections 1 to 10 below are the original design. The platform did not
+> build it that way: only inbound-message processing runs on Hangfire, and every other job is a
+> timer loop (`BackgroundService` on a `PeriodicTimer`) in the **Worker**. Section 0 is the list of
+> every job the platform runs today and how each one retries. Where it and the sections below
+> disagree, section 0 is what runs.
+
+---
+
+## 0. Every job running today (as built, 2026-11-26)
+
+Read from `peakpower-platform` main at `62de43d`. The values are the **code defaults**; most can be
+overridden by configuration (`Section__Key`, or the compose file's variable), and none is stored in the
+database or shown in the back office. A change to a job's schedule or retry belongs in this table in
+the same change.
+
+### 0.1 Scheduled jobs (timer loops in the Worker)
+
+| Job | Runs every | Retry behaviour | Switched on by |
+| --- | --- | --- | --- |
+| Day finalisation and silence detection (metering) | 1 h, deliberately not configurable | Next tick | Always on |
+| Day-ahead prices (ENTSO-E) **[DEC-36]**, **[DEC-224]** | 30 min, and once at start | Per call: 4 attempts, 2 s doubling back-off, 60 s timeout, at most one request a second. An incomplete day is fetched again after 24 h; an incomplete day in the recent window after 1 h (`DayAheadIngestion__RetryRecentIncompleteAfter`). The last 7 days are rechecked after 16:00; a missing day alerts after 15:00. Runs kept 90 days | Always on |
+| EEX forward prices | Ticks every minute; polls every 5 min in market hours, every 1 h outside | Per call: 30 s timeout, 2 s back-off on a rate limit; the next poll is the retry. A price older than 30 min is stale | `FORWARD_PRICES_PROVIDER=EEX` |
+| EEX forward history | 10 min | Next tick; backfills 92 days | With EEX |
+| EEX settlement prices | 10 min | Next tick (settlements arrive about 17:20 UTC) | With EEX |
+| Market news **[DEC-184]** | 5 min, and once at start | A mail whose AI rewrite fails stays pending and is tried again every tick, without limit (logged as an error after 3 failures). Per Gemini call: 3 attempts, 2 s doubling back-off, 5 min timeout. A mail that throws outside the rewriter 3 times is rejected | `MARKET_INTELLIGENCE_ENABLED` |
+| Expected kWh prices **[DEC-184]** | 6 h, and once at start | Per call: 3 attempts, 2 s doubling back-off, 30 s timeout | `MARKET_INTELLIGENCE_ENABLED` |
+| Saved-cost recalculation | 15 s | Next tick; a nightly verify at 03:00 recalculates the last 35 days | `SavedCosts__Enabled` |
+| Wallet ledger reconciliation and stuck-payment sweep | 15 min | Next tick | Always on |
+| Trade expiry | 15 s | Next tick | Always on |
+| Trade desk notifications | 15 s | Next tick | Always on |
+| Trade collateral release | 1 h | Next tick | Always on |
+| Grid-operator list refresh | 1 day, and once at start | Per call: 2 attempts, 5 s timeout; otherwise the next day | Always on |
+| EDSN supplier switch, SWITCHLV **[DEC-213]** | 1 day, and once at start | One attempt per connection per run, at most 10 runs; per call 2 attempts, 300 ms back-off, 60 s timeout. A rejection is final | `EDSN_SUPPLIER_SWITCH_ENABLED` |
+| EDSN move out, and its mails **[DEC-220]** | Same daily run as the switch | 428 stays sent and is asked again; 5xx or no reply is retried next run until the row is given up; a rejection is final | `EDSN_MOVE_OUT_ENABLED` |
+| EDSN master-data confirmation **[DEC-213]** | Same daily run, after the switch and move out | Next run; looks back 30 days, first 3 pages per connection | With the switch |
+| Settlement statements **[DEC-222]** | 1 h, and once at start; generates on working day 5 | Next tick | `SETTLEMENT_STATEMENTS_ENABLED` |
+| Scheduled company deletion **[DEC-216]** | 5 min | Next tick | Always on |
+
+### 0.2 Event-triggered jobs
+
+| Job | Triggered by | Where | Retry behaviour |
+| --- | --- | --- | --- |
+| Inbound message processing (BRP and volume files), Hangfire | A webhook or upload stores a message | Worker | 5 retries after the first run: 1 min, 5 min, 15 min, 1 h, 4 h; then dead-lettered (quarantine on the Data feeds page) |
+| Outbound mail delivery | Any mail the platform sends | Each host, in memory (queue of 256) | None: a failed send is logged and dropped; a full queue drops the mail; a restart loses what is queued |
+| Maintenance announcement mails **[DEC-199]** | An admin creates, ends or cancels a window | Employee API | Queues only while the mail queue is more than half free, and retries the same recipient until it fits; lost on restart |
+| Saved-cost request | A change that affects saved costs writes a request row | Worker | Picked up by the 15 s saved-cost job above |
+
 ---
 
 ## 1. Queues

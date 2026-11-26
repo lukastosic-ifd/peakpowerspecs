@@ -174,7 +174,7 @@ flowchart LR
     style S5 fill:#7f1d1d,stroke:#dc2626,color:#fff
 ```
 
-⚠ **Amended 2026-09-30 by [DEC-167] (17): a bought block is paid in two legs.** `TRADE_RESERVED`, `TRADE_SETTLED` and `TRADE_RESERVATION_RELEASED` below move the **deposit** (the company's percentage of the VAT-inclusive gross, frozen at accept). After `CONFIRMED` the **balance** — the rest of the gross — is owed until the day before delivery starts and is paid as `TRADE_BALANCE_PAID`, by the customer's *Pay balance* (`POST /trades/{id}/pay-balance`) or by the hourly automatic collection when the wallet covers it. Paying is not a state change (a `BALANCE_PAID` event, `CONFIRMED` to `CONFIRMED`); an unpaid balance after delivery starts is **overdue** — a derived flag, the trade stays `CONFIRMED` and nothing is cancelled.
+⚠ **Amended 2026-11-24 by [DEC-224]: the balance leg is removed; the customer pays only the deposit and the rest is invoiced separately.** ⚠ **Amended 2026-09-30 by [DEC-167] (17): a bought block is paid in two legs.** `TRADE_RESERVED`, `TRADE_SETTLED` and `TRADE_RESERVATION_RELEASED` below move the **deposit** (the company's percentage of the VAT-inclusive gross, frozen at accept). After `CONFIRMED` the **balance** — the rest of the gross — is owed until the day before delivery starts and is paid as `TRADE_BALANCE_PAID`, by the customer's *Pay balance* (`POST /trades/{id}/pay-balance`) or by the hourly automatic collection when the wallet covers it. Paying is not a state change (a `BALANCE_PAID` event, `CONFIRMED` to `CONFIRMED`); an unpaid balance after delivery starts is **overdue** — a derived flag, the trade stays `CONFIRMED` and nothing is cancelled.
 
 Ledger entries produced: `TRADE_RESERVED` on acceptance, then either `TRADE_SETTLED`
 (or `TRADE_PROCEEDS` for a sell) on confirmation, or `TRADE_RESERVATION_RELEASED` on failure.
@@ -360,7 +360,7 @@ kept underneath the table.
 | ~~Approval declined~~ | ~~The **acceptor** and the other admins, traders~~ | ~~In-app + email~~ ⚠ **Removed 2026-10-12 by [DEC-179]** — no approval notification. |
 | Accepted | Traders ⚠ **As built 2026-10-01 [DEC-168]:** *accepted — ready to confirm* is emailed to every active back-office account with the desk-mail setting on | In-app (real-time) |
 | Confirmed | The requester ~~, plus the admins where four-eyes applied~~ **[DEC-111]**. ⚠ **As built 2026-09-30 [DEC-167] (18):** the requester and the acceptor, from the employee host, **email only** | In-app + email (⚠ email only as built) |
-| ⚠ **Balance paid** **[DEC-167] (18)** | The requester, the acceptor and, on the customer host, the payer | Email only |
+| ⚠ **Amended 2026-11-24 by [DEC-224]: the mail is removed.** ⚠ **Balance paid** **[DEC-167] (18)** | The requester, the acceptor and, on the customer host, the payer | Email only |
 | Failed | The requester ~~, plus the admins where four-eyes applied~~ **[DEC-111]** | In-app + email — **immediate** |
 | Unconfirmed > 4 h | Traders | In-app escalation |
 

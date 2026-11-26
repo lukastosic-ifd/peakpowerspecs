@@ -51,6 +51,7 @@ day-ahead price document; `contract_MarketAgreement.type=A01` is added where the
 | `DayAheadIngestion:RecheckDays` | — | 7 ⚠ [DEC-180] (7): at most 28, 0 switches the re-check off |
 | `DayAheadIngestion:RecheckAfter` | — | 16:00 Amsterdam ⚠ [DEC-180] (7) |
 | `DayAheadIngestion:MissingAlertAfter` | — | 15:00 Amsterdam ⚠ [DEC-180] (7) |
+| `DayAheadIngestion:RetryRecentIncompleteAfter` | — | 1 h ⚠ [DEC-224] (4): how long before a missing past day inside `RecheckDays` is asked again; older gaps keep 24 h |
 | `DayAheadIngestion:RunRetentionDays` | — | 90 ⚠ [DEC-180] (7) |
 | `DayAheadIngestion:Provider` | — | empty ⚠ [DEC-180] (7): `Simulated` only on a local run-mode stack |
 
@@ -108,7 +109,7 @@ most one request a second. (3) ~~A stored day is never asked for again, so after
 a cheap database query and is what retries when publication is late.~~ ⚠ **Reversed 2026-10-13 by [DEC-180] (7).** See
 [background jobs §2](../20-architecture/06-background-jobs.md).
 
-⚠ **The re-check, as built 2026-10-13 by [DEC-180] (7).** Once a day, on the first tick at or after `DayAheadIngestion:RecheckAfter` (16:00), one request asks again for the `RecheckDays` delivery days before today (default 7), with today and tomorrow when they are stored. Only this re-check can change a stored day. A row is written only for a real change, which is a stored price of the same source whose 5-decimal value differs from the incoming one:
+⚠ **The re-check⚠ **Amended 2026-11-24 by [DEC-224]: a missing past day inside the window is also asked again every `RetryRecentIncompleteAfter` (1 h); a failed request no longer ends the tick; a day is built from all series and periods covering it (PT15M preferred over expanded PT60M, A03 carry-forward across touching periods); see [F08-R23].** , as built 2026-10-13 by [DEC-180] (7).** Once a day, on the first tick at or after `DayAheadIngestion:RecheckAfter` (16:00), one request asks again for the `RecheckDays` delivery days before today (default 7), with today and tomorrow when they are stored. Only this re-check can change a stored day. A row is written only for a real change, which is a stored price of the same source whose 5-decimal value differs from the incoming one:
 
 | What the reply holds | Result |
 | --- | --- |

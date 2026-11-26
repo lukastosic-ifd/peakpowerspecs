@@ -112,3 +112,8 @@ opens the same chart from a trade's market reference.
 EEX's webshop subscriptions are for internal use within one legal entity. Showing EEX prices to customers in the
 portal is external use and needs EEX's dissemination licence (quote from datasource@eex-group.com). This is the
 EEX counterpart of **[OQ-117]** and must be settled before `Eex` is switched on against real customers.
+
+**[DEC-225], 2026-11-25:** the customer Prices card names *EEX Group* as the source (linked to
+https://www.eex-group.com/) and shows the owner's Market Data notice: internal use through the customer's own account only,
+no sharing, automated extraction, bulk export, resale, redistribution, reconstruction or derived financial products. The
+notice tells the customer the terms; it does not replace the licence above.

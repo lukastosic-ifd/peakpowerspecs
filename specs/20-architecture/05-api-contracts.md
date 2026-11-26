@@ -996,7 +996,7 @@ never amended. It is listed here now, so the section's inventory is complete:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET`/`POST` | `/company/entitlements` | ⚠ **Missing since 2026-09-08 [DEC-150]** — the shelf a company switches on. `GET` is open to every member (the rail is computed from the held set, so a 403 would take away navigation rather than a privilege); `POST` is **`CompanyAdmin`** and audited in both directions |
+| `GET`/`POST` | `/company/entitlements` | ⚠ **Missing since 2026-09-08 [DEC-150]** — the shelf a company switches on. `GET` is open to every member (the rail is computed from the held set, so a 403 would take away navigation rather than a privilege); `POST` is **`CompanyAdmin`** and audited in both directions. ⚠ **Amended 2026-11-23 by [DEC-223]:** each entry carries `locked`; `day-ahead` is always held and `POST` switching it off answers 409 |
 
 ~~⚠ **[DEC-71] still does not change that** — the approval a second admin gives §2.10 is a different
 mechanism from an administration screen, and *"add a user"* has now left that approval list

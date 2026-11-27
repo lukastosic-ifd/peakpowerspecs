@@ -443,6 +443,18 @@ Built ahead of the invoice run. A statement is not an invoice: it is the stored 
 | F10-R54 | ⚠ **New 2026-11-20 by [DEC-222].** When the current usage of a statement's month differs from the versions it stored, the back office shows *correction available*; staff **re-issue** a new version, which becomes current; every earlier version stays downloadable in the back office as replaced, and customers see only the current one. | Must |
 | F10-R55 | ⚠ **New 2026-11-20 by [DEC-222].** Every member of a company sees the **latest version** of each month's statement on the customer *Settlements* page, with no version number or generated date, and downloads it as `Settlement YYYY MM.csv` (Dutch `Afrekening YYYY MM.csv`). | Must |
 
+### Uploaded invoices — 2026-11-26, [DEC-226]
+
+PeakPower calculates no invoice. Back-office staff upload the PDF made elsewhere and publish it.
+
+| ID | Requirement | MoSCoW |
+| --- | --- | :--: |
+| F10-R56 | ⚠ **New 2026-11-26 by [DEC-226].** Back-office staff **upload one invoice PDF per company and month** (at most 10 MiB, a month that has ended), preview it in the back office, replace or delete it while it is a draft. | Must |
+| F10-R57 | ⚠ **New 2026-11-26 by [DEC-226].** **Publishing is final**: a published invoice's file is never changed or deleted; a correction is another invoice for the month. | Must |
+| F10-R58 | ⚠ **New 2026-11-26 by [DEC-226].** Publishing **mails the PDF as an attachment to every active login of the company**, at most once per recipient, records each outcome, skips a recipient who has left, and lets staff send again to those it failed for. | Must |
+| F10-R59 | ⚠ **New 2026-11-26 by [DEC-226].** Every member sees the company's **published** invoices in an *Invoices* section of the customer *Settlements* page and downloads each under its file name; a draft is never visible to a customer. | Must |
+| F10-R60 | ⚠ **New 2026-11-27 by [DEC-226].** The back office shows a company's **statements and invoices on one page**, month by month (generate, re-issue, download, upload, preview, publish); the company page no longer carries a *Settlements* card and links there instead. The page draws no summary cards; each month without a draft offers one *Upload invoice for {month}* button, whose upload is fixed on that month, and above the months two tiles, *Statement* (month and *Generate statement*) and *Invoice* (*Upload invoice*, any month), say what each action does (owner's review 2026-11-27, *"Remove 4 summary cards and do one button per month"*, then design B of three). | Must |
+
 ## 5. Business rules
 
 1. ~~**Finalised invoices are immutable.**~~ **Pushed invoices are immutable** ⚠ *(amended

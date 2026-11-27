@@ -966,6 +966,13 @@ threshold **[DEC-100]**, **[F10-R50]**.
 | `GET` | `/settlements` | ⚠ **New 2026-11-20 [DEC-222]** — any member. `{ items: [{ id, month: "2026-10", withBlocks, rowCount, consumptionKwh, productionKwh, netUsageKwh, costEur }] }`: the current version of each month only, newest first, with no version or generated date (owner, 2026-11-23). Never names staff. |
 | `GET` | `/settlements/{id}/file?lang=en\|nl` | ⚠ **New 2026-11-20 [DEC-222]** — the stored bytes, `text/csv; charset=utf-8`, attachment always named `Settlement 2026 10.csv` / `Afrekening 2026 10.csv`, without a version; a replaced statement is the same 404 as an unknown id. Language: `lang`, then `Accept-Language` (with `Vary`), then Dutch. Another company's id is the same 404 as an unknown one. |
 
+### 2.6B Invoices — [DEC-226], added 2026-11-26
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/invoices` | ⚠ **New 2026-11-26 [DEC-226]** — any member. `{ items: [{ id, month: "2026-10", fileName, sizeBytes, publishedAt }] }`: published invoices only, newest month first, then newest published. Never names staff or recipients. |
+| `GET` | `/invoices/{id}/file` | ⚠ **New 2026-11-26 [DEC-226]** — the PDF, attachment under its file name. A draft, another company's id and an unknown id are the same 404. |
+
 ### 2.7 Company & accounts
 
 | Method | Path | Purpose |
@@ -1248,6 +1255,10 @@ The push endpoint replaces finalisation and the **returned number is stored, nev
 | `GET`/`POST` | `/customers/{id}/settlements` | ⚠ **New 2026-11-20 [DEC-222]** — list (the customer item plus `replacedAt`, `generatedBy`, `correctionDetectedAt`, `files[]`) and generate a closed month now, body `{ month }`: `201`; `422` keyed `month` when malformed, not closed, before the first month (2026-10), without an electricity connection or without data; `409` `settlement-refused` `reason: ALREADY_EXISTS`, or `COSTS_PENDING` while the month's costs are still being recalculated. Any back-office user, audited. |
 | `GET` | `/customers/{id}/settlements/{statementId}/file?lang=` | ⚠ **New 2026-11-20 [DEC-222]** — the stored file, as the customer route. |
 | `POST` | `/customers/{id}/settlements/{statementId}/reissue` | ⚠ **New 2026-11-20 [DEC-222]** — store a new version from today's data; it becomes current and the old one is kept as replaced. `201`; `409` `reason: NOT_CURRENT` for a replaced statement, `COSTS_PENDING` as above. |
+| `GET` | `/settlements/companies?search=` | ⚠ **New 2026-11-26 [DEC-226]** — every company for the back office's *Settlements* list: `customerId`, `name`, `tradeName`, `kvkNumber`, `status`, `latestStatementMonth`, `publishedInvoiceCount`, `draftInvoiceCount`, `lastPublishedMonth`. Search on name or KvK. |
+| `GET`/`POST` | `/customers/{id}/invoices` | ⚠ **New 2026-11-26 [DEC-226]** — list `{ items: [{ id, month, status: DRAFT\|PUBLISHED, fileName, sizeBytes, sha256, uploadedAt, uploadedBy, publishedAt, publishedBy, emails: [{ accountId, address, name, state: PENDING\|SENT\|FAILED\|SKIPPED, sentAt, failedAt }] }], recipientCount }` (`recipientCount`: the logins a publish would mail now); upload a draft, multipart `month` + `file`: `201`; `422` keyed `month` or `file`; `413` over 10 MiB; `409` `invoice-refused` `reason: DRAFT_EXISTS`. Any back-office user, audited. |
+| `GET`/`PUT`/`DELETE` | `/customers/{id}/invoices/{invoiceId}/file`, `/customers/{id}/invoices/{invoiceId}` | ⚠ **New 2026-11-26 [DEC-226]** — the PDF (drafts too, for the preview); replace a draft's file (multipart `file`); delete a draft (`204`). `409 reason: ALREADY_PUBLISHED` for a published invoice. |
+| `POST` | `/customers/{id}/invoices/{invoiceId}/publish`, `.../send` | ⚠ **New 2026-11-26 [DEC-226]** — publish (`409 ALREADY_PUBLISHED`) and queue one mail per login; send again to every FAILED recipient (`409 NOT_PUBLISHED`). Both answer `200` at once with the mails PENDING; the employee host's dispatcher delivers them. |
 | `POST` | `/bank-accounts/{id}/deactivate` | ⚠ **New 2026-08-19 [DEC-71]** — the other half of the pair~~; also a four-eyes action~~. A company holds **at most one `ACTIVE`** account, so replacing one activates the new and deactivates the old together **[F01-R46]** |
 | `PATCH` | `/metering-points/{id}` | Master data, end-dating, **BRP assignment [DEC-69]**, **[F12-R50]**, and the **production expectation the customer declares at onboarding [DEC-112]**, **[F01-R41]** |
 | `GET`/`POST`/`PUT`/`DELETE` | `/metering-points/{id}/move-out` | ⚠ **New 2026-11-18 [DEC-220]** — the same as the customer route, for any back-office user, with the full row (`REJECTED`, `FAILED`, `CANCELLED`, `HANDED_OVER`, attempts, EDSN request id, rejection, `confirmedAt`) and `calls[]`, the MOVEOUT traces from `supply_switch_failure`. `POST /metering-points/{id}/end-date` is unchanged and shown as "Correct end date (no EDSN message)". |
